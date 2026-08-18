@@ -65,6 +65,19 @@ def _configure_libclang():
 # AST nodes use 0x0000..0x7FFF (no prefix needed, just hash truncation).
 _AST_NODE_MASK = 0x7FFF_FFFF_FFFF_FFFF
 
+# Module-level libclang Index singleton.
+# Creating a new Index per scan_file is wasteful — the Index is a
+# long-lived object that manages translation-unit caching internally.
+_clang_index = None
+
+
+def _get_clang_index():
+    """Return the process-level libclang Index singleton."""
+    global _clang_index
+    if _clang_index is None:
+        _clang_index = _ci.Index.create()
+    return _clang_index
+
 
 def cgdb_node_id(usr: str, fallback: str = "") -> int:
     """Compute a stable cross-TU node ID from a clang USR.
@@ -411,9 +424,7 @@ class ClangScanner(BaseScanner):
         # the wild on Linux kernel / glibc / busybox builds).
         args = ['-Wno-unknown-warning-option'] + args
         try:
-            idx = _ci.Index.create()
-            # PARSE_DETAILED_PROCESSING_RECORD: keeps macro instantiations in AST
-            # Don't use PARSE_SKIP_FUNCTION_BODIES — we need body content for FTS5.
+            idx = _get_clang_index()
             tu = idx.parse(filepath, args=args,
                            options=_ci.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD)
         except Exception:

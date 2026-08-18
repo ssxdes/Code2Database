@@ -305,7 +305,6 @@ def _cross_domain_affinity_communities(G, node_list, domain_set) -> CommunityRes
             if aff > best_aff:
                 best_aff = aff
                 best_pair = pair
-                break  # most_common is sorted, first valid is best
 
         if best_pair is None or best_aff < 0.1:
             break  # no meaningful cross-domain connections left

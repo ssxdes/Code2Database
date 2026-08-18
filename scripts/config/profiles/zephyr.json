@@ -1,0 +1,204 @@
+{
+  "version": 1,
+  "project": {
+    "name": "zephyr",
+    "language": "c",
+    "project_type": "zephyr",
+    "detected_frameworks": ["zephyr"]
+  },
+  "detection": {
+    "dir_markers": [],
+    "file_markers": ["Kconfig.zephyr"],
+    "content_markers": [
+      {"pattern": "ZEPHYR_", "dirs": ["include", "kernel", "drivers", "subsys"], "min_hits": 1}
+    ],
+    "dir_structure": {
+      "has_zephyr_dir": "zephyr",
+      "has_zephyr_include": "include/zephyr"
+    },
+    "build_system": null,
+    "priority": 50
+  },
+  "project_name_aliases": {
+    "zephyr-source": "zephyr",
+    "zephyr-src": "zephyr"
+  },
+  "skip_names": {
+    "add": [
+      "BUILD_ASSERT",
+      "BUILD_ASSERT_MSG",
+      "ARRAY_SIZE",
+      "IS_ENABLED",
+      "IN_RANGE",
+      "Z_CONTAINER_OF",
+      "Z_SECTION_OFFSET",
+      "BIT",
+      "GENMASK",
+      "WAIT_FOR",
+      "COND_CODE_1",
+      "COND_CODE_0",
+      "IF_ENABLED",
+      "LISTIFY",
+      "MACRO_MAP_CAT",
+      "Z_UTIL_CAT",
+      "Z_UTIL_GET_MACRO_N",
+      "__ASSERT",
+      "__ASSERT_NO_MSG",
+      "likely",
+      "unlikely"
+    ],
+    "external_lib_prefixes": {}
+  },
+  "api_detection": {
+    "public_prefixes": [
+      "k_",
+      "z_",
+      "zephyr_",
+      "ZEPHYR_",
+      "device_",
+      "DEVICE_",
+      "SYS_",
+      "DT_",
+      "GPIO_",
+      "uart_",
+      "i2c_",
+      "spi_",
+      "pwm_",
+      "adc_",
+      "dma_",
+      "can_",
+      "usb_",
+      "net_",
+      "bt_",
+      "shell_",
+      "log_",
+      "LOG_"
+    ],
+    "internal_patterns": ["_unit_", "_ut_", "_test_", "_perf_", "_verify_", "_example_", "_internal", "_priv", "_stub", "_mock"],
+    "public_header_paths": ["include"],
+    "export_macros": [],
+    "struct_op_types": [
+      "device_api",
+      "uart_driver_api",
+      "i2c_driver_api",
+      "spi_driver_api",
+      "pwm_driver_api",
+      "adc_driver_api",
+      "dma_driver_api",
+      "can_driver_api",
+      "counter_driver_api",
+      "entropy_driver_api",
+      "flash_driver_api",
+      "gpio_driver_api",
+      "i2s_driver_api",
+      "mbox_driver_api",
+      "pcie_driver_api",
+      "sensor_driver_api",
+      "display_driver_api",
+      "regulator_driver_api",
+      "sdhc_driver_api",
+      "eeprom_driver_api",
+      "ps2_driver_api",
+      "led_driver_api",
+      "hwinfo_driver_api",
+      "watchdog_driver_api",
+      "timer_driver_api",
+      "net_if_api",
+      "eth_net_api",
+      "can_net_api",
+      "wifi_net_api",
+      "offload_net_api",
+      "bt_driver_api",
+      "usb_driver_api",
+      "audio_driver_api"
+    ],
+    "auto_detect": true
+  },
+  "callback_detection": {
+    "static_patterns": [
+      {"register_func": "k_thread_create", "regex": "k_thread_create\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)\\s*,", "cb_arg_index": 3, "concurrency_type": "spawn_target"},
+      {"register_func": "k_timer_init", "regex": "k_timer_init\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)\\s*[,)]", "cb_arg_index": 2, "concurrency_type": "timer_callback"},
+      {"register_func": "k_work_init", "regex": "k_work_init\\s*\\(\\s*[^,]*,\\s*(\\w+)\\s*[,)]", "cb_arg_index": 1, "concurrency_type": "poller"},
+      {"register_func": "k_delayed_work_init", "regex": "k_delayed_work_init\\s*\\(\\s*[^,]*,\\s*(\\w+)\\s*[,)]", "cb_arg_index": 1, "concurrency_type": "poller"},
+      {"register_func": "k_work_poll_init", "regex": "k_work_poll_init\\s*\\(\\s*[^,]*,\\s*(\\w+)\\s*[,)]", "cb_arg_index": 1, "concurrency_type": "poller"},
+      {"register_func": "irq_connect", "regex": "irq_connect\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)\\s*,", "cb_arg_index": 2, "concurrency_type": "interrupt_handler"},
+      {"register_func": "IRQ_CONNECT", "regex": "IRQ_CONNECT\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)\\s*,", "cb_arg_index": 2, "concurrency_type": "interrupt_handler"},
+      {"register_func": "irq_install_direct_handler", "regex": "irq_install_direct_handler\\s*\\(\\s*[^,]*,\\s*(\\w+)\\s*,", "cb_arg_index": 1, "concurrency_type": "interrupt_handler"}
+    ],
+    "generic_cb_suffixes": ["_cb", "_fn", "_handler", "_callback"],
+    "skip_call_prefixes": []
+  },
+  "endpoint_classification": {
+    "lib_prefix_map": {},
+    "endpoint_rules": [
+      {"pattern": "^_start$", "endpoint_type": "program_entry"},
+      {"pattern": "^main$", "endpoint_type": "program_entry"},
+      {"pattern": "^_Cstart$", "endpoint_type": "program_entry"},
+      {"pattern": "^k_thread_entry$", "endpoint_type": "thread_entry"}
+    ]
+  },
+  "macro_heuristics": {
+    "macro_condition_prefixes": ["CONFIG_", "DT_", "HAS_", "ENABLE_", "USE_"]
+  },
+  "macro_dispatch": {
+    "registration_macros": [
+      {"macro_name": "SYS_INIT", "pattern": "SYS_INIT\\s*\\(\\s*(\\w+)\\s*,\\s*([^,)]+)\\s*,\\s*([^,)]+)\\s*\\)", "struct_arg_index": 0, "generates": "constructor"},
+      {"macro_name": "DEVICE_DEFINE", "pattern": "DEVICE_DEFINE\\s*\\(\\s*[^,]+\\s*,\\s*[^,]+\\s*,\\s*(\\w+)\\s*,", "struct_arg_index": 0, "generates": "device_register"},
+      {"macro_name": "DT_DEVICE_DEFINE", "pattern": "DT_DEVICE_DEFINE\\s*\\(\\s*[^,]+\\s*,\\s*[^,]+\\s*,\\s*(\\w+)\\s*,", "struct_arg_index": 0, "generates": "device_register"},
+      {"macro_name": "DEFINE_UART_IRQ_HANDLER", "pattern": "DEFINE_UART_IRQ_HANDLER\\s*\\(\\s*(\\w+)\\s*\\)", "struct_arg_index": 0, "generates": "irq_handler"}
+    ],
+    "token_paste_macros": [],
+    "macro_aliases": {}
+  },
+  "struct_embeddings": {
+    "container_of_macros": [
+      {"macro_name": "CONTAINER_OF", "pattern": "CONTAINER_OF\\s*\\(\\s*(\\w+)\\s*,\\s*(?:struct\\s+)?(\\w+)\\s*,\\s*(\\w+)\\s*\\)"},
+      {"macro_name": "Z_CONTAINER_OF", "pattern": "Z_CONTAINER_OF\\s*\\(\\s*(\\w+)\\s*,\\s*(?:struct\\s+)?(\\w+)\\s*,\\s*(\\w+)\\s*\\)"}
+    ],
+    "manual_entries": []
+  },
+  "scan_hints": {
+    "pre_scan_dirs": ["doc", "samples"],
+    "test_dirs": ["tests", "test"],
+    "header_priority_dirs": ["include"],
+    "vtable_module_keys": [],
+    "domain_rules": [
+      {"pattern": "^test", "domain_tag": "test"},
+      {"pattern": "^samples?", "domain_tag": "sample"},
+      {"pattern": "^kernel/", "domain_tag": "kernel"},
+      {"pattern": "^drivers/", "domain_tag": "driver"},
+      {"pattern": "^subsys/", "domain_tag": "subsystem"},
+      {"pattern": "^soc/", "domain_tag": "soc"},
+      {"pattern": "^arch/", "domain_tag": "arch"},
+      {"pattern": "^lib/", "domain_tag": "lib"}
+    ]
+  },
+  "project_boundaries": {
+    "non_api_paths": ["tests/", "test/", "samples/", "scripts/", "doc/", "tools/", "boards/"],
+    "test_path_patterns": ["/test/", "/tests/", "/unit/", "/ut/", "/unittest/", "/fuzz/", "/ztest/", "\\test\\", "\\tests\\", "\\unit\\"],
+    "test_file_suffixes": ["_test.c", "_test.cpp", "_ut.c", "_ut.cpp", "_unittest.c", "_unittest.cpp", "test_.c", "test_.cpp"],
+    "test_domain_segments": ["ut", "ut_mock", "unit", "test", "fuzz", "ztest"],
+    "vendor_domain_prefixes": [],
+    "external_dir_prefixes": ["vendor", "third_party", "thirdparty", "external", "3rdparty", "contrib"]
+  },
+  "concurrency_patterns": {
+    "lock_acquire_patterns": [
+      "\\bk_thread_create\\s*\\(\\s*(&?\\w+)",
+      "\\bk_sem_take\\s*\\(\\s*(&?\\w+)",
+      "\\bk_mutex_lock\\s*\\(\\s*(&?\\w+)",
+      "\\bk_spinlock\\s*\\(\\s*(&?\\w+)",
+      "\\bk_fifo_put\\s*\\(\\s*(&?\\w+)",
+      "\\bK_KERNEL_FIFO_DEFINE"
+    ],
+    "lock_release_patterns": [
+      "\\bk_sem_give\\s*\\(\\s*(&?\\w+)",
+      "\\bk_mutex_unlock\\s*\\(\\s*(&?\\w+)",
+      "\\bk_spinunlock\\s*\\(\\s*(&?\\w+)"
+    ]
+  },
+  "io_classification": {
+    "io_main_keywords": ["submit", "queue", "ring", "write", "read", "send", "recv", "transfer", "dispatch", "execute", "xfer", "io_path", "uart_", "spi_", "i2c_", "gpio_", "dma_", "eth_", "usb_", "can_", "adc_", "pwm_", "net_", "net_socket", "net_pkt", "socket_", "bt_", "bluetooth_", "l2cap_"],
+    "io_side_keywords": ["error", "fail", "abort", "err_", "_err", "retry", "recover", "timeout", "watchdog", "reset_", "cleanup", "clean_", "destroy", "destruct", "fini", "dealloc", "free_", "_free", "_stat", "stat_", "stats", "debug", "log_", "trace_", "test_", "_test", "unit_", "_ut", "ut_", "validate", "verify_", "check_", "poll_", "_poll", "config", "init_", "_init", "setup_", "register_"]
+  },
+  "auto_config_overrides": {}
+}

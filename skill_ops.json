@@ -1,0 +1,61 @@
+{
+  "name": "Code2Database-ops",
+  "version": "1.0.0",
+  "description": "Operations sub-skill for Code2Database. Activated when the user asks about safe graph editing (transactions, snapshots, WAL replay), keeping the graph up to date (daemon control, file watching, git hook install, patch-from-diff, patch-from-git, sync, merge), profile health and evolution, doc-code alignment and stale-doc marking, graph versioning, persistent memory management, exports (HTML, Obsidian, Web UI), plugins, embeddings (experimental), or the BUG benchmark. Provides hierarchical routing: 14 Tier-1 high-weight commands shown in Quick Reference, a routing table mapping question types to medium-weight command groups, and an on-demand section listing low-weight experimental commands by name only. All commands from the parent skill remain accessible — this sub-skill only re-organizes them so the LLM never sees all 122 commands at once. Database write constraint: LLM MUST get user confirmation before any DB-modifying command (update-node, update-edge, patch-profile, apply-semantics, apply-invariants, auto-enhance, profile-evolve --apply, doc-mark-stale, ffi-types, tx-commit). Use when /Code2Database detects an ops question and explicitly hands off, or when the user types /Code2Database-ops. Not for: querying the graph (use parent /Code2Database); not for deep semantic analysis (use /Code2Database-analysis).",
+  "trigger": "/Code2Database-ops",
+  "parent_skill": "Code2Database",
+  "languages": ["C", "C++", "Go", "Python", "Java", "Rust", "ASM"],
+  "tier_1_commands": [
+    "tx-begin", "tx-commit", "tx-rollback", "tx-status",
+    "daemon-start", "daemon-stop", "daemon-wait-sync",
+    "profile-health", "profile-evolve", "profile-bind-version",
+    "doc-code-check", "doc-mark-stale",
+    "update-node", "update-edge",
+    "serve"
+  ],
+  "commands": [
+    "tx-begin", "tx-commit", "tx-rollback", "tx-status",
+    "tx-snapshot", "tx-restore", "tx-list-snapshots", "tx-replay-wal",
+    "update-node", "update-edge", "patch-profile",
+    "classify-endpoints", "auto-enhance", "batch-confirm", "rollback", "fill-request",
+    "add-semantic-edges", "semantic-status", "audit-log",
+    "daemon-start", "daemon-stop", "daemon-status", "daemon-force-refresh",
+    "daemon-pause", "daemon-resume", "daemon-wait-sync",
+    "daemon-logs", "daemon-reload", "daemon-list-projects",
+    "watch", "sync", "merge", "light-scan",
+    "patch-from-diff", "patch-from-git", "install-hook",
+    "export-changes", "merge-changes",
+    "profile-health", "profile-evolve", "profile-bind-version",
+    "doc-code-check", "doc-mark-stale", "doc-alignment-report", "doc-signature-diff",
+    "graph-history", "graph-diff", "graph-record-version",
+    "save-memory", "search-memory", "manage-memory", "memory-health", "validate-memory",
+    "export-html", "export-obsidian", "web-ui",
+    "plugins", "validate-plugin", "bug-benchmark",
+    "embeddings-build", "embeddings-search",
+    "extract-invariants-llm", "intent-query", "think-chain",
+    "domain", "unbalanced-alloc-free", "explain-label", "why-ambiguous",
+    "serve"
+  ],
+  "routing_table": {
+    "Safe graph editing": ["tx-begin", "tx-commit", "tx-rollback", "tx-status", "tx-snapshot", "tx-restore", "tx-list-snapshots", "tx-replay-wal", "update-node", "update-edge", "patch-profile", "classify-endpoints", "auto-enhance", "batch-confirm", "rollback", "fill-request", "add-semantic-edges", "semantic-status", "audit-log"],
+    "Keep graph up to date": ["daemon-start", "daemon-stop", "daemon-status", "daemon-force-refresh", "daemon-pause", "daemon-resume", "daemon-wait-sync", "daemon-logs", "daemon-reload", "daemon-list-projects", "watch", "sync", "merge", "light-scan", "patch-from-diff", "patch-from-git", "install-hook", "export-changes", "merge-changes"],
+    "Profile and doc-code": ["profile-health", "profile-evolve", "profile-bind-version", "doc-code-check", "doc-mark-stale", "doc-alignment-report", "doc-signature-diff"],
+    "Graph versioning": ["graph-history", "graph-diff", "graph-record-version"],
+    "Memory management": ["save-memory", "search-memory", "manage-memory", "memory-health", "validate-memory"],
+    "Export / plugin / benchmark": ["export-html", "export-obsidian", "web-ui", "plugins", "validate-plugin", "bug-benchmark"],
+    "Embeddings (experimental)": ["embeddings-build", "embeddings-search"]
+  },
+  "on_demand_commands": [
+    "embeddings-build", "embeddings-search",
+    "extract-invariants-llm", "intent-query", "think-chain",
+    "domain", "graph-record-version",
+    "unbalanced-alloc-free", "explain-label", "why-ambiguous"
+  ],
+  "extraction_backends": ["auto", "clang", "tree-sitter"],
+  "activation_model": "User explicitly invokes /Code2Database-ops, OR /Code2Database core skill detects an ops question (transactions, daemon, profile, doc-code, exports, plugins, memory) and hands off with the phrase 'activate Code2Database-ops sub-skill'.",
+  "database_write_constraint": "LLM MUST get user confirmation before any DB-modifying command. See CLAUDE.md / SKILL.md Database Write Constraint section for the full list and required report-and-wait protocol.",
+  "shared_resources": {
+    "scripts": "scripts/ (shared with parent and analysis sub-skill — single CLI)",
+    "mcp_server": "All 48 MCP tools (30 code2database_* + 18 cgdb_*) accessible regardless of sub-skill activation. MCP is separate from skill layer."
+  }
+}

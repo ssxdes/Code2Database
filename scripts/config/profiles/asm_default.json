@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "project": {
+    "name": "asm_project",
+    "language": "asm",
+    "detected_frameworks": []
+  },
+  "skip_names": {
+    "add": [
+      "syscall", "sys_read", "sys_write", "sys_exit",
+      "sys_open", "sys_close", "sys_mmap", "sys_munmap",
+      "sys_ioctl", "sys_fork", "sys_execve", "sys_wait4",
+      "printf", "strtod", "write", "exit", "malloc", "free"
+    ],
+    "external_lib_prefixes": {},
+    "test_framework_prefixes": []
+  },
+  "api_detection": {
+    "public_prefixes": [],
+    "internal_patterns": [],
+    "export_macros": ["ENTRY", "ASM_FUNC", "WEAK"],
+    "struct_op_types": [],
+    "auto_detect": true
+  },
+  "callback_detection": {
+    "static_patterns": [],
+    "generic_cb_suffixes": ["_handler", "_isr", "_callback", "_error"],
+    "skip_call_prefixes": [],
+    "skip_callees": []
+  },
+  "endpoint_classification": {
+    "lib_prefix_map": {},
+    "endpoint_rules": []
+  },
+  "macro_heuristics": {
+    "macro_condition_prefixes": []
+  },
+  "macro_dispatch": {
+    "registration_macros": [],
+    "token_paste_macros": [],
+    "macro_aliases": {}
+  },
+  "struct_embeddings": {
+    "container_of_macros": [],
+    "manual_entries": []
+  },
+  "threading_models": {},
+  "scan_hints": {
+    "pre_scan_dirs": [],
+    "test_dirs": [],
+    "header_priority_dirs": [],
+    "vtable_module_keys": [],
+    "domain_rules": []
+  },
+  "phases": {
+    "scan_complete": false,
+    "build_complete": false,
+    "validated": false
+  }
+}

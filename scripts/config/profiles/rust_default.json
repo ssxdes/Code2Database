@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "project": {
+    "name": "rust_default",
+    "language": "rust",
+    "detected_frameworks": []
+  },
+  "skip_names": {
+    "add": [
+      "as",
+      "async",
+      "await",
+      "break",
+      "const",
+      "continue",
+      "crate",
+      "dyn",
+      "else",
+      "enum",
+      "extern",
+      "false",
+      "fn",
+      "for",
+      "if",
+      "impl",
+      "in",
+      "let",
+      "loop",
+      "match",
+      "mod",
+      "move",
+      "mut",
+      "pub",
+      "ref",
+      "return",
+      "self",
+      "Self",
+      "static",
+      "struct",
+      "super",
+      "trait",
+      "true",
+      "type",
+      "unsafe",
+      "use",
+      "where",
+      "while",
+      "i8",
+      "i16",
+      "i32",
+      "i64",
+      "i128",
+      "isize",
+      "u8",
+      "u16",
+      "u32",
+      "u64",
+      "u128",
+      "usize",
+      "f32",
+      "f64",
+      "bool",
+      "char",
+      "str",
+      "String",
+      "Vec",
+      "Option",
+      "Result",
+      "Some",
+      "None",
+      "Ok",
+      "Err",
+      "Box",
+      "Rc",
+      "Arc",
+      "RefCell",
+      "Cell",
+      "Mutex",
+      "RwLock"
+    ],
+    "external_lib_prefixes": {
+      "std::": {"category": "external_stdlib", "visible": false},
+      "core::": {"category": "external_stdlib", "visible": false},
+      "alloc::": {"category": "external_stdlib", "visible": false},
+      "tokio::": {"category": "external_lib", "visible": false},
+      "serde::": {"category": "external_lib", "visible": false}
+    },
+    "test_framework_prefixes": ["test_", "tests_", "it_", "should_", "test"]
+  },
+  "api_detection": {
+    "public_prefixes": [],
+    "internal_patterns": ["_test", "_internal", "_priv"],
+    "public_header_paths": [],
+    "export_macros": [],
+    "struct_op_types": [],
+    "auto_detect": false
+  },
+  "callback_detection": {
+    "static_patterns": [],
+    "generic_cb_suffixes": ["Callback", "Handler", "Cb", "Fn", "Closure"],
+    "skip_call_prefixes": []
+  },
+  "endpoint_classification": {
+    "lib_prefix_map": {}
+  },
+  "macro_heuristics": {
+    "macro_condition_prefixes": ["cfg_", "feature_", "debug_assertions"]
+  },
+  "scan_hints": {
+    "pre_scan_dirs": ["examples", "demo", "benches"],
+    "test_dirs": ["tests", "test"],
+    "header_priority_dirs": [],
+    "vtable_module_keys": [],
+    "domain_rules": [],
+    "skip_dirs": ["target", "vendor", ".git", "node_modules"]
+  },
+  "macro_dispatch": {
+    "registration_macros": [],
+    "token_paste_macros": [],
+    "macro_aliases": {}
+  },
+  "struct_embeddings": {
+    "container_of_macros": [],
+    "manual_entries": []
+  },
+  "dispatch_tuning": {
+    "max_vtable_dispatch_per_call": 50,
+    "max_vtable_dispatch_per_field": {},
+    "inline_wrapper_patterns": [],
+    "macro_bridge_patterns": [],
+    "macro_bridge_require_same_domain": false,
+    "fn_ptr_call_require_evidence": false
+  },
+  "phases": {
+    "prescan_completed": false,
+    "test_scan_completed": false,
+    "llm_header_analysis_completed": false,
+    "llm_result_check_completed": false
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "scan": {
+    "workers": 0,
+    "max_file_size_kb": 1024,
+    "skip_dirs": [".git", "__pycache__", "node_modules", "build", ".cache"]
+  },
+  "build": {
+    "default_config": "auto",
+    "max_domain_files": 50
+  },
+  "query": {
+    "default_detail": "brief",
+    "default_max_tokens": 500,
+    "explore_max_nodes": 15,
+    "explore_max_tokens": 2000
+  },
+  "memory": {
+    "decay_factor": 0.95,
+    "consolidate_threshold": 100,
+    "scratch_ttl_hours": 24
+  },
+  "semantic": {
+    "stale_ratio_threshold": 0.15,
+    "stale_api_threshold": 1
+  }
+}

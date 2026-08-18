@@ -1,0 +1,68 @@
+{
+  "name": "Code2Database-analysis",
+  "version": "1.0.0",
+  "description": "Deep semantic analysis sub-skill for Code2Database. Activated when the user asks about concurrency safety, data races, value flow, parameter flow, data dependencies, path feasibility under constraints, invariants (preconditions/postconditions/loop_invariants/state_machine), FFI boundaries (Python ctypes / Go cgo / Rust extern C), commit-level provenance, lock-held regions, resource allocation/free, blast radius of a change, or wants to query the cgdb (code graph database) layer directly via the 18 cgdb_* MCP tools. Provides hierarchical routing: 13 Tier-1 high-weight commands shown in Quick Reference, a routing table mapping question types to medium-weight command groups, and an on-demand section listing low-weight experimental commands by name only. All 48 commands from the parent skill remain accessible — this sub-skill only re-organizes them so the LLM never sees all 122 commands at once. Use when /Code2Database detects a deep-analysis question and explicitly hands off, or when the user types /Code2Database-analysis. Not for: graph building, scanning, or simple browsing (use parent /Code2Database); not for transactions, daemon, profile editing, or exports (use /Code2Database-ops).",
+  "trigger": "/Code2Database-analysis",
+  "parent_skill": "Code2Database",
+  "languages": ["C", "C++", "Go", "Python", "Java", "Rust", "ASM"],
+  "tier_1_commands": [
+    "concurrency-analyze", "detect-races", "lock-coverage",
+    "value-flow", "param-flow", "data-dep", "field-access",
+    "path-feasible", "blast-radius",
+    "find-invariants",
+    "ffi-trace",
+    "blame-node",
+    "query"
+  ],
+  "commands": [
+    "concurrency-risks", "concurrency-analyze", "detect-races",
+    "lock-coverage", "happens-before", "memory-ordering", "who-locks",
+    "value-flow", "param-flow", "data-dep", "data-lifecycle", "io-path",
+    "field-access",
+    "impact", "blast-radius", "neighbors", "path", "diff-chains",
+    "path-feasible", "resolve-chain", "extract-signals",
+    "extract-invariants", "find-invariants", "apply-invariants",
+    "ffi-detect", "ffi-list", "ffi-trace", "ffi-types",
+    "blame-node", "describe-commit", "node-history", "graph-provenance", "find-commits",
+    "who-allocates", "who-frees", "unbalanced-alloc-free", "add-semantic-edges",
+    "audit-log",
+    "query",
+    "think-chain", "intent-query", "extract-invariants-llm",
+    "explain-label", "why-ambiguous",
+    "extract-semantics", "apply-semantics",
+    "extract-knowledge", "apply-knowledge", "knowledge-query", "knowledge-validate"
+  ],
+  "cgdb_mcp_tools": [
+    "cgdb_search_symbols", "cgdb_find_invokers", "cgdb_find_invoked",
+    "cgdb_get_definition", "cgdb_get_function_body", "cgdb_get_struct_layout",
+    "cgdb_find_type_definition", "cgdb_find_ops_impls",
+    "cgdb_find_cfg_paths", "cgdb_find_data_flow", "cgdb_find_aliases",
+    "cgdb_find_lock_held_calls", "cgdb_check_race_condition",
+    "cgdb_find_configs_for", "cgdb_find_nodes_under_config",
+    "cgdb_index_status", "cgdb_time_travel_query", "cgdb_list_versions"
+  ],
+  "routing_table": {
+    "Is this thread-safe?": ["concurrency-risks", "concurrency-analyze", "detect-races", "lock-coverage", "happens-before", "memory-ordering", "who-locks"],
+    "Where does this NULL/value come from?": ["value-flow", "param-flow", "data-dep", "data-lifecycle", "io-path"],
+    "What breaks if I change this?": ["impact", "blast-radius", "neighbors", "path", "diff-chains"],
+    "Is this path feasible?": ["path-feasible", "resolve-chain", "extract-signals"],
+    "What invariants does this function enforce?": ["extract-invariants", "find-invariants", "apply-invariants"],
+    "Which Python/Go/Rust function calls into C?": ["ffi-detect", "ffi-list", "ffi-trace", "ffi-types"],
+    "Which commit introduced this?": ["blame-node", "describe-commit", "node-history", "graph-provenance", "find-commits"],
+    "Who allocates/frees this resource?": ["who-allocates", "who-frees", "unbalanced-alloc-free", "add-semantic-edges"],
+    "Query cgdb tables directly (clang backend)": ["cgdb_search_symbols", "cgdb_find_invokers", "cgdb_find_invoked", "cgdb_get_definition", "cgdb_get_function_body", "cgdb_get_struct_layout", "cgdb_find_type_definition", "cgdb_find_ops_impls", "cgdb_find_cfg_paths", "cgdb_find_data_flow", "cgdb_find_aliases", "cgdb_find_lock_held_calls", "cgdb_check_race_condition", "cgdb_find_configs_for", "cgdb_find_nodes_under_config", "cgdb_index_status", "cgdb_time_travel_query", "cgdb_list_versions"]
+  },
+  "on_demand_commands": [
+    "think-chain", "intent-query", "extract-invariants-llm",
+    "explain-label", "why-ambiguous",
+    "extract-semantics", "apply-semantics",
+    "extract-knowledge", "apply-knowledge", "knowledge-query", "knowledge-validate",
+    "audit-log"
+  ],
+  "extraction_backends": ["auto", "clang", "tree-sitter"],
+  "activation_model": "User explicitly invokes /Code2Database-analysis, OR /Code2Database core skill detects a deep-analysis question (concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb) and hands off with the phrase 'activate Code2Database-analysis sub-skill'.",
+  "shared_resources": {
+    "scripts": "scripts/ (shared with parent and ops sub-skill — single CLI)",
+    "mcp_server": "All 48 MCP tools (30 code2database_* + 18 cgdb_*) accessible regardless of sub-skill activation. MCP is separate from skill layer."
+  }
+}

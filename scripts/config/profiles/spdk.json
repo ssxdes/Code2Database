@@ -1,0 +1,1229 @@
+{
+  "version": 1,
+  "project": {
+    "name": "SPDK",
+    "language": "c",
+    "project_type": "spdk",
+    "detected_frameworks": [
+      "spdk",
+      "dpdk"
+    ]
+  },
+  "detection": {
+    "dir_markers": [
+      "lib",
+      "module"
+    ],
+    "file_markers": [],
+    "content_markers": [
+      {
+        "pattern": "spdk_reactor_run",
+        "dirs": [
+          "lib",
+          "include",
+          "app",
+          "module"
+        ],
+        "min_hits": 1
+      }
+    ],
+    "dir_structure": {
+      "has_spdk_include": "include/spdk",
+      "has_spdk_lib": "lib/spdk"
+    },
+    "build_system": null,
+    "macro_prefixes": [
+      "SPDK_"
+    ],
+    "priority": 10
+  },
+  "project_name_aliases": {
+    "spdk-source": "spdk",
+    "spdk-src": "spdk"
+  },
+  "skip_names": {
+    "add": [
+      "ADD_FLAG",
+      "ADD_MASK_VAL",
+      "ASSERT_SPDK_FC_MAIN_THREAD",
+      "BLOBFS_TRACE",
+      "CALLBACK",
+      "CHECK_CP_OR_USE_DEFAULT",
+      "COLOR_PAIR",
+      "COMPLETION",
+      "DEFINE_STUB",
+      "DEFINE_STUB_V",
+      "FUSE_REPLY_CHECK_BUFFER",
+      "FTL_ERRLOG",
+      "FTL_NOTICELOG",
+      "FOR_EACH_CHUNK",
+      "LIST_CHECK_HEAD",
+      "LIST_CHECK_NEXT",
+      "LIST_CHECK_PREV",
+      "LIST_EMPTY",
+      "LIST_ENTRY",
+      "LIST_FIRST",
+      "LIST_FOREACH",
+      "LIST_FOREACH_FROM",
+      "LIST_FOREACH_FROM_SAFE",
+      "LIST_FOREACH_SAFE",
+      "LIST_HEAD",
+      "LIST_HEAD_INITIALIZER",
+      "LIST_INIT",
+      "LIST_INSERT_HEAD",
+      "LIST_NEXT",
+      "LIST_PREV",
+      "LIST_REMOVE",
+      "LIST_REMOVE_HEAD",
+      "LIST_SWAP",
+      "MOCK_CLEAR",
+      "MOCK_SET",
+      "POLLERR",
+      "POLLHUP",
+      "POLLIN",
+      "POLLOUT",
+      "RB_EMPTY",
+      "RB_ENTRY",
+      "RB_FIND",
+      "RB_FOREACH",
+      "RB_FOREACH_FROM",
+      "RB_FOREACH_REVERSE",
+      "RB_FOREACH_REVERSE_FROM",
+      "RB_FOREACH_REVERSE_FROM_SAFE",
+      "RB_FOREACH_REVERSE_SAFE",
+      "RB_FOREACH_SAFE",
+      "RB_GENERATE",
+      "RB_GENERATE_STATIC",
+      "RB_HEAD",
+      "RB_HEAD_INITIALIZER",
+      "RB_INIT",
+      "RB_INSERT",
+      "RB_MAX",
+      "RB_MIN",
+      "RB_MINMAX",
+      "RB_NEXT",
+      "RB_NFIND",
+      "RB_PREV",
+      "RB_PROTOTYPE",
+      "RB_PROTOTYPE_STATIC",
+      "RB_REINSERT",
+      "RB_REMOVE",
+      "RB_SWAP_CHILD",
+      "ROUNDUP",
+      "SLIST_EMPTY",
+      "SLIST_ENTRY",
+      "SLIST_FIRST",
+      "SLIST_FOREACH",
+      "SLIST_FOREACH_SAFE",
+      "SLIST_HEAD",
+      "SLIST_HEAD_INITIALIZER",
+      "SLIST_INIT",
+      "SLIST_INSERT_HEAD",
+      "SLIST_REMOVE",
+      "SLIST_REMOVE_HEAD",
+      "SLIST_SWAP",
+      "SPDK_ASSERT",
+      "SPDK_BDEV_MODULE",
+      "SPDK_CONTAINEROF",
+      "SPDK_COUNTOF",
+      "SPDK_DEBUGLOG",
+      "SPDK_DEBUGLOG_QPAIR",
+      "SPDK_DIF_GENERATE",
+      "SPDK_DIF_VERIFY",
+      "SPDK_ENV_FOREACH_CORE",
+      "SPDK_ENV_FOREACH_CORE_SAFE",
+      "SPDK_ERRLOG",
+      "SPDK_INFOLOG",
+      "SPDK_IOVMAP",
+      "SPDK_IOVMAP_R",
+      "SPDK_LOG_DEPRECATION_REGISTER",
+      "SPDK_LOG_REGISTER",
+      "SPDK_LOG_REGISTER_COMPONENT",
+      "SPDK_NOTICELOG",
+      "SPDK_NVME_MP_DEBUGLOG",
+      "SPDK_NVME_MP_ERRLOG",
+      "SPDK_NVME_MP_NOTICELOG",
+      "SPDK_NVME_MP_WARNLOG",
+      "SPDK_POLLER_REGISTER",
+      "SPDK_POLLER_UNREGISTER",
+      "SPDK_SECLOG",
+      "SPDK_SIZEOF",
+      "SPDK_THREAD_SEND_MSG",
+      "SPDK_TRACE_REGISTER_FN",
+      "SPDK_UNREACHABLE",
+      "SPDK_WARNLOG",
+      "STAILQ_EMPTY",
+      "STAILQ_ENTRY",
+      "STAILQ_FIRST",
+      "STAILQ_FOREACH",
+      "STAILQ_FOREACH_FROM",
+      "STAILQ_FOREACH_FROM_SAFE",
+      "STAILQ_FOREACH_SAFE",
+      "STAILQ_HEAD",
+      "STAILQ_HEAD_INITIALIZER",
+      "STAILQ_INIT",
+      "STAILQ_INSERT_AFTER",
+      "STAILQ_INSERT_HEAD",
+      "STAILQ_INSERT_TAIL",
+      "STAILQ_LAST",
+      "STAILQ_NEXT",
+      "STAILQ_REMOVE",
+      "STAILQ_REMOVE_AFTER",
+      "STAILQ_REMOVE_HEAD",
+      "STAILQ_SWAP",
+      "TAILQ_CHECK_HEAD",
+      "TAILQ_CHECK_NEXT",
+      "TAILQ_CHECK_PREV",
+      "TAILQ_CHECK_TAIL",
+      "TAILQ_CONCAT",
+      "TAILQ_EMPTY",
+      "TAILQ_ENTRY",
+      "TAILQ_FIRST",
+      "TAILQ_FOREACH",
+      "TAILQ_FOREACH_FROM",
+      "TAILQ_FOREACH_FROM_SAFE",
+      "TAILQ_FOREACH_REVERSE",
+      "TAILQ_FOREACH_REVERSE_FROM",
+      "TAILQ_FOREACH_REVERSE_FROM_SAFE",
+      "TAILQ_FOREACH_REVERSE_SAFE",
+      "TAILQ_FOREACH_SAFE",
+      "TAILQ_HEAD",
+      "TAILQ_HEAD_INITIALIZER",
+      "TAILQ_INIT",
+      "TAILQ_INSERT_AFTER",
+      "TAILQ_INSERT_BEFORE",
+      "TAILQ_INSERT_HEAD",
+      "TAILQ_INSERT_TAIL",
+      "TAILQ_LAST",
+      "TAILQ_NEXT",
+      "TAILQ_PREV",
+      "TAILQ_REMOVE",
+      "TAILQ_REMOVE_AFTER",
+      "TAILQ_REMOVE_HEAD",
+      "TAILQ_SWAP",
+      "SpdkDirectory",
+      "SpdkEnv",
+      "SpdkRandomAccessFile",
+      "SpdkSequentialFile",
+      "SpdkThreadCtx",
+      "SpdkWritableFile",
+      "svadd_u8_z",
+      "svand_u8_z",
+      "svcmpeq_n_u8",
+      "svcmpge_n_u8",
+      "svcntb",
+      "svcntp_b8",
+      "svcreate3_u8",
+      "svcreate4_u8",
+      "svdup_n_u8",
+      "svdup_u8",
+      "svget3_u8",
+      "svget4_u8",
+      "svld1_u8",
+      "svld3_u8",
+      "svld4_u8",
+      "svlsl_n_u8_z",
+      "svlsr_n_u8_z",
+      "svorr_u8_z",
+      "svptrue_b8",
+      "svst3_u8",
+      "svst4_u8",
+      "svsub_n_u8_z",
+      "svtbl_u8",
+      "svwhilelt_b8",
+      "vandq_u8",
+      "vbicq_u8",
+      "vdupq_n_u8",
+      "veorq_u8",
+      "vld1q_u8",
+      "vld3q_u8",
+      "vld4q_u8",
+      "vmaxvq_u8",
+      "vminvq_u8",
+      "vmovq_n_u8",
+      "vorrq_u8",
+      "vqbalance_put_io_channels",
+      "vqsubq_u8",
+      "vqtbl4q_u8",
+      "vqtbx4q_u8",
+      "vring_avail_event",
+      "vring_used_event",
+      "vshlq_n_u8",
+      "vshrq_n_u8",
+      "vst3q_u8",
+      "vst4q_u8"
+    ],
+    "external_lib_prefixes": {
+      "rte_": {
+        "category": "external_dpdk",
+        "visible": true
+      },
+      "ibv_": {
+        "category": "external_rdma",
+        "visible": true
+      },
+      "mlx5dv_": {
+        "category": "external_rdma",
+        "visible": true
+      },
+      "rdma_": {
+        "category": "external_rdma",
+        "visible": true
+      },
+      "ocf_": {
+        "category": "external_ocf",
+        "visible": true
+      },
+      "vfu_": {
+        "category": "external_vfio",
+        "visible": true
+      },
+      "avahi_": {
+        "category": "external_avahi",
+        "visible": true
+      },
+      "rados_": {
+        "category": "external_ceph",
+        "visible": true
+      },
+      "rbd_": {
+        "category": "external_ceph",
+        "visible": true
+      },
+      "daos_": {
+        "category": "external_daos",
+        "visible": false
+      },
+      "d_iov_": {
+        "category": "external_daos",
+        "visible": true
+      },
+      "eventfd_": {
+        "category": "external_posix",
+        "visible": true
+      },
+      "gpa_": {
+        "category": "external_vfio_user",
+        "visible": true
+      },
+      "pmem_": {
+        "category": "external_pmem",
+        "visible": true
+      },
+      "pci_device_": {
+        "category": "external_dpdk",
+        "visible": true
+      },
+      "pci_driver_": {
+        "category": "external_dpdk",
+        "visible": true
+      },
+      "nvmf_fc_": {
+        "category": "external_fc_lld",
+        "visible": true
+      },
+      "iscsi_": {
+        "category": "external_iscsi",
+        "visible": true
+      },
+      "scsi_": {
+        "category": "external_iscsi",
+        "visible": true
+      },
+      "isal_": {
+        "category": "external_isal",
+        "visible": true
+      },
+      "fuse_": {
+        "category": "external_fuse",
+        "visible": true
+      },
+      "cuse_": {
+        "category": "external_fuse",
+        "visible": true
+      },
+      "xnvme_": {
+        "category": "external_xnvme",
+        "visible": true
+      },
+      "SSL_": {
+        "category": "external_openssl",
+        "visible": true
+      },
+      "EVP_": {
+        "category": "external_openssl",
+        "visible": true
+      },
+      "OPENSSL": {
+        "category": "external_openssl",
+        "visible": true
+      },
+      "TLS_": {
+        "category": "external_openssl",
+        "visible": true
+      },
+      "io_uring_": {
+        "category": "external_lib",
+        "visible": true
+      },
+      "uuid_": {
+        "category": "external_lib",
+        "visible": false
+      },
+      "numa_": {
+        "category": "external_lib",
+        "visible": false
+      },
+      "aio_": {
+        "category": "external_lib",
+        "visible": false
+      },
+      "io_prep_": {
+        "category": "external_lib",
+        "visible": false
+      },
+      "ERR_": {
+        "category": "external_lib",
+        "visible": false
+      },
+      "sk_SSL_": {
+        "category": "external_openssl",
+        "visible": false
+      },
+      "Spdk": {
+        "category": "external_lib",
+        "visible": false
+      },
+      "CU_": {
+        "category": "test_framework",
+        "visible": false
+      }
+    },
+    "test_framework_prefixes": [
+      "CU_"
+    ]
+  },
+  "api_detection": {
+    "public_prefixes": [
+      "rpc_",
+      "app_",
+      "jsonrpc_",
+      "api_"
+    ],
+    "internal_patterns": [
+      "_unit_",
+      "_ut_",
+      "_test_",
+      "_perf_",
+      "_verify_",
+      "_example_",
+      "_internal",
+      "_priv",
+      "_stub",
+      "_mock"
+    ],
+    "public_header_paths": [
+      "include/spdk"
+    ],
+    "struct_op_types": [
+      "spdk_bdev_fn_table",
+      "spdk_nvme_accel_fn_table",
+      "spdk_nvme_transport_ops",
+      "spdk_nvmf_transport_ops",
+      "spdk_nvmf_ns_reservation_ops",
+      "spdk_vfu_endpoint_ops",
+      "spdk_mem_map_ops",
+      "spdk_accel_module_if",
+      "spdk_accel_driver",
+      "virtio_dev_ops",
+      "spdk_virtio_blk_transport_ops",
+      "ftl_nv_cache_device_ops",
+      "spdk_idxd_impl",
+      "ftl_base_device_ops",
+      "ftl_md_layout_ops",
+      "vfu_virtio_ops"
+    ],
+    "export_macros": [
+      "SPDK_BDEV_MODULE_REGISTER",
+      "SPDK_RPC_REGISTER",
+      "SPDK_RPC_REGISTER_ALIAS_DEPRECATED",
+      "SPDK_NVME_TRANSPORT_REGISTER",
+      "SPDK_NVMF_TRANSPORT_REGISTER",
+      "SPDK_PCI_DRIVER_REGISTER",
+      "SPDK_PCI_REGISTER_DEVICE_PROVIDER",
+      "SPDK_GOVERNOR_REGISTER",
+      "SPDK_SCHEDULER_REGISTER",
+      "SPDK_ACCEL_MODULE_REGISTER",
+      "SPDK_ACCEL_DRIVER_REGISTER",
+      "SPDK_NET_IMPL_REGISTER",
+      "SPDK_LOG_REGISTER_COMPONENT",
+      "SPDK_LOG_DEPRECATION_REGISTER",
+      "SPDK_TRACE_REGISTER_FN",
+      "SPDK_FD_GROUP_ADD",
+      "SPDK_INTERRUPT_REGISTER",
+      "SPDK_POLLER_REGISTER",
+      "SPDK_SUBSYSTEM_REGISTER"
+    ],
+    "auto_detect": true
+  },
+  "callback_detection": {
+    "static_patterns": [
+      {
+        "register_func": "pthread_create",
+        "regex": "pthread_create\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "spawn_target"
+      },
+      {
+        "register_func": "spdk_thread_send_msg",
+        "regex": "spdk_thread_send_msg\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_thread_send_critical_msg",
+        "regex": "spdk_thread_send_critical_msg\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_for_each_channel",
+        "regex": "spdk_for_each_channel\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_poller_register",
+        "regex": "spdk_poller_register\\s*\\(\\s*(\\w+)",
+        "cb_arg_index": 0,
+        "concurrency_type": "poller"
+      },
+      {
+        "register_func": "spdk_poller_register_named",
+        "regex": "spdk_poller_register_named\\s*\\(\\s*(\\w+)",
+        "cb_arg_index": 0,
+        "concurrency_type": "poller"
+      },
+      {
+        "register_func": "spdk_poller_register_interrupt",
+        "regex": "spdk_poller_register_interrupt\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "poller"
+      },
+      {
+        "register_func": "spdk_io_device_register",
+        "regex": "spdk_io_device_register\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_io_device_register",
+        "regex": "spdk_io_device_register\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_io_device_unregister",
+        "regex": "spdk_io_device_unregister\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_bdev_open_ext",
+        "regex": "spdk_bdev_open_ext\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_bdev_open_async",
+        "regex": "spdk_bdev_open_async\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 5,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "SPDK_POLLER_REGISTER",
+        "regex": "SPDK_POLLER_REGISTER\\s*\\(\\s*(\\w+)",
+        "cb_arg_index": 0,
+        "concurrency_type": "poller"
+      },
+      {
+        "register_func": "SPDK_INTERRUPT_REGISTER",
+        "regex": "SPDK_INTERRUPT_REGISTER\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "interrupt"
+      },
+      {
+        "register_func": "spdk_interrupt_register",
+        "regex": "spdk_interrupt_register\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "interrupt"
+      },
+      {
+        "register_func": "spdk_for_each_thread",
+        "regex": "spdk_for_each_thread\\s*\\(\\s*(\\w+)",
+        "cb_arg_index": 0,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_event_allocate",
+        "regex": "spdk_event_allocate\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_for_each_bdev",
+        "regex": "spdk_for_each_bdev\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_for_each_bdev_leaf",
+        "regex": "spdk_for_each_bdev_leaf\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_for_each_reactor",
+        "regex": "spdk_for_each_reactor\\s*\\(\\s*(\\w+)",
+        "cb_arg_index": 0,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_bdev_for_each_channel",
+        "regex": "spdk_bdev_for_each_channel\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvmf_subsystem_pause",
+        "regex": "spdk_nvmf_subsystem_pause\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(?:\\w+->)?(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvmf_subsystem_resume",
+        "regex": "spdk_nvmf_subsystem_resume\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_app_start",
+        "regex": "spdk_app_start\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_subsystem_init",
+        "regex": "spdk_subsystem_init\\s*\\(\\s*(\\w+)",
+        "cb_arg_index": 0,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_subsystem_init_from_json_config",
+        "regex": "spdk_subsystem_init_from_json_config\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_subsystem_fini",
+        "regex": "spdk_subsystem_fini\\s*\\(\\s*(\\w+)",
+        "cb_arg_index": 0,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvme_ctrlr_register_aer_callback",
+        "regex": "spdk_nvme_ctrlr_register_aer_callback\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvme_ctrlr_register_timeout_callback",
+        "regex": "spdk_nvme_ctrlr_register_timeout_callback\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 3,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvme_probe",
+        "regex": "spdk_nvme_probe\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvme_probe",
+        "regex": "spdk_nvme_probe\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 3,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvme_probe",
+        "regex": "spdk_nvme_probe\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 4,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvme_probe_async",
+        "regex": "spdk_nvme_probe_async\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvme_probe_async",
+        "regex": "spdk_nvme_probe_async\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 3,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvme_probe_async",
+        "regex": "spdk_nvme_probe_async\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 4,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvme_connect_async",
+        "regex": "spdk_nvme_connect_async\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvmf_tgt_add_transport",
+        "regex": "spdk_nvmf_tgt_add_transport\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvmf_tgt_destroy",
+        "regex": "spdk_nvmf_tgt_destroy\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvmf_tgt_pause_polling",
+        "regex": "spdk_nvmf_tgt_pause_polling\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvmf_tgt_resume_polling",
+        "regex": "spdk_nvmf_tgt_resume_polling\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_nvmf_subsystem_add_listener",
+        "regex": "spdk_nvmf_subsystem_add_listener\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_vhost_scsi_init",
+        "regex": "spdk_vhost_scsi_init\\s*\\(\\s*(\\w+)",
+        "cb_arg_index": 0,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_vhost_blk_init",
+        "regex": "spdk_vhost_blk_init\\s*\\(\\s*(\\w+)",
+        "cb_arg_index": 0,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_vhost_scsi_fini",
+        "regex": "spdk_vhost_scsi_fini\\s*\\(\\s*(\\w+)",
+        "cb_arg_index": 0,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_fd_group_add",
+        "regex": "spdk_fd_group_add\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_jsonrpc_conn_add_close_cb",
+        "regex": "spdk_jsonrpc_conn_add_close_cb\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_bdev_unregister",
+        "regex": "spdk_bdev_unregister\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_bdev_unregister_by_name",
+        "regex": "spdk_bdev_unregister_by_name\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "spdk_notify_foreach_type",
+        "regex": "spdk_notify_foreach_type\\s*\\(\\s*(\\w+)",
+        "cb_arg_index": 0,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "raid_bdev_queue_io_wait",
+        "regex": "raid_bdev_queue_io_wait\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 3,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "nvme_rdma_process_event_start",
+        "regex": "nvme_rdma_process_event_start\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "_nvme_rdma_ctrlr_disconnect_qpair",
+        "regex": "_nvme_rdma_ctrlr_disconnect_qpair\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "nvme_io_msg_send",
+        "regex": "nvme_io_msg_send\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "nvmf_rdma_send_qpair_async_event",
+        "regex": "nvmf_rdma_send_qpair_async_event\\s*\\(\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 1,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "nvme_transport_ctrlr_get_reg_4_async",
+        "regex": "nvme_transport_ctrlr_get_reg_4_async\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "nvme_transport_ctrlr_get_reg_8_async",
+        "regex": "nvme_transport_ctrlr_get_reg_8_async\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 2,
+        "concurrency_type": "callback"
+      },
+      {
+        "register_func": "nvme_transport_ctrlr_set_reg_4_async",
+        "regex": "nvme_transport_ctrlr_set_reg_4_async\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)",
+        "cb_arg_index": 3,
+        "concurrency_type": "callback"
+      }
+    ],
+    "generic_cb_suffixes": [
+      "_cb",
+      "_fn",
+      "_handler",
+      "_callback",
+      "_cmpl",
+      "_resubmit",
+      "_finish"
+    ],
+    "skip_callees": [
+      "SPDK_CONTAINEROF",
+      "FTL_L2P_OP"
+    ]
+  },
+  "endpoint_classification": {
+    "lib_prefix_map": {
+      "rte_": "external_dpdk",
+      "pthread_": "external_posix",
+      "sem_": "external_posix",
+      "epoll_": "external_posix",
+      "SSL_": "external_openssl",
+      "EVP_": "external_openssl",
+      "OPENSSL": "external_openssl",
+      "TLS_": "external_openssl",
+      "ibv_": "external_rdma",
+      "mlx5dv_": "external_rdma",
+      "rdma_": "external_rdma",
+      "ocf_": "external_ocf",
+      "vfu_": "external_vfio",
+      "avahi_": "external_avahi",
+      "rados_": "external_ceph",
+      "rbd_": "external_ceph",
+      "daos_": "external_daos",
+      "d_iov_": "external_daos",
+      "eventfd_": "external_posix",
+      "pci_device_": "external_dpdk",
+      "pci_driver_": "external_dpdk",
+      "gpa_": "external_vfio_user",
+      "pmem_": "external_pmem",
+      "nvmf_fc_": "external_fc_lld",
+      "iscsi_": "external_iscsi",
+      "scsi_": "external_iscsi",
+      "isal_": "external_isal",
+      "fuse_": "external_fuse",
+      "cuse_": "external_fuse",
+      "xnvme_": "external_xnvme",
+      "io_uring_": "external_lib"
+    }
+  },
+  "macro_heuristics": {
+    "macro_condition_prefixes": [
+      "SPDK_",
+      "CONFIG_",
+      "HAVE_",
+      "ENABLE_",
+      "WITH_",
+      "USE_"
+    ]
+  },
+  "scan_hints": {
+    "pre_scan_dirs": [
+      "doc",
+      "examples",
+      "app"
+    ],
+    "test_dirs": [
+      "test",
+      "ut"
+    ],
+    "header_priority_dirs": [
+      "include"
+    ],
+    "vtable_module_keys": [
+      "bdev_module"
+    ]
+  },
+  "macro_dispatch": {
+    "registration_macros": [
+      {
+        "macro_name": "SPDK_SUBSYSTEM_REGISTER",
+        "pattern": "SPDK_SUBSYSTEM_REGISTER\\s*\\(\\s*(\\w+)\\s*\\)",
+        "struct_arg_index": 0,
+        "register_func": "spdk_add_subsystem",
+        "global_list_var": "g_subsystems",
+        "iterator_func": "spdk_subsystem_init_next",
+        "dispatch_field": "init"
+      },
+      {
+        "macro_name": "SPDK_BDEV_MODULE_REGISTER",
+        "pattern": "SPDK_BDEV_MODULE_REGISTER\\s*\\(\\s*\\w+\\s*,\\s*(&\\s*)?(\\w+)\\s*\\)",
+        "struct_arg_index": 1,
+        "register_func": "spdk_bdev_module_list_add",
+        "iterator_func": "bdev_modules_init",
+        "dispatch_field": "module_init"
+      },
+      {
+        "macro_name": "SPDK_RPC_REGISTER",
+        "pattern": "SPDK_RPC_REGISTER\\s*\\(\\s*[^,]+\\s*,\\s*(\\w+)\\s*,",
+        "struct_arg_index": 0,
+        "register_func": "spdk_rpc_register_method",
+        "dispatch_caller": "jsonrpc_handler",
+        "handler_arg_index": 1
+      },
+      {
+        "macro_name": "SPDK_NVME_TRANSPORT_REGISTER",
+        "pattern": "SPDK_NVME_TRANSPORT_REGISTER\\s*\\(\\s*[^,]+\\s*,\\s*(&\\s*)?(\\w+)\\s*\\)",
+        "struct_arg_index": 1,
+        "register_func": "spdk_nvme_transport_register",
+        "iterator_func": "spdk_nvme_transport_first",
+        "dispatch_field": "ctrlr_construct"
+      },
+      {
+        "macro_name": "SPDK_NVMF_TRANSPORT_REGISTER",
+        "pattern": "SPDK_NVMF_TRANSPORT_REGISTER\\s*\\(\\s*[^,]+\\s*,\\s*(&\\s*)?(\\w+)\\s*\\)",
+        "struct_arg_index": 1,
+        "register_func": "spdk_nvmf_transport_register",
+        "iterator_func": "spdk_nvmf_transport_first",
+        "dispatch_field": "create"
+      },
+      {
+        "macro_name": "SPDK_PCI_DRIVER_REGISTER",
+        "pattern": "SPDK_PCI_DRIVER_REGISTER\\s*\\(\\s*(\\w+)\\s*,",
+        "struct_arg_index": 0,
+        "register_func": "spdk_pci_driver_register",
+        "iterator_func": "spdk_pci_driver_first",
+        "dispatch_field": "cb_fn"
+      },
+      {
+        "macro_name": "SPDK_ACCEL_MODULE_REGISTER",
+        "pattern": "SPDK_ACCEL_MODULE_REGISTER\\s*\\(\\s*[^,]+\\s*,\\s*(&\\s*)?(\\w+)\\s*\\)",
+        "struct_arg_index": 1,
+        "register_func": "spdk_accel_module_register",
+        "iterator_func": "spdk_accel_module_first",
+        "dispatch_field": "module_init"
+      }
+    ],
+    "token_paste_macros": [
+      {
+        "macro_name": "SPDK_SUBSYSTEM_REGISTER",
+        "template": "_name##_register",
+        "param_names": [
+          "_name"
+        ],
+        "generates": "constructor"
+      },
+      {
+        "macro_name": "SPDK_SUBSYSTEM_DEPEND",
+        "template": "_name##_depend_on##_depends_on",
+        "param_names": [
+          "_name",
+          "_depends_on"
+        ],
+        "generates": "constructor"
+      },
+      {
+        "macro_name": "SPDK_BDEV_MODULE_REGISTER",
+        "template": "_spdk_bdev_module_register_##name",
+        "param_names": [
+          "name",
+          "module"
+        ],
+        "generates": "constructor"
+      },
+      {
+        "macro_name": "SPDK_RPC_REGISTER",
+        "template": "rpc_register_##func",
+        "param_names": [
+          "method",
+          "func",
+          "state_mask"
+        ],
+        "generates": "constructor"
+      },
+      {
+        "macro_name": "SPDK_NVME_TRANSPORT_REGISTER",
+        "template": "_spdk_nvme_transport_register_##name",
+        "param_names": [
+          "name",
+          "ops"
+        ],
+        "generates": "constructor"
+      },
+      {
+        "macro_name": "SPDK_NVMF_TRANSPORT_REGISTER",
+        "template": "_spdk_nvmf_transport_register_##name",
+        "param_names": [
+          "name",
+          "ops"
+        ],
+        "generates": "constructor"
+      },
+      {
+        "macro_name": "SPDK_PCI_DRIVER_REGISTER",
+        "template": "_spdk_pci_driver_register_##name",
+        "param_names": [
+          "name",
+          "id_table",
+          "flags"
+        ],
+        "generates": "constructor"
+      },
+      {
+        "macro_name": "SPDK_ACCEL_MODULE_REGISTER",
+        "template": "_spdk_accel_module_register_##name",
+        "param_names": [
+          "name",
+          "module"
+        ],
+        "generates": "constructor"
+      }
+    ],
+    "macro_aliases": {
+      "nvme_ctrlr_get_cc_async": "nvme_ctrlr_get_reg_async",
+      "nvme_ctrlr_get_csts_async": "nvme_ctrlr_get_reg_async",
+      "nvme_ctrlr_get_cap_async": "nvme_ctrlr_get_reg_async",
+      "nvme_ctrlr_get_vs_async": "nvme_ctrlr_get_reg_async",
+      "nvme_ctrlr_set_cc_async": "nvme_ctrlr_set_reg_async"
+    }
+  },
+  "struct_embeddings": {
+    "container_of_macros": [
+      {
+        "macro_name": "SPDK_CONTAINEROF",
+        "pattern": "SPDK_CONTAINEROF\\s*\\(\\s*(\\w+)\\s*,\\s*(?:struct\\s+)?(\\w+)\\s*,\\s*(\\w+)\\s*\\)"
+      }
+    ],
+    "manual_entries": [
+      {
+        "outer_type": "nvme_pcie_ctrlr",
+        "member": "ctrlr",
+        "inner_type": "spdk_nvme_ctrlr",
+        "domain_hint": "nvme_pcie"
+      },
+      {
+        "outer_type": "nvme_pcie_qpair",
+        "member": "qpair",
+        "inner_type": "spdk_nvme_qpair",
+        "domain_hint": "nvme_pcie"
+      },
+      {
+        "outer_type": "nvme_pcie_poll_group",
+        "member": "group",
+        "inner_type": "spdk_nvme_poll_group",
+        "domain_hint": "nvme_pcie"
+      },
+      {
+        "outer_type": "nvme_rdma_ctrlr",
+        "member": "ctrlr",
+        "inner_type": "spdk_nvme_ctrlr",
+        "domain_hint": "nvme_rdma"
+      },
+      {
+        "outer_type": "nvme_rdma_qpair",
+        "member": "qpair",
+        "inner_type": "spdk_nvme_qpair",
+        "domain_hint": "nvme_rdma"
+      },
+      {
+        "outer_type": "nvme_rdma_poll_group",
+        "member": "group",
+        "inner_type": "spdk_nvme_poll_group",
+        "domain_hint": "nvme_rdma"
+      },
+      {
+        "outer_type": "nvme_tcp_ctrlr",
+        "member": "ctrlr",
+        "inner_type": "spdk_nvme_ctrlr",
+        "domain_hint": "nvme_tcp"
+      },
+      {
+        "outer_type": "nvme_tcp_qpair",
+        "member": "qpair",
+        "inner_type": "spdk_nvme_qpair",
+        "domain_hint": "nvme_tcp"
+      },
+      {
+        "outer_type": "nvme_tcp_poll_group",
+        "member": "group",
+        "inner_type": "spdk_nvme_poll_group",
+        "domain_hint": "nvme_tcp"
+      },
+      {
+        "outer_type": "nvme_vfio_ctrlr",
+        "member": "pctrlr",
+        "inner_type": "spdk_nvme_ctrlr",
+        "domain_hint": "nvme_vfio"
+      },
+      {
+        "outer_type": "nvme_bdev",
+        "member": "disk",
+        "inner_type": "spdk_bdev",
+        "domain_hint": "bdev_nvme"
+      },
+      {
+        "outer_type": "spdk_nvmf_rdma_transport",
+        "member": "transport",
+        "inner_type": "spdk_nvmf_transport",
+        "domain_hint": "nvmf_rdma"
+      },
+      {
+        "outer_type": "spdk_nvmf_tcp_transport",
+        "member": "transport",
+        "inner_type": "spdk_nvmf_transport",
+        "domain_hint": "nvmf_tcp"
+      },
+      {
+        "outer_type": "spdk_nvmf_fc_conn",
+        "member": "qpair",
+        "inner_type": "spdk_nvmf_qpair",
+        "domain_hint": "nvmf_fc"
+      },
+      {
+        "outer_type": "spdk_nvmf_fc_request",
+        "member": "req",
+        "inner_type": "spdk_nvmf_request",
+        "domain_hint": "nvmf_fc"
+      },
+      {
+        "outer_type": "spdk_nvmf_fc_transport",
+        "member": "transport",
+        "inner_type": "spdk_nvmf_transport",
+        "domain_hint": "nvmf_fc"
+      },
+      {
+        "outer_type": "spdk_nvmf_fc_poll_group",
+        "member": "group",
+        "inner_type": "spdk_nvmf_poll_group",
+        "domain_hint": "nvmf_fc"
+      },
+      {
+        "outer_type": "spdk_iscsi_task",
+        "member": "scsi",
+        "inner_type": "spdk_scsi_task",
+        "domain_hint": "iscsi"
+      },
+      {
+        "outer_type": "spdk_bdev_io",
+        "member": "__bdev_io_internal_fields",
+        "inner_type": "__bdev_io_internal_fields",
+        "domain_hint": "bdev"
+      },
+      {
+        "outer_type": "vmd_pci_device",
+        "member": "pci",
+        "inner_type": "spdk_pci_device",
+        "domain_hint": "vmd"
+      },
+      {
+        "outer_type": "spdk_vhost_blk_dev",
+        "member": "vdev",
+        "inner_type": "spdk_vhost_dev",
+        "domain_hint": "vhost_blk"
+      },
+      {
+        "outer_type": "spdk_vhost_scsi_dev",
+        "member": "vdev",
+        "inner_type": "spdk_vhost_dev",
+        "domain_hint": "vhost_scsi"
+      }
+    ]
+  },
+  "phases": {
+    "prescan_completed": false,
+    "test_scan_completed": false,
+    "llm_header_analysis_completed": false,
+    "llm_result_check_completed": false
+  },
+  "project_boundaries": {
+    "non_api_paths": ["test/", "tests/", "examples/", "app/", "scripts/", "doc/", "include/spdk_internal/", "autorun_post.py", "autorun.sh", "check_format.sh", "build_kmod.sh"],
+    "test_path_patterns": ["/test/", "/tests/", "/unit/", "/ut/", "/unittest/", "/fuzz/", "\\test\\", "\\tests\\", "\\unit\\"],
+    "test_file_suffixes": ["_test.c", "_test.cpp", "_ut.c", "_ut.cpp", "_unittest.c", "_unittest.cpp", "test_.c", "test_.cpp"],
+    "test_domain_segments": ["ut", "ut_mock", "unit", "test", "fuzz"],
+    "vendor_domain_prefixes": [],
+    "external_dir_prefixes": ["vendor", "third_party", "thirdparty", "external", "3rdparty", "contrib"]
+  },
+  "concurrency_patterns": {
+    "lock_acquire_patterns": [
+      "\\bpthread_mutex_lock\\s*\\(\\s*(&?\\w+)",
+      "\\bspdk_mutex_lock\\s*\\(\\s*(&?\\w+)",
+      "\\bspdk_spin_lock\\s*\\(\\s*(&?\\w+)",
+      "\\btailq_mutex_lock\\s*\\(\\s*(&?\\w+)"
+    ],
+    "lock_release_patterns": [
+      "\\bpthread_mutex_unlock\\s*\\(\\s*(&?\\w+)",
+      "\\bspdk_mutex_unlock\\s*\\(\\s*(&?\\w+)",
+      "\\bspdk_spin_unlock\\s*\\(\\s*(&?\\w+)",
+      "\\btailq_mutex_unlock\\s*\\(\\s*(&?\\w+)"
+    ]
+  },
+  "io_classification": {
+    "io_main_keywords": ["submit", "queue", "ring", "doorbell", "write", "read", "send", "recv", "transfer", "dispatch", "process_request", "build_request", "cmd_", "command", "execute", "xfer", "io_path", "io_submit", "bdev_", "nvme_", "scsi_", "blob_", "accel_", "copy_", "spdk_io", "spdk_bdev", "nvme_io", "scsi_io"],
+    "io_side_keywords": ["error", "fail", "abort", "err_", "_err", "retry", "recover", "resubmit", "timeout", "watchdog", "reset_", "cleanup", "clean_", "destroy", "destruct", "fini", "dealloc", "free_", "_free", "_stat", "stat_", "iostat", "stats", "debug", "log_", "dump_", "trace_", "test_", "_test", "unit_", "_ut", "ut_", "validate", "verify_", "check_", "poll_", "_poll", "config", "ioctl", "init_", "_init", "setup_", "register_", "unregister_"]
+  },
+  "threading_models": {
+    "reactor": [
+      {
+        "pattern": "\\bspdk_reactor_run\\b"
+      },
+      {
+        "pattern": "\\bspdk_thread_create\\b"
+      },
+      {
+        "pattern": "\\bspdk_thread_send_msg\\b"
+      },
+      {
+        "pattern": "\\bspdk_poller_register\\b"
+      },
+      {
+        "pattern": "\\bspdk_poller_register_named\\b"
+      },
+      {
+        "pattern": "\\bspdk_thread_poll\\b"
+      }
+    ]
+  }
+}

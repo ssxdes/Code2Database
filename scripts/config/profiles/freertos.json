@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "project": {
+    "name": "freertos",
+    "language": "c",
+    "project_type": "freertos",
+    "detected_frameworks": ["freertos"]
+  },
+  "detection": {
+    "dir_markers": [],
+    "file_markers": ["FreeRTOSConfig.h"],
+    "content_markers": [],
+    "dir_structure": {
+      "has_freertos_h": "include/FreeRTOS.h",
+      "has_tasks_c": "tasks.c"
+    },
+    "build_system": null,
+    "priority": 60
+  },
+  "project_name_aliases": {
+    "freertos-source": "freertos",
+    "freertos-src": "freertos"
+  },
+  "skip_names": {
+    "add": [
+      "configASSERT",
+      "traceTASK_SWITCHED_IN",
+      "traceTASK_SWITCHED_OUT",
+      "traceBLOCKING_ON_QUEUE_RECEIVE",
+      "traceBLOCKING_ON_QUEUE_SEND",
+      "traceQUEUE_CREATE",
+      "traceQUEUE_SEND",
+      "traceQUEUE_RECEIVE",
+      "traceTASK_CREATE",
+      "traceTASK_DELETE",
+      "traceTASK_SUSPEND",
+      "traceTASK_RESUME",
+      "listSET_LIST_ITEM_VALUE",
+      "listSET_LIST_ITEM_OWNER",
+      "listGET_LIST_ITEM_VALUE",
+      "listGET_OWNER_OF_HEAD_ENTRY",
+      "listGET_HEAD_ENTRY",
+      "listIS_CONTAINED_WITHIN",
+      "vListInitialise",
+      "vListInitialiseItem",
+      "vListInsert",
+      "vListInsertEnd",
+      "uxListRemove"
+    ],
+    "external_lib_prefixes": {}
+  },
+  "api_detection": {
+    "public_prefixes": [
+      "xTask", "vTask", "uxTask", "pcTask", "eTask", "pxTask", "ulTask",
+      "xQueue", "vQueue", "uxQueue",
+      "xSemaphore", "vSemaphore",
+      "xEventGroup", "uxEventGroup",
+      "xTimer", "pxTimer",
+      "xStreamBuffer",
+      "pvPort", "vPort", "xPort", "ulPort",
+      "vApplication"
+    ],
+    "internal_patterns": ["_unit_", "_ut_", "_test_", "_perf_", "_verify_", "_example_", "_internal", "_priv", "_stub", "_mock"],
+    "public_header_paths": ["include"],
+    "export_macros": [],
+    "struct_op_types": [],
+    "auto_detect": true
+  },
+  "callback_detection": {
+    "static_patterns": [
+      {"register_func": "xTaskCreate", "regex": "xTaskCreate\\s*\\(\\s*(\\w+)\\s*,", "cb_arg_index": 0, "concurrency_type": "spawn_target"},
+      {"register_func": "xTaskCreateStatic", "regex": "xTaskCreateStatic\\s*\\(\\s*(\\w+)\\s*,", "cb_arg_index": 0, "concurrency_type": "spawn_target"},
+      {"register_func": "xTimerCreate", "regex": "xTimerCreate\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)\\s*[,)]", "cb_arg_index": 4, "concurrency_type": "timer_callback"},
+      {"register_func": "xTimerCreateStatic", "regex": "xTimerCreateStatic\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)\\s*[,)]", "cb_arg_index": 4, "concurrency_type": "timer_callback"},
+      {"register_func": "xTimerPendFunctionCall", "regex": "xTimerPendFunctionCall\\s*\\(\\s*(\\w+)\\s*,", "cb_arg_index": 0, "concurrency_type": "callback"}
+    ],
+    "generic_cb_suffixes": ["_cb", "_fn", "_handler", "_callback"],
+    "skip_call_prefixes": []
+  },
+  "endpoint_classification": {
+    "lib_prefix_map": {},
+    "endpoint_rules": [
+      {"pattern": "^vTaskStartScheduler$", "endpoint_type": "program_entry"},
+      {"pattern": "^vTaskEndScheduler$", "endpoint_type": "program_exit"}
+    ]
+  },
+  "macro_heuristics": {
+    "macro_condition_prefixes": ["config", "INCLUDE_", "trace", "port"]
+  },
+  "macro_dispatch": {
+    "registration_macros": [],
+    "token_paste_macros": [],
+    "macro_aliases": {}
+  },
+  "struct_embeddings": {
+    "container_of_macros": [],
+    "manual_entries": []
+  },
+  "scan_hints": {
+    "pre_scan_dirs": ["doc"],
+    "test_dirs": ["test", "tests"],
+    "header_priority_dirs": ["include"],
+    "vtable_module_keys": [],
+    "domain_rules": [
+      {"pattern": "^portable", "domain_tag": "port_layer"},
+      {"pattern": "^heap_", "domain_tag": "memory"},
+      {"pattern": "^tasks", "domain_tag": "kernel"},
+      {"pattern": "^queue", "domain_tag": "kernel"},
+      {"pattern": "^list", "domain_tag": "kernel"},
+      {"pattern": "^timers", "domain_tag": "kernel"},
+      {"pattern": "^event_groups", "domain_tag": "kernel"},
+      {"pattern": "^stream_buffer", "domain_tag": "kernel"},
+      {"pattern": "^croutine", "domain_tag": "kernel"},
+      {"pattern": "^test", "domain_tag": "test"}
+    ]
+  },
+  "project_boundaries": {
+    "non_api_paths": ["test/", "tests/", "examples/", "demo/", "demos/", "third_party/", "portable/"],
+    "test_path_patterns": ["/test/", "/tests/", "/unit/", "/ut/", "/unittest/", "/fuzz/", "\\test\\", "\\tests\\", "\\unit\\"],
+    "test_file_suffixes": ["_test.c", "_test.cpp", "_ut.c", "_ut.cpp", "_unittest.c", "_unittest.cpp", "test_.c", "test_.cpp"],
+    "test_domain_segments": ["ut", "ut_mock", "unit", "test", "fuzz", "demo"],
+    "vendor_domain_prefixes": [],
+    "external_dir_prefixes": ["vendor", "third_party", "thirdparty", "external", "3rdparty", "contrib", "portable"]
+  },
+  "concurrency_patterns": {
+    "lock_acquire_patterns": [
+      "\\bxTaskCreate\\s*\\(\\s*(&?\\w+)",
+      "\\bvTaskSuspendAll\\s*\\(\\s*\\)",
+      "\\bportENTER_CRITICAL\\s*\\(\\s*\\)",
+      "\\bportENTER_CRITICAL_FROM_ISR\\s*\\(\\s*\\)",
+      "\\btaskENTER_CRITICAL\\s*\\(\\s*\\)",
+      "\\bportMUX_TYPE\\s*\\w+\\s*=\\s*portMUX_INITIALIZER_UNLOCKED"
+    ],
+    "lock_release_patterns": [
+      "\\bvTaskResumeAll\\s*\\(\\s*\\)",
+      "\\bportEXIT_CRITICAL\\s*\\(\\s*\\)",
+      "\\bportEXIT_CRITICAL_FROM_ISR\\s*\\(\\s*\\)",
+      "\\btaskEXIT_CRITICAL\\s*\\(\\s*\\)"
+    ]
+  },
+  "io_classification": {
+    "io_main_keywords": ["submit", "queue", "ring", "write", "read", "send", "recv", "transfer", "dispatch", "execute", "xfer", "io_path", "uart_", "spi_", "i2c_", "gpio_", "dma_", "eth_", "usb_", "can_", "adc_", "pwm_", "queue_", "stream_", "buffer_", "fifo_"],
+    "io_side_keywords": ["error", "fail", "abort", "err_", "_err", "retry", "recover", "timeout", "watchdog", "reset_", "cleanup", "clean_", "destroy", "destruct", "fini", "dealloc", "free_", "_free", "_stat", "stat_", "stats", "debug", "log_", "trace_", "test_", "_test", "unit_", "_ut", "ut_", "validate", "verify_", "check_", "poll_", "_poll", "config", "init_", "_init", "setup_", "register_"]
+  },
+  "auto_config_overrides": {}
+}

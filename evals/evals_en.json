@@ -1,0 +1,24 @@
+{
+  "skill_name": "Code2Database",
+  "lang": "en",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Scan the /tmp/code2db_test directory, generate an invocation graph, and tell me the complete invocation chain of the bdev_start function, including invocation conditions and call order",
+      "expected_output": "Should scan C/Go/Python/Java/Rust multi-language code, build code2db-out/, then query bdev_start's invocation chain via builder script. Should correctly annotate pthread_create as thread_processor label, if(mode==1) conditional bdev_register and bdev_open, and else branch bdev_close. Call order numbering must be correct.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "I have a Go project at /tmp/code2db_test/go, generate an invocation graph and find the conditional invocation paths of Handler.ServeHTTP",
+      "expected_output": "Should scan Go code, identify method_declaration (Handler.ServeHTTP), extract if(h.authenticated) conditional handleRequest and else branch sendError, correctly using empty node aggregation for conditional calls. Should annotate call_condition and call_order.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Scan the /tmp/code2db_test/python directory Python code, tell me the call flow from Server.__init__ to start, and what labels each function has",
+      "expected_output": "Should scan Python code, identify class methods (Server.__init__ marked as constructor, Server.start detected as thread_processor via threading.Thread), trace __init__→_setup→load_config/init_routes invocation chain, and start→serve→listen invocation path. Should correctly annotate call order.",
+      "files": []
+    }
+  ]
+}

@@ -901,20 +901,40 @@ def _tool_unbalanced_alloc_free(args: dict, graph_dir: str) -> dict:
 # code2database.db with cgdb tables, they query the cgdb schema directly.
 # ---------------------------------------------------------------------------
 
+_CGDB_STORE_CACHE: dict = {}
+
+
 def _cgdb_store(graph_dir: str):
     """Get a SQLiteCGDBStore for the graph_dir's code2database.db. Returns None if
-    the DB doesn't exist or cgdb tables aren't present."""
+    the DB doesn't exist or cgdb tables aren't present.
+
+    The store is cached per graph_dir for the lifetime of the MCP server
+    process; the underlying SQLite connection is reused across tool
+    invocations to avoid the 1-5ms connect + PRAGMA-setup overhead per
+    call. The cache is invalidated if the underlying db file is removed
+    or replaced (the existence check still runs).
+    """
     import os
     import sqlite3
     db_path = os.path.join(graph_dir, "code2database.db")
     if not os.path.exists(db_path):
+        # Drop any stale cache entry.
+        _CGDB_STORE_CACHE.pop(graph_dir, None)
         return None
+    cached = _CGDB_STORE_CACHE.get(graph_dir)
+    if cached is not None:
+        # Sanity-check that the cached store's connection is still live.
+        try:
+            cached._ensure_conn().execute("SELECT 1").fetchone()
+            return cached
+        except sqlite3.Error:
+            _CGDB_STORE_CACHE.pop(graph_dir, None)
     try:
         from _builder.cgdb_store import SQLiteCGDBStore
         store = SQLiteCGDBStore(db_path)
-        # Verify cgdb tables exist
         conn = store._ensure_conn()
         conn.execute("SELECT 1 FROM cgdb_nodes LIMIT 1").fetchone()
+        _CGDB_STORE_CACHE[graph_dir] = store
         return store
     except Exception:
         return None
@@ -930,11 +950,7 @@ def _tool_cgdb_search_symbols(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available — run scan with --extraction-backend auto"}]
-    try:
         return store.search_symbols(query, kind=kind, limit=limit)
-    finally:
-        store.close()
-
 
 def _tool_cgdb_get_definition(args: dict, graph_dir: str) -> list:
     """Find definition nodes by name (function/var/field/typedef)."""
@@ -944,11 +960,7 @@ def _tool_cgdb_get_definition(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    try:
         return store.get_definition(name, limit=int(args.get("limit", 10)))
-    finally:
-        store.close()
-
 
 def _tool_cgdb_get_function_body(args: dict, graph_dir: str) -> dict:
     """Return the function body source text for a function (name or id)."""
@@ -958,11 +970,8 @@ def _tool_cgdb_get_function_body(args: dict, graph_dir: str) -> dict:
     store = _cgdb_store(graph_dir)
     if store is None:
         return {"error": "cgdb tables not available"}
-    try:
-        result = store.get_function_body(node)
-        return result or {"error": f"function {node!r} not found"}
-    finally:
-        store.close()
+    result = store.get_function_body(node)
+    return result or {"error": f"function {node!r} not found"}
 
 
 def _tool_cgdb_get_source(args: dict, graph_dir: str) -> dict:
@@ -977,79 +986,76 @@ def _tool_cgdb_get_source(args: dict, graph_dir: str) -> dict:
     store = _cgdb_store(graph_dir)
     if store is None:
         return {"error": "cgdb tables not available"}
-    try:
-        conn = store._ensure_conn()
-        # Resolve node_id from name or numeric
-        if isinstance(node, int) or (isinstance(node, str) and node.isdigit()):
-            node_id = int(node)
-        else:
-            rows = store.search_symbols(node, limit=1)
-            if not rows:
-                return {"error": f"node '{node}' not found"}
-            node_id = rows[0]["id"]
-        row = conn.execute(
-            "SELECT n.id, n.kind, n.name, n.fqn, n.line, n.col, "
-            "n.byte_start, n.byte_end, n.source_snippet, "
-            "f.path, f.content_hash "
-            "FROM cgdb_nodes n LEFT JOIN cgdb_files f ON n.file_id = f.id "
-            "WHERE n.id = ?",
-            (node_id,)
-        ).fetchone()
-        if row is None:
-            return {"error": f"node_id {node_id} not in cgdb_nodes"}
-        (nid, kind, name, fqn, line, col, byte_start, byte_end,
-         source_snippet, file_path, content_hash) = row
-        snippet_only = bool(args.get("snippet_only", False))
-        context_bytes = int(args.get("context_bytes", 0) or 0)
-        result = {
-            "node_id": nid, "kind": kind, "name": name, "fqn": fqn,
-            "line": line, "col": col,
-            "byte_start": byte_start or 0, "byte_end": byte_end or 0,
-            "file_path": file_path, "content_hash": content_hash,
-        }
-        snippet = source_snippet or ""
-        if snippet and not context_bytes and not snippet_only:
-            result["source_text"] = snippet
-            result["source"] = "source_snippet"
-            return result
-        if snippet_only:
-            result["source_text"] = snippet
-            result["source"] = "source_snippet" if snippet else "empty"
-            return result
-        if not file_path:
-            result["source_text"] = snippet
-            result["source"] = "source_snippet_no_file"
-            return result
-        try:
-            with open(file_path, "rb") as fh:
-                raw = fh.read()
-        except OSError as exc:
-            result["source_text"] = snippet
-            result["source"] = f"file_read_failed: {exc}"
-            return result
-        bs = byte_start or 0
-        be = byte_end or 0
-        if context_bytes > 0:
-            lo = max(0, bs - context_bytes)
-            hi = min(len(raw), be + context_bytes)
-            chunk = raw[lo:hi]
-            result["context_byte_start"] = lo
-            result["context_byte_end"] = hi
-            result["context_offset_in_chunk"] = bs - lo
-            result["context_length_in_chunk"] = be - bs
-        else:
-            chunk = raw[bs:be] if be > bs else raw[bs:bs]
-        try:
-            text = chunk.decode("utf-8", errors="replace")
-        except Exception:
-            text = repr(chunk)
-        result["source_text"] = text
-        result["source"] = "file_bytes"
-        if snippet and not context_bytes:
-            result["source_snippet"] = snippet
+    conn = store._ensure_conn()
+    # Resolve node_id from name or numeric
+    if isinstance(node, int) or (isinstance(node, str) and node.isdigit()):
+        node_id = int(node)
+    else:
+        rows = store.search_symbols(node, limit=1)
+        if not rows:
+            return {"error": f"node '{node}' not found"}
+        node_id = rows[0]["id"]
+    row = conn.execute(
+        "SELECT n.id, n.kind, n.name, n.fqn, n.line, n.col, "
+        "n.byte_start, n.byte_end, n.source_snippet, "
+        "f.path, f.content_hash "
+        "FROM cgdb_nodes n LEFT JOIN cgdb_files f ON n.file_id = f.id "
+        "WHERE n.id = ?",
+        (node_id,)
+    ).fetchone()
+    if row is None:
+        return {"error": f"node_id {node_id} not in cgdb_nodes"}
+    (nid, kind, name, fqn, line, col, byte_start, byte_end,
+     source_snippet, file_path, content_hash) = row
+    snippet_only = bool(args.get("snippet_only", False))
+    context_bytes = int(args.get("context_bytes", 0) or 0)
+    result = {
+        "node_id": nid, "kind": kind, "name": name, "fqn": fqn,
+        "line": line, "col": col,
+        "byte_start": byte_start or 0, "byte_end": byte_end or 0,
+        "file_path": file_path, "content_hash": content_hash,
+    }
+    snippet = source_snippet or ""
+    if snippet and not context_bytes and not snippet_only:
+        result["source_text"] = snippet
+        result["source"] = "source_snippet"
         return result
-    finally:
-        store.close()
+    if snippet_only:
+        result["source_text"] = snippet
+        result["source"] = "source_snippet" if snippet else "empty"
+        return result
+    if not file_path:
+        result["source_text"] = snippet
+        result["source"] = "source_snippet_no_file"
+        return result
+    try:
+        with open(file_path, "rb") as fh:
+            raw = fh.read()
+    except OSError as exc:
+        result["source_text"] = snippet
+        result["source"] = f"file_read_failed: {exc}"
+        return result
+    bs = byte_start or 0
+    be = byte_end or 0
+    if context_bytes > 0:
+        lo = max(0, bs - context_bytes)
+        hi = min(len(raw), be + context_bytes)
+        chunk = raw[lo:hi]
+        result["context_byte_start"] = lo
+        result["context_byte_end"] = hi
+        result["context_offset_in_chunk"] = bs - lo
+        result["context_length_in_chunk"] = be - bs
+    else:
+        chunk = raw[bs:be] if be > bs else raw[bs:bs]
+    try:
+        text = chunk.decode("utf-8", errors="replace")
+    except Exception:
+        text = repr(chunk)
+    result["source_text"] = text
+    result["source"] = "file_bytes"
+    if snippet and not context_bytes:
+        result["source_snippet"] = snippet
+    return result
 
 
 def _tool_cgdb_find_invokers(args: dict, graph_dir: str) -> list:
@@ -1060,14 +1066,11 @@ def _tool_cgdb_find_invokers(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    try:
-        depth = int(args.get("depth", 1))
-        edge_types = args.get("edge_types", ["INVOKES"])
-        limit = int(args.get("limit", 200))
-        return store.find_invokers(int(node_id), depth=depth,
-                                   edge_types=edge_types, limit=limit)
-    finally:
-        store.close()
+    depth = int(args.get("depth", 1))
+    edge_types = args.get("edge_types", ["INVOKES"])
+    limit = int(args.get("limit", 200))
+    return store.find_invokers(int(node_id), depth=depth,
+                               edge_types=edge_types, limit=limit)
 
 
 def _tool_cgdb_find_invoked(args: dict, graph_dir: str) -> list:
@@ -1078,14 +1081,11 @@ def _tool_cgdb_find_invoked(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    try:
-        depth = int(args.get("depth", 1))
-        edge_types = args.get("edge_types", ["INVOKES"])
-        limit = int(args.get("limit", 500))
-        return store.find_invoked(int(node_id), depth=depth,
-                                   edge_types=edge_types, limit=limit)
-    finally:
-        store.close()
+    depth = int(args.get("depth", 1))
+    edge_types = args.get("edge_types", ["INVOKES"])
+    limit = int(args.get("limit", 500))
+    return store.find_invoked(int(node_id), depth=depth,
+                               edge_types=edge_types, limit=limit)
 
 
 def _tool_cgdb_get_struct_layout(args: dict, graph_dir: str) -> dict:
@@ -1096,11 +1096,8 @@ def _tool_cgdb_get_struct_layout(args: dict, graph_dir: str) -> dict:
     store = _cgdb_store(graph_dir)
     if store is None:
         return {"error": "cgdb tables not available"}
-    try:
-        result = store.get_struct_layout(name)
-        return result or {"error": f"struct {name!r} not found"}
-    finally:
-        store.close()
+    result = store.get_struct_layout(name)
+    return result or {"error": f"struct {name!r} not found"}
 
 
 def _tool_cgdb_find_type_definition(args: dict, graph_dir: str) -> list:
@@ -1111,11 +1108,7 @@ def _tool_cgdb_find_type_definition(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    try:
         return store.find_type_definition(name, limit=int(args.get("limit", 10)))
-    finally:
-        store.close()
-
 
 def _tool_cgdb_find_ops_impls(args: dict, graph_dir: str) -> list:
     """Find functions bound to a vtable field (e.g., file_operations.read_iter)."""
@@ -1125,11 +1118,8 @@ def _tool_cgdb_find_ops_impls(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    try:
-        struct_type = args.get("struct_type")
-        return store.find_ops_impls(field_name, struct_type=struct_type)
-    finally:
-        store.close()
+    struct_type = args.get("struct_type")
+    return store.find_ops_impls(field_name, struct_type=struct_type)
 
 
 def _tool_cgdb_find_cfg_paths(args: dict, graph_dir: str) -> list:
@@ -1140,11 +1130,7 @@ def _tool_cgdb_find_cfg_paths(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    try:
         return store.find_cfg_paths(int(func_id), max_len=int(args.get("max_len", 10)))
-    finally:
-        store.close()
-
 
 def _tool_cgdb_find_data_flow(args: dict, graph_dir: str) -> dict:
     """Find def-use chain entries for a variable."""
@@ -1154,11 +1140,7 @@ def _tool_cgdb_find_data_flow(args: dict, graph_dir: str) -> dict:
     store = _cgdb_store(graph_dir)
     if store is None:
         return {"error": "cgdb tables not available"}
-    try:
         return store.find_data_flow(int(var_id))
-    finally:
-        store.close()
-
 
 def _tool_cgdb_find_aliases(args: dict, graph_dir: str) -> list:
     """Find aliases of a pointer (may_alias / must_alias / no_alias)."""
@@ -1168,11 +1150,7 @@ def _tool_cgdb_find_aliases(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    try:
         return store.find_aliases(int(ptr_id))
-    finally:
-        store.close()
-
 
 def _tool_cgdb_find_lock_held_calls(args: dict, graph_dir: str) -> list:
     """Find calls made while a lock is held in a function."""
@@ -1182,11 +1160,7 @@ def _tool_cgdb_find_lock_held_calls(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    try:
         return store.find_lock_held_calls(int(func_id))
-    finally:
-        store.close()
-
 
 def _tool_cgdb_check_race_condition(args: dict, graph_dir: str) -> list:
     """Heuristic race-condition check for a function."""
@@ -1196,11 +1170,7 @@ def _tool_cgdb_check_race_condition(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    try:
         return store.check_race_condition(int(func_id))
-    finally:
-        store.close()
-
 
 def _tool_cgdb_find_configs_for(args: dict, graph_dir: str) -> list:
     """Return the config predicate text_form for the given node."""
@@ -1210,11 +1180,7 @@ def _tool_cgdb_find_configs_for(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    try:
         return store.find_configs_for(int(node_id))
-    finally:
-        store.close()
-
 
 def _tool_cgdb_find_nodes_under_config(args: dict, graph_dir: str) -> list:
     """Find nodes whose config_predicate matches the given predicate text."""
@@ -1224,22 +1190,14 @@ def _tool_cgdb_find_nodes_under_config(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    try:
         return store.find_nodes_under_config(config, limit=int(args.get("limit", 500)))
-    finally:
-        store.close()
-
 
 def _tool_cgdb_index_status(args: dict, graph_dir: str) -> dict:
     """Return overall cgdb index statistics."""
     store = _cgdb_store(graph_dir)
     if store is None:
         return {"error": "cgdb tables not available"}
-    try:
         return store.index_status()
-    finally:
-        store.close()
-
 
 def _tool_cgdb_time_travel_query(args: dict, graph_dir: str) -> dict:
     """Return the state of a node at a specific version_id."""
@@ -1250,11 +1208,8 @@ def _tool_cgdb_time_travel_query(args: dict, graph_dir: str) -> dict:
     store = _cgdb_store(graph_dir)
     if store is None:
         return {"error": "cgdb tables not available"}
-    try:
-        result = store.time_travel_query_node(int(node_id), int(version_id))
-        return result or {"error": f"node {node_id} not alive at version {version_id}"}
-    finally:
-        store.close()
+    result = store.time_travel_query_node(int(node_id), int(version_id))
+    return result or {"error": f"node {node_id} not alive at version {version_id}"}
 
 
 def _tool_cgdb_list_versions(args: dict, graph_dir: str) -> list:
@@ -1262,11 +1217,7 @@ def _tool_cgdb_list_versions(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    try:
         return store.list_versions(limit=int(args.get("limit", 50)))
-    finally:
-        store.close()
-
 
 # ---------------------------------------------------------------------------
 # Tool registry

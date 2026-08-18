@@ -324,32 +324,74 @@ class WALEntry:
     applied: bool = False  # True once applied to the live db
 
 
+_WAL_SEQ_FILE = "seq_counter"
+
+
+def _wal_seq_path(graph_dir: str) -> str:
+    return os.path.join(_tx_dir(graph_dir), _WAL_SEQ_FILE)
+
+
+def _read_wal_seq_counter(graph_dir: str) -> int:
+    """Read the persisted WAL sequence counter.
+
+    The counter is the next seq to assign (not the last used). Falls
+    back to scanning the WAL file once if the counter file is missing
+    or stale (e.g., from older versions that didn't maintain it).
+    """
+    seq_path = _wal_seq_path(graph_dir)
+    wal_path = _wal_path(graph_dir)
+    try:
+        with open(seq_path, "r", encoding="utf-8") as f:
+            return int(f.read().strip() or "1")
+    except (FileNotFoundError, ValueError):
+        pass
+    # Slow path: scan the WAL once to find the highest seq, then persist.
+    next_seq = 1
+    if os.path.exists(wal_path):
+        try:
+            with open(wal_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        if isinstance(entry, dict) and "seq" in entry:
+                            next_seq = max(next_seq, int(entry["seq"]) + 1)
+                    except (json.JSONDecodeError, ValueError, TypeError):
+                        pass
+        except OSError:
+            pass
+    _write_wal_seq_counter(graph_dir, next_seq)
+    return next_seq
+
+
+def _write_wal_seq_counter(graph_dir: str, next_seq: int) -> None:
+    """Persist the next WAL seq counter."""
+    seq_path = _wal_seq_path(graph_dir)
+    os.makedirs(os.path.dirname(seq_path), exist_ok=True)
+    tmp = seq_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(str(next_seq))
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, seq_path)
+
+
 def append_wal_entry(graph_dir: str, operation: str, target_id: str,
                      payload: Dict[str, Any]) -> int:
     """Append an entry to the WAL. Returns the sequence number."""
     wal_path = _wal_path(graph_dir)
     os.makedirs(os.path.dirname(wal_path), exist_ok=True)
-    # Compute next seq
-    next_seq = 1
-    if os.path.exists(wal_path):
-        with open(wal_path, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    try:
-                        last = json.loads(line)
-                        if isinstance(last, dict) and "seq" in last:
-                            next_seq = max(next_seq, last["seq"] + 1)
-                    except json.JSONDecodeError:
-                        pass
+    next_seq = _read_wal_seq_counter(graph_dir)
     entry = {
         "seq": next_seq, "operation": operation, "target_id": target_id,
         "payload": payload, "timestamp": time.time(), "applied": False,
     }
-    # fsync for durability
     with open(wal_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
         f.flush()
         os.fsync(f.fileno())
+    _write_wal_seq_counter(graph_dir, next_seq + 1)
     return next_seq
 
 
@@ -358,20 +400,24 @@ def mark_wal_entry_applied(graph_dir: str, seq: int):
     wal_path = _wal_path(graph_dir)
     if not os.path.exists(wal_path):
         return
-    lines = []
-    with open(wal_path, "r", encoding="utf-8") as f:
-        for line in f:
-            if line.strip():
-                try:
-                    entry = json.loads(line)
-                    if entry.get("seq") == seq:
-                        entry["applied"] = True
-                    lines.append(json.dumps(entry, ensure_ascii=False,
-                                            default=str) + "\n")
-                except json.JSONDecodeError:
-                    lines.append(line)
-    with open(wal_path, "w", encoding="utf-8") as f:
-        f.writelines(lines)
+    # Rewrite the WAL with the applied flag flipped for the given seq.
+    # Uses an atomic temp-file rename to avoid leaving a partial WAL
+    # if the process crashes mid-rewrite.
+    tmp_path = wal_path + ".tmp"
+    with open(wal_path, "r", encoding="utf-8") as f_in, \
+         open(tmp_path, "w", encoding="utf-8") as f_out:
+        for line in f_in:
+            if not line.strip():
+                continue
+            try:
+                entry = json.loads(line)
+                if entry.get("seq") == seq:
+                    entry["applied"] = True
+                f_out.write(json.dumps(entry, ensure_ascii=False,
+                                       default=str) + "\n")
+            except json.JSONDecodeError:
+                f_out.write(line)
+    os.replace(tmp_path, wal_path)
 
 
 def read_wal(graph_dir: str, only_unapplied: bool = False) -> List[Dict]:
@@ -398,6 +444,13 @@ def clear_wal(graph_dir: str):
     wal_path = _wal_path(graph_dir)
     if os.path.exists(wal_path):
         os.remove(wal_path)
+    # Reset the WAL seq counter so the next transaction starts at 1.
+    seq_path = _wal_seq_path(graph_dir)
+    if os.path.exists(seq_path):
+        try:
+            os.remove(seq_path)
+        except OSError:
+            pass
 
 
 # ---------------------------------------------------------------------------

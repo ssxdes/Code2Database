@@ -30,6 +30,23 @@ _CALLBACK_PATTERNS = [re.compile(p, re.IGNORECASE) for p in [
 _CTOR_NAME_RE = re.compile(r'\b(?:__init__|__ctor__|_init\b|constructor\b)', re.IGNORECASE)
 _DTOR_NAME_RE = re.compile(r'\b(?:__fini__|__dtor__|_fini\b|_destroy\b|destructor\b)', re.IGNORECASE)
 
+# Inline-asm call/jump/syscall patterns extracted from #define macro bodies.
+# Each tuple: (compiled_regex, confidence, score, special_tag).
+_MACRO_ASM_CALL_RES = [
+    (re.compile(r'\bcall\s+([a-zA-Z_]\w*)'), "INFERRED", 0.7, ""),
+    (re.compile(r'\bjmp\s+([a-zA-Z_]\w*)'), "INFERRED", 0.6, ""),
+    (re.compile(r'\bbl\s+([a-zA-Z_]\w*)'), "INFERRED", 0.7, ""),
+    (re.compile(r'\bjal\s+([a-zA-Z_]\w*)'), "INFERRED", 0.7, ""),
+    (re.compile(r'\bbrasl\s+([a-zA-Z_]\w*)'), "INFERRED", 0.7, ""),
+    (re.compile(r'\bsyscall\b'), "INFERRED", 0.5, "syscall"),
+    (re.compile(r'\bsvc\s+#0\b'), "INFERRED", 0.5, "svc"),
+    (re.compile(r'\becall\b'), "INFERRED", 0.5, "ecall"),
+    (re.compile(r'\bvmcall\b'), "INFERRED", 0.5, "vmcall"),
+    (re.compile(r'\bvmmcall\b'), "INFERRED", 0.5, "vmmcall"),
+    (re.compile(r'\blcallw?\s+\*'), "AMBIGUOUS", 0.3, "lcall"),
+    (re.compile(r'\bcall\s+\*\s*%([a-zA-Z_]\w*)'), "AMBIGUOUS", 0.3, "indirect_call"),
+]
+
 
 class CTreeSitterScanner(BaseScanner):
     """Scanner for C and C++ using tree-sitter."""
@@ -53,6 +70,20 @@ class CTreeSitterScanner(BaseScanner):
         # calleys count as fn_ptr evidence. Set from profile.dispatch_tuning.
         self._fn_ptr_call_require_evidence = False
         self._ifdef_stack = []  # Stack of preprocessor condition strings for current nesting
+        self._export_macro_re_cache: dict = {}  # sorted tuple → compiled regex
+
+    def _get_export_macro_re(self, macros_key: tuple):
+        """Return a compiled regex for the given sorted tuple of export macro
+        names. Cached per-instance so repeated scan_file calls with the same
+        profile don't recompile the regex."""
+        cached = self._export_macro_re_cache.get(macros_key)
+        if cached is not None:
+            return cached
+        pat = re.compile(
+            r'(?:' + '|'.join(re.escape(m) for m in macros_key) + r')\s*\(\s*(\w+)\s*\)'
+        )
+        self._export_macro_re_cache[macros_key] = pat
+        return pat
 
     # Regex to strip __attribute__((...)) that confuses tree-sitter-c
     # Handles nested parentheses: __attribute__((packed)), __attribute__((naked)), etc.
@@ -264,9 +295,7 @@ class CTreeSitterScanner(BaseScanner):
         _exported_names = set()
         _export_macros = getattr(self, '_export_macros', [])
         if _export_macros:
-            _EXPORT_MACRO_RE = re.compile(
-                r'(?:' + '|'.join(re.escape(m) for m in _export_macros) + r')\s*\(\s*(\w+)\s*\)'
-            )
+            _EXPORT_MACRO_RE = self._get_export_macro_re(tuple(sorted(_export_macros)))
             for m in _EXPORT_MACRO_RE.finditer(source_text):
                 _exported_names.add(m.group(1))
 
@@ -635,36 +664,6 @@ class CTreeSitterScanner(BaseScanner):
         preproc_macros = _collect_preproc_defs(root)
 
         if preproc_macros:
-            # Build a helper to extract asm call edges from raw macro body text
-            # (similar to MSVC __asm block processing but for #define bodies)
-            _MACRO_ASM_CALL_RES = [
-                # x86 direct call
-                (re.compile(r'\bcall\s+([a-zA-Z_]\w*)'), "INFERRED", 0.7, ""),
-                # x86 jmp tail call
-                (re.compile(r'\bjmp\s+([a-zA-Z_]\w*)'), "INFERRED", 0.6, ""),
-                # ARM bl direct call
-                (re.compile(r'\bbl\s+([a-zA-Z_]\w*)'), "INFERRED", 0.7, ""),
-                # RISC-V jal
-                (re.compile(r'\bjal\s+([a-zA-Z_]\w*)'), "INFERRED", 0.7, ""),
-                # LoongArch bl
-                (re.compile(r'\bbl\s+([a-zA-Z_]\w*)'), "INFERRED", 0.7, ""),
-                # s390 brasl
-                (re.compile(r'\bbrasl\s+([a-zA-Z_]\w*)'), "INFERRED", 0.7, ""),
-                # x86 syscall
-                (re.compile(r'\bsyscall\b'), "INFERRED", 0.5, "syscall"),
-                # ARM svc
-                (re.compile(r'\bsvc\s+#0\b'), "INFERRED", 0.5, "svc"),
-                # RISC-V ecall
-                (re.compile(r'\becall\b'), "INFERRED", 0.5, "ecall"),
-                # vmcall/vmmcall
-                (re.compile(r'\bvmcall\b'), "INFERRED", 0.5, "vmcall"),
-                (re.compile(r'\bvmmcall\b'), "INFERRED", 0.5, "vmmcall"),
-                # x86 lcall/lcallw
-                (re.compile(r'\blcallw?\s+\*'), "AMBIGUOUS", 0.3, "lcall"),
-                # AT&T indirect call *%reg
-                (re.compile(r'\bcall\s+\*\s*%([a-zA-Z_]\w*)'), "AMBIGUOUS", 0.3, "indirect_call"),
-            ]
-
             for macro_name, macro_body in preproc_macros:
                 # Create synthetic function entry for the macro
                 if macro_name not in _macro_asm_funcs:
@@ -1178,10 +1177,7 @@ class CTreeSitterScanner(BaseScanner):
         if body_node is None:
             return False
         body_text = self._node_text(body_node, source_bytes)
-        # Match as whole words to avoid false positives (e.g., "my_co_await")
         for kw in ('co_await', 'co_yield', 'co_return'):
-            # Word-boundary check using regex
-            import re
             if re.search(r'\b' + kw + r'\b', body_text):
                 return True
         return False

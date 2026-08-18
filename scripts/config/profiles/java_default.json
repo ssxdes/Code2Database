@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "project": {
+    "name": "java_default",
+    "language": "java",
+    "detected_frameworks": []
+  },
+  "skip_names": {
+    "add": [
+      "abstract",
+      "assert",
+      "boolean",
+      "break",
+      "byte",
+      "case",
+      "catch",
+      "char",
+      "class",
+      "const",
+      "continue",
+      "default",
+      "do",
+      "double",
+      "else",
+      "enum",
+      "extends",
+      "final",
+      "finally",
+      "float",
+      "for",
+      "goto",
+      "if",
+      "implements",
+      "import",
+      "instanceof",
+      "int",
+      "interface",
+      "long",
+      "native",
+      "new",
+      "package",
+      "private",
+      "protected",
+      "public",
+      "return",
+      "short",
+      "static",
+      "strictfp",
+      "super",
+      "switch",
+      "synchronized",
+      "this",
+      "throw",
+      "throws",
+      "transient",
+      "try",
+      "void",
+      "volatile",
+      "while",
+      "true",
+      "false",
+      "null",
+      "String",
+      "Integer",
+      "Long",
+      "Double",
+      "Float",
+      "Boolean",
+      "Character",
+      "Byte",
+      "Short",
+      "Object",
+      "System",
+      "Math",
+      "Arrays",
+      "Collections",
+      "List",
+      "Map",
+      "Set",
+      "ArrayList",
+      "HashMap",
+      "HashSet",
+      "LinkedList",
+      "TreeMap",
+      "TreeSet"
+    ],
+    "external_lib_prefixes": {
+      "java.": {"category": "external_stdlib", "visible": false},
+      "javax.": {"category": "external_stdlib", "visible": false},
+      "org.slf4j.": {"category": "external_lib", "visible": false},
+      "org.apache.": {"category": "external_lib", "visible": false},
+      "com.google.": {"category": "external_lib", "visible": false},
+      "lombok.": {"category": "external_lib", "visible": false}
+    },
+    "test_framework_prefixes": ["test", "Test", "should", "IT", "ITCase"]
+  },
+  "api_detection": {
+    "public_prefixes": [],
+    "internal_patterns": ["test", "internal", "priv", "impl"],
+    "public_header_paths": [],
+    "export_macros": [],
+    "struct_op_types": [],
+    "auto_detect": false
+  },
+  "callback_detection": {
+    "static_patterns": [],
+    "generic_cb_suffixes": ["Callback", "Handler", "Listener", "Runnable", "Callable"],
+    "skip_call_prefixes": []
+  },
+  "endpoint_classification": {
+    "lib_prefix_map": {}
+  },
+  "macro_heuristics": {
+    "macro_condition_prefixes": []
+  },
+  "scan_hints": {
+    "pre_scan_dirs": ["examples", "demo", "samples"],
+    "test_dirs": ["test", "tests"],
+    "header_priority_dirs": [],
+    "vtable_module_keys": [],
+    "domain_rules": [],
+    "skip_dirs": ["target", "build", ".gradle", ".git", "node_modules", "bin", "out"]
+  },
+  "macro_dispatch": {
+    "registration_macros": [],
+    "token_paste_macros": [],
+    "macro_aliases": {}
+  },
+  "struct_embeddings": {
+    "container_of_macros": [],
+    "manual_entries": []
+  },
+  "dispatch_tuning": {
+    "max_vtable_dispatch_per_call": 50,
+    "max_vtable_dispatch_per_field": {},
+    "inline_wrapper_patterns": [],
+    "macro_bridge_patterns": [],
+    "macro_bridge_require_same_domain": false,
+    "fn_ptr_call_require_evidence": false
+  },
+  "phases": {
+    "prescan_completed": false,
+    "test_scan_completed": false,
+    "llm_header_analysis_completed": false,
+    "llm_result_check_completed": false
+  }
+}

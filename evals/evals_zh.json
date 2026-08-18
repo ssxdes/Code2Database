@@ -1,0 +1,23 @@
+{
+  "skill_name": "Code2Database",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "扫描 /tmp/code2db_test 这个目录，生成调用关系图，然后告诉我bdev_start函数的完整调用链，包括调用条件和调用顺序",
+      "expected_output": "应该扫描C/Go/Python/Java/Rust多语言代码，构建code2db-out/，然后通过builder脚本查询bdev_start的调用链。应该正确标注pthread_create为thread_processor标签，if(mode==1)条件下的bdev_register和bdev_open，以及else分支的bdev_close。调用顺序需要正确编号。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "我有一个Go项目在 /tmp/code2db_test/go，帮我生成调用关系图，找出Handler.ServeHTTP方法的条件调用路径",
+      "expected_output": "应该扫描Go代码，识别method_declaration（Handler.ServeHTTP），提取if(h.authenticated)条件下的handleRequest和else分支的sendError，正确使用空节点聚合条件调用。应该标注call_condition和call_order。",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "扫描 /tmp/code2db_test/python 目录的Python代码，告诉我Server类中__init__到start的调用流程，哪些函数被标记了什么标签",
+      "expected_output": "应该扫描Python代码，识别class内方法（Server.__init__标记为constructor，Server.start检测到threading.Thread标记为thread_processor），追踪从__init__→_setup→load_config/init_routes的调用链，以及start→serve→listen的调用路径。应该正确标注调用顺序。",
+      "files": []
+    }
+  ]
+}

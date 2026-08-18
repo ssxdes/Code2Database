@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# post-commit hook for Code2Database
+# Installs into .git/hooks/post-commit to auto-run quick-update after each commit.
+#
+# Usage:
+#   cp scripts/hooks/post-commit /path/to/project/.git/hooks/post-commit
+#   chmod +x /path/to/project/.git/hooks/post-commit
+#
+# Or install via: python3 code2database_builder.py install-hook --source /path/to/project
+
+SCRIPTS_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+GRAPH_DIR="${CODE2DATABASE_DIR:-code2db-out}"
+SOURCE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+
+if [ -z "$SOURCE_ROOT" ]; then
+    echo "Code2Database: Not in a git repo, skipping quick-update" >&2
+    exit 0
+fi
+
+# Only run if the graph exists
+if [ ! -d "${SOURCE_ROOT}/${GRAPH_DIR}" ]; then
+    exit 0
+fi
+
+# Run quick-update silently
+CODE2DATABASE_QUIET=1 python3 "${SCRIPTS_DIR}/code2database_builder.py" quick-update \
+    --source "$SOURCE_ROOT" \
+    --graph "${SOURCE_ROOT}/${GRAPH_DIR}" \
+    2>/dev/null
+
+exit 0

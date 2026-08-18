@@ -1,0 +1,232 @@
+{
+  "version": 1,
+  "project": {
+    "name": "qemu",
+    "language": "c",
+    "project_type": "qemu",
+    "detected_frameworks": ["qemu"]
+  },
+  "detection": {
+    "dir_markers": ["softmmu", "accel", "hw"],
+    "file_markers": ["qemu-config.h"],
+    "content_markers": [
+      {"pattern": "qemu_init", "dirs": ["softmmu", "accel", "hw", "include"], "min_hits": 1},
+      {"pattern": "qemu_main", "dirs": ["softmmu", "accel", "hw", "include"], "min_hits": 1}
+    ],
+    "dir_structure": {
+      "has_qemu_include": "include/qemu",
+      "has_vl_c": "vl.c"
+    },
+    "build_system": null,
+    "priority": 40
+  },
+  "project_name_aliases": {
+    "qemu-source": "qemu",
+    "qemu-src": "qemu"
+  },
+  "skip_names": {
+    "add": [
+      "QEMU_ALIGN",
+      "QEMU_BUILD_BUG_ON",
+      "QEMU_CONTAINEROF",
+      "DIV_ROUND_UP",
+      "ROUND_UP",
+      "QEMU_ARRAY_SIZE",
+      "likely",
+      "unlikely",
+      "error_report",
+      "error_reportf_err",
+      "warn_report",
+      "qemu_log",
+      "qemu_log_mask",
+      "trace_%s",
+      "DPRINTF",
+      "DEBUG",
+      "QEMU_DISABLE_RET",
+      "QEMU_INCLUDE_GUARD"
+    ],
+    "external_lib_prefixes": {}
+  },
+  "api_detection": {
+    "public_prefixes": [
+      "qemu_", "QEMU_",
+      "object_", "OBJECT_",
+      "qdev_", "qbus_",
+      "pci_", "PCI_",
+      "cpu_", "CPU_",
+      "memory_region_",
+      "address_space_",
+      "bdrv_", "blk_",
+      "qemu_chr_", "qemu_input_",
+      "net_", "qemu_net_",
+      "aio_", "iohandler_",
+      "qemu_bh_",
+      "timer_", "qemu_timer_",
+      "qemu_thread_",
+      "qemu_mutex_", "qemu_lock_",
+      "vm_", "qemu_vm_",
+      "migration_",
+      "qio_", "QIO_",
+      "virtio_"
+    ],
+    "internal_patterns": ["_unit_", "_ut_", "_test_", "_perf_", "_verify_", "_example_", "_internal", "_priv", "_stub", "_mock"],
+    "public_header_paths": ["include"],
+    "export_macros": [],
+    "struct_op_types": [
+      "TypeInfo",
+      "DeviceClass",
+      "PCIDeviceClass",
+      "SysBusDeviceClass",
+      "CPUClass",
+      "ObjectClass",
+      "BusClass",
+      "BlockDriver",
+      "BlockDevOps",
+      "CharDriver",
+      "DisplayChangeListenerOps",
+      "GraphicHwOps",
+      "QEMUConsoleOps",
+      "MachineClass",
+      "NMIClass",
+      "I2CSlaveClass",
+      "I2CBusClass",
+      "SPIMasterClass",
+      "USBDeviceClass",
+      "USBHostControllerClass",
+      "ACPIPlatformInfoClass",
+      "AudiodevOps",
+      "NetClientOps",
+      "NetHubPortOps",
+      "SCSIDeviceClass",
+      "SCSIBusInfo",
+      "VirtIODeviceClass",
+      "VFIOPlatformDeviceClass",
+      "VFIOPCIDeviceClass",
+      "MemoryRegionOps",
+      "VMStateDescription",
+      "SaveVMHandlers",
+      "QEMUMachineOpts",
+      "QEMUAccelClass",
+      "QEMUCursorDefineFn",
+      "QEMUHPTimerFn"
+    ],
+    "auto_detect": true
+  },
+  "callback_detection": {
+    "static_patterns": [
+      {"register_func": "qemu_bh_new", "regex": "qemu_bh_new\\s*\\(\\s*(\\w+)\\s*,", "cb_arg_index": 0, "concurrency_type": "poller"},
+      {"register_func": "aio_bh_new", "regex": "aio_bh_new\\s*\\(\\s*[^,]*,\\s*(\\w+)\\s*,", "cb_arg_index": 1, "concurrency_type": "poller"},
+      {"register_func": "qemu_bh_schedule", "regex": "qemu_bh_schedule\\s*\\(\\s*[^,]*\\)", "cb_arg_index": -1, "concurrency_type": "poller"},
+      {"register_func": "aio_bh_schedule", "regex": "aio_bh_schedule\\s*\\(\\s*[^,]*,\\s*[^)]*\\)", "cb_arg_index": -1, "concurrency_type": "poller"},
+      {"register_func": "aio_set_fd_handler", "regex": "aio_set_fd_handler\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)\\s*,", "cb_arg_index": 2, "concurrency_type": "callback"},
+      {"register_func": "aio_set_event_notifier", "regex": "aio_set_event_notifier\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)\\s*,", "cb_arg_index": 2, "concurrency_type": "callback"},
+      {"register_func": "timer_new", "regex": "timer_new\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)\\s*,", "cb_arg_index": 2, "concurrency_type": "timer_callback"},
+      {"register_func": "timer_new_ns", "regex": "timer_new_ns\\s*\\(\\s*[^,]*,\\s*(\\w+)\\s*,", "cb_arg_index": 1, "concurrency_type": "timer_callback"},
+      {"register_func": "timer_new_us", "regex": "timer_new_us\\s*\\(\\s*[^,]*,\\s*(\\w+)\\s*,", "cb_arg_index": 1, "concurrency_type": "timer_callback"},
+      {"register_func": "timer_new_ms", "regex": "timer_new_ms\\s*\\(\\s*[^,]*,\\s*(\\w+)\\s*,", "cb_arg_index": 1, "concurrency_type": "timer_callback"},
+      {"register_func": "qemu_thread_create", "regex": "qemu_thread_create\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(\\w+)\\s*,", "cb_arg_index": 2, "concurrency_type": "spawn_target"},
+      {"register_func": "qemu_chr_fe_set_handlers", "regex": "qemu_chr_fe_set_handlers\\s*\\(\\s*[^,]*,\\s*(\\w+)\\s*,", "cb_arg_index": 1, "concurrency_type": "callback"},
+      {"register_func": "qemu_add_vm_change_state_handler", "regex": "qemu_add_vm_change_state_handler\\s*\\(\\s*(\\w+)\\s*,", "cb_arg_index": 0, "concurrency_type": "callback"},
+      {"register_func": "qemu_add_shutdown_notifier", "regex": "qemu_add_shutdown_notifier\\s*\\(\\s*(\\w+)", "cb_arg_index": 0, "concurrency_type": "notifier_register"},
+      {"register_func": "qemu_add_machine_init_done_notifier", "regex": "qemu_add_machine_init_done_notifier\\s*\\(\\s*(\\w+)", "cb_arg_index": 0, "concurrency_type": "notifier_register"},
+      {"register_func": "memory_region_init_io", "regex": "memory_region_init_io\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(&\\s*)?(\\w+)", "cb_arg_index": 2, "concurrency_type": "callback"},
+      {"register_func": "qdev_init_gpio_in", "regex": "qdev_init_gpio_in\\s*\\(\\s*[^,]*,\\s*(\\w+)\\s*,", "cb_arg_index": 1, "concurrency_type": "interrupt_handler"},
+      {"register_func": "qdev_init_gpio_out", "regex": "qdev_init_gpio_out\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*[^)]*\\)", "cb_arg_index": -1, "concurrency_type": "irq_output"},
+      {"register_func": "vmstate_register", "regex": "vmstate_register\\s*\\(\\s*[^,]*,\\s*[^,]*,\\s*(&\\s*)?(\\w+)", "cb_arg_index": 2, "concurrency_type": "callback"}
+    ],
+    "generic_cb_suffixes": ["_cb", "_fn", "_handler", "_callback"],
+    "skip_call_prefixes": []
+  },
+  "endpoint_classification": {
+    "lib_prefix_map": {},
+    "endpoint_rules": [
+      {"pattern": "^qemu_main$", "endpoint_type": "program_entry"},
+      {"pattern": "^qemu_init$", "endpoint_type": "program_entry"},
+      {"pattern": "^cpu_exec$", "endpoint_type": "thread_entry"},
+      {"pattern": "^kvm_cpu_exec$", "endpoint_type": "thread_entry"},
+      {"pattern": "^qemu_tcg_cpu_loop$", "endpoint_type": "thread_entry"}
+    ]
+  },
+  "macro_heuristics": {
+    "macro_condition_prefixes": ["CONFIG_", "TARGET_", "HOST_", "HAVE_", "ENABLE_"]
+  },
+  "macro_dispatch": {
+    "registration_macros": [
+      {"macro_name": "type_init", "pattern": "type_init\\s*\\(\\s*(\\w+)\\s*\\)", "struct_arg_index": 0, "generates": "constructor"},
+      {"macro_name": "module_init", "pattern": "module_init\\s*\\(\\s*(\\w+)\\s*,\\s*([^,)]+)\\s*\\)", "struct_arg_index": 0, "generates": "constructor"},
+      {"macro_name": "block_init", "pattern": "block_init\\s*\\(\\s*(\\w+)\\s*\\)", "struct_arg_index": 0, "generates": "constructor"},
+      {"macro_name": "cpu_register", "pattern": "cpu_register\\s*\\(\\s*(\\w+)\\s*\\)", "struct_arg_index": 0, "generates": "constructor"},
+      {"macro_name": "machine_init", "pattern": "machine_init\\s*\\(\\s*(\\w+)\\s*\\)", "struct_arg_index": 0, "generates": "constructor"},
+      {"macro_name": "DEFINE_MACHINE", "pattern": "DEFINE_MACHINE\\s*\\(\\s*([^,)]+)\\s*,\\s*([^,)]+)\\s*\\)", "struct_arg_index": 1, "generates": "constructor"},
+      {"macro_name": "DEFINE_CPU", "pattern": "DEFINE_CPU\\s*\\(\\s*([^,)]+)\\s*,\\s*([^,)]+)\\s*\\)", "struct_arg_index": 1, "generates": "constructor"}
+    ],
+    "token_paste_macros": [],
+    "macro_aliases": {}
+  },
+  "struct_embeddings": {
+    "container_of_macros": [
+      {"macro_name": "container_of", "pattern": "container_of\\s*\\(\\s*(\\w+)\\s*,\\s*(?:struct\\s+)?(\\w+)\\s*,\\s*(\\w+)\\s*\\)"},
+      {"macro_name": "OBJECT_CHECK", "pattern": "OBJECT_CHECK\\s*\\(\\s*\\w+\\s*,\\s*(\\w+)\\s*,\\s*\\w+\\s*\\)"},
+      {"macro_name": "OBJECT_CAST", "pattern": "OBJECT_CAST\\s*\\(\\s*\\w+\\s*,\\s*(\\w+)\\s*\\)"},
+      {"macro_name": "PCI_DEVICE", "pattern": "PCI_DEVICE\\s*\\(\\s*(\\w+)\\s*\\)"},
+      {"macro_name": "SYS_BUS_DEVICE", "pattern": "SYS_BUS_DEVICE\\s*\\(\\s*(\\w+)\\s*\\)"}
+    ],
+    "manual_entries": [
+      {"outer_type": "PCIDevice", "member": "qdev", "inner_type": "DeviceState", "domain_hint": "pci"},
+      {"outer_type": "SysBusDevice", "member": "parent_obj", "inner_type": "DeviceState", "domain_hint": "sysbus"},
+      {"outer_type": "VirtIODevice", "member": "parent_obj", "inner_type": "DeviceState", "domain_hint": "virtio"},
+      {"outer_type": "CPUState", "member": "parent_obj", "inner_type": "DeviceState", "domain_hint": "cpu"}
+    ]
+  },
+  "scan_hints": {
+    "pre_scan_dirs": ["doc", "examples"],
+    "test_dirs": ["tests"],
+    "header_priority_dirs": ["include"],
+    "vtable_module_keys": [],
+    "domain_rules": [
+      {"pattern": "^tests?", "domain_tag": "test"},
+      {"pattern": "^hw/", "domain_tag": "hardware"},
+      {"pattern": "^target/", "domain_tag": "target"},
+      {"pattern": "^accel/", "domain_tag": "accelerator"},
+      {"pattern": "^softmmu/", "domain_tag": "softmmu"},
+      {"pattern": "^block/", "domain_tag": "block"},
+      {"pattern": "^net/", "domain_tag": "network"},
+      {"pattern": "^chardev/", "domain_tag": "chardev"},
+      {"pattern": "^ui/", "domain_tag": "ui"},
+      {"pattern": "^migration/", "domain_tag": "migration"},
+      {"pattern": "^audio/", "domain_tag": "audio"},
+      {"pattern": "^io/", "domain_tag": "io"}
+    ]
+  },
+  "project_boundaries": {
+    "non_api_paths": ["tests/", "test/", "scripts/", "docs/", "examples/", "tools/", "pc-bios/", "roms/"],
+    "test_path_patterns": ["/test/", "/tests/", "/unit/", "/ut/", "/unittest/", "/fuzz/", "/qtest/", "\\test\\", "\\tests\\", "\\unit\\"],
+    "test_file_suffixes": ["_test.c", "_test.cpp", "_ut.c", "_ut.cpp", "_unittest.c", "_unittest.cpp", "test_.c", "test_.cpp"],
+    "test_domain_segments": ["ut", "ut_mock", "unit", "test", "fuzz", "qtest"],
+    "vendor_domain_prefixes": [],
+    "external_dir_prefixes": ["vendor", "third_party", "thirdparty", "external", "3rdparty", "contrib", "roms", "pc-bios", "slirp"]
+  },
+  "concurrency_patterns": {
+    "lock_acquire_patterns": [
+      "\\bpthread_mutex_lock\\s*\\(\\s*(&?\\w+)",
+      "\\bqemu_mutex_lock\\s*\\(\\s*(&?\\w+)",
+      "\\bqemu_spin_lock\\s*\\(\\s*(&?\\w+)",
+      "\\bqemu_rec_mutex_lock\\s*\\(\\s*(&?\\w+)",
+      "\\bbql_lock\\s*\\(\\s*\\)",
+      "\\brcu_read_lock\\s*\\(\\s*\\)"
+    ],
+    "lock_release_patterns": [
+      "\\bpthread_mutex_unlock\\s*\\(\\s*(&?\\w+)",
+      "\\bqemu_mutex_unlock\\s*\\(\\s*(&?\\w+)",
+      "\\bqemu_spin_unlock\\s*\\(\\s*(&?\\w+)",
+      "\\bqemu_rec_mutex_unlock\\s*\\(\\s*(&?\\w+)",
+      "\\bbql_unlock\\s*\\(\\s*\\)",
+      "\\brcu_read_unlock\\s*\\(\\s*\\)"
+    ]
+  },
+  "io_classification": {
+    "io_main_keywords": ["submit", "queue", "ring", "doorbell", "write", "read", "send", "recv", "transfer", "dispatch", "process_request", "build_request", "cmd_", "command", "execute", "xfer", "io_path", "io_submit", "blk_", "blk_aiocb", "blk_pwrite", "blk_pread", "dma_", "memory_region_", "address_space_", "pci_", "net_", "net_queue_", "socket_", "chardev_", "virtio_", "scsi_", "nvme_"],
+    "io_side_keywords": ["error", "fail", "abort", "err_", "_err", "retry", "recover", "resubmit", "timeout", "watchdog", "reset_", "cleanup", "clean_", "destroy", "destruct", "fini", "dealloc", "free_", "_free", "_stat", "stat_", "iostat", "stats", "debug", "log_", "dump_", "trace_", "test_", "_test", "unit_", "_ut", "ut_", "validate", "verify_", "check_", "poll_", "_poll", "config", "ioctl", "init_", "_init", "setup_", "register_", "unregister_"]
+  },
+  "auto_config_overrides": {}
+}

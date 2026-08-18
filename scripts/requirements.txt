@@ -1,0 +1,35 @@
+# Code2Database Python dependencies
+#
+# Core (always required) — provides tree-sitter base + graph engine.
+networkx>=3.0
+tree-sitter>=0.22
+
+# ---------------------------------------------------------------------------
+# Per-language tree-sitter grammars
+# ---------------------------------------------------------------------------
+# Install ONLY the languages you actually scan. Engineers focused on a single
+# language can skip the rest. Examples:
+#
+#   pip install networkx tree-sitter tree-sitter-c                # C only
+#   pip install networkx tree-sitter tree-sitter-go               # Go only
+#   pip install networkx tree-sitter tree-sitter-c tree-sitter-cpp   # C/C++ only
+#
+# Or use scripts/setup.sh --languages c,go  to install a curated subset.
+# Default (no --languages) installs ALL grammars below for backward compat.
+#
+# ASM (.s .S .asm) uses regex-based scanning — no tree-sitter grammar needed.
+# ---------------------------------------------------------------------------
+tree-sitter-c>=0.21
+tree-sitter-cpp>=0.22
+tree-sitter-go>=0.21
+tree-sitter-python>=0.21
+tree-sitter-java>=0.21
+tree-sitter-rust>=0.21
+
+# ---------------------------------------------------------------------------
+# Optional advanced features (uncomment to enable)
+# ---------------------------------------------------------------------------
+# python-igraph>=0.11        # cross-domain Leiden community detection
+# leidenalg>=0.10            # cross-domain Leiden community detection
+# libclang>=17.0             # cgdb clang backend (typed vtable dispatch, CFG, data flow, sync primitives, config predicates)
+# z3-solver>=4.12            # sound path feasibility (heuristic fallback without it)

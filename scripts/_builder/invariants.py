@@ -58,6 +58,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any, Set, Tuple
 
+from _builder.line_utils import build_line_starts, line_for_offset
+
 
 # ---------------------------------------------------------------------------
 # Precondition extraction
@@ -104,11 +106,11 @@ def extract_preconditions(body_text: str, params: List[Dict] = None) -> List[Dic
         return []
     results = []
     param_names = {p.get("name") for p in (params or []) if p.get("name")}
+    _line_starts = build_line_starts(body_text)
 
     for pat, cond_template, source in _PRECOND_PATTERNS:
         for m in pat.finditer(body_text):
-            # Compute line number
-            line_no = body_text.count("\n", 0, m.start()) + 1
+            line_no = line_for_offset(_line_starts, m.start())
             # The captured first group is the variable being checked
             var = m.group(1)
             # Only treat as precondition if it's a parameter (not a local)
@@ -177,9 +179,10 @@ def extract_postconditions(body_text: str) -> List[Dict]:
     if not body_text:
         return []
     results = []
+    _line_starts = build_line_starts(body_text)
     # State-assignment postconditions
     for m in _POSTCOND_STATE_ASSIGN.finditer(body_text):
-        line_no = body_text.count("\n", 0, m.start()) + 1
+        line_no = line_for_offset(_line_starts, m.start())
         results.append({
             "condition": f"{m.group(1)} == {m.group(2)}",
             "evidence": m.group(0).strip()[:200],
@@ -189,7 +192,7 @@ def extract_postconditions(body_text: str) -> List[Dict]:
         })
     # Look for typical success path: returns 0 explicitly
     for m in _RETURN_SUCCESS.finditer(body_text):
-        line_no = body_text.count("\n", 0, m.start()) + 1
+        line_no = line_for_offset(_line_starts, m.start())
         results.append({
             "condition": "returns success (0)",
             "evidence": m.group(0).strip(),
@@ -230,8 +233,9 @@ def extract_loop_invariants(body_text: str) -> List[Dict]:
     if not body_text:
         return []
     results = []
+    _line_starts = build_line_starts(body_text)
     for m in _FOR_LOOP.finditer(body_text):
-        line_no = body_text.count("\n", 0, m.start()) + 1
+        line_no = line_for_offset(_line_starts, m.start())
         cond = m.group(2).strip()
         if not cond:
             continue
@@ -243,7 +247,7 @@ def extract_loop_invariants(body_text: str) -> List[Dict]:
             "source": "for_loop_header",
         })
     for m in _WHILE_LOOP.finditer(body_text):
-        line_no = body_text.count("\n", 0, m.start()) + 1
+        line_no = line_for_offset(_line_starts, m.start())
         cond = m.group(1).strip()
         if not cond:
             continue
@@ -296,10 +300,11 @@ def extract_state_machine(body_text: str, function_name: str = "",
     # Count state assignments per variable
     assign_counts: Dict[str, int] = defaultdict(int)
     assignments: List[Tuple[str, str, int]] = []  # (var, value, line)
+    _line_starts = build_line_starts(body_text)
     for m in _STATE_ASSIGN.finditer(body_text):
         var = m.group(1).replace(" ", "")
         val = m.group(2)
-        line_no = body_text.count("\n", 0, m.start()) + 1 + line_offset
+        line_no = line_for_offset(_line_starts, m.start()) + line_offset
         assign_counts[var] += 1
         assignments.append((var, val, line_no))
 

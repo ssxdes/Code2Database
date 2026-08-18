@@ -51,6 +51,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Set, Tuple
 
+from _builder.line_utils import build_line_starts, line_for_offset
+
 
 # ---------------------------------------------------------------------------
 # Type marshalling tables
@@ -370,14 +372,14 @@ def detect_python_ffi(file_text: str, file_path: str) -> List[Dict]:
     """
     edges = []
     rel = file_path
+    _line_starts = build_line_starts(file_text)
 
     # Track variable → library mapping (for ctypes)
     var_to_lib: Dict[str, str] = {}
     for m in _CTYPES_VAR_ASSIGN.finditer(file_text):
         var, lib = m.group(1), m.group(2)
         var_to_lib[var] = lib
-        line_no = file_text.count("\n", 0, m.start()) + 1
-        # The library load itself is an FFI boundary
+        line_no = line_for_offset(_line_starts, m.start())
         edges.append({
             "caller": f"python:{rel}:load_{var}",
             "callee": f"c:{lib}",
@@ -395,9 +397,8 @@ def detect_python_ffi(file_text: str, file_path: str) -> List[Dict]:
     for m in _CTYPES_CALL.finditer(file_text):
         var, func = m.group(1), m.group(2)
         if var not in var_to_lib:
-            continue  # not a ctypes variable
-        line_no = file_text.count("\n", 0, m.start()) + 1
-        # Look at the surrounding text for argtypes/restype
+            continue
+        line_no = line_for_offset(_line_starts, m.start())
         # (search a 200-char window before the call)
         window_start = max(0, m.start() - 500)
         window = file_text[window_start:m.end() + 200]
@@ -463,7 +464,7 @@ def detect_python_ffi(file_text: str, file_path: str) -> List[Dict]:
 
     # cffi cdef
     for m in _CFFI_CDEF.finditer(file_text):
-        line_no = file_text.count("\n", 0, m.start()) + 1
+        line_no = line_for_offset(_line_starts, m.start())
         cdef_body = m.group(1).strip()
         edges.append({
             "caller": f"python:{rel}:cdef",
@@ -481,7 +482,7 @@ def detect_python_ffi(file_text: str, file_path: str) -> List[Dict]:
 
     # pybind11 module
     for m in _PYBIND11_MODULE.finditer(file_text):
-        line_no = file_text.count("\n", 0, m.start()) + 1
+        line_no = line_for_offset(_line_starts, m.start())
         mod = m.group(1)
         edges.append({
             "caller": f"python:{rel}:pybind11_{mod}",
@@ -522,17 +523,18 @@ def detect_go_cgo_ffi(file_text: str, file_path: str) -> List[Dict]:
     Returns a list of FFI edge dicts.
     """
     if not _CGO_IMPORT.search(file_text):
-        return []  # not a cgo file
+        return []
 
     edges = []
     rel = file_path
+    _line_starts = build_line_starts(file_text)
 
     # Find C function calls
     for m in _CGO_CALL.finditer(file_text):
         func = m.group(1)
         if func in ("C.int", "C.char"):  # type cast, not call
             continue
-        line_no = file_text.count("\n", 0, m.start()) + 1
+        line_no = line_for_offset(_line_starts, m.start())
         # Look for type info in surrounding text
         window_start = max(0, m.start() - 200)
         window = file_text[window_start:m.end() + 200]
@@ -561,7 +563,7 @@ def detect_go_cgo_ffi(file_text: str, file_path: str) -> List[Dict]:
 
     # Find cgo LDFLAGS (linking info)
     for m in _CGO_LDFLAGS.finditer(file_text):
-        line_no = file_text.count("\n", 0, m.start()) + 1
+        line_no = line_for_offset(_line_starts, m.start())
         edges.append({
             "caller": f"go:{rel}:cgo_link",
             "callee": f"c:linker",
@@ -607,14 +609,20 @@ def detect_rust_ffi(file_text: str, file_path: str) -> List[Dict]:
     """
     edges = []
     rel = file_path
+    _line_starts = build_line_starts(file_text)
+    _block_line_starts_cache: Dict[int, List[int]] = {}
 
     # extern "C" { ... } blocks — Rust calling INTO C
     for m in _EXTERN_C_BLOCK.finditer(file_text):
         block = m.group(1)
-        block_line = file_text.count("\n", 0, m.start()) + 1
+        block_line = line_for_offset(_line_starts, m.start())
+        block_starts = _block_line_starts_cache.get(id(block))
+        if block_starts is None:
+            block_starts = build_line_starts(block)
+            _block_line_starts_cache[id(block)] = block_starts
         for fm in _EXTERN_FN.finditer(block):
             func, args, ret = fm.group(1), fm.group(2), fm.group(3)
-            line_no = block_line + block.count("\n", 0, fm.start())
+            line_no = block_line + line_for_offset(block_starts, fm.start()) - 1
             # Parse args
             type_mapping = []
             for arg in args.split(","):
@@ -650,7 +658,7 @@ def detect_rust_ffi(file_text: str, file_path: str) -> List[Dict]:
     # #[no_mangle] exports — C calling INTO Rust
     for m in _NO_MANGLE_EXPORT.finditer(file_text):
         func, args, ret = m.group(1), m.group(2), m.group(3)
-        line_no = file_text.count("\n", 0, m.start()) + 1
+        line_no = line_for_offset(_line_starts, m.start())
         type_mapping = []
         for arg in args.split(","):
             arg = arg.strip()

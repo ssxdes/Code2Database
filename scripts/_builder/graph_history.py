@@ -112,11 +112,73 @@ def _count_graph(graph_dir: str) -> Tuple[int, int]:
 
     Returns (0, 0) if the graph dir has no master file and no SQLite db
     (e.g., when only snapshot subdirs exist); avoids raising/sys.exit.
+
+    Prefers SQLite COUNT queries (O(log N) on indexed tables) over
+    `_load_full_graph` (which brings the entire NetworkX graph into memory
+    just to count nodes). Falls back to the JSON metadata field if present,
+    then to eager load only as a last resort for legacy JSON-only outputs
+    that lack both SQLite and a `total_nodes` summary field.
     """
     master_path = os.path.join(graph_dir, "code2database_master.json")
     db_path = os.path.join(graph_dir, "code2database.db")
     if not os.path.exists(master_path) and not os.path.exists(db_path):
         return 0, 0
+
+    # Fast path 1: SQLite backend.
+    if os.path.exists(db_path):
+        try:
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            try:
+                node_count = 0
+                edge_count = 0
+                try:
+                    node_count = conn.execute(
+                        "SELECT COUNT(*) FROM functions"
+                    ).fetchone()[0]
+                except sqlite3.OperationalError:
+                    pass
+                try:
+                    edge_count = conn.execute(
+                        "SELECT COUNT(*) FROM edges"
+                    ).fetchone()[0]
+                except sqlite3.OperationalError:
+                    pass
+                if node_count == 0:
+                    try:
+                        node_count = conn.execute(
+                            "SELECT COUNT(*) FROM cgdb_nodes"
+                        ).fetchone()[0]
+                    except sqlite3.OperationalError:
+                        pass
+                if edge_count == 0:
+                    try:
+                        edge_count = conn.execute(
+                            "SELECT COUNT(*) FROM cgdb_edges"
+                        ).fetchone()[0]
+                    except sqlite3.OperationalError:
+                        pass
+                if node_count > 0 or edge_count > 0:
+                    return node_count, edge_count
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            pass
+
+    # Fast path 2: master.json summary field.
+    if os.path.exists(master_path):
+        try:
+            import json
+            with open(master_path, "r", encoding="utf-8") as f:
+                master = json.load(f)
+            nc = master.get("total_nodes") or master.get("node_count") or 0
+            ec = master.get("total_edges") or master.get("edge_count") or 0
+            if nc or ec:
+                return int(nc), int(ec)
+        except (OSError, ValueError):
+            pass
+
+    # Fallback: legacy JSON-only output without summary field.
     try:
         from _builder.graph_build import _load_full_graph
         G = _load_full_graph(graph_dir)

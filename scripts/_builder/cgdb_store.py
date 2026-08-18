@@ -201,9 +201,13 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
 
     def _ensure_conn(self) -> sqlite3.Connection:
         if self._conn is None:
-            self._conn = sqlite3.connect(self._db_path)
+            self._conn = sqlite3.connect(self._db_path, timeout=30.0)
             self._conn.execute("PRAGMA foreign_keys = ON")
             self._conn.execute("PRAGMA journal_mode = WAL")
+            self._conn.execute("PRAGMA busy_timeout = 30000")
+            self._conn.execute("PRAGMA cache_size = -65536")
+            self._conn.execute("PRAGMA temp_store = MEMORY")
+            self._conn.execute("PRAGMA mmap_size = 268435456")
         return self._conn
 
     def close(self) -> None:
@@ -1025,244 +1029,333 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         )
 
     def _write_types(self, conn: sqlite3.Connection, types: List[TypeRecord]) -> None:
-        for t in types:
-            conn.execute(
-                "INSERT OR REPLACE INTO cgdb_types "
-                "(id, spelling, canonical_spelling, kind, size_bytes, alignment, "
-                " is_const, is_volatile, pointee_type_id, element_type_id, "
-                " record_id, attrs) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (t.id, t.spelling, t.canonical_spelling, t.kind,
-                 t.size_bytes, t.alignment, int(t.is_const), int(t.is_volatile),
-                 t.pointee_type_id, t.element_type_id, t.record_id,
-                 json.dumps(t.attrs, ensure_ascii=False))
-            )
+        if not types:
+            return
+        rows = [
+            (t.id, t.spelling, t.canonical_spelling, t.kind,
+             t.size_bytes, t.alignment, int(t.is_const), int(t.is_volatile),
+             t.pointee_type_id, t.element_type_id, t.record_id,
+             json.dumps(t.attrs, ensure_ascii=False))
+            for t in types
+        ]
+        conn.executemany(
+            "INSERT OR REPLACE INTO cgdb_types "
+            "(id, spelling, canonical_spelling, kind, size_bytes, alignment, "
+            " is_const, is_volatile, pointee_type_id, element_type_id, "
+            " record_id, attrs) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rows
+        )
 
     def _write_config_predicates(self, conn: sqlite3.Connection,
                                   preds: List[ConfigPredicateRecord]) -> None:
-        for p in preds:
-            conn.execute(
-                "INSERT OR REPLACE INTO config_predicates "
-                "(id, root_expr_id, text_form, z3_form, bdd_serialized, "
-                " config_macros, is_unconditional, is_contradictory) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (p.id, p.root_expr_id, p.text_form, p.z3_form,
-                 p.bdd_serialized, json.dumps(p.config_macros, ensure_ascii=False),
-                 int(p.is_unconditional), int(p.is_contradictory))
-            )
+        if not preds:
+            return
+        rows = [
+            (p.id, p.root_expr_id, p.text_form, p.z3_form,
+             p.bdd_serialized, json.dumps(p.config_macros, ensure_ascii=False),
+             int(p.is_unconditional), int(p.is_contradictory))
+            for p in preds
+        ]
+        conn.executemany(
+            "INSERT OR REPLACE INTO config_predicates "
+            "(id, root_expr_id, text_form, z3_form, bdd_serialized, "
+            " config_macros, is_unconditional, is_contradictory) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            rows
+        )
 
     def _write_conditions(self, conn: sqlite3.Connection,
                           conds: List[ConditionRecord]) -> None:
-        for c in conds:
-            conn.execute(
-                "INSERT OR REPLACE INTO conditions "
-                "(id, root_expr_id, kind, operator, left_expr_id, right_expr_id, "
-                " text_form, z3_form, attrs) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (c.id, c.root_expr_id, c.kind, c.operator,
-                 c.left_expr_id, c.right_expr_id, c.text_form, c.z3_form,
-                 json.dumps(c.attrs, ensure_ascii=False))
-            )
+        if not conds:
+            return
+        rows = [
+            (c.id, c.root_expr_id, c.kind, c.operator,
+             c.left_expr_id, c.right_expr_id, c.text_form, c.z3_form,
+             json.dumps(c.attrs, ensure_ascii=False))
+            for c in conds
+        ]
+        conn.executemany(
+            "INSERT OR REPLACE INTO conditions "
+            "(id, root_expr_id, kind, operator, left_expr_id, right_expr_id, "
+            " text_form, z3_form, attrs) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rows
+        )
 
     def _write_nodes(self, conn: sqlite3.Connection, nodes: List[NodeRecord]) -> None:
+        if not nodes:
+            return
+        rows = []
         for n in nodes:
-            # Denormalize signature/body_text from attrs for FTS5 external content
             signature = n.attrs.get("signature", "") if n.attrs else ""
             body_text = n.attrs.get("body_text", "") if n.attrs else ""
-            conn.execute(
-                "INSERT OR REPLACE INTO cgdb_nodes "
-                "(id, kind, name, fqn, file_id, line, col, byte_start, byte_end, "
-                " type_spelling, type_id, config_predicate_id, enclosing_symbol_id, "
-                " signature, body_text, source_snippet, "
-                " attrs, source_layer, confidence, first_seen_version, "
-                " last_seen_version, commit_hash, legacy_function_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (n.id, n.kind, n.name, n.fqn, n.file_id, n.line, n.col,
-                 n.byte_start, n.byte_end, n.type_spelling, n.type_id,
-                 n.config_predicate_id, n.enclosing_symbol_id,
-                 signature, body_text, n.source_snippet,
-                 json.dumps(n.attrs, ensure_ascii=False, default=str),
-                 n.source_layer, n.confidence,
-                 n.first_seen_version, n.last_seen_version,
-                 n.commit_hash, n.legacy_function_id)
-            )
+            rows.append((
+                n.id, n.kind, n.name, n.fqn, n.file_id, n.line, n.col,
+                n.byte_start, n.byte_end, n.type_spelling, n.type_id,
+                n.config_predicate_id, n.enclosing_symbol_id,
+                signature, body_text, n.source_snippet,
+                json.dumps(n.attrs, ensure_ascii=False, default=str),
+                n.source_layer, n.confidence,
+                n.first_seen_version, n.last_seen_version,
+                n.commit_hash, n.legacy_function_id,
+            ))
+        conn.executemany(
+            "INSERT OR REPLACE INTO cgdb_nodes "
+            "(id, kind, name, fqn, file_id, line, col, byte_start, byte_end, "
+            " type_spelling, type_id, config_predicate_id, enclosing_symbol_id, "
+            " signature, body_text, source_snippet, "
+            " attrs, source_layer, confidence, first_seen_version, "
+            " last_seen_version, commit_hash, legacy_function_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rows
+        )
 
     def _write_edges(self, conn: sqlite3.Connection, edges: List[EdgeRecord]) -> None:
+        if not edges:
+            return
+        with_id = []
+        without_id = []
         for e in edges:
-            # If edge_id is set, use it as the primary key (deterministic ID).
-            # Otherwise, let SQLite AUTOINCREMENT assign one.
+            attrs_json = json.dumps(e.attrs, ensure_ascii=False, default=str)
             if e.edge_id is not None:
-                conn.execute(
-                    "INSERT OR REPLACE INTO cgdb_edges "
-                    "(id, src_id, dst_id, kind, file_id, line, col, byte_start, byte_end, "
-                    " condition_id, config_predicate_id, enclosing_symbol_id, attrs, "
-                    " source_layer, confidence, first_seen_version, "
-                    " last_seen_version, commit_hash) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (e.edge_id, e.src_id, e.dst_id, e.kind, e.file_id, e.line, e.col,
-                     e.byte_start, e.byte_end, e.condition_id,
-                     e.config_predicate_id, e.enclosing_symbol_id,
-                     json.dumps(e.attrs, ensure_ascii=False, default=str),
-                     e.source_layer, e.confidence,
-                     e.first_seen_version, e.last_seen_version, e.commit_hash)
-                )
+                with_id.append((
+                    e.edge_id, e.src_id, e.dst_id, e.kind, e.file_id, e.line, e.col,
+                    e.byte_start, e.byte_end, e.condition_id,
+                    e.config_predicate_id, e.enclosing_symbol_id, attrs_json,
+                    e.source_layer, e.confidence,
+                    e.first_seen_version, e.last_seen_version, e.commit_hash,
+                ))
             else:
-                conn.execute(
-                    "INSERT OR REPLACE INTO cgdb_edges "
-                    "(src_id, dst_id, kind, file_id, line, col, byte_start, byte_end, "
-                    " condition_id, config_predicate_id, enclosing_symbol_id, attrs, "
-                    " source_layer, confidence, first_seen_version, "
-                    " last_seen_version, commit_hash) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (e.src_id, e.dst_id, e.kind, e.file_id, e.line, e.col,
-                     e.byte_start, e.byte_end, e.condition_id,
-                     e.config_predicate_id, e.enclosing_symbol_id,
-                     json.dumps(e.attrs, ensure_ascii=False, default=str),
-                     e.source_layer, e.confidence,
-                     e.first_seen_version, e.last_seen_version, e.commit_hash)
-                )
+                without_id.append((
+                    e.src_id, e.dst_id, e.kind, e.file_id, e.line, e.col,
+                    e.byte_start, e.byte_end, e.condition_id,
+                    e.config_predicate_id, e.enclosing_symbol_id, attrs_json,
+                    e.source_layer, e.confidence,
+                    e.first_seen_version, e.last_seen_version, e.commit_hash,
+                ))
+        if with_id:
+            conn.executemany(
+                "INSERT OR REPLACE INTO cgdb_edges "
+                "(id, src_id, dst_id, kind, file_id, line, col, byte_start, byte_end, "
+                " condition_id, config_predicate_id, enclosing_symbol_id, attrs, "
+                " source_layer, confidence, first_seen_version, "
+                " last_seen_version, commit_hash) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                with_id
+            )
+        if without_id:
+            conn.executemany(
+                "INSERT OR REPLACE INTO cgdb_edges "
+                "(src_id, dst_id, kind, file_id, line, col, byte_start, byte_end, "
+                " condition_id, config_predicate_id, enclosing_symbol_id, attrs, "
+                " source_layer, confidence, first_seen_version, "
+                " last_seen_version, commit_hash) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                without_id
+            )
 
     def _write_basic_blocks(self, conn: sqlite3.Connection,
                             blocks: List[BasicBlockRecord]) -> None:
-        for b in blocks:
-            conn.execute(
-                "INSERT OR REPLACE INTO basic_blocks "
-                "(id, function_id, block_index, is_entry, is_exit, "
-                " stmt_ids, byte_start, byte_end) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (b.id, b.function_id, b.block_index,
-                 int(b.is_entry), int(b.is_exit),
-                 json.dumps(b.stmt_ids), b.byte_start, b.byte_end)
-            )
+        if not blocks:
+            return
+        rows = [
+            (b.id, b.function_id, b.block_index,
+             int(b.is_entry), int(b.is_exit),
+             json.dumps(b.stmt_ids), b.byte_start, b.byte_end)
+            for b in blocks
+        ]
+        conn.executemany(
+            "INSERT OR REPLACE INTO basic_blocks "
+            "(id, function_id, block_index, is_entry, is_exit, "
+            " stmt_ids, byte_start, byte_end) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            rows
+        )
 
     def _write_cfg_edges(self, conn: sqlite3.Connection,
                          edges: List[CFGEdgeRecord]) -> None:
-        for e in edges:
-            conn.execute(
-                "INSERT INTO cfg_edges "
-                "(function_id, src_block_id, dst_block_id, kind, condition_id) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (e.function_id, e.src_block_id, e.dst_block_id,
-                 e.kind, e.condition_id)
-            )
+        if not edges:
+            return
+        rows = [
+            (e.function_id, e.src_block_id, e.dst_block_id,
+             e.kind, e.condition_id)
+            for e in edges
+        ]
+        conn.executemany(
+            "INSERT INTO cfg_edges "
+            "(function_id, src_block_id, dst_block_id, kind, condition_id) "
+            "VALUES (?, ?, ?, ?, ?)",
+            rows
+        )
 
     def _write_data_flow(self, conn: sqlite3.Connection,
                          flows: List[DataFlowRecord]) -> None:
-        for f in flows:
-            conn.execute(
-                "INSERT INTO data_flow "
-                "(function_id, var_id, def_block_id, def_stmt_id, "
-                " use_block_id, use_stmt_id, kind, path_condition_ids) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (f.function_id, f.var_id, f.def_block_id, f.def_stmt_id,
-                 f.use_block_id, f.use_stmt_id, f.kind,
-                 json.dumps(f.path_condition_ids))
-            )
+        if not flows:
+            return
+        rows = [
+            (f.function_id, f.var_id, f.def_block_id, f.def_stmt_id,
+             f.use_block_id, f.use_stmt_id, f.kind,
+             json.dumps(f.path_condition_ids))
+            for f in flows
+        ]
+        conn.executemany(
+            "INSERT INTO data_flow "
+            "(function_id, var_id, def_block_id, def_stmt_id, "
+            " use_block_id, use_stmt_id, kind, path_condition_ids) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            rows
+        )
 
     def _write_alias_sets(self, conn: sqlite3.Connection,
                           aliases: List[AliasSetRecord]) -> None:
-        for a in aliases:
-            conn.execute(
-                "INSERT OR IGNORE INTO alias_sets "
-                "(ptr1_node_id, ptr2_node_id, kind, confidence) "
-                "VALUES (?, ?, ?, ?)",
-                (a.ptr1_node_id, a.ptr2_node_id, a.kind, a.confidence)
-            )
+        if not aliases:
+            return
+        rows = [
+            (a.ptr1_node_id, a.ptr2_node_id, a.kind, a.confidence)
+            for a in aliases
+        ]
+        conn.executemany(
+            "INSERT OR IGNORE INTO alias_sets "
+            "(ptr1_node_id, ptr2_node_id, kind, confidence) "
+            "VALUES (?, ?, ?, ?)",
+            rows
+        )
 
     def _write_invoke_sites(self, conn: sqlite3.Connection,
                             sites: List[InvokeSiteRecord]) -> None:
-        for s in sites:
-            conn.execute(
-                "INSERT INTO invoke_sites "
-                "(invoker_id, invoked_id, invoke_expr_id, arg_bindings, "
-                " invoke_kind, dispatch_candidates) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (s.invoker_id, s.invoked_id, s.invoke_expr_id,
-                 json.dumps(s.arg_bindings, default=str),
-                 s.invoke_kind,
-                 json.dumps(s.dispatch_candidates))
-            )
+        if not sites:
+            return
+        rows = [
+            (s.invoker_id, s.invoked_id, s.invoke_expr_id,
+             json.dumps(s.arg_bindings, default=str),
+             s.invoke_kind,
+             json.dumps(s.dispatch_candidates))
+            for s in sites
+        ]
+        conn.executemany(
+            "INSERT INTO invoke_sites "
+            "(invoker_id, invoked_id, invoke_expr_id, arg_bindings, "
+            " invoke_kind, dispatch_candidates) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            rows
+        )
 
     def _write_ops_bindings(self, conn: sqlite3.Connection,
                             bindings: List[OpsBindingRecord]) -> None:
-        for b in bindings:
-            conn.execute(
-                "INSERT OR REPLACE INTO ops_bindings "
-                "(edge_id, ops_table_id, field_node_id, impl_function_id, "
-                " signature_match) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (b.edge_id, b.ops_table_id, b.field_node_id,
-                 b.impl_function_id, int(b.signature_match))
-            )
+        if not bindings:
+            return
+        rows = [
+            (b.edge_id, b.ops_table_id, b.field_node_id,
+             b.impl_function_id, int(b.signature_match))
+            for b in bindings
+        ]
+        conn.executemany(
+            "INSERT OR REPLACE INTO ops_bindings "
+            "(edge_id, ops_table_id, field_node_id, impl_function_id, "
+            " signature_match) "
+            "VALUES (?, ?, ?, ?, ?)",
+            rows
+        )
 
     def _write_sync_primitives(self, conn: sqlite3.Connection,
                                 prims: List[SyncPrimitiveRecord]) -> None:
-        for s in prims:
-            conn.execute(
-                "INSERT INTO sync_primitives "
-                "(function_id, sync_var_id, kind, acquire_stmt_id, "
-                " release_stmt_id, memory_order) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (s.function_id, s.sync_var_id, s.kind,
-                 s.acquire_stmt_id, s.release_stmt_id, s.memory_order)
-            )
+        if not prims:
+            return
+        rows = [
+            (s.function_id, s.sync_var_id, s.kind,
+             s.acquire_stmt_id, s.release_stmt_id, s.memory_order)
+            for s in prims
+        ]
+        conn.executemany(
+            "INSERT INTO sync_primitives "
+            "(function_id, sync_var_id, kind, acquire_stmt_id, "
+            " release_stmt_id, memory_order) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            rows
+        )
 
     def _write_happens_before(self, conn: sqlite3.Connection,
                               hbs: List[HappensBeforeRecord]) -> None:
-        for h in hbs:
-            conn.execute(
-                "INSERT INTO happens_before "
-                "(write_event_id, read_event_id, reason, confidence) "
-                "VALUES (?, ?, ?, ?)",
-                (h.write_event_id, h.read_event_id, h.reason, h.confidence)
-            )
+        if not hbs:
+            return
+        rows = [
+            (h.write_event_id, h.read_event_id, h.reason, h.confidence)
+            for h in hbs
+        ]
+        conn.executemany(
+            "INSERT INTO happens_before "
+            "(write_event_id, read_event_id, reason, confidence) "
+            "VALUES (?, ?, ?, ?)",
+            rows
+        )
 
     def _write_includes(self, conn: sqlite3.Connection,
                         includes: List[IncludeRecord]) -> None:
-        for inc in includes:
-            conn.execute(
-                "INSERT INTO cgdb_includes "
-                "(source_file_id, included_file_id, included_path, is_system) "
-                "VALUES (?, ?, ?, ?)",
-                (inc.source_file_id, inc.included_file_id,
-                 inc.included_path, int(inc.is_system))
-            )
+        if not includes:
+            return
+        rows = [
+            (inc.source_file_id, inc.included_file_id,
+             inc.included_path, int(inc.is_system))
+            for inc in includes
+        ]
+        conn.executemany(
+            "INSERT INTO cgdb_includes "
+            "(source_file_id, included_file_id, included_path, is_system) "
+            "VALUES (?, ?, ?, ?)",
+            rows
+        )
 
     def _write_doc_comments(self, conn: sqlite3.Connection,
                              doc_comments: List["DocCommentRecord"]) -> None:
+        if not doc_comments:
+            return
+        rows = []
         for dc in doc_comments:
             try:
                 tags_json = json.dumps(dc.tags, ensure_ascii=False)
             except Exception:
                 tags_json = "{}"
-            conn.execute(
-                "INSERT INTO doc_comments "
-                "(node_id, file_id, line, col, comment_kind, raw_text, "
-                " cleaned_text, tags, byte_start, byte_end) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (dc.node_id, dc.file_id, dc.line, dc.col,
-                 dc.comment_kind, dc.raw_text, dc.cleaned_text,
-                 tags_json, dc.byte_start, dc.byte_end)
-            )
+            rows.append((
+                dc.node_id, dc.file_id, dc.line, dc.col,
+                dc.comment_kind, dc.raw_text, dc.cleaned_text,
+                tags_json, dc.byte_start, dc.byte_end,
+            ))
+        conn.executemany(
+            "INSERT INTO doc_comments "
+            "(node_id, file_id, line, col, comment_kind, raw_text, "
+            " cleaned_text, tags, byte_start, byte_end) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rows
+        )
 
     def _write_metadata(self, conn: sqlite3.Connection,
                          metadata: List["MetadataRecord"]) -> None:
+        if not metadata:
+            return
+        edge_rows = []
+        node_rows = []
         for m in metadata:
+            row = (m.target_id, m.key, m.value, m.value_type, m.source)
             if m.target_kind == 'edge':
-                conn.execute(
-                    "INSERT OR REPLACE INTO edge_metadata "
-                    "(edge_id, key, value, value_type, source) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (m.target_id, m.key, m.value, m.value_type, m.source)
-                )
+                edge_rows.append(row)
             else:
                 # Default to node_metadata for 'node', 'file', 'type'
-                conn.execute(
-                    "INSERT OR REPLACE INTO node_metadata "
-                    "(node_id, key, value, value_type, source) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (m.target_id, m.key, m.value, m.value_type, m.source)
-                )
+                node_rows.append(row)
+        if edge_rows:
+            conn.executemany(
+                "INSERT OR REPLACE INTO edge_metadata "
+                "(edge_id, key, value, value_type, source) "
+                "VALUES (?, ?, ?, ?, ?)",
+                edge_rows
+            )
+        if node_rows:
+            conn.executemany(
+                "INSERT OR REPLACE INTO node_metadata "
+                "(node_id, key, value, value_type, source) "
+                "VALUES (?, ?, ?, ?, ?)",
+                node_rows
+            )
 
 
 # ============================================================================

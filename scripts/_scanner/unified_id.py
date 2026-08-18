@@ -23,6 +23,7 @@ the language prefix prevents cross-language collisions while keeping
 IDs stable across scans.
 """
 import hashlib
+from functools import lru_cache
 from typing import Optional
 
 
@@ -30,6 +31,7 @@ from typing import Optional
 _AST_NODE_MASK = 0x7FFF_FFFF_FFFF_FFFF
 
 
+@lru_cache(maxsize=200_000)
 def unified_node_id(language: str, fqn: str,
                      signature: str = "",
                      byte_offset: Optional[int] = None) -> int:
@@ -47,7 +49,6 @@ def unified_node_id(language: str, fqn: str,
     """
     if not fqn and byte_offset is None:
         return 0
-    # Build a "USR equivalent" string: lang|fqn|sig|offset
     parts = [language, fqn or '']
     if signature:
         parts.append(f'sig:{signature}')
@@ -58,6 +59,7 @@ def unified_node_id(language: str, fqn: str,
     return int(h, 16) & _AST_NODE_MASK
 
 
+@lru_cache(maxsize=500_000)
 def unified_edge_id(src_id: int, dst_id: int, kind: str,
                      line: Optional[int] = None) -> int:
     """Compute a stable cross-language edge ID.
@@ -78,6 +80,16 @@ def unified_edge_id(src_id: int, dst_id: int, kind: str,
     src = '|'.join(parts)
     h = hashlib.sha256(src.encode('utf-8')).hexdigest()[:16]
     return int(h, 16) & _AST_NODE_MASK
+
+
+def clear_id_caches() -> None:
+    """Clear the LRU caches. Call between scan_file() invocations when
+    reusing the same scanner process for unrelated codebases (e.g., in
+    long-running MCP server mode). For one-shot scan_directory() runs,
+    caches naturally die with the process.
+    """
+    unified_node_id.cache_clear()
+    unified_edge_id.cache_clear()
 
 
 # ---- Language-specific helpers ----
@@ -122,6 +134,7 @@ def asm_node_id(filepath: str, label: str,
 
 # ---- File ID (shared across languages) ----
 
+@lru_cache(maxsize=50_000)
 def unified_file_id(filepath: str) -> int:
     """Compute a stable file ID from a file path.
 

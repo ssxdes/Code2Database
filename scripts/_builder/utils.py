@@ -804,3 +804,13 @@ def _make_call_graph(G: nx.DiGraph, skip_file_nodes: bool = False) -> nx.DiGraph
     return call_G
 
 
+# Re-export line lookup helpers from the standalone line_utils module
+# (which doesn't depend on networkx), so legacy callers that imported
+# them from _builder.utils continue to work.
+from _builder.line_utils import (  # noqa: E402
+    build_line_starts,
+    line_for_offset,
+    lines_for_matches,
+)
+
+

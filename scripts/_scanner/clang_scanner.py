@@ -553,6 +553,9 @@ class ClangScanner(BaseScanner):
             })
             return nid
 
+        # Set-based type de-duplication.
+        _seen_type_ids: set = set()
+
         def add_type(cursor) -> int:
             """Insert a type record for the cursor's type. Returns type_id."""
             try:
@@ -566,9 +569,9 @@ class ClangScanner(BaseScanner):
                     canonical = spelling
                 usr = cursor.get_usr() or spelling
                 tid = cgdb_node_id(usr, spelling)
-                # De-dup types by id
-                if any(ct['id'] == tid for ct in cgdb_types):
+                if tid in _seen_type_ids:
                     return tid
+                _seen_type_ids.add(tid)
                 kind_str = 'builtin'
                 try:
                     kind_map = {

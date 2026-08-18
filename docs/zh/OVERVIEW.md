@@ -70,21 +70,47 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 
 ### 为什么是 cgdb（代码图数据库）层
 
-遗留图（`functions` + `edges` 表）回答"谁调用谁"。cgdb 层增加 13 张强类型语义表，回答遗留图无法回答的问题：
+> **命名澄清（v4+）**：下方 cgdb 层命名（CGDB-L0 至 CGDB-L11 + FTS）**与**设计报告 `C代码数据库化方案-分析与执行报告.md` 中的 L1~L4 层**是不同概念**：
+> - **报告 L1**（无损重建层）：`tokens` / `macros` / `macro_invocations` / `pp_branches` / `pp_directives` / `pragmas` / `attributes` / `literals` / `string_literals` / `comments` —— schema v4 新增
+> - **报告 L2**（AST 层）：`symbols` / `ast_nodes` / `references` / `call_edges` / `includes` / `globals` / `types` / `modules` —— 部分由 `cgdb_nodes` / `cgdb_edges` / `cgdb_types` / `cgdb_includes` 覆盖
+> - **报告 L3**（IR 层）：`ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` —— schema v4 新增（LLVM Pass + SVF 集成属于 P1，见 `ir_adapters.py`）
+> - **报告 L4**（派生层）：`call_graph_reachability` / `module_deps` / `function_embeddings` / `precise_write_sets` / `arch_metrics` / `history_snapshots` / `alignment_errors` —— schema v4 新增
+> - **报告多库**：`db_routing` / `precompute_tasks` —— schema v4 新增（路由层未实现，属 P1）
+> - **报告跨语言**：`cross_lang_bindings` / `type_mappings` / `ffi_call_sites` / `language_adapters` / `runtime_observations` / `dependencies` —— schema v4 新增
+>
+> 下方遗留 cgdb 层（CGDB-L0 至 CGDB-L11）是 clang 后端填充的原始语义表分层；上述报告层是附加（与遗留表共存于同一个 SQLite 数据库）。完整差距矩阵见 `report/Code2Database-最终差距分析与优化报告.md`。
 
-| 层 | 表 | 回答 |
-|----|----|------|
-| L1 | `cgdb_nodes` | 多种类一等节点（function/method/ctor/dtor/var/parm/field/struct/class/enum/stmt/expr/label/namespace/template/concept/file/macro/include/vtable/ops_table） |
-| L2 | `cgdb_types` | 独立类型系统，含 size/alignment/const/volatile/pointee |
-| L3 | `conditions` | Z3 可判定的布尔表达式树 |
-| L3.5 | `config_predicates` | `#ifdef` 谓词树（BDD + Z3 形式），跨语言（Go `//go:build`、Rust `#[cfg]`、Python `sys.platform`、Java `@Profile`、ASM/C `#ifdef`） |
-| L4 | `basic_blocks` + `cfg_edges` | 控制流图 |
-| L5 | `data_flow` + `alias_sets` | def-use 链 + 指针别名 |
-| L7 | `invoke_sites` + `ops_bindings` | 调用点精化 + 强类型 vtable 分发（FieldDecl → FunctionDecl） |
-| L8 | `sync_primitives` + `happens_before` | 并发 + 内存模型 |
-| L10 | `graph_versions` | 每提交快照，支持时间旅行查询 |
+遗留图（`functions` + `edges` 表）回答"谁调用谁"。cgdb 层增加强类型语义表，回答遗留图无法回答的问题：
 
-这些表由 clang 后端填充，由 18 个 `cgdb_*` MCP 工具查询。它们与遗留表共存于同一个 SQLite 数据库（`code2database.db`）。
+| CGDB 层 | 表 | 回答 |
+|---------|----|------|
+| CGDB-L0 | `graph_versions` | 每提交快照，支持时间旅行查询 |
+| CGDB-L1 | `cgdb_nodes`、`cgdb_files` | 多种类一等节点（function/method/ctor/dtor/var/parm/field/struct/class/enum/stmt/expr/label/namespace/template/concept/file/macro/include/vtable/ops_table）+ 文件注册表 |
+| CGDB-L2 | `cgdb_types` | 独立类型系统，含 size/alignment/const/volatile/pointee |
+| CGDB-L3 | `conditions` | Z3 可判定的布尔表达式树 |
+| CGDB-L3.5 | `config_predicates` | `#ifdef` 谓词树（BDD + Z3 形式），跨语言（Go `//go:build`、Rust `#[cfg]`、Python `sys.platform`、Java `@Profile`、ASM/C `#ifdef`） |
+| CGDB-L4 | `basic_blocks` + `cfg_edges` | 控制流图 |
+| CGDB-L5 | `data_flow` + `alias_sets` | def-use 链 + 指针别名（alias_sets 是启发式 stub；报告 L3 的 `ssa_values`/`points_to`/`indirect_calls` 是完整版） |
+| CGDB-L6 | （alias —— 见 CGDB-L5 / 报告 L3） | （为通过 SVF 的完整别名分析预留；当前在 CGDB-L5 `alias_sets` 表） |
+| CGDB-L7 | `invoke_sites` + `ops_bindings` | 调用点精化 + 强类型 vtable 分发（FieldDecl → FunctionDecl） |
+| CGDB-L8 | `sync_primitives` + `happens_before` | 并发 + 内存模型 |
+| CGDB-L9 | `cgdb_includes` | `#include` 依赖图，用于增量同步 |
+| CGDB-L10 | `doc_comments` + `graph_versions` | 文档注释 + 时间旅行版本查询 |
+| CGDB-L11 | `node_metadata` + `edge_metadata` | 按 target 的类型化键元数据 |
+| FTS | `nodes_fts` | 对 cgdb_nodes 的全文搜索（FTS5 external-content） |
+
+加上设计报告 v4 层（附加，当完整工具链安装时由 `ir_adapters.py` 和 `source_renderer.py` 填充）：
+
+| 报告层 | 表（v4） | 填充者 |
+|--------|----------|--------|
+| 报告 L1 | `tokens` / `macros` / `macro_invocations` / `pp_branches` / `pp_directives` / `pragmas` / `attributes` / `literals` / `string_literals` / `comments_freeform` + `comments_fts` | `l1_ingest.py`（P1，待实现）—— libclang Lexer raw_tokens + PPCallbacks 模拟 |
+| 报告 L2 | （由 cgdb_nodes/edges/types/includes 覆盖） | 现有扫描器 |
+| 报告 L3 | `ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` | `ir_adapters.py`（P1 —— LLVMIRAdapter/JimpleIRAdapter/等） |
+| 报告 L4 | `call_graph_reachability` / `module_deps` / `function_embeddings` / `precise_write_sets` / `arch_metrics` / `history_snapshots` / `alignment_errors` | `l4_derive.py`（P1，待实现）—— 预计算任务 |
+| 报告多库 | `db_routing` / `precompute_tasks` | `db_router.py`（P1，待实现） |
+| 报告跨语言 | `cross_lang_bindings` / `type_mappings` / `ffi_call_sites` / `language_adapters` / `runtime_observations` / `dependencies` | `ffi_bridge.py`（现有）+ `ir_adapters.py` |
+
+这些表由 clang 后端填充（遗留 cgdb 层）和 IR/L1/L4 流水线填充（报告层）。它们由 18 个 `cgdb_*` MCP 工具（遗留）+ 28 个设计报告 MCP 工具（`render_source` / `verify_consistency` / `edit_token` / `find_symbol` / `callers_of` / `indirect_targets` / `commit_db_transaction` / 等）查询。所有表共存于同一个 SQLite 数据库（`code2database.db`）。
 
 ### 为什么需要事务性更新
 

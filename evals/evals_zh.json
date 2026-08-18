@@ -1,22 +1,306 @@
 {
   "skill_name": "Code2Database",
+  "lang": "zh",
   "evals": [
     {
       "id": 1,
-      "prompt": "扫描 /tmp/code2db_test 这个目录，生成调用关系图，然后告诉我bdev_start函数的完整调用链，包括调用条件和调用顺序",
-      "expected_output": "应该扫描C/Go/Python/Java/Rust多语言代码，构建code2db-out/，然后通过builder脚本查询bdev_start的调用链。应该正确标注pthread_create为thread_processor标签，if(mode==1)条件下的bdev_register和bdev_open，以及else分支的bdev_close。调用顺序需要正确编号。",
+      "category": "multilang_baseline",
+      "prompt": "扫描 /tmp/code2db_test 目录，生成调用图，并告诉我 bdev_start 函数的完整调用链，包括调用条件和调用顺序",
+      "expected_output": "应扫描 C/Go/Python/Java/Rust 多语言代码，构建 code2db-out/，然后通过 builder 脚本查询 bdev_start 的调用链。应正确标注 pthread_create 为 thread_processor 标签、if(mode==1) 条件 bdev_register 和 bdev_open、else 分支 bdev_close。调用顺序编号必须正确。",
       "files": []
     },
     {
       "id": 2,
-      "prompt": "我有一个Go项目在 /tmp/code2db_test/go，帮我生成调用关系图，找出Handler.ServeHTTP方法的条件调用路径",
-      "expected_output": "应该扫描Go代码，识别method_declaration（Handler.ServeHTTP），提取if(h.authenticated)条件下的handleRequest和else分支的sendError，正确使用空节点聚合条件调用。应该标注call_condition和call_order。",
+      "category": "multilang_baseline",
+      "prompt": "我有一个 Go 项目位于 /tmp/code2db_test/go，生成调用图并找出 Handler.ServeHTTP 的条件调用路径",
+      "expected_output": "应扫描 Go 代码，识别 method_declaration（Handler.ServeHTTP），提取 if(h.authenticated) 条件 handleRequest 和 else 分支 sendError，正确使用空节点聚合。应标注 call_condition 和 call_order。",
       "files": []
     },
     {
       "id": 3,
-      "prompt": "扫描 /tmp/code2db_test/python 目录的Python代码，告诉我Server类中__init__到start的调用流程，哪些函数被标记了什么标签",
-      "expected_output": "应该扫描Python代码，识别class内方法（Server.__init__标记为constructor，Server.start检测到threading.Thread标记为thread_processor），追踪从__init__→_setup→load_config/init_routes的调用链，以及start→serve→listen的调用路径。应该正确标注调用顺序。",
+      "category": "multilang_baseline",
+      "prompt": "扫描 /tmp/code2db_test/python 目录的 Python 代码，告诉我从 Server.__init__ 到 start 的调用流，以及每个函数的标签",
+      "expected_output": "应扫描 Python 代码，识别类方法（Server.__init__ 标记为 constructor，Server.start 通过 threading.Thread 检测为 thread_processor），追踪 __init__→_setup→load_config/init_routes 调用链，以及 start→serve→listen 调用路径。应正确标注调用顺序。",
+      "files": []
+    },
+    {
+      "id": 4,
+      "category": "bug_localization",
+      "prompt": "在已扫描的 C 项目中，module_x.c 的 process_request 函数第 142 行报告 NULL 指针解引用。使用代码图反向追踪所有从 API 入口到该崩溃点的路径，并识别导致 NULL 的条件分支。",
+      "expected_output": "应使用 reverse-trace 命令查找所有从 API_entry 函数到 process_request 第 142 行的路径。应识别允许 NULL 到达解引用的条件分支（如 if(ptr != NULL) 的 else 路径）。必须标注每条路径的 call_condition。",
+      "files": []
+    },
+    {
+      "id": 5,
+      "category": "bug_localization",
+      "prompt": "resource.c 第 78 行 free_resource() 报告 double-free。从 free_resource 反向追踪找出哪些调用者在同一条执行路径上调用了两次，并识别竞争窗口（如有）。",
+      "expected_output": "应使用 reverse-trace 从 free_resource，找出通过不同路径调用两次的调用者，然后用 detect-races 检查两个线程是否能并发到达 free_resource。必须报告涉及的线程上下文。",
+      "files": []
+    },
+    {
+      "id": 6,
+      "category": "bug_localization",
+      "prompt": "validate_input() 在输入长度超过 MAX_SIZE 时断言失败。从 validate_input 正向追踪找出哪些入口点能以超长输入到达它，以及哪个条件守卫了大小检查。",
+      "expected_output": "应使用 trace-chain 从每个能到达 validate_input 的 API_entry，提取每个分支的 call_condition，并识别路径中缺失的 `if (len < MAX_SIZE)` 守卫。",
+      "files": []
+    },
+    {
+      "id": 7,
+      "category": "bug_localization",
+      "prompt": "使用代码图找出内存泄漏根因：alloc_buffer() 被调用但 release_buffer() 在某些路径上从未到达。识别跳过释放的条件分支。",
+      "expected_output": "应使用 trace-chain 从 alloc_buffer 到 release_buffer，然后用 path-feasible 验证每条路径。应识别 `if (error) return -1;` 分支跳过了 release_buffer()，并建议修复（将释放移到 return 之前）。",
+      "files": []
+    },
+    {
+      "id": 8,
+      "category": "bug_localization",
+      "prompt": "use-after-free：callback_fn() 在 cleanup_context() 释放 ctx 后访问 ctx->data。追踪 ctx 从分配到释放的数据流，并识别哪个回调发生在释放之后。",
+      "expected_output": "应使用 value-flow 追踪 ctx 从分配到释放，然后用 trace-chain 查找 callback_fn 调用，并通过 happens-before 检查时序。应识别回调注册发生在 cleanup_context 之后的程序序中。",
+      "files": []
+    },
+    {
+      "id": 9,
+      "category": "bug_localization",
+      "prompt": "process_messages() 在消息队列为空时报告死循环。使用代码图识别循环结构、退出条件，以及为什么能被绕过。",
+      "expected_output": "应使用 cfg-of process_messages 获取 CFG，识别回边（循环），通过 path-sensitive-states 检查退出条件。应发现 `while (msg = queue.pop())` 返回 NULL 但循环体未在解引用前检查 NULL。",
+      "files": []
+    },
+    {
+      "id": 10,
+      "category": "bug_localization",
+      "prompt": "calculate() 调用自身导致无限递归，引发栈溢出。找出哪个条件分支导致递归不终止。",
+      "expected_output": "应使用 cfg-of calculate 找到通过递归调用的自环，用 path-feasible 检查基本用例条件，识别 `if (n == 0) return 0;` 缺失或写错（如 `if (n = 0)` 赋值而非比较）。",
+      "files": []
+    },
+    {
+      "id": 11,
+      "category": "bug_localization",
+      "prompt": "线程 A 持有 L1 等待 L2、线程 B 持有 L2 等待 L1 时死锁。使用代码图识别所有同时获取 L1 和 L2 的函数，及各自的获取顺序。",
+      "expected_output": "应对 L1 和 L2 使用 who-locks，然后对每对 (L1-获取者, L2-获取者) 用 concurrency-analyze 查找锁获取顺序。必须报告至少 2 个顺序不同的函数，导致死锁。",
+      "files": []
+    },
+    {
+      "id": 12,
+      "category": "bug_localization",
+      "prompt": "buffer_write() 越界写入 1024 字节缓冲区末尾。追踪哪些调用者传入 size=1024，并识别缺失的边界检查。",
+      "expected_output": "应使用 param-flow 追踪 size=1024 从调用者到 buffer_write，然后用 cfg-of buffer_write 找到循环 `for (i=0; i<=size; i++)`（off-by-one）。建议修复：将 `<=` 改为 `<`。",
+      "files": []
+    },
+    {
+      "id": 13,
+      "category": "bug_localization",
+      "prompt": "deref_pointer() 在以 NULL 调用时发生 SIGSEGV。找出哪个条件路径允许 NULL 到达 deref_pointer，以及哪些调用者未检查分配函数的返回值。",
+      "expected_output": "应使用 reverse-trace 从 deref_pointer，识别传入 malloc() 返回指针但未做 NULL 检查的调用者，用 trace-chain 找到允许 NULL 的条件路径 `if (alloc_failed) { deref_pointer(ptr); }`。",
+      "files": []
+    },
+    {
+      "id": 14,
+      "category": "feature_implementation",
+      "prompt": "实现新函数 bdev_submit_io()，提交 I/O 请求到块设备。它应调用 bdev_acquire_lock() → bdev_validate_request() → bdev_queue_io() → bdev_release_lock()。添加到代码图并验证调用链。",
+      "expected_output": "应使用 add_function MCP 工具插入新函数，然后 commit_db_transaction 渲染并写盘。应重新扫描并验证 trace-chain 输出中出现新链。每步必须标注 call_order。",
+      "files": []
+    },
+    {
+      "id": 15,
+      "category": "feature_implementation",
+      "prompt": "为 process_request() 添加新错误处理路径：当 validate_input() 返回 -1 时，调用 log_error() 并返回 -EINVAL。修改代码图中现有条件分支。",
+      "expected_output": "应使用 edit_token 或 insert_node_after 添加新分支，然后 commit_db_transaction。应验证 resolve-chain 输出中出现新分支且 call_condition 注释正确。",
+      "files": []
+    },
+    {
+      "id": 16,
+      "category": "feature_implementation",
+      "prompt": "实现新回调注册函数 register_notifier()，接收函数指针并存入全局通知表。添加到代码图并验证回调派发边。",
+      "expected_output": "应通过 add_function 添加函数，在 profile 中注册回调模式，重新扫描，并验证从 register_notifier 到注册函数的 callback_dispatch 边。还应更新 vtable_dispatch 检测。",
+      "files": []
+    },
+    {
+      "id": 17,
+      "category": "feature_implementation",
+      "prompt": "在 process_request() 中实现 #ifdef CONFIG_DEBUG 新路径，在开头调用 debug_trace()。修改代码图中的条件编译分支并验证该路径仅在 CONFIG_DEBUG 下存在。",
+      "expected_output": "应在 #ifdef CONFIG_DEBUG 块中插入新调用，标注 preproc_alive，用 -DCONFIG_DEBUG 重新扫描，并验证 extract-signals + resolve-chain --bindings 中出现新边。",
+      "files": []
+    },
+    {
+      "id": 18,
+      "category": "feature_implementation",
+      "prompt": "在 start_workers() 中新增线程 spawn，调用 worker_main()。更新代码图并验证 worker_main 被标注 thread_processor。",
+      "expected_output": "应使用 insert_node_after 在 start_workers 中添加 pthread_create(&tid, NULL, worker_main, NULL)，重新扫描，并验证 worker_main 有 thread_processor 标签。还应验证 concurrency-analyze 标记了新线程。",
+      "files": []
+    },
+    {
+      "id": 19,
+      "category": "feature_implementation",
+      "prompt": "为 struct device_ops 实现新 vtable 派发，含字段 .init、.read、.write、.deinit。添加结构体定义和注册点，然后验证 ops_bindings 检测到类型派发。",
+      "expected_output": "应使用 add_function + insert_node_after 添加 struct + 注册，用 clang 后端重新扫描，并验证 cgdb_find_ops_impls 返回新 ops 表的四个实现函数。signature_match 应为 true。",
+      "files": []
+    },
+    {
+      "id": 20,
+      "category": "feature_implementation",
+      "prompt": "从 server.py 添加 Python ctypes FFI 调用 hash.c 中的 C 函数 compute_hash()。验证代码图中检测到 FFI 绑定。",
+      "expected_output": "应添加 Python 中 ctypes.CDLL 调用和 C 函数，重新扫描，并验证 ffi-detect 找到绑定。应验证 ffi-trace 显示跨语言调用链、ffi-types 报告类型 marshal。",
+      "files": []
+    },
+    {
+      "id": 21,
+      "category": "feature_implementation",
+      "prompt": "实现新锁获取模式：rcu_read_lock() → access_shared_data() → rcu_read_unlock()。添加到现有函数 read_shared() 并验证检测到 happens-before 关系。",
+      "expected_output": "应编辑 read_shared 添加 RCU 模式，用 clang 后端重新扫描，并验证 cgdb_find_lock_held_calls 返回 read_shared 为持锁调用者。应验证 RCU 临界区到后续读取的 happens-before 边。",
+      "files": []
+    },
+    {
+      "id": 22,
+      "category": "feature_implementation",
+      "prompt": "添加新 Go cgo FFI 调用，从 Go 函数 HandleData() 调用 C 函数 process_buffer()。验证代码图中的跨语言边。",
+      "expected_output": "应添加 cgo 声明和调用，重新扫描，并验证 ffi-detect 识别绑定。应验证 ffi-trace 显示 Go → C 跨语言链且 marshal 正确。",
+      "files": []
+    },
+    {
+      "id": 23,
+      "category": "feature_implementation",
+      "prompt": "重构 process_request()，抽取辅助函数 validate_request() 处理输入验证。更新代码图反映新调用链。",
+      "expected_output": "应使用 add_function 创建 validate_request，通过 edit_token 移动验证代码，然后 commit_db_transaction。应验证新链 process_request → validate_request → (验证助手)。",
+      "files": []
+    },
+    {
+      "id": 24,
+      "category": "concurrency_risk",
+      "prompt": "识别已扫描代码库中所有被多线程写入的全局变量。列出每个变量、写入函数，以及它们是否持锁。",
+      "expected_output": "应使用 field-access --kind write --global-only 列出写入者，然后对每个写入者用 who-locks 检查锁覆盖。应报告至少 3 个全局变量及其写入者和锁覆盖状态。",
+      "files": []
+    },
+    {
+      "id": 25,
+      "category": "concurrency_risk",
+      "prompt": "分析 start_worker_thread() 和 stop_worker_thread() 是否能在全局变量 worker_count 上竞争。若是，提出修复方案。",
+      "expected_output": "应使用 concurrency-analyze start_worker_thread stop_worker_thread，识别共享全局 worker_count，检查两者的 lock-coverage。应报告是否持锁，并在缺失时建议加 mutex 保护。",
+      "files": []
+    },
+    {
+      "id": 26,
+      "category": "concurrency_risk",
+      "prompt": "通过找出以不同顺序获取两把或以上锁的函数，检测代码库中所有潜在死锁。",
+      "expected_output": "应使用 concurrency-risks 列出所有风险点，筛选锁顺序问题。应报告至少 2 个锁获取顺序不一致的函数（如一个 L1→L2，另一个 L2→L1）。",
+      "files": []
+    },
+    {
+      "id": 27,
+      "category": "concurrency_risk",
+      "prompt": "识别代码库中所有 RCU 读侧临界区，并验证每个都有匹配的 rcu_read_unlock()。",
+      "expected_output": "应使用 cgdb_find_lock_held_calls --kind rcu_read_lock 列出所有 RCU 临界区，然后对每个用 lock-coverage 验证匹配的 unlock。应报告任何无匹配 unlock 的 rcu_read_lock。",
+      "files": []
+    },
+    {
+      "id": 28,
+      "category": "concurrency_risk",
+      "prompt": "检查 atomic_counter_update() 中的原子操作是否为跨线程 read-modify-write 模式提供足够内存序。",
+      "expected_output": "应使用 memory-ordering atomic_counter_update 识别原子操作（atomic_load/atomic_store/atomic_inc），检查 happens-before 关系，报告内存序是否正确（如 acquire/release vs relaxed）。",
+      "files": []
+    },
+    {
+      "id": 29,
+      "category": "data_flow_tracing",
+      "prompt": "追踪 user_id 参数从 handle_request() 沿调用链到 database_query() 的流向。识别沿途任何消毒或验证步骤。",
+      "expected_output": "应使用 param-flow --from handle_request --param user_id 追踪参数，然后用 value-flow 跟踪传播。应报告每个触及 user_id 的函数以及是否应用消毒。",
+      "files": []
+    },
+    {
+      "id": 30,
+      "category": "data_flow_tracing",
+      "prompt": "追踪从网络输入 recv_buffer 到 process_packet() 中使用的数据流。识别任何边界检查或拷贝操作验证输入。",
+      "expected_output": "应使用 value-flow --from recv_buffer --to process_packet，识别沿路径的 memcpy/边界检查。应报告长度验证是否在使用缓冲区前发生。",
+      "files": []
+    },
+    {
+      "id": 31,
+      "category": "data_flow_tracing",
+      "prompt": "识别所有读写全局变量 config_table 的函数。对每个写入者识别写入期间持有的锁。",
+      "expected_output": "应使用 who-reads config_table 和 who-writes config_table（或 field-access --global config_table）。对每个写入者用 who-locks 检查锁覆盖。应报告至少 2 个读者和 2 个写入者及其锁状态。",
+      "files": []
+    },
+    {
+      "id": 32,
+      "category": "data_flow_tracing",
+      "prompt": "追踪 parse_header() 返回 struct 到 process_body() 使用其字段的数据依赖链。验证所有字段在使用前已初始化。",
+      "expected_output": "应使用 data-dep --from parse_header --to process_body，然后对每个字段用 param-flow 检查初始化。应识别任何在某路径上未初始化就被读取的字段。",
+      "files": []
+    },
+    {
+      "id": 33,
+      "category": "data_flow_tracing",
+      "prompt": "识别所有到达 deref_pointer() 的 NULL 值来源。对每个来源识别允许 NULL 传播的条件路径。",
+      "expected_output": "应使用 value-flow --to deref_pointer --value NULL，找出所有可能返回 NULL 的 alloc-like 函数（malloc、calloc 等），追踪到 deref_pointer 的路径。应报告至少 2 个来源及缺失的 NULL 检查。",
+      "files": []
+    },
+    {
+      "id": 34,
+      "category": "macro_related",
+      "prompt": "找出代码库中所有展开为函数调用的宏定义。对每个宏，识别 macro_invocations 并验证展开的调用边 (MACRO_EXPANDS_TO) 在图中。",
+      "expected_output": "应使用 find_macros（新 L1 MCP 工具）列出所有函数式宏，然后对每个验证 macro_invocations 存在。应报告至少 3 个宏及其展开点和对应的 MACRO_EXPANDS_TO 边。",
+      "files": []
+    },
+    {
+      "id": 35,
+      "category": "macro_related",
+      "prompt": "找出所有条件编译分支 (#ifdef CONFIG_*) 并识别仅在特定 CONFIG 标志下存在的调用边。对每条边列出守卫它的 config_predicate。",
+      "expected_output": "应对每个文件用 get_pp_branches，然后用 extract-signals 获取 config 映射。应对每条边用 cgdb_find_configs_for 验证守卫。应报告至少 5 条受不同 CONFIG_* 标志守卫的边。",
+      "files": []
+    },
+    {
+      "id": 36,
+      "category": "macro_related",
+      "prompt": "识别所有 macro_dispatch 注册宏（如 DEFINE_OPERATION、REGISTER_HANDLER）并验证 callback_dispatch 边被正确解析。",
+      "expected_output": "应使用 profile 的 macro_dispatch.registration_macros，然后验证图中的 dispatch_op 边。应报告每个注册点及其解析的回调函数。",
+      "files": []
+    },
+    {
+      "id": 37,
+      "category": "macro_related",
+      "prompt": "找出所有含 token-pasting (##) 的宏定义并验证 profile 中的 token_paste_macros 正确。识别任何缺失的注册。",
+      "expected_output": "应使用 find_macros 列出 body_text 中含 ## 的所有宏，与 profile.macro_dispatch.token_paste_macros 比较，并报告任何未注册的。",
+      "files": []
+    },
+    {
+      "id": 38,
+      "category": "macro_related",
+      "prompt": "对特定宏 DISPATCH_HANDLER(h, arg)，找出所有调用点，展开宏体，并验证结果调用边目标与宏定义匹配。",
+      "expected_output": "应使用 find_macros --name DISPATCH_HANDLER 获取宏定义，然后列出 macro_invocations。对每个调用验证 MACRO_EXPANDS_TO 边目标与宏体调用表达式匹配。",
+      "files": []
+    },
+    {
+      "id": 39,
+      "category": "refactoring",
+      "prompt": "重构 process_request() 抽取两个辅助函数：validate_input() 和 execute_request()。更新代码图并验证调用链被保留。",
+      "expected_output": "应使用 add_function 两次，通过 edit_token/insert_token/delete_token 移动 token，commit_db_transaction，重新扫描，并验证新链 process_request → validate_input → execute_request 保留原语义。应验证 blast-radius 最小。",
+      "files": []
+    },
+    {
+      "id": 40,
+      "category": "refactoring",
+      "prompt": "在代码库中将函数 do_work() 重命名为 process_task()。更新代码图反映新名字并验证所有调用者已更新。",
+      "expected_output": "应对函数定义 token 用 edit_token，然后对每个调用者的 callee token 用 edit_token。commit_db_transaction 后重新扫描，验证 callers_of process_task 返回与之前相同的集合，且每个调用者的 callees_of 显示 process_task 而非 do_work。",
+      "files": []
+    },
+    {
+      "id": 41,
+      "category": "refactoring",
+      "prompt": "将辅助函数 format_output() 内联到其唯一调用者 generate_report()。验证调用链已更新且无其他调用者存在。",
+      "expected_output": "应验证 callers_of format_output 仅返回 generate_report，然后用 insert_token 内联函数体，对 format_output 用 delete_node，commit_db_transaction。重新扫描后验证 format_output 不再出现在图中。",
+      "files": []
+    },
+    {
+      "id": 42,
+      "category": "refactoring",
+      "prompt": "将函数 process_io() 从 module_a.c 移到 module_b.c（文件迁移）。更新代码图并验证函数的域已更新。",
+      "expected_output": "应使用 edit_token 将 token 移到新文件（或用 add_function + delete_node），commit_db_transaction，重新扫描，并验证 cgdb_nodes 中函数的域从 module_a 改为 module_b。",
+      "files": []
+    },
+    {
+      "id": 43,
+      "category": "refactoring",
+      "prompt": "将含大型 switch 的函数 process_command() 转换为 vtable 派发，使用 struct command_ops 字段 .handle。验证 ops_bindings 检测到新派发。",
+      "expected_output": "应添加 struct，添加每个 case 对应的注册点 .handle = process_xxx，用 clang 后端重新扫描，并验证 cgdb_find_ops_impls 返回实现函数。应验证 process_command 不再有直接调用边。",
       "files": []
     }
   ]

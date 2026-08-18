@@ -4,20 +4,303 @@
   "evals": [
     {
       "id": 1,
+      "category": "multilang_baseline",
       "prompt": "Scan the /tmp/code2db_test directory, generate an invocation graph, and tell me the complete invocation chain of the bdev_start function, including invocation conditions and call order",
       "expected_output": "Should scan C/Go/Python/Java/Rust multi-language code, build code2db-out/, then query bdev_start's invocation chain via builder script. Should correctly annotate pthread_create as thread_processor label, if(mode==1) conditional bdev_register and bdev_open, and else branch bdev_close. Call order numbering must be correct.",
       "files": []
     },
     {
       "id": 2,
+      "category": "multilang_baseline",
       "prompt": "I have a Go project at /tmp/code2db_test/go, generate an invocation graph and find the conditional invocation paths of Handler.ServeHTTP",
       "expected_output": "Should scan Go code, identify method_declaration (Handler.ServeHTTP), extract if(h.authenticated) conditional handleRequest and else branch sendError, correctly using empty node aggregation for conditional calls. Should annotate call_condition and call_order.",
       "files": []
     },
     {
       "id": 3,
+      "category": "multilang_baseline",
       "prompt": "Scan the /tmp/code2db_test/python directory Python code, tell me the call flow from Server.__init__ to start, and what labels each function has",
       "expected_output": "Should scan Python code, identify class methods (Server.__init__ marked as constructor, Server.start detected as thread_processor via threading.Thread), trace __init__→_setup→load_config/init_routes invocation chain, and start→serve→listen invocation path. Should correctly annotate call order.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "category": "bug_localization",
+      "prompt": "In the scanned C project, a NULL pointer dereference is reported at line 142 of module_x.c in function process_request. Use the code graph to reverse-trace all paths from API entry points to this crash site and identify which conditional branch leads to the NULL.",
+      "expected_output": "Should use reverse-trace command to find all paths from API_entry functions to process_request at line 142. Should identify the conditional branch (e.g., if(ptr != NULL) else-path) that allows NULL to reach the dereference. Must annotate each path's call_condition.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "category": "bug_localization",
+      "prompt": "A double-free bug is reported in free_resource() at line 78 of resource.c. Trace back from free_resource to find which callers invoke it twice under the same execution path, and identify the race window if any.",
+      "expected_output": "Should use reverse-trace from free_resource, find callers that call it twice via different paths, then use detect-races to check if two threads can concurrently reach free_resource. Must report which thread contexts are involved.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "category": "bug_localization",
+      "prompt": "An assertion failure happens in validate_input() when input length exceeds MAX_SIZE. Trace forward from validate_input to find which entry points can reach it with oversized input, and which condition guards the size check.",
+      "expected_output": "Should use trace-chain from each API_entry that reaches validate_input, extract the call_condition at each branch, and identify that the size guard `if (len < MAX_SIZE)` is missing in the path that allows oversized input.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "category": "bug_localization",
+      "prompt": "Use the code graph to find the root cause of a memory leak: alloc_buffer() is called but release_buffer() is never reached in some paths. Identify which conditional branch skips the release.",
+      "expected_output": "Should use trace-chain from alloc_buffer to release_buffer, then use path-feasible to verify each path. Should identify the `if (error) return -1;` branch that skips release_buffer() and propose a fix (move release before return).",
+      "files": []
+    },
+    {
+      "id": 8,
+      "category": "bug_localization",
+      "prompt": "A use-after-free bug occurs when callback_fn() accesses ctx->data after ctx is freed in cleanup_context(). Trace the data flow from ctx allocation to its free, and identify which callback invocation happens after the free.",
+      "expected_output": "Should use value-flow to trace ctx from allocation to free, then use trace-chain to find callback_fn invocations, and check timing via happens-before. Should identify that callback registration happens after cleanup_context in program order.",
+      "files": []
+    },
+    {
+      "id": 9,
+      "category": "bug_localization",
+      "prompt": "An infinite loop is reported in process_messages() when the message queue is empty. Use the code graph to identify the loop structure, the exit condition, and why it can be bypassed.",
+      "expected_output": "Should use cfg-of process_messages to get the CFG, identify the back-edge (loop), and check the exit condition via path-sensitive-states. Should find that the condition `while (msg = queue.pop())` returns NULL but the loop body doesn't check for NULL before dereferencing.",
+      "files": []
+    },
+    {
+      "id": 10,
+      "category": "bug_localization",
+      "prompt": "A stack overflow happens due to infinite recursion in function calculate() calling itself. Find which conditional branch causes the recursion to not terminate.",
+      "expected_output": "Should use cfg-of calculate to find the self-loop via recursive call, use path-feasible to check the base-case condition, and identify that `if (n == 0) return 0;` is missing or wrong (e.g., `if (n = 0)` assignment instead of comparison).",
+      "files": []
+    },
+    {
+      "id": 11,
+      "category": "bug_localization",
+      "prompt": "A deadlock is reported when thread A holds lock L1 and waits for L2, while thread B holds L2 and waits for L1. Use the code graph to identify all functions that acquire both L1 and L2, and the order of acquisition in each.",
+      "expected_output": "Should use who-locks for L1 and L2, then concurrency-analyze each pair of (L1-acquirer, L2-acquirer) to find the lock-acquisition order. Must report at least 2 functions where the order differs, causing the deadlock.",
+      "files": []
+    },
+    {
+      "id": 12,
+      "category": "bug_localization",
+      "prompt": "An off-by-one error in buffer_write() writes past the end of a 1024-byte buffer. Trace which callers pass size=1024 and identify the missing bounds check.",
+      "expected_output": "Should use param-flow to trace size=1024 from callers to buffer_write, then use cfg-of buffer_write to find the loop `for (i=0; i<=size; i++)` (off-by-one). Should propose fix: change `<=` to `<`.",
+      "files": []
+    },
+    {
+      "id": 13,
+      "category": "bug_localization",
+      "prompt": "A SIGSEGV occurs in deref_pointer() when called with NULL. Find which conditional path allows NULL to reach deref_pointer, and which callers don't check the return value of the allocating function.",
+      "expected_output": "Should use reverse-trace from deref_pointer, identify callers that pass a pointer from malloc() without NULL check, and use trace-chain to find the conditional path `if (alloc_failed) { deref_pointer(ptr); }` that allows NULL.",
+      "files": []
+    },
+    {
+      "id": 14,
+      "category": "feature_implementation",
+      "prompt": "Implement a new function bdev_submit_io() that submits an I/O request to the block device. It should call bdev_acquire_lock() → bdev_validate_request() → bdev_queue_io() → bdev_release_lock(). Add it to the code graph and verify the call chain.",
+      "expected_output": "Should use add_function MCP tool to insert the new function, then commit_db_transaction to render and write to disk. Should then re-scan and verify the new chain appears in trace-chain output. Each step must be annotated with call_order.",
+      "files": []
+    },
+    {
+      "id": 15,
+      "category": "feature_implementation",
+      "prompt": "Add a new error handling path to process_request(): when validate_input() returns -1, call log_error() and return -EINVAL. Modify the existing conditional branch in the code graph.",
+      "expected_output": "Should use edit_token or insert_node_after to add the new branch, then commit_db_transaction. Should verify the new branch appears in resolve-chain output and that the call_condition annotation is correct.",
+      "files": []
+    },
+    {
+      "id": 16,
+      "category": "feature_implementation",
+      "prompt": "Implement a new callback register function register_notifier() that takes a function pointer and stores it in a global notification table. Add to code graph and verify the callback dispatch edge.",
+      "expected_output": "Should add the function via add_function, register the callback pattern in profile, re-scan, and verify callback_dispatch edge from register_notifier to the registered function. Should also update the vtable_dispatch detection.",
+      "files": []
+    },
+    {
+      "id": 17,
+      "category": "feature_implementation",
+      "prompt": "Implement a new #ifdef CONFIG_DEBUG path in process_request() that calls debug_trace() at the start. Modify the conditional compilation branch in the code graph and verify the path only exists under CONFIG_DEBUG.",
+      "expected_output": "Should insert the new call inside an #ifdef CONFIG_DEBUG block, mark the call with preproc_alive annotation, re-scan with -DCONFIG_DEBUG, and verify the new edge appears in extract-signals + resolve-chain --bindings.",
+      "files": []
+    },
+    {
+      "id": 18,
+      "category": "feature_implementation",
+      "prompt": "Add a new thread spawn in start_workers() that calls worker_main() in a new thread. Update the code graph and verify the thread_processor label is applied to worker_main.",
+      "expected_output": "Should use insert_node_after to add pthread_create(&tid, NULL, worker_main, NULL) in start_workers, re-scan, and verify worker_main has label thread_processor. Should also verify concurrency-analyze flags the new thread.",
+      "files": []
+    },
+    {
+      "id": 19,
+      "category": "feature_implementation",
+      "prompt": "Implement a new vtable dispatch for struct device_ops with fields .init, .read, .write, .deinit. Add the struct definition and a registration site, then verify ops_bindings detect the typed dispatch.",
+      "expected_output": "Should use add_function + insert_node_after to add the struct + registration, re-scan with clang backend, and verify cgdb_find_ops_impls returns the four impl functions for the new ops table. signature_match should be true.",
+      "files": []
+    },
+    {
+      "id": 20,
+      "category": "feature_implementation",
+      "prompt": "Add a Python ctypes FFI call from server.py to a C function compute_hash() in hash.c. Verify the FFI binding is detected in the code graph.",
+      "expected_output": "Should add the ctypes.CDLL call in Python and the C function, re-scan, and verify ffi-detect finds the binding. Should verify ffi-trace shows the cross-language call chain and ffi-types reports the type marshalling.",
+      "files": []
+    },
+    {
+      "id": 21,
+      "category": "feature_implementation",
+      "prompt": "Implement a new lock acquisition pattern: rcu_read_lock() → access_shared_data() → rcu_read_unlock(). Add to existing function read_shared() and verify the happens-before relation is detected.",
+      "expected_output": "Should edit read_shared to add the RCU pattern, re-scan with clang backend, and verify cgdb_find_lock_held_calls returns read_shared as a lock-holding caller. Should verify happens-before edges from RCU critical section to subsequent reads.",
+      "files": []
+    },
+    {
+      "id": 22,
+      "category": "feature_implementation",
+      "prompt": "Add a new Go cgo FFI call that calls C function process_buffer() from Go function HandleData(). Verify the cross-language edge in the code graph.",
+      "expected_output": "Should add the cgo declaration and call, re-scan, and verify ffi-detect identifies the binding. Should verify ffi-trace shows Go → C cross-language chain with correct marshalling.",
+      "files": []
+    },
+    {
+      "id": 23,
+      "category": "feature_implementation",
+      "prompt": "Refactor function process_request() to extract a helper function validate_request() that handles input validation. Update the code graph to reflect the new call chain.",
+      "expected_output": "Should use add_function to create validate_request, use move-tokens (via edit_token) to transfer the validation code, then commit_db_transaction. Should verify the new chain process_request → validate_request → (validation helpers).",
+      "files": []
+    },
+    {
+      "id": 24,
+      "category": "concurrency_risk",
+      "prompt": "Identify all global variables written by multiple threads in the scanned codebase. List each variable, the writer functions, and whether they hold a lock.",
+      "expected_output": "Should use field-access --kind write --global-only to list writers, then for each writer use who-locks to check lock coverage. Should report at least 3 globals with their writers and lock coverage status.",
+      "files": []
+    },
+    {
+      "id": 25,
+      "category": "concurrency_risk",
+      "prompt": "Analyze whether start_worker_thread() and stop_worker_thread() can race on the global worker_count variable. If so, propose a fix.",
+      "expected_output": "Should use concurrency-analyze start_worker_thread stop_worker_thread, identify the shared global worker_count, check lock-coverage for both functions. Should report whether the lock is held and propose adding mutex protection if missing.",
+      "files": []
+    },
+    {
+      "id": 26,
+      "category": "concurrency_risk",
+      "prompt": "Detect all potential deadlocks in the codebase by finding functions that acquire two or more locks in different orders.",
+      "expected_output": "Should use concurrency-risks to list all risk points, filter for lock-ordering issues. Should report at least 2 functions with inconsistent lock acquisition order (e.g., L1→L2 in one, L2→L1 in another).",
+      "files": []
+    },
+    {
+      "id": 27,
+      "category": "concurrency_risk",
+      "prompt": "Identify all RCU read-side critical sections in the codebase, and verify each one has a matching rcu_read_unlock().",
+      "expected_output": "Should use cgdb_find_lock_held_calls --kind rcu_read_lock to list all RCU critical sections, then for each use lock-coverage to verify matching unlock. Should report any unbalanced rcu_read_lock without matching unlock.",
+      "files": []
+    },
+    {
+      "id": 28,
+      "category": "concurrency_risk",
+      "prompt": "Check whether the atomic operations in atomic_counter_update() provide sufficient memory ordering for the read-modify-write pattern across threads.",
+      "expected_output": "Should use memory-ordering atomic_counter_update to identify the atomic ops (atomic_load/atomic_store/atomic_inc), check happens-before relations, and report whether the memory_order is correct (e.g., acquire/release vs relaxed).",
+      "files": []
+    },
+    {
+      "id": 29,
+      "category": "data_flow_tracing",
+      "prompt": "Trace the flow of the user_id parameter from handle_request() through the call chain down to the database_query() call. Identify any sanitization or validation step along the way.",
+      "expected_output": "Should use param-flow --from handle_request --param user_id to trace the parameter, then use value-flow to track its propagation. Should report each function that touches user_id and whether sanitization is applied.",
+      "files": []
+    },
+    {
+      "id": 30,
+      "category": "data_flow_tracing",
+      "prompt": "Trace the data flow from network input (recv_buffer) to its use in process_packet(). Identify any bounds check or copy operation that validates the input.",
+      "expected_output": "Should use value-flow --from recv_buffer --to process_packet, identify the memcpy/bounds-check along the path. Should report whether length validation happens before the buffer is used.",
+      "files": []
+    },
+    {
+      "id": 31,
+      "category": "data_flow_tracing",
+      "prompt": "Identify all functions that read or write the global config_table variable. For each writer, identify the lock held during the write.",
+      "expected_output": "Should use who-reads config_table and who-writes config_table (or field-access --global config_table). For each writer, use who-locks to check lock coverage. Should report at least 2 readers and 2 writers with their lock status.",
+      "files": []
+    },
+    {
+      "id": 32,
+      "category": "data_flow_tracing",
+      "prompt": "Trace the data dependency chain from parse_header() returning a struct to process_body() using its fields. Verify that all fields are initialized before use.",
+      "expected_output": "Should use data-dep --from parse_header --to process_body, then for each field use param-flow to check initialization. Should identify any field that is read without being initialized in some path.",
+      "files": []
+    },
+    {
+      "id": 33,
+      "category": "data_flow_tracing",
+      "prompt": "Identify all sources of NULL values that reach function deref_pointer(). For each source, identify the conditional path that allows NULL to propagate.",
+      "expected_output": "Should use value-flow --to deref_pointer --value NULL, find all alloc-like functions that can return NULL (malloc, calloc, etc.), trace the path to deref_pointer. Should report at least 2 sources and the missing NULL check.",
+      "files": []
+    },
+    {
+      "id": 34,
+      "category": "macro_related",
+      "prompt": "Find all macro definitions in the codebase that expand to function calls. For each, identify the macro_invocations and verify the expanded call edge (MACRO_EXPANDS_TO) is in the graph.",
+      "expected_output": "Should use find_macros (the new L1 MCP tool) to list all function-like macros, then for each verify macro_invocations exist. Should report at least 3 macros with their expansion sites and the corresponding MACRO_EXPANDS_TO edges.",
+      "files": []
+    },
+    {
+      "id": 35,
+      "category": "macro_related",
+      "prompt": "Find all conditional compilation branches (#ifdef CONFIG_*) and identify which call edges only exist under specific CONFIG flags. For each, list the config_predicate that gates the edge.",
+      "expected_output": "Should use get_pp_branches for each file, then extract-signals to get the config map. Should use cgdb_find_configs_for on each edge to verify the gating. Should report at least 5 edges gated by distinct CONFIG_* flags.",
+      "files": []
+    },
+    {
+      "id": 36,
+      "category": "macro_related",
+      "prompt": "Identify all macro_dispatch registration macros (e.g., DEFINE_OPERATION, REGISTER_HANDLER) and verify the callback_dispatch edges are correctly resolved.",
+      "expected_output": "Should use the profile's macro_dispatch.registration_macros, then verify the dispatch_op edges in the graph. Should report each registration site and its resolved callback function.",
+      "files": []
+    },
+    {
+      "id": 37,
+      "category": "macro_related",
+      "prompt": "Find all macro definitions that contain token-pasting (##) and verify the token_paste_macros in the profile are correct. Identify any missing registrations.",
+      "expected_output": "Should use find_macros to list all macros with ## in body_text, compare with profile.macro_dispatch.token_paste_macros, and report any unregistered ones.",
+      "files": []
+    },
+    {
+      "id": 38,
+      "category": "macro_related",
+      "prompt": "For a specific macro DISPATCH_HANDLER(h, arg), find all invocation sites, expand the macro body, and verify the resulting call edge target matches the macro definition.",
+      "expected_output": "Should use find_macros --name DISPATCH_HANDLER to get the macro definition, then list macro_invocations. For each invocation, verify the MACRO_EXPANDS_TO edge target matches the macro body's call expression.",
+      "files": []
+    },
+    {
+      "id": 39,
+      "category": "refactoring",
+      "prompt": "Refactor function process_request() to extract two helper functions: validate_input() and execute_request(). Update the code graph and verify the call chain is preserved.",
+      "expected_output": "Should use add_function twice, move tokens via edit_token/insert_token/delete_token, commit_db_transaction, re-scan, and verify the new chain process_request → validate_input → execute_request preserves the original semantics. Should verify blast-radius is minimal.",
+      "files": []
+    },
+    {
+      "id": 40,
+      "category": "refactoring",
+      "prompt": "Rename function do_work() to process_task() across the codebase. Update the code graph to reflect the new name and verify all callers are updated.",
+      "expected_output": "Should use edit_token on the function definition token, then for each caller use edit_token on the callee token. After commit_db_transaction and re-scan, verify callers_of process_task returns the same set as before, and callees_of each caller shows process_task instead of do_work.",
+      "files": []
+    },
+    {
+      "id": 41,
+      "category": "refactoring",
+      "prompt": "Inline the helper function format_output() into its only caller generate_report(). Verify the call chain is updated and no other callers exist.",
+      "expected_output": "Should verify callers_of format_output returns only generate_report, then use insert_token to inline the body, delete_node on format_output, commit_db_transaction. After re-scan, verify format_output no longer appears in the graph.",
+      "files": []
+    },
+    {
+      "id": 42,
+      "category": "refactoring",
+      "prompt": "Move function process_io() from module_a.c to module_b.c (file relocation). Update the code graph and verify the function's domain is updated.",
+      "expected_output": "Should use edit_token to move tokens to the new file (or use add_function + delete_node), commit_db_transaction, re-scan, and verify the function's domain in cgdb_nodes changes from module_a to module_b.",
+      "files": []
+    },
+    {
+      "id": 43,
+      "category": "refactoring",
+      "prompt": "Convert a function with a large switch statement (process_command()) into a vtable dispatch using a struct command_ops with fields .handle. Verify the ops_bindings detect the new dispatch.",
+      "expected_output": "Should add the struct, add the registration site with .handle = process_xxx for each case, re-scan with clang backend, and verify cgdb_find_ops_impls returns the impl functions. Should verify no direct call edges remain from process_command.",
       "files": []
     }
   ]

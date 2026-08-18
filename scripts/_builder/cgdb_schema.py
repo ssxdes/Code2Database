@@ -3,17 +3,38 @@
 Adds 13-layer semantic tables to the existing code2database.db (side-by-side with
 the legacy `functions`/`edges` tables for backward compatibility).
 
-Layers:
-  L0  meta / graph_versions       — version control + metadata
-  L1  nodes / files               — multi-kind first-class nodes
-  L2  types                       — independent type system
-  L3  conditions                  — Z3-reasonable boolean expression trees
-  L3.5 config_predicates          — #ifdef predicate tree (BDD + Z3 form)
-  L4  basic_blocks / cfg_edges    — control flow graph
-  L5  data_flow / alias_sets      — def-use chain + pointer alias
-  L7  invoke_sites / ops_bindings — invocation graph refinement + typed vtable dispatch
-  L8  sync_primitives / happens_before — concurrency + memory model
+CGDB-Layers (legacy cgdb naming — distinct from design-report L1~L4; see OVERVIEW.md):
+  CGDB-L0   meta / graph_versions                  — version control + metadata
+  CGDB-L1   nodes / files                           — multi-kind first-class nodes
+  CGDB-L2   types                                   — independent type system
+  CGDB-L3   conditions                              — Z3-reasonable boolean expression trees
+  CGDB-L3.5 config_predicates                       — #ifdef predicate tree (BDD + Z3 form)
+  CGDB-L4   basic_blocks / cfg_edges                — control flow graph
+  CGDB-L5   data_flow / alias_sets                  — def-use chain + pointer alias
+  CGDB-L7   invoke_sites / ops_bindings             — invocation graph refinement + typed vtable dispatch
+  CGDB-L8   sync_primitives / happens_before        — concurrency + memory model
+  CGDB-L9   cgdb_includes                          — #include dependency graph
+  CGDB-L10  doc_comments + graph_versions           — comments + time-travel
+  CGDB-L11  node_metadata / edge_metadata           — typed-key metadata
   Full-text: nodes_fts (FTS5 virtual table)
+
+Design-report layers (per report/C代码数据库化方案-分析与执行报告.md) — distinct from cgdb layers:
+  Report-L1  无损重建层: tokens / macros / macro_invocations / pp_branches /
+              pp_directives / pragmas / attributes / literals / string_literals /
+              comments (+ source_files_meta extension to cgdb_files)
+  Report-L2  AST 层:    symbols / ast_nodes / references / call_edges / includes /
+              globals / types / modules / git_meta (partially covered by cgdb_nodes
+              + cgdb_edges + cgdb_types + cgdb_includes)
+  Report-L3  IR 层:     ir_functions / cfg_blocks / cfg_edges / ssa_values /
+              mem_accesses / alias_sets / points_to / indirect_calls / data_deps /
+              path_states (new in v4 — see Report-L3 section below)
+  Report-L4  派生层:    call_graph_reachability / module_deps / function_embeddings /
+              precise_write_sets / arch_metrics / history_snapshots / alignment_errors
+              (new in v4 — see Report-L4 section below)
+  Report-多库: db_routing / precompute_tasks (new in v4 — see Multi-DB routing section)
+  Report-跨语言: cross_lang_bindings / type_mappings / ffi_call_sites /
+              language_adapters / runtime_observations / dependencies
+              (new in v4 — see Cross-language bridge section)
 
 `apply_cgdb_schema(conn)` is idempotent — safe to call on existing databases.
 Schema evolution is handled by `cgdb_migrations.run_migrations` — each version
@@ -23,7 +44,7 @@ data.
 import sqlite3
 import json
 
-CGDB_SCHEMA_VERSION = 3
+CGDB_SCHEMA_VERSION = 4
 
 
 def apply_cgdb_schema(conn: sqlite3.Connection) -> None:
@@ -53,8 +74,9 @@ def apply_cgdb_schema(conn: sqlite3.Connection) -> None:
     current_version = int(row[0]) if row else 0
 
     if current_version == 0:
-        # Fresh database — apply full DDL at current version
+        # Fresh database — apply full DDL (v3 base + v4 additions) at current version
         conn.executescript(_CGDB_DDL)
+        conn.executescript(_CGDB_DDL_V4)
         conn.execute(
             "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
             ("cgdb_schema_version", str(CGDB_SCHEMA_VERSION))
@@ -530,6 +552,633 @@ CREATE VIEW IF NOT EXISTS cdb_nodes AS
     n.commit_hash,
     n.legacy_function_id
   FROM cgdb_nodes n;
+"""
+
+# ============================================================================
+# DDL v4 additions — design-report L1/L3/L4 + multi-db + cross-language bridge
+# These tables implement the design report (C代码数据库化方案-分析与执行报告.md)
+# appendix C.1 (L1), C.3 (L3), C.4 (L4), C.5 (multi-db routing), C.6 (cross-lang).
+# They are additive — they do NOT replace the legacy cgdb tables above; they sit
+# side-by-side in the same db. Kept as a separate DDL string so the v3→v4
+# migration can run ONLY this part without re-touching v3 tables/indexes.
+# ============================================================================
+_CGDB_DDL_V4 = """
+-- ============================================================================
+-- ============================================================================
+-- ==                                                                        ==
+-- ==  Schema v4 additions — design-report L1/L3/L4 + multi-db + cross-lang ==
+-- ==  These tables implement the design report (C代码数据库化方案-分析与执行报告.md) ==
+-- ==  appendix C.1 (L1), C.3 (L3), C.4 (L4), C.5 (multi-db routing),       ==
+-- ==  C.6 (cross-language bridge). They are additive — they do NOT replace  ==
+-- ==  the legacy cgdb tables above; they sit side-by-side in the same db.   ==
+-- ==                                                                        ==
+-- ============================================================================
+-- ============================================================================
+
+-- ============================================================================
+-- Report-L1: source_files_meta — extension columns on cgdb_files for L1
+--无损重建层. Adds encoding / line_ending / has_bom / byte_length / loc / mtime
+-- to cgdb_files via a side table (cgdb_files already has path/language/sha256/
+-- line_count/byte_count/commit_hash/last_modified/content_hash).
+-- Kept as a side table to avoid ALTER TABLE on the existing cgdb_files schema.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS source_files_meta (
+  file_id INTEGER PRIMARY KEY REFERENCES cgdb_files(id) ON DELETE CASCADE,
+  encoding TEXT NOT NULL DEFAULT 'utf-8',
+  line_ending TEXT NOT NULL DEFAULT 'LF',
+  has_bom INTEGER NOT NULL DEFAULT 0,
+  mtime_ns INTEGER NOT NULL DEFAULT 0,
+  trailing_whitespace TEXT,
+  -- sha256 of the original disk file (for char-level consistency check)
+  -- Distinct from cgdb_files.content_hash which is for incremental sync.
+  disk_sha256 TEXT NOT NULL DEFAULT '',
+  -- sha256 of the rendered source from DB tokens (for verify_consistency)
+  rendered_sha256 TEXT,
+  last_verified_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_source_files_meta_sha ON source_files_meta(disk_sha256);
+
+-- ============================================================================
+-- Report-L1: tokens — full token stream for character-level reconstruction
+-- Each token carries its preceding_whitespace so DB→file render is byte-exact.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS tokens (
+  id INTEGER PRIMARY KEY,
+  file_id INTEGER NOT NULL REFERENCES cgdb_files(id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN (
+    'keyword','identifier','literal','punct','comment','whitespace',
+    'string_literal','int_literal','float_literal','char_literal'
+  )),
+  spelling TEXT NOT NULL,
+  line INTEGER NOT NULL,
+  col INTEGER NOT NULL,
+  end_line INTEGER NOT NULL DEFAULT 0,
+  end_col INTEGER NOT NULL DEFAULT 0,
+  byte_offset INTEGER NOT NULL DEFAULT 0,
+  byte_length INTEGER NOT NULL DEFAULT 0,
+  preceding_whitespace TEXT NOT NULL DEFAULT '',
+  -- Cross-references (filled per-kind)
+  symbol_id INTEGER,
+  literal_id INTEGER,
+  comment_id INTEGER,
+  macro_id INTEGER,
+  macro_invocation_id INTEGER,
+  pp_branch_id INTEGER,
+  pp_directive_id INTEGER,
+  pragma_id INTEGER,
+  attribute_id INTEGER,
+  ast_node_id INTEGER,
+  language TEXT NOT NULL DEFAULT 'c',
+  UNIQUE(file_id, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_tokens_file_line ON tokens(file_id, line);
+CREATE INDEX IF NOT EXISTS idx_tokens_seq ON tokens(file_id, seq);
+CREATE INDEX IF NOT EXISTS idx_tokens_symbol ON tokens(symbol_id);
+CREATE INDEX IF NOT EXISTS idx_tokens_kind ON tokens(kind);
+CREATE INDEX IF NOT EXISTS idx_tokens_byte ON tokens(file_id, byte_offset);
+
+-- ============================================================================
+-- Report-L1: macros — macro definitions (function-like / variadic / params)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS macros (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  file_id INTEGER NOT NULL REFERENCES cgdb_files(id) ON DELETE CASCADE,
+  line INTEGER NOT NULL DEFAULT 0,
+  col INTEGER NOT NULL DEFAULT 0,
+  is_function_like INTEGER NOT NULL DEFAULT 0,
+  is_variadic INTEGER NOT NULL DEFAULT 0,
+  params TEXT NOT NULL DEFAULT '[]',
+  body_token_ids TEXT NOT NULL DEFAULT '[]',
+  body_text TEXT NOT NULL DEFAULT '',
+  is_undef INTEGER NOT NULL DEFAULT 0,
+  defined_at_token_id INTEGER REFERENCES tokens(id),
+  language TEXT NOT NULL DEFAULT 'c'
+);
+CREATE INDEX IF NOT EXISTS idx_macros_name ON macros(name);
+CREATE INDEX IF NOT EXISTS idx_macros_file ON macros(file_id, line);
+
+-- ============================================================================
+-- Report-L1: macro_invocations — macro expansion sites
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS macro_invocations (
+  id INTEGER PRIMARY KEY,
+  macro_id INTEGER NOT NULL REFERENCES macros(id) ON DELETE CASCADE,
+  file_id INTEGER NOT NULL REFERENCES cgdb_files(id) ON DELETE CASCADE,
+  line INTEGER NOT NULL DEFAULT 0,
+  col INTEGER NOT NULL DEFAULT 0,
+  arg_token_ids TEXT NOT NULL DEFAULT '[]',
+  expanded_text TEXT,
+  at_token_id INTEGER REFERENCES tokens(id)
+);
+CREATE INDEX IF NOT EXISTS idx_macroinv_macro ON macro_invocations(macro_id);
+CREATE INDEX IF NOT EXISTS idx_macroinv_file ON macro_invocations(file_id, line);
+
+-- ============================================================================
+-- Report-L1: pp_branches — conditional compilation branch tree
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS pp_branches (
+  id INTEGER PRIMARY KEY,
+  file_id INTEGER NOT NULL REFERENCES cgdb_files(id) ON DELETE CASCADE,
+  parent_id INTEGER REFERENCES pp_branches(id),
+  kind TEXT NOT NULL CHECK (kind IN ('if','ifdef','ifndef','elif','else','endif')),
+  condition TEXT,
+  condition_token_ids TEXT NOT NULL DEFAULT '[]',
+  start_line INTEGER NOT NULL DEFAULT 0,
+  end_line INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  config_hash TEXT,
+  language TEXT NOT NULL DEFAULT 'c'
+);
+CREATE INDEX IF NOT EXISTS idx_pp_branches_file ON pp_branches(file_id);
+CREATE INDEX IF NOT EXISTS idx_pp_branches_parent ON pp_branches(parent_id);
+
+-- ============================================================================
+-- Report-L1: pp_directives — preprocessor directives (include/pragma/line/error)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS pp_directives (
+  id INTEGER PRIMARY KEY,
+  file_id INTEGER NOT NULL REFERENCES cgdb_files(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('include','pragma','line','error','warning')),
+  line INTEGER NOT NULL DEFAULT 0,
+  col INTEGER NOT NULL DEFAULT 0,
+  raw_text TEXT,
+  parsed_payload TEXT,
+  at_token_id INTEGER REFERENCES tokens(id)
+);
+CREATE INDEX IF NOT EXISTS idx_pp_directives_file ON pp_directives(file_id, line);
+CREATE INDEX IF NOT EXISTS idx_pp_directives_kind ON pp_directives(kind);
+
+-- ============================================================================
+-- Report-L1: pragmas — pragma directives
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS pragmas (
+  id INTEGER PRIMARY KEY,
+  file_id INTEGER NOT NULL REFERENCES cgdb_files(id) ON DELETE CASCADE,
+  line INTEGER NOT NULL DEFAULT 0,
+  col INTEGER NOT NULL DEFAULT 0,
+  pragma_kind TEXT,
+  raw_text TEXT,
+  parsed_payload TEXT,
+  pp_directive_id INTEGER REFERENCES pp_directives(id),
+  at_token_id INTEGER REFERENCES tokens(id)
+);
+CREATE INDEX IF NOT EXISTS idx_pragmas_file ON pragmas(file_id, line);
+CREATE INDEX IF NOT EXISTS idx_pragmas_kind ON pragmas(pragma_kind);
+
+-- ============================================================================
+-- Report-L1: attributes — __attribute__((...)) metadata
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS attributes (
+  id INTEGER PRIMARY KEY,
+  ast_node_id INTEGER NOT NULL REFERENCES cgdb_nodes(id) ON DELETE CASCADE,
+  attr_kind TEXT,
+  raw_text TEXT,
+  parsed_payload TEXT,
+  at_token_id INTEGER REFERENCES tokens(id)
+);
+CREATE INDEX IF NOT EXISTS idx_attributes_node ON attributes(ast_node_id);
+CREATE INDEX IF NOT EXISTS idx_attributes_kind ON attributes(attr_kind);
+
+-- ============================================================================
+-- Report-L1: literals — numeric / char literals (parsed form)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS literals (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('int','float','char','imaginary','other')),
+  value TEXT,
+  raw_text TEXT NOT NULL,
+  base INTEGER,
+  suffix TEXT,
+  token_id INTEGER REFERENCES tokens(id)
+);
+CREATE INDEX IF NOT EXISTS idx_literals_token ON literals(token_id);
+CREATE INDEX IF NOT EXISTS idx_literals_kind ON literals(kind);
+
+-- ============================================================================
+-- Report-L1: string_literals — precise byte content for security audit
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS string_literals (
+  id INTEGER PRIMARY KEY,
+  literal_id INTEGER REFERENCES literals(id) ON DELETE CASCADE,
+  raw_bytes BLOB,
+  decoded TEXT,
+  encoding TEXT,
+  is_wide INTEGER NOT NULL DEFAULT 0,
+  in_function_id INTEGER,
+  security_flags TEXT,
+  token_id INTEGER REFERENCES tokens(id)
+);
+CREATE INDEX IF NOT EXISTS idx_strlit_literal ON string_literals(literal_id);
+CREATE INDEX IF NOT EXISTS idx_strlit_decoded ON string_literals(decoded);
+CREATE INDEX IF NOT EXISTS idx_strlit_func ON string_literals(in_function_id);
+
+-- ============================================================================
+-- Report-L1: comments_fts — full-text search over doc_comments + raw comments
+-- Adds FTS5 over doc_comments. We also store line/block/doc comment rows here.
+-- (doc_comments above is per-node; this is for free-form comment search.)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS comments_freeform (
+  id INTEGER PRIMARY KEY,
+  file_id INTEGER NOT NULL REFERENCES cgdb_files(id) ON DELETE CASCADE,
+  line INTEGER NOT NULL,
+  end_line INTEGER NOT NULL DEFAULT 0,
+  col INTEGER NOT NULL DEFAULT 0,
+  end_col INTEGER NOT NULL DEFAULT 0,
+  text TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('line','block','doc')),
+  attached_symbol_id INTEGER REFERENCES cgdb_nodes(id),
+  language TEXT NOT NULL DEFAULT 'c'
+);
+CREATE INDEX IF NOT EXISTS idx_comments_freeform_file ON comments_freeform(file_id, line);
+CREATE INDEX IF NOT EXISTS idx_comments_freeform_kind ON comments_freeform(kind);
+CREATE INDEX IF NOT EXISTS idx_comments_freeform_sym ON comments_freeform(attached_symbol_id);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS comments_fts USING fts5(
+  text, content='comments_freeform', content_rowid='id'
+);
+CREATE TRIGGER IF NOT EXISTS comments_freeform_ai AFTER INSERT ON comments_freeform BEGIN
+  INSERT INTO comments_fts(rowid, text) VALUES (new.id, new.text);
+END;
+CREATE TRIGGER IF NOT EXISTS comments_freeform_ad AFTER DELETE ON comments_freeform BEGIN
+  INSERT INTO comments_fts(comments_fts, rowid, text) VALUES ('delete', old.id, old.text);
+END;
+CREATE TRIGGER IF NOT EXISTS comments_freeform_au AFTER UPDATE ON comments_freeform BEGIN
+  INSERT INTO comments_fts(comments_fts, rowid, text) VALUES ('delete', old.id, old.text);
+  INSERT INTO comments_fts(rowid, text) VALUES (new.id, new.text);
+END;
+
+-- ============================================================================
+-- Report-L3: ir_functions — IR-level function descriptors (aligned to symbols)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS ir_functions (
+  id INTEGER PRIMARY KEY,
+  symbol_id INTEGER NOT NULL REFERENCES cgdb_nodes(id) ON DELETE CASCADE,
+  ir_name TEXT,
+  entry_block_id INTEGER REFERENCES basic_blocks(id),
+  num_blocks INTEGER NOT NULL DEFAULT 0,
+  num_instructions INTEGER NOT NULL DEFAULT 0,
+  aligned INTEGER NOT NULL DEFAULT 1,
+  debug_metadata_present INTEGER NOT NULL DEFAULT 0,
+  alignment_errors TEXT NOT NULL DEFAULT '[]'
+);
+CREATE INDEX IF NOT EXISTS idx_irfunc_symbol ON ir_functions(symbol_id);
+
+-- ============================================================================
+-- Report-L3: ssa_values — SSA values aligned to AST nodes / tokens
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS ssa_values (
+  id INTEGER PRIMARY KEY,
+  function_id INTEGER NOT NULL REFERENCES ir_functions(id) ON DELETE CASCADE,
+  value_name TEXT NOT NULL,
+  type TEXT,
+  def_kind TEXT NOT NULL CHECK (def_kind IN ('entry','instruction','constant','phi','call','load','store','alloca','argument','unknown')),
+  def_block_id INTEGER REFERENCES basic_blocks(id),
+  def_line INTEGER,
+  def_col INTEGER,
+  aligned_symbol_id INTEGER REFERENCES cgdb_nodes(id),
+  aligned_ast_node_id INTEGER REFERENCES cgdb_nodes(id),
+  aligned_token_id INTEGER REFERENCES tokens(id)
+);
+CREATE INDEX IF NOT EXISTS idx_ssa_func ON ssa_values(function_id);
+CREATE INDEX IF NOT EXISTS idx_ssa_symbol ON ssa_values(aligned_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_ssa_block ON ssa_values(def_block_id);
+
+-- ============================================================================
+-- Report-L3: mem_accesses — pointer/value read-write sites with SSA tracking
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS mem_accesses (
+  id INTEGER PRIMARY KEY,
+  function_id INTEGER NOT NULL REFERENCES ir_functions(id) ON DELETE CASCADE,
+  block_id INTEGER REFERENCES basic_blocks(id),
+  kind TEXT NOT NULL CHECK (kind IN ('load','store','memcpy','memset','atomic_load','atomic_store','rmw','cmpxchg')),
+  ptr_ssa_id INTEGER REFERENCES ssa_values(id),
+  value_ssa_id INTEGER REFERENCES ssa_values(id),
+  line INTEGER NOT NULL DEFAULT 0,
+  col INTEGER NOT NULL DEFAULT 0,
+  aligned_symbol_id INTEGER REFERENCES cgdb_nodes(id),
+  aligned_ast_node_id INTEGER REFERENCES cgdb_nodes(id),
+  aligned_token_id INTEGER REFERENCES tokens(id)
+);
+CREATE INDEX IF NOT EXISTS idx_mem_func ON mem_accesses(function_id);
+CREATE INDEX IF NOT EXISTS idx_mem_symbol ON mem_accesses(aligned_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_mem_block ON mem_accesses(block_id);
+
+-- ============================================================================
+-- Report-L3: points_to — points-to sets (target symbol / kind / analysis)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS points_to (
+  ssa_value_id INTEGER NOT NULL REFERENCES ssa_values(id) ON DELETE CASCADE,
+  target_symbol_id INTEGER REFERENCES cgdb_nodes(id),
+  target_kind TEXT NOT NULL CHECK (target_kind IN ('function','global','stack','heap','unknown','null','aggregate')),
+  analysis TEXT NOT NULL CHECK (analysis IN ('svf','clang-dataflow','andersen','steensgaard','heuristic','manual')),
+  confidence REAL NOT NULL DEFAULT 1.0,
+  PRIMARY KEY (ssa_value_id, target_symbol_id, analysis)
+);
+CREATE INDEX IF NOT EXISTS idx_pt_target ON points_to(target_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_pt_analysis ON points_to(analysis);
+
+-- ============================================================================
+-- Report-L3: indirect_calls — call-site→target candidates (LLVM+SVF aligned)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS indirect_calls (
+  call_site_id INTEGER PRIMARY KEY,
+  call_edge_id INTEGER NOT NULL REFERENCES cgdb_edges(id) ON DELETE CASCADE,
+  function_id INTEGER NOT NULL REFERENCES ir_functions(id) ON DELETE CASCADE,
+  line INTEGER NOT NULL DEFAULT 0,
+  col INTEGER NOT NULL DEFAULT 0,
+  possible_target_symbol_id INTEGER REFERENCES cgdb_nodes(id),
+  confidence REAL NOT NULL DEFAULT 1.0,
+  analysis TEXT NOT NULL CHECK (analysis IN ('svf','andersen','steensgaard','devirt','heuristic','manual'))
+);
+CREATE INDEX IF NOT EXISTS idx_icall_edge ON indirect_calls(call_edge_id);
+CREATE INDEX IF NOT EXISTS idx_icall_target ON indirect_calls(possible_target_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_icall_func ON indirect_calls(function_id);
+
+-- ============================================================================
+-- Report-L3: data_deps — SSA-level data dependencies (def-use across blocks)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS data_deps (
+  from_ssa_id INTEGER NOT NULL REFERENCES ssa_values(id) ON DELETE CASCADE,
+  to_ssa_id INTEGER NOT NULL REFERENCES ssa_values(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('def-use','mem-dep','ctrl-dep','phi','alias')),
+  function_id INTEGER NOT NULL REFERENCES ir_functions(id) ON DELETE CASCADE,
+  PRIMARY KEY (from_ssa_id, to_ssa_id, kind)
+);
+CREATE INDEX IF NOT EXISTS idx_dep_from ON data_deps(from_ssa_id);
+CREATE INDEX IF NOT EXISTS idx_dep_to ON data_deps(to_ssa_id);
+CREATE INDEX IF NOT EXISTS idx_dep_func ON data_deps(function_id);
+
+-- ============================================================================
+-- Report-L3: path_states — path-sensitive analysis state per (function, block)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS path_states (
+  id INTEGER PRIMARY KEY,
+  function_id INTEGER NOT NULL REFERENCES ir_functions(id) ON DELETE CASCADE,
+  block_id INTEGER REFERENCES basic_blocks(id),
+  path_id TEXT NOT NULL,
+  constraints TEXT NOT NULL DEFAULT '{}',
+  state TEXT NOT NULL DEFAULT '{}',
+  line INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_path_func ON path_states(function_id);
+CREATE INDEX IF NOT EXISTS idx_path_block ON path_states(block_id);
+CREATE INDEX IF NOT EXISTS idx_path_pathid ON path_states(path_id);
+
+-- ============================================================================
+-- Report-L3 (upgrade): alias_sets_v3_view — view exposing the v3 alias_sets
+-- with the additional analysis/ssa_value columns expected by the report.
+-- The underlying alias_sets table is left untouched for backward compatibility;
+-- new columns are populated via ALTER TABLE (see cgdb_migrations v3→v4).
+-- ============================================================================
+
+-- ============================================================================
+-- Report-L4: call_graph_reachability — precomputed reachability matrix
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS call_graph_reachability (
+  source_symbol_id INTEGER NOT NULL REFERENCES cgdb_nodes(id) ON DELETE CASCADE,
+  target_symbol_id INTEGER NOT NULL REFERENCES cgdb_nodes(id) ON DELETE CASCADE,
+  distance INTEGER NOT NULL DEFAULT 0,
+  paths_count INTEGER NOT NULL DEFAULT 0,
+  config_predicate_id INTEGER REFERENCES config_predicates(id),
+  PRIMARY KEY (source_symbol_id, target_symbol_id)
+);
+CREATE INDEX IF NOT EXISTS idx_reach_source ON call_graph_reachability(source_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_reach_target ON call_graph_reachability(target_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_reach_pred ON call_graph_reachability(config_predicate_id);
+
+-- ============================================================================
+-- Report-L4: module_deps — module dependency matrix (edge count per pair)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS module_deps (
+  from_module TEXT NOT NULL,
+  to_module TEXT NOT NULL,
+  edge_count INTEGER NOT NULL DEFAULT 0,
+  edge_kind_breakdown TEXT NOT NULL DEFAULT '{}',
+  PRIMARY KEY (from_module, to_module)
+);
+CREATE INDEX IF NOT EXISTS idx_moddeps_from ON module_deps(from_module);
+CREATE INDEX IF NOT EXISTS idx_moddeps_to ON module_deps(to_module);
+
+-- ============================================================================
+-- Report-L4: function_embeddings — vector embeddings for semantic search
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS function_embeddings (
+  symbol_id INTEGER PRIMARY KEY REFERENCES cgdb_nodes(id) ON DELETE CASCADE,
+  embedding BLOB,
+  model TEXT NOT NULL DEFAULT 'tfidf-ngram',
+  dim INTEGER NOT NULL DEFAULT 0,
+  generated_at INTEGER NOT NULL DEFAULT 0,
+  config_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_emb_model ON function_embeddings(model);
+CREATE INDEX IF NOT EXISTS idx_emb_generated ON function_embeddings(generated_at);
+
+-- ============================================================================
+-- Report-L4: precise_write_sets — global variable writer sites (AST+IR merged)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS precise_write_sets (
+  global_symbol_id INTEGER NOT NULL REFERENCES cgdb_nodes(id) ON DELETE CASCADE,
+  writer_symbol_id INTEGER NOT NULL REFERENCES cgdb_nodes(id) ON DELETE CASCADE,
+  loc_line INTEGER NOT NULL DEFAULT 0,
+  loc_col INTEGER NOT NULL DEFAULT 0,
+  via_path TEXT NOT NULL DEFAULT '',
+  confidence REAL NOT NULL DEFAULT 1.0,
+  source TEXT NOT NULL CHECK (source IN ('ast','ir-ssa','ir-alias','merged','manual')),
+  PRIMARY KEY (global_symbol_id, writer_symbol_id, loc_line)
+);
+CREATE INDEX IF NOT EXISTS idx_writeset_global ON precise_write_sets(global_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_writeset_writer ON precise_write_sets(writer_symbol_id);
+
+-- ============================================================================
+-- Report-L4: arch_metrics — coupling / cohesion / complexity / cycle_count
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS arch_metrics (
+  module_name TEXT PRIMARY KEY,
+  coupling REAL NOT NULL DEFAULT 0.0,
+  cohesion REAL NOT NULL DEFAULT 0.0,
+  complexity REAL NOT NULL DEFAULT 0.0,
+  cycle_count INTEGER NOT NULL DEFAULT 0,
+  fan_in INTEGER NOT NULL DEFAULT 0,
+  fan_out INTEGER NOT NULL DEFAULT 0,
+  computed_at INTEGER NOT NULL DEFAULT 0,
+  cycles_json TEXT NOT NULL DEFAULT '[]'
+);
+CREATE INDEX IF NOT EXISTS idx_archmetrics_coupling ON arch_metrics(coupling);
+CREATE INDEX IF NOT EXISTS idx_archmetrics_complexity ON arch_metrics(complexity);
+
+-- ============================================================================
+-- Report-L4: history_snapshots — per-commit source sha256 + commit_sha
+-- (Distinct from graph_versions which is per-build; this is per-source-snapshot
+--  and carries the disk sha256 used in consistency verification.)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS history_snapshots (
+  id INTEGER PRIMARY KEY,
+  snapshot_at INTEGER NOT NULL DEFAULT 0,
+  source_file_id INTEGER REFERENCES cgdb_files(id) ON DELETE CASCADE,
+  sha256 TEXT NOT NULL,
+  commit_sha TEXT,
+  graph_version_id INTEGER REFERENCES graph_versions(version_id)
+);
+CREATE INDEX IF NOT EXISTS idx_hist_time ON history_snapshots(snapshot_at);
+CREATE INDEX IF NOT EXISTS idx_hist_file ON history_snapshots(source_file_id);
+CREATE INDEX IF NOT EXISTS idx_hist_sha ON history_snapshots(sha256);
+
+-- ============================================================================
+-- Report-L4: alignment_errors — layer-misalignment registry (write-back block)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS alignment_errors (
+  id INTEGER PRIMARY KEY,
+  layer TEXT NOT NULL CHECK (layer IN ('L1','L2','L3','L4','cross_lang','all')),
+  table_name TEXT,
+  row_id INTEGER,
+  error_kind TEXT NOT NULL,
+  raw_payload TEXT,
+  detected_at INTEGER NOT NULL DEFAULT 0,
+  resolved INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_align_err_layer ON alignment_errors(layer);
+CREATE INDEX IF NOT EXISTS idx_align_err_table ON alignment_errors(table_name);
+CREATE INDEX IF NOT EXISTS idx_align_err_kind ON alignment_errors(error_kind);
+CREATE INDEX IF NOT EXISTS idx_align_err_unresolved ON alignment_errors(layer, resolved) WHERE resolved = 0;
+
+-- ============================================================================
+-- Report-多库 (multi-db routing): db_routing + precompute_tasks
+-- Even though current implementation uses single SQLite db, these tables let
+-- the DBRouter class decide where to route queries when multi-db is enabled.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS db_routing (
+  table_name TEXT PRIMARY KEY,
+  db_name TEXT NOT NULL,
+  engine TEXT NOT NULL CHECK (engine IN ('sqlite','duckdb','neo4j','sqlite-vec','chroma','bitmap','json1')),
+  dsn TEXT,
+  last_synced_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_dbrouting_db ON db_routing(db_name);
+
+CREATE TABLE IF NOT EXISTS precompute_tasks (
+  id INTEGER PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  query_template TEXT NOT NULL,
+  output_table TEXT NOT NULL,
+  last_run_at INTEGER,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','running','completed','failed')),
+  last_error TEXT,
+  rows_written INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_precompute_status ON precompute_tasks(status);
+
+-- ============================================================================
+-- Report-跨语言 (cross-language bridge): cross_lang_bindings
+-- FFI bindings between symbols across languages (Python↔C, Go↔C, Rust↔C, etc.)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS cross_lang_bindings (
+  id INTEGER PRIMARY KEY,
+  from_symbol_id INTEGER NOT NULL REFERENCES cgdb_nodes(id) ON DELETE CASCADE,
+  to_symbol_id INTEGER NOT NULL REFERENCES cgdb_nodes(id) ON DELETE CASCADE,
+  ffi_kind TEXT NOT NULL CHECK (ffi_kind IN (
+    'pybind11','cython','ctypes','cffi','napi','emscripten','wasm',
+    'jni','jna','bindgen','cbindgen','cgo','extern_c','other'
+  )),
+  calling_convention TEXT NOT NULL DEFAULT 'cdecl',
+  binding_source TEXT,
+  confidence REAL NOT NULL DEFAULT 1.0,
+  aligned INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_xlang_from ON cross_lang_bindings(from_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_xlang_to ON cross_lang_bindings(to_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_xlang_kind ON cross_lang_bindings(ffi_kind);
+
+-- ============================================================================
+-- Report-跨语言: type_mappings — cross-language type marshal map
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS type_mappings (
+  id INTEGER PRIMARY KEY,
+  from_type_id INTEGER REFERENCES cgdb_types(id),
+  to_type_id INTEGER REFERENCES cgdb_types(id),
+  from_type_spelling TEXT NOT NULL DEFAULT '',
+  to_type_spelling TEXT NOT NULL DEFAULT '',
+  from_language TEXT NOT NULL DEFAULT 'c',
+  to_language TEXT NOT NULL DEFAULT 'c',
+  mapping_kind TEXT NOT NULL CHECK (mapping_kind IN ('identity','widening','narrowing','marshalling','lossy','unsupported')),
+  marshalling_cost TEXT NOT NULL DEFAULT 'none',
+  notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_typemap_from ON type_mappings(from_type_id);
+CREATE INDEX IF NOT EXISTS idx_typemap_to ON type_mappings(to_type_id);
+CREATE INDEX IF NOT EXISTS idx_typemap_lang ON type_mappings(from_language, to_language);
+
+-- ============================================================================
+-- Report-跨语言: ffi_call_sites — actual call sites that cross language
+-- boundary via an FFI binding
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS ffi_call_sites (
+  id INTEGER PRIMARY KEY,
+  binding_id INTEGER NOT NULL REFERENCES cross_lang_bindings(id) ON DELETE CASCADE,
+  file_id INTEGER NOT NULL REFERENCES cgdb_files(id) ON DELETE CASCADE,
+  line INTEGER NOT NULL DEFAULT 0,
+  col INTEGER NOT NULL DEFAULT 0,
+  at_token_id INTEGER REFERENCES tokens(id),
+  cross_lang_call_edge_id INTEGER REFERENCES cgdb_edges(id),
+  marshalling_data_symbol_id INTEGER REFERENCES cgdb_nodes(id)
+);
+CREATE INDEX IF NOT EXISTS idx_ffi_site_binding ON ffi_call_sites(binding_id);
+CREATE INDEX IF NOT EXISTS idx_ffi_site_file ON ffi_call_sites(file_id, line);
+
+-- ============================================================================
+-- Report-跨语言: language_adapters — registry of installed language adapters
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS language_adapters (
+  language TEXT PRIMARY KEY,
+  tier TEXT NOT NULL CHECK (tier IN ('A','B','C')),
+  ast_adapter TEXT NOT NULL,
+  ir_adapter TEXT,
+  ir_kind TEXT NOT NULL CHECK (ir_kind IN ('llvm-ir','jimple','msil','go-ssa','python-bytecode','ts-compiler','none')),
+  supported_versions TEXT NOT NULL DEFAULT '[]',
+  adapter_version TEXT NOT NULL DEFAULT '0.1.0',
+  coverage_level TEXT NOT NULL CHECK (coverage_level IN ('L1+L2','L1+L2+L3-weak','L1+L2+L3','L1+L2+L3+L4')),
+  notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_langadapter_tier ON language_adapters(tier);
+
+-- ============================================================================
+-- Report-跨语言: runtime_observations — C-档 runtime sampling for dynamic langs
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS runtime_observations (
+  id INTEGER PRIMARY KEY,
+  language TEXT NOT NULL,
+  symbol_id INTEGER REFERENCES cgdb_nodes(id) ON DELETE CASCADE,
+  observed_type TEXT,
+  observed_targets TEXT NOT NULL DEFAULT '[]',
+  observed_at_block_id INTEGER REFERENCES basic_blocks(id),
+  source TEXT NOT NULL CHECK (source IN ('runtime_observed','static_inferred','declared','hybrid')),
+  confidence REAL NOT NULL DEFAULT 1.0,
+  observed_at INTEGER NOT NULL DEFAULT 0,
+  scenario TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_runtime_symbol ON runtime_observations(symbol_id);
+CREATE INDEX IF NOT EXISTS idx_runtime_lang ON runtime_observations(language);
+CREATE INDEX IF NOT EXISTS idx_runtime_source ON runtime_observations(source);
+
+-- ============================================================================
+-- Report-跨语言: dependencies — per-language dependency manifest entries
+-- (pip/npm/cargo/maven/nuget/pypi)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS dependencies (
+  id INTEGER PRIMARY KEY,
+  language TEXT NOT NULL,
+  name TEXT NOT NULL,
+  version TEXT,
+  source TEXT NOT NULL CHECK (source IN ('pip','npm','cargo','maven','nuget','pypi','go-mod','gem','composer','other')),
+  resolved_path TEXT,
+  is_dev INTEGER NOT NULL DEFAULT 0,
+  license TEXT,
+  declared_in_file TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_dep_name ON dependencies(name);
+CREATE INDEX IF NOT EXISTS idx_dep_lang ON dependencies(language);
+CREATE INDEX IF NOT EXISTS idx_dep_source ON dependencies(source);
 """
 
 

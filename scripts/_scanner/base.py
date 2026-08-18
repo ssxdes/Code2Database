@@ -20,6 +20,27 @@ from _scanner.utils import classify_domain, check_python_version
 # Base scanner class
 # ---------------------------------------------------------------------------
 
+# Module-level constants used by _register_type / _infer_type_from_value.
+# Hoisted out of the per-call path so they're constructed once per process
+# instead of once per type registration or per local-var inference.
+_BUILTIN_C_TYPES = frozenset({
+    'void', 'char', 'short', 'int', 'long', 'float', 'double',
+    'signed', 'unsigned', 'bool', '_Bool', 'size_t', 'ssize_t',
+    'int8_t', 'int16_t', 'int32_t', 'int64_t',
+    'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t',
+    'int_least8_t', 'int_least16_t', 'int_least32_t', 'int_least64_t',
+    'uint_least8_t', 'uint_least16_t', 'uint_least32_t', 'uint_least64_t',
+    'int_fast8_t', 'int_fast16_t', 'int_fast32_t', 'int_fast64_t',
+    'uint_fast8_t', 'uint_fast16_t', 'uint_fast32_t', 'uint_fast64_t',
+    'intptr_t', 'uintptr_t', 'intmax_t', 'uintmax_t',
+    'char16_t', 'char32_t', 'wchar_t',
+})
+_C_STORAGE_kw_re = re.compile(r'\b(?:static|inline|extern|register|auto)\b')
+_RETURN_TYPE_kw_re = re.compile(
+    r'\b(?:static|inline|extern|register|async|pub|unsafe)\b'
+)
+
+
 class BaseScanner(ABC):
     """Abstract base for language-specific code graph scanners."""
 
@@ -426,9 +447,7 @@ class BaseScanner(ABC):
             # Categorize
             is_const = 'const ' in canon + ' '
             is_volatile = 'volatile ' in canon + ' '
-            stripped = canon
-            for kw in ('static', 'inline', 'extern', 'register', 'auto'):
-                stripped = re.sub(rf'\b{kw}\b', '', stripped)
+            stripped = _C_STORAGE_kw_re.sub('', canon)
             stripped = " ".join(stripped.split())
             kind = 'builtin'
             if stripped.endswith('*') or '*' in stripped:
@@ -444,22 +463,8 @@ class BaseScanner(ABC):
             elif '(' in stripped and ')' in stripped:
                 kind = 'function'
             else:
-                # Heuristic: if it starts with a capital letter and isn't a
-                # known builtin, treat as record (struct typedef).
-                _BUILTIN_C = {
-                    'void', 'char', 'short', 'int', 'long', 'float', 'double',
-                    'signed', 'unsigned', 'bool', '_Bool', 'size_t', 'ssize_t',
-                    'int8_t', 'int16_t', 'int32_t', 'int64_t',
-                    'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t',
-                    'int_least8_t', 'int_least16_t', 'int_least32_t', 'int_least64_t',
-                    'uint_least8_t', 'uint_least16_t', 'uint_least32_t', 'uint_least64_t',
-                    'int_fast8_t', 'int_fast16_t', 'int_fast32_t', 'int_fast64_t',
-                    'uint_fast8_t', 'uint_fast16_t', 'uint_fast32_t', 'uint_fast64_t',
-                    'intptr_t', 'uintptr_t', 'intmax_t', 'uintmax_t',
-                    'char16_t', 'char32_t', 'wchar_t',
-                }
                 base = stripped.split()[0] if stripped.split() else ''
-                if base in _BUILTIN_C or base.endswith('_t') and base in _BUILTIN_C:
+                if base in _BUILTIN_C_TYPES or base.endswith('_t') and base in _BUILTIN_C_TYPES:
                     kind = 'builtin'
                 elif base and base[0].isupper():
                     kind = 'record'
@@ -536,11 +541,9 @@ class BaseScanner(ABC):
                     idx = signature.rfind(fn_name)
                     if idx > 0:
                         return_type_spelling = signature[:idx].strip()
-                        for kw in ('static', 'inline', 'extern', 'register',
-                                   'async', 'pub', 'unsafe'):
-                            return_type_spelling = re.sub(
-                                rf'\b{kw}\b', '', return_type_spelling
-                            ).strip()
+                        return_type_spelling = _RETURN_TYPE_kw_re.sub(
+                            '', return_type_spelling
+                        ).strip()
                         return_type_spelling = " ".join(return_type_spelling.split())
             fn_type_id = _register_type(return_type_spelling) if return_type_spelling else None
             # Also register parameter types from params list

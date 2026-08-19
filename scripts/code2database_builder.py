@@ -1399,6 +1399,34 @@ def main():
                             help="Generate cgdb_layer_summary.md report for all 13 cgdb tables")
     p_cgls.add_argument("--graph", required=True)
 
+    # --- Cross-graph merge / suggest / tour ---
+    p_cgm = sub.add_parser("cgdb-merge-knowledge",
+                           help="Merge knowledge/memory from another branch's graph "
+                                "into this one (graph structure stays based on target)")
+    p_cgm.add_argument("--graph", required=True, help="Target graph directory")
+    p_cgm.add_argument("--source-graph", required=True,
+                        help="Source graph directory (another branch)")
+    p_cgm.add_argument("--dry-run", action="store_true",
+                       help="Only show what would be merged, don't write")
+    p_cgm.add_argument("--no-knowledge", action="store_true",
+                       help="Skip knowledge entries")
+    p_cgm.add_argument("--no-memory", action="store_true",
+                       help="Skip memory entries")
+
+    p_cgs = sub.add_parser("cgdb-suggest",
+                           help="Analyze the graph and suggest improvements "
+                                "(missing invariants, duplicates, stale knowledge, etc.)")
+    p_cgs.add_argument("--graph", required=True)
+    p_cgs.add_argument("--top", type=int, default=20,
+                       help="Max number of suggestions (default 20)")
+
+    p_cgt = sub.add_parser("cgdb-tour",
+                           help="Generate a guided codebase tour markdown "
+                                "for new team member onboarding")
+    p_cgt.add_argument("--graph", required=True)
+    p_cgt.add_argument("--output", default=None,
+                       help="Output path (default: <graph_dir>/CODEBASE_TOUR.md)")
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -1578,6 +1606,9 @@ def main():
         "cgdb-path-feasible": cmd_cgdb_path_feasible,
         "cgdb-get-source": cmd_cgdb_get_source,
         "cgdb-layer-summary": cmd_cgdb_layer_summary,
+        "cgdb-merge-knowledge": _lazy("_builder.cgdb_merge", "cmd_cgdb_merge_knowledge"),
+        "cgdb-suggest": _lazy("_builder.cgdb_suggest", "cmd_cgdb_suggest"),
+        "cgdb-tour": _lazy("_builder.cgdb_tour", "cmd_cgdb_tour"),
     }
     handler = commands.get(args.command)
     if handler is None:

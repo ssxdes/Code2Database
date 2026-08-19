@@ -261,13 +261,11 @@ class GraphCache:
         with self._lock:
             query_lower = query.lower()
             results = []
-            # Try exact name match first
             exact_id = self._name_to_id.get(query_lower)
             if exact_id:
                 results.append({"id": exact_id,
                                 "name": self.G.nodes[exact_id].get("name", ""),
                                 "score": 100})
-            # Substring matches
             for nid, nd in self.G.nodes(data=True):
                 if nd.get("is_empty", False) or nd.get("node_type") == "file":
                     continue
@@ -279,9 +277,87 @@ class GraphCache:
                     results.append({"id": nid, "name": name, "score": score})
                     if len(results) >= limit:
                         break
-            # Sort by score
             results.sort(key=lambda r: -r["score"])
             return results[:limit]
+
+    def get_code_snippet(self, node_id: str, context_lines: int = 10) -> str:
+        """Return source code around a function node."""
+        with self._lock:
+            if node_id not in self.G:
+                return ""
+            nd = self.G.nodes[node_id]
+            source_file = nd.get("source_file", "")
+            line = nd.get("line", 0)
+            if not source_file or not line:
+                return nd.get("body_text", "")[:2000]
+            try:
+                with open(source_file, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+                start = max(0, line - context_lines - 1)
+                end = min(len(lines), line + context_lines)
+                snippet = "".join(lines[start:end])
+                return snippet[:4000]  # Cap for API response
+            except (OSError, IOError):
+                return nd.get("body_text", "")[:2000]
+
+    def list_domains(self) -> List[Dict]:
+        """Return list of domains with node/edge counts."""
+        with self._lock:
+            domain_nodes: Dict[str, int] = defaultdict(int)
+            domain_edges: Dict[str, int] = defaultdict(int)
+            for nid, nd in self.G.nodes(data=True):
+                if nd.get("is_empty", False):
+                    continue
+                dom = nd.get("domain", "root")
+                domain_nodes[dom] += 1
+            for u, v, ed in self.G.edges(data=True):
+                if ed.get("relation") in ("CONTAINS", "IMPORTS"):
+                    continue
+                u_dom = self.G.nodes[u].get("domain", "root") if u in self.G else "?"
+                v_dom = self.G.nodes[v].get("domain", "root") if v in self.G else "?"
+                if u_dom == v_dom:
+                    domain_edges[u_dom] += 1
+                else:
+                    domain_edges[f"{u_dom}→{v_dom}"] += 1
+            return sorted(
+                [{"domain": dom, "nodes": cnt, "internal_edges": domain_edges.get(dom, 0)}
+                 for dom, cnt in domain_nodes.items()],
+                key=lambda d: -d["nodes"]
+            )
+
+    def impact_analysis(self, node_id: str, max_depth: int = 5) -> Dict:
+        """Reverse-reachability analysis: who calls this function?"""
+        with self._lock:
+            if node_id not in self.G:
+                return {"error": "node not found"}
+            affected = []
+            visited = {node_id}
+            queue = [(node_id, 0)]
+            while queue:
+                cur, depth = queue.pop(0)
+                if depth >= max_depth:
+                    continue
+                for pred in self.G.predecessors(cur):
+                    if pred in visited:
+                        continue
+                    visited.add(pred)
+                    ed = self.G.get_edge_data(pred, cur) or {}
+                    if ed.get("relation") in ("CONTAINS", "IMPORTS"):
+                        continue
+                    nd = self.G.nodes[pred]
+                    affected.append({
+                        "id": pred,
+                        "name": nd.get("name", ""),
+                        "domain": nd.get("domain", ""),
+                        "depth": depth + 1,
+                        "source_file": nd.get("source_file", ""),
+                    })
+                    queue.append((pred, depth + 1))
+            return {
+                "node_id": node_id,
+                "affected_count": len(affected),
+                "affected": affected[:200],
+            }
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +441,46 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     self._send_json(400, {"error": "q required"})
                     return
                 self._send_json(200, {"results": self.cache.search(q)})
+                return
+            # --- New endpoints ---
+            if path == "/api/code":
+                node_id = query.get("node", [""])[0]
+                if not node_id:
+                    self._send_json(400, {"error": "node required"})
+                    return
+                code = self.cache.get_code_snippet(node_id)
+                self._send_json(200, {"code": code})
+                return
+            if path == "/api/domains":
+                self._send_json(200, {"domains": self.cache.list_domains()})
+                return
+            if path == "/api/impact":
+                node_id = query.get("node", [""])[0]
+                if not node_id:
+                    self._send_json(400, {"error": "node required"})
+                    return
+                self._send_json(200, self.cache.impact_analysis(node_id))
+                return
+            if path == "/api/suggestions":
+                try:
+                    from _builder.cgdb_suggest import analyze_and_suggest
+                    suggestions = analyze_and_suggest(self.cache.graph_dir)
+                    self._send_json(200, {"suggestions": suggestions})
+                except Exception as exc:
+                    self._send_json(200, {"suggestions": [], "error": str(exc)})
+                return
+            if path == "/api/tour":
+                try:
+                    from _builder.cgdb_tour import generate_tour
+                    import tempfile
+                    tour_path = generate_tour(self.cache.graph_dir,
+                                              output_path=os.path.join(
+                                                  tempfile.gettempdir(), "c2d_tour.md"))
+                    with open(tour_path, "r", encoding="utf-8") as f:
+                        tour_content = f.read()
+                    self._send_json(200, {"tour": tour_content})
+                except Exception as exc:
+                    self._send_json(200, {"tour": "", "error": str(exc)})
                 return
             self._send_json(404, {"error": f"unknown path {path}"})
         except Exception as exc:

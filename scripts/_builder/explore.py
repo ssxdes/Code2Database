@@ -766,56 +766,63 @@ def cmd_explore_flow(args):
         "key_paths": key_paths,
     }
 
-    # Token budget control
+    # Token budget control — incremental estimation: serialize the full
+    # result once, then for each trimming step estimate the token reduction
+    # by serializing only the removed portion (much smaller than the whole
+    # result). Avoids 8+ full json.dumps calls on the entire result dict.
     result_json = json.dumps(result, ensure_ascii=False)
-    result_tokens = estimate_tokens(result_json)
+    running_tokens = estimate_tokens(result_json)
 
-    if max_tokens > 0 and result_tokens > max_tokens:
-        # Progressively trim
-        # 1. Trim top_matches to fewer entries
+    def _tok(obj) -> int:
+        return estimate_tokens(json.dumps(obj, ensure_ascii=False))
+
+    if max_tokens > 0 and running_tokens > max_tokens:
         if len(result.get("top_matches", [])) > 5:
+            removed = result["top_matches"][5:]
             result["top_matches"] = result["top_matches"][:5]
-        # 2. Remove edge data
-        if "edges" in result.get("subgraph", {}):
-            result["subgraph"]["edges"] = [
-                {k: v for k, v in e.items() if k in ("from_name", "to_name", "call_condition", "concurrency")}
-                for e in result["subgraph"]["edges"]
-            ]
-        # 3. Trim node data to minimal
-        result_json = json.dumps(result, ensure_ascii=False)
-        if estimate_tokens(result_json) > max_tokens:
-            result["subgraph"]["nodes"] = {
-                nid: {k: v for k, v in ndata.items() if k in ("id", "name", "domain", "exec_summary")}
-                for nid, ndata in result["subgraph"]["nodes"].items()
-            }
-            result["subgraph"]["edges"] = [
-                {k: v for k, v in e.items() if k in ("from_name", "to_name")}
-                for e in result.get("subgraph", {}).get("edges", [])
-            ]
-        # 4. Trim paths
-        result_json = json.dumps(result, ensure_ascii=False)
-        if estimate_tokens(result_json) > max_tokens:
-            result["key_paths"] = [
-                {"from": p["from"], "to": p["to"], "length": p["length"],
-                 "steps": [s["name"] for s in p.get("steps", [])]}
-                for p in result.get("key_paths", [])
-            ]
-        # 5. Truncate subgraph edges if still over budget
-        result_json = json.dumps(result, ensure_ascii=False)
-        if estimate_tokens(result_json) > max_tokens:
+            running_tokens -= _tok(removed)
+        sg = result.get("subgraph", {})
+        if "edges" in sg:
+            old_edges = sg["edges"]
+            new_edges = [{k: v for k, v in e.items()
+                          if k in ("from_name", "to_name", "call_condition", "concurrency")}
+                         for e in old_edges]
+            running_tokens -= _tok(old_edges) - _tok(new_edges)
+            sg["edges"] = new_edges
+        if running_tokens > max_tokens and "nodes" in sg:
+            old_nodes = sg["nodes"]
+            new_nodes = {nid: {k: v for k, v in nd.items()
+                               if k in ("id", "name", "domain", "exec_summary")}
+                         for nid, nd in old_nodes.items()}
+            running_tokens -= _tok(old_nodes) - _tok(new_nodes)
+            sg["nodes"] = new_nodes
+            if "edges" in sg:
+                old_edges = sg["edges"]
+                new_edges = [{k: v for k, v in e.items() if k in ("from_name", "to_name")}
+                             for e in old_edges]
+                running_tokens -= _tok(old_edges) - _tok(new_edges)
+                sg["edges"] = new_edges
+        if running_tokens > max_tokens:
+            old_paths = result.get("key_paths", [])
+            new_paths = [{"from": p["from"], "to": p["to"], "length": p["length"],
+                          "steps": [s["name"] for s in p.get("steps", [])]}
+                         for p in old_paths]
+            running_tokens -= _tok(old_paths) - _tok(new_paths)
+            result["key_paths"] = new_paths
+        if running_tokens > max_tokens:
             edges = result.get("subgraph", {}).get("edges", [])
-            # Keep only half the edges, repeat if needed
-            while edges and estimate_tokens(json.dumps(result, ensure_ascii=False)) > max_tokens:
+            while edges and running_tokens > max_tokens:
+                removed_half = edges[len(edges)//2:]
                 edges = edges[:len(edges)//2]
+                running_tokens -= _tok(removed_half)
                 result["subgraph"]["edges"] = edges
-        # 6. Remove subgraph entirely if still over budget
-        result_json = json.dumps(result, ensure_ascii=False)
-        if estimate_tokens(result_json) > max_tokens:
-            result.pop("subgraph", None)
-            result.pop("key_paths", None)
-        # 6. Final truncation
-        result_json = json.dumps(result, ensure_ascii=False)
-        if estimate_tokens(result_json) > max_tokens:
+        if running_tokens > max_tokens:
+            if "subgraph" in result:
+                running_tokens -= _tok(result.pop("subgraph"))
+            if "key_paths" in result:
+                running_tokens -= _tok(result.pop("key_paths"))
+        if running_tokens > max_tokens:
+            result_json = json.dumps(result, ensure_ascii=False)
             truncated = truncate_to_tokens(result_json, max_tokens)
             try:
                 last_brace = truncated.rfind('}')
@@ -824,5 +831,6 @@ def cmd_explore_flow(args):
             except json.JSONDecodeError:
                 pass
 
-    result["_token_count"] = estimate_tokens(json.dumps(result, ensure_ascii=False))
+    final_json = json.dumps(result, ensure_ascii=False)
+    result["_token_count"] = estimate_tokens(final_json)
     print(json.dumps(result, ensure_ascii=False, indent=2))

@@ -63,57 +63,62 @@ def analyze_unresolved_callees(data, source_root, external_prefixes=None):
         unresolved[target].append((source, src_file))
 
     findings = []
+    # Cache all C/H/CPP source files in a single walk, then search
+    # cached contents per callee — avoids O(K×N) repeated walks where
+    # K = number of unresolved callees, N = number of source files.
+    _source_files: dict = {}  # path → content text
+    for dirpath, dirnames, filenames in os.walk(source_root):
+        dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+        for fname in filenames:
+            if not fname.endswith(('.c', '.h', '.cpp')):
+                continue
+            fpath = os.path.join(dirpath, fname)
+            try:
+                with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
+                    _source_files[fpath] = f.read()
+            except (IOError, OSError):
+                continue
+
     for callee, callers in sorted(unresolved.items()):
-        # Try to find the callee in source code
         found_in_source = False
         found_type = None
-        for dirpath, dirnames, filenames in os.walk(source_root):
-            dirnames[:] = [d for d in dirnames if not d.startswith('.')]
-            for fname in filenames:
-                if not fname.endswith(('.c', '.h', '.cpp')):
-                    continue
-                fpath = os.path.join(dirpath, fname)
-                try:
-                    with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
-                        content = f.read()
-                except (IOError, OSError):
-                    continue
+        for fpath, content in _source_files.items():
 
-                # Check if it's a function declaration
-                if re.search(rf'\b{re.escape(callee)}\s*\(', content):
-                    found_in_source = True
-                    # Determine type — check definition vs declaration
-                    # A definition has the name followed by params and then '{'
-                    # A declaration ends with ';' after the param list
-                    # Check for declaration first (more specific pattern)
-                    if re.search(rf'(?:^|\n)\s*(?:static\s+)?\w+[\s*]+\s*{re.escape(callee)}\s*\([^)]*\)\s*;', content):
-                        found_type = 'function_declaration'
-                    elif re.search(rf'(?:^|\n)\s*(?:static\s+)?\w+[\s*]+\s*{re.escape(callee)}\s*\([^)]*\)\s*\{{', content):
+            # Check if it's a function declaration
+            if re.search(rf'\b{re.escape(callee)}\s*\(', content):
+                found_in_source = True
+                # Determine type — check definition vs declaration
+                # A definition has the name followed by params and then '{'
+                # A declaration ends with ';' after the param list
+                # Check for declaration first (more specific pattern)
+                if re.search(rf'(?:^|\n)\s*(?:static\s+)?\w+[\s*]+\s*{re.escape(callee)}\s*\([^)]*\)\s*;', content):
+                    found_type = 'function_declaration'
+                elif re.search(rf'(?:^|\n)\s*(?:static\s+)?\w+[\s*]+\s*{re.escape(callee)}\s*\([^)]*\)\s*\{{', content):
+                    found_type = 'function_definition'
+                elif re.search(rf'\b{re.escape(callee)}\s*\([^)]*\)\s*\{{', content):
+                    found_type = 'function_definition'
+                elif re.search(rf'#define\s+{re.escape(callee)}', content):
+                    found_type = 'macro_definition'
+                else:
+                    # Has the name with parens but unclear if def or decl
+                    # Check if there's a '{' on the same or next line after the callee name
+                    lines = content.split('\n')
+                    has_def = False
+                    for li, line in enumerate(lines):
+                        if re.search(rf'\b{re.escape(callee)}\s*\(', line):
+                            # Look ahead for opening brace
+                            for j in range(li, min(li + 5, len(lines))):
+                                if '{' in lines[j]:
+                                    has_def = True
+                                    break
+                            break
+                    if has_def:
                         found_type = 'function_definition'
-                    elif re.search(rf'\b{re.escape(callee)}\s*\([^)]*\)\s*\{{', content):
-                        found_type = 'function_definition'
-                    elif re.search(rf'#define\s+{re.escape(callee)}', content):
-                        found_type = 'macro_definition'
                     else:
-                        # Has the name with parens but unclear if def or decl
-                        # Check if there's a '{' on the same or next line after the callee name
-                        lines = content.split('\n')
-                        has_def = False
-                        for li, line in enumerate(lines):
-                            if re.search(rf'\b{re.escape(callee)}\s*\(', line):
-                                # Look ahead for opening brace
-                                for j in range(li, min(li + 5, len(lines))):
-                                    if '{' in lines[j]:
-                                        has_def = True
-                                        break
-                                break
-                        if has_def:
-                            found_type = 'function_definition'
-                        else:
-                            found_type = 'reference_only'
-                    break
-            if found_in_source:
+                        found_type = 'reference_only'
                 break
+        if found_in_source:
+            break
 
         if not found_in_source:
             findings.append({

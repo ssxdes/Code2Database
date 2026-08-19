@@ -15,7 +15,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "_vendor"))
 # Import logging utilities first so other modules can use get_logger()
 from _builder.logging_utils import configure_logging, get_logger, parse_log_level
 
-# Import all command handlers from implementation modules
+# Core command handlers — these are lightweight to import and cover the
+# most common operations (build, search, describe, trace, query).
 from _builder.graph_build import cmd_build, _detect_build_system
 from _builder.search_cmd import cmd_load, cmd_search, cmd_path, cmd_neighbors, cmd_impact, cmd_domain
 from _builder.query import cmd_describe_node, cmd_resolve_chain, cmd_trace_chain, cmd_diff_chains, cmd_get_code_snippet, cmd_blast_radius, cmd_io_path, cmd_reverse_trace, cmd_field_access, cmd_param_flow, cmd_describe_commit, cmd_node_history, cmd_graph_provenance, cmd_blame_node, cmd_find_commits
@@ -32,22 +33,6 @@ from _builder.transactions import (
 )
 from _builder.ffi_bridge import cmd_ffi_detect, cmd_ffi_list, cmd_ffi_trace, cmd_ffi_types
 from _builder.intent_router import cmd_intent_query
-from _builder.embeddings import cmd_embeddings_build, cmd_embeddings_search
-from _builder.web_ui import cmd_web_ui
-from _builder.bug_benchmark import cmd_bug_benchmark
-from _builder.profile_health import (
-    cmd_profile_health, cmd_profile_evolve, cmd_profile_bind_version,
-)
-from _builder.doc_code_align import (
-    cmd_doc_code_check, cmd_doc_mark_stale, cmd_doc_alignment_report,
-    cmd_doc_signature_diff,
-)
-from _builder.daemon import (
-    cmd_daemon_start, cmd_daemon_stop, cmd_daemon_status,
-    cmd_daemon_force_refresh, cmd_daemon_pause, cmd_daemon_resume,
-    cmd_daemon_wait_sync, cmd_daemon_logs, cmd_daemon_reload,
-    cmd_daemon_list_projects,
-)
 from _builder.explore import cmd_explore_flow
 from _builder.key_paths import cmd_key_paths
 from _builder.update_sync import cmd_merge, cmd_update, cmd_sync
@@ -75,7 +60,6 @@ from _builder.knowledge_manager import cmd_extract_knowledge, cmd_apply_knowledg
 from _builder.patcher import cmd_patch_from_diff, cmd_patch_from_git, cmd_light_scan
 from _builder.changelog_update import cmd_quick_update, cmd_export_changes, cmd_merge_changes, cmd_semantic_status
 from _builder.update_cmd import cmd_update_node, cmd_update_edge, cmd_patch_profile
-from _builder.mcp_server import cmd_serve
 from _builder.cgdb_commands import (
     cmd_cgdb_query, cmd_cgdb_time_travel, cmd_cgdb_configs_for,
     cmd_cgdb_ops_impls, cmd_cgdb_cfg_paths, cmd_cgdb_data_flow,
@@ -86,6 +70,29 @@ from _builder.cgdb_commands import (
     cmd_cgdb_path_feasible, cmd_cgdb_schema_version, cmd_cgdb_sql,
     cmd_cgdb_views, cmd_cgdb_get_source, cmd_cgdb_layer_summary,
 )
+from _builder.doc_code_align import (
+    cmd_doc_code_check, cmd_doc_mark_stale, cmd_doc_alignment_report,
+    cmd_doc_signature_diff,
+)
+from _builder.profile_health import (
+    cmd_profile_health, cmd_profile_evolve, cmd_profile_bind_version,
+)
+
+
+def _lazy(module_path: str, func_name: str):
+    """Create a lazy-import wrapper for a command handler.
+
+    The heavy module is imported only when the command is actually
+    invoked, not at CLI startup time. This saves ~200-400ms of import
+    overhead for common commands (search, describe, trace) that don't
+    need daemon/web_ui/mcp_server/embeddings/bug_benchmark.
+    """
+    def wrapper(args):
+        mod = __import__(module_path, fromlist=[func_name])
+        fn = getattr(mod, func_name)
+        return fn(args)
+    wrapper.__name__ = func_name
+    return wrapper
 
 
 def cmd_install_hook(args):
@@ -1470,7 +1477,7 @@ def main():
         "merge-changes": cmd_merge_changes,
         "semantic-status": cmd_semantic_status,
         "install-hook": cmd_install_hook,
-        "serve": cmd_serve,
+        "serve": _lazy("_builder.mcp_server", "cmd_serve"),
         "get-code-snippet": cmd_get_code_snippet,
         "blast-radius": cmd_blast_radius,
         "field-access": cmd_field_access,
@@ -1521,12 +1528,12 @@ def main():
         # D45+D16 optimization: intent router
         "intent-query": cmd_intent_query,
         # D24 enhancement: TF-IDF char n-gram embeddings
-        "embeddings-build": cmd_embeddings_build,
-        "embeddings-search": cmd_embeddings_search,
+        "embeddings-build": _lazy("_builder.embeddings", "cmd_embeddings_build"),
+        "embeddings-search": _lazy("_builder.embeddings", "cmd_embeddings_search"),
         # Deficiency 12: interactive Web UI
-        "web-ui": cmd_web_ui,
+        "web-ui": _lazy("_builder.web_ui", "cmd_web_ui"),
         # Deficiency 13: BUG benchmark
-        "bug-benchmark": cmd_bug_benchmark,
+        "bug-benchmark": _lazy("_builder.bug_benchmark", "cmd_bug_benchmark"),
         # Deficiency 14: profile health + auto-evolution
         "profile-health": cmd_profile_health,
         "profile-evolve": cmd_profile_evolve,
@@ -1537,16 +1544,16 @@ def main():
         "doc-alignment-report": cmd_doc_alignment_report,
         "doc-signature-diff": cmd_doc_signature_diff,
         # Deficiency 16 (P0): background daemon
-        "daemon-start": cmd_daemon_start,
-        "daemon-stop": cmd_daemon_stop,
-        "daemon-status": cmd_daemon_status,
-        "daemon-force-refresh": cmd_daemon_force_refresh,
-        "daemon-pause": cmd_daemon_pause,
-        "daemon-resume": cmd_daemon_resume,
-        "daemon-wait-sync": cmd_daemon_wait_sync,
-        "daemon-logs": cmd_daemon_logs,
-        "daemon-reload": cmd_daemon_reload,
-        "daemon-list-projects": cmd_daemon_list_projects,
+        "daemon-start": _lazy("_builder.daemon", "cmd_daemon_start"),
+        "daemon-stop": _lazy("_builder.daemon", "cmd_daemon_stop"),
+        "daemon-status": _lazy("_builder.daemon", "cmd_daemon_status"),
+        "daemon-force-refresh": _lazy("_builder.daemon", "cmd_daemon_force_refresh"),
+        "daemon-pause": _lazy("_builder.daemon", "cmd_daemon_pause"),
+        "daemon-resume": _lazy("_builder.daemon", "cmd_daemon_resume"),
+        "daemon-wait-sync": _lazy("_builder.daemon", "cmd_daemon_wait_sync"),
+        "daemon-logs": _lazy("_builder.daemon", "cmd_daemon_logs"),
+        "daemon-reload": _lazy("_builder.daemon", "cmd_daemon_reload"),
+        "daemon-list-projects": _lazy("_builder.daemon", "cmd_daemon_list_projects"),
         # cgdb direct queries
         "cgdb-query": cmd_cgdb_query,
         "cgdb-time-travel": cmd_cgdb_time_travel,

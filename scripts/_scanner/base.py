@@ -41,6 +41,79 @@ _RETURN_TYPE_kw_re = re.compile(
     r'\b(?:static|inline|extern|register|async|pub|unsafe)\b'
 )
 
+# Condition extraction patterns (one pair per language: if + switch/match).
+# Pre-compiled at module level so they're built once per process, not per
+# _emit_conditions call (which happens once per file).
+_CONDITION_PATTERNS_BY_LANG = {
+    'c': (re.compile(r'\bif\s*\(([^)]+)\)', re.DOTALL),
+          re.compile(r'\bswitch\s*\(([^)]+)\)', re.DOTALL)),
+    'cpp': (re.compile(r'\bif\s*\(([^)]+)\)', re.DOTALL),
+            re.compile(r'\bswitch\s*\(([^)]+)\)', re.DOTALL)),
+    'python': (re.compile(r'^\s*if\s+(.+?):\s*$', re.MULTILINE),
+               re.compile(r'^\s*elif\s+(.+?):\s*$', re.MULTILINE)),
+    'go': (re.compile(r'\bif\s+(.+?)\s*\{', re.DOTALL),
+           re.compile(r'\bswitch\s+(.+?)\s*\{', re.DOTALL)),
+    'rust': (re.compile(r'\bif\s+(.+?)\s*\{', re.DOTALL),
+             re.compile(r'\bmatch\s+(.+?)\s*\{', re.DOTALL)),
+    'java': (re.compile(r'\bif\s*\(([^)]+)\)', re.DOTALL),
+             re.compile(r'\bswitch\s*\(([^)]+)\)', re.DOTALL)),
+}
+
+_Z3_OP_MAP = {
+    '&&': 'and', '||': 'or', '!': 'not',
+    '==': '=', '!=': 'distinct',
+    '<': '<', '>': '>', '<=': '<=', '>=': '>=',
+}
+
+_CONDITION_OP_SCAN = (
+    ('&&', 'logical'), ('||', 'logical'),
+    ('==', 'comparison'), ('!=', 'comparison'),
+    ('<=', 'comparison'), ('>=', 'comparison'),
+    ('<', 'comparison'), ('>', 'comparison'),
+    ('!', 'unary'),
+)
+
+
+def _split_operand(expr: str, op: str) -> tuple:
+    """Split expr on the first occurrence of op (not inside parens)."""
+    depth = 0
+    i = 0
+    while i < len(expr) - len(op) + 1:
+        c = expr[i]
+        if c == '(':
+            depth += 1
+        elif c == ')':
+            depth -= 1
+        elif depth == 0 and expr[i:i + len(op)] == op:
+            return expr[:i].strip(), expr[i + len(op):].strip()
+        i += 1
+    return None, None
+
+
+def _make_z3_form(cond_text: str, kind: str, operator: str) -> str:
+    """Generate a best-effort SMT-LIB prefix form."""
+    t = cond_text.strip()
+    if t.startswith('(') and t.endswith(')'):
+        t = t[1:-1].strip()
+    if kind == 'logical' and operator:
+        left, right = _split_operand(t, operator)
+        if left is not None and right is not None:
+            z3_op = _Z3_OP_MAP.get(operator, operator)
+            return f'({z3_op} {_make_z3_form(left, "atom", "")} {_make_z3_form(right, "atom", "")})'
+    elif kind == 'comparison' and operator:
+        left, right = _split_operand(t, operator)
+        if left is not None and right is not None:
+            z3_op = _Z3_OP_MAP.get(operator, operator)
+            return f'({z3_op} {left} {right})'
+    elif kind == 'unary' and operator == '!':
+        inner = t.lstrip('!').strip()
+        if inner:
+            return f'(not {_make_z3_form(inner, "atom", "")})'
+    t = ' '.join(t.split())
+    if not t:
+        return 'true'
+    return t
+
 
 class BaseScanner(ABC):
     """Abstract base for language-specific code graph scanners."""
@@ -1197,18 +1270,6 @@ class BaseScanner(ABC):
         Returns a list of dicts with keys:
           id, root_expr_id, kind, operator, left_expr_id, right_expr_id,
           text_form, z3_form, attrs, file_path
-
-        Pattern set is language-aware:
-          - C/C++: if (cond), switch (expr)
-          - Python: if cond:, elif cond:
-          - Go: if cond {, switch expr {
-          - Rust: if cond, match expr
-          - Java: if (cond), switch (expr)
-
-        Also generates z3_form (SMT-LIB prefix syntax) and expression node
-        IDs for left/right operands by registering them as cgdb_nodes with
-        kind='expr'. The caller passes cgdb_nodes via the parent's
-        seen_node_ids set; we emit expression nodes through a callback list.
         """
         try:
             from _scanner.unified_id import unified_node_id
@@ -1216,77 +1277,10 @@ class BaseScanner(ABC):
             return []
         out = []
         cond_id_base = 1
-        if_patterns = {
-            'c': (re.compile(r'\bif\s*\(([^)]+)\)', re.DOTALL),
-                  re.compile(r'\bswitch\s*\(([^)]+)\)', re.DOTALL)),
-            'cpp': (re.compile(r'\bif\s*\(([^)]+)\)', re.DOTALL),
-                    re.compile(r'\bswitch\s*\(([^)]+)\)', re.DOTALL)),
-            'python': (re.compile(r'^\s*if\s+(.+?):\s*$', re.MULTILINE),
-                       re.compile(r'^\s*elif\s+(.+?):\s*$', re.MULTILINE)),
-            'go': (re.compile(r'\bif\s+(.+?)\s*\{', re.DOTALL),
-                   re.compile(r'\bswitch\s+(.+?)\s*\{', re.DOTALL)),
-            'rust': (re.compile(r'\bif\s+(.+?)\s*\{', re.DOTALL),
-                     re.compile(r'\bmatch\s+(.+?)\s*\{', re.DOTALL)),
-            'java': (re.compile(r'\bif\s*\(([^)]+)\)', re.DOTALL),
-                     re.compile(r'\bswitch\s*\(([^)]+)\)', re.DOTALL)),
-        }
-        patterns = if_patterns.get(language)
+        patterns = _CONDITION_PATTERNS_BY_LANG.get(language)
         if not patterns:
             return []
         if_pat, switch_pat = patterns
-
-        # Z3 operator map (C/Python → SMT-LIB prefix)
-        _Z3_OP = {
-            '&&': 'and', '||': 'or', '!': 'not',
-            '==': '=', '!=': 'distinct',
-            '<': '<', '>': '>', '<=': '<=', '>=': '>=',
-        }
-
-        def _split_operand(expr: str, op: str) -> tuple:
-            """Split expr on the first occurrence of op (not inside parens)."""
-            depth = 0
-            i = 0
-            while i < len(expr) - len(op) + 1:
-                c = expr[i]
-                if c == '(':
-                    depth += 1
-                elif c == ')':
-                    depth -= 1
-                elif depth == 0 and expr[i:i + len(op)] == op:
-                    return expr[:i].strip(), expr[i + len(op):].strip()
-                i += 1
-            return None, None
-
-        def _make_z3_form(cond_text: str, kind: str, operator: str) -> str:
-            """Generate a best-effort SMT-LIB prefix form."""
-            # Strip outer parens for easier splitting
-            t = cond_text.strip()
-            if t.startswith('(') and t.endswith(')'):
-                t = t[1:-1].strip()
-            if kind == 'logical' and operator:
-                left, right = _split_operand(t, operator)
-                if left is not None and right is not None:
-                    z3_op = _Z3_OP.get(operator, operator)
-                    return f'({z3_op} {_make_z3_form(left, "atom", "")} {_make_z3_form(right, "atom", "")})'
-            elif kind == 'comparison' and operator:
-                left, right = _split_operand(t, operator)
-                if left is not None and right is not None:
-                    z3_op = _Z3_OP.get(operator, operator)
-                    return f'({z3_op} {left} {right})'
-            elif kind == 'unary' and operator == '!':
-                inner = t.lstrip('!').strip()
-                if inner:
-                    return f'(not {_make_z3_form(inner, "atom", "")})'
-            # atom: just return the text wrapped as a boolean variable
-            t = ' '.join(t.split())
-            if not t:
-                return 'true'
-            # If it looks like a function call or comparison, leave as-is
-            return t
-
-        def _make_expr_node_id(fn_id_str: str, expr_text: str) -> int:
-            """Generate a stable node id for an expression operand."""
-            return unified_node_id(language, f'{fn_id_str}::expr::{expr_text}')
 
         for fn in functions:
             fn_id_str = fn.get('id', '') or ''
@@ -1295,8 +1289,6 @@ class BaseScanner(ABC):
             body = fn.get('body_text', '') or ''
             if not body:
                 continue
-            # Strip the function signature line(s) so we don't match
-            # if/switch in the signature (e.g., default params).
             try:
                 first_brace = body.find('{')
                 if first_brace >= 0:
@@ -1309,42 +1301,36 @@ class BaseScanner(ABC):
                     cond_text = m.group(1).strip()
                     if not cond_text or len(cond_text) > 200:
                         continue
-                    # Collapse whitespace for stable text_form
                     cond_text = ' '.join(cond_text.split())
                     if cond_text in seen_texts:
                         continue
                     seen_texts.add(cond_text)
-                    # Determine kind by simple operators
                     kind = 'atom'
                     operator = ''
-                    for op, k in (('&&', 'logical'), ('||', 'logical'),
-                                  ('==', 'comparison'), ('!=', 'comparison'),
-                                  ('<=', 'comparison'), ('>=', 'comparison'),
-                                  ('<', 'comparison'), ('>', 'comparison'),
-                                  ('!', 'unary')):
+                    for op, k in _CONDITION_OP_SCAN:
                         if op in cond_text:
                             kind = k
                             operator = op
                             break
-                    # Generate z3_form
                     z3_form = _make_z3_form(cond_text, kind, operator)
-                    # Generate expression node IDs for left/right operands
                     root_expr_id = None
                     left_expr_id = None
                     right_expr_id = None
                     if kind in ('comparison', 'logical') and operator:
                         left, right = _split_operand(cond_text, operator)
                         if left is not None:
-                            left_expr_id = _make_expr_node_id(fn_id_str, left)
+                            left_expr_id = unified_node_id(
+                                language, f'{fn_id_str}::expr::{left}')
                         if right is not None:
-                            right_expr_id = _make_expr_node_id(fn_id_str, right)
+                            right_expr_id = unified_node_id(
+                                language, f'{fn_id_str}::expr::{right}')
                     elif kind == 'unary' and operator == '!':
                         inner = cond_text.lstrip('!').strip()
                         if inner:
-                            root_expr_id = _make_expr_node_id(fn_id_str, inner)
+                            root_expr_id = unified_node_id(
+                                language, f'{fn_id_str}::expr::{inner}')
                     cond_id = unified_node_id(
-                        language, f'{fn_id_str}::cond::{cond_id_base}'
-                    )
+                        language, f'{fn_id_str}::cond::{cond_id_base}')
                     cond_id_base += 1
                     out.append({
                         'id': cond_id,

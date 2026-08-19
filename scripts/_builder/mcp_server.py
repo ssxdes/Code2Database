@@ -1882,20 +1882,22 @@ def run_mcp_server(graph_dir: str):
             try:
                 handler = TOOLS[tool_name]["handler"]
                 result = handler(tool_args, graph_dir)
-                # Track token consumption
+                if isinstance(result, dict):
+                    result["_token_count"] = 0
                 result_json = json.dumps(result, ensure_ascii=False, indent=2)
                 tokens = estimate_tokens(result_json)
+                if isinstance(result, dict):
+                    result["_token_count"] = tokens
+                    result_json = json.dumps(result, ensure_ascii=False, indent=2)
                 mcp_stats["total_calls"] += 1
                 mcp_stats["total_output_tokens"] += tokens
                 mcp_stats["by_tool"].setdefault(tool_name, {"calls": 0, "tokens": 0})
                 mcp_stats["by_tool"][tool_name]["calls"] += 1
                 mcp_stats["by_tool"][tool_name]["tokens"] += tokens
-                if isinstance(result, dict):
-                    result["_token_count"] = tokens
                 _write_message({
                     "jsonrpc": "2.0", "id": msg_id,
                     "result": {"content": [{"type": "text",
-                                           "text": json.dumps(result, ensure_ascii=False, indent=2)}]}
+                                           "text": result_json}]}
                 })
             except Exception as e:
                 _write_message({

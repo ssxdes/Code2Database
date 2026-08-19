@@ -858,7 +858,6 @@ def _eval_pp_expr(expr: str, bindings: dict) -> bool:
 
     # Strip outer parentheses: (A || B) && C → A || B && C at this level
     while expr.startswith('(') and expr.endswith(')'):
-        # Verify the closing paren matches the opening (not (A) || (B))
         depth = 0
         matched = True
         for i, ch in enumerate(expr):
@@ -874,16 +873,34 @@ def _eval_pp_expr(expr: str, bindings: dict) -> bool:
         else:
             break
 
-    # Handle || first (lower precedence), then && (higher precedence).
-    # C preprocessor: && binds tighter than ||, so A || B && C = A || (B && C).
-    # Split lower-precedence operator first → it becomes the outer call.
-    # Only split at depth-0 operators (outside parentheses).
-    if _has_depth0_op(expr, '||'):
-        parts = _split_depth0(expr, '||')
-        return _eval_pp_expr(parts[0], bindings) or _eval_pp_expr(parts[1], bindings)
-    if _has_depth0_op(expr, '&&'):
-        parts = _split_depth0(expr, '&&')
-        return _eval_pp_expr(parts[0], bindings) and _eval_pp_expr(parts[1], bindings)
+    # Single-pass depth-0 operator search: find the first || or && at
+    # parenthesis depth 0. || has lower precedence, so if found, split
+    # there; otherwise split on &&. Replaces the previous 4-pass approach
+    # (_has_depth0_op + _split_depth0 for each of || and &&) with 1 pass.
+    depth = 0
+    or_pos = -1
+    and_pos = -1
+    i = 0
+    while i < len(expr):
+        c = expr[i]
+        if c == '(':
+            depth += 1
+        elif c == ')':
+            depth -= 1
+        elif depth == 0:
+            if i + 1 < len(expr) and expr[i:i+2] == '||':
+                or_pos = i
+                break  # || is lowest precedence, split here immediately
+            if and_pos < 0 and i + 1 < len(expr) and expr[i:i+2] == '&&':
+                and_pos = i
+        i += 1
+
+    if or_pos >= 0:
+        return _eval_pp_expr(expr[:or_pos].strip(), bindings) or \
+               _eval_pp_expr(expr[or_pos+2:].strip(), bindings)
+    if and_pos >= 0:
+        return _eval_pp_expr(expr[:and_pos].strip(), bindings) and \
+               _eval_pp_expr(expr[and_pos+2:].strip(), bindings)
 
     # defined(MACRO) or defined MACRO
     m = re.match(r'!?defined\s*\(\s*(\w+)\s*\)', expr)

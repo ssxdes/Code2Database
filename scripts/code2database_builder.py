@@ -1427,6 +1427,13 @@ def main():
     p_cgt.add_argument("--output", default=None,
                        help="Output path (default: <graph_dir>/CODEBASE_TOUR.md)")
 
+    p_cgf = sub.add_parser("cgdb-freshness",
+                            help="Check if the code graph is stale "
+                                 "(source files changed since last scan)")
+    p_cgf.add_argument("--graph", required=True)
+    p_cgf.add_argument("--source", default=None,
+                       help="Source root (default: parent of graph dir)")
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -1609,6 +1616,7 @@ def main():
         "cgdb-merge-knowledge": _lazy("_builder.cgdb_merge", "cmd_cgdb_merge_knowledge"),
         "cgdb-suggest": _lazy("_builder.cgdb_suggest", "cmd_cgdb_suggest"),
         "cgdb-tour": _lazy("_builder.cgdb_tour", "cmd_cgdb_tour"),
+        "cgdb-freshness": _lazy("_builder.cgdb_freshness", "cmd_cgdb_freshness"),
     }
     handler = commands.get(args.command)
     if handler is None:

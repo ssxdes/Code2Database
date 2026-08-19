@@ -1434,6 +1434,12 @@ def main():
     p_cgf.add_argument("--source", default=None,
                        help="Source root (default: parent of graph dir)")
 
+    p_cgc = sub.add_parser("cgdb-compare",
+                            help="Compare two graph directories (e.g., main vs feature branch)")
+    p_cgc.add_argument("--graph", required=True, help="Target graph (e.g., main branch)")
+    p_cgc.add_argument("--source-graph", required=True, help="Source graph (e.g., feature branch)")
+    p_cgc.add_argument("--json", action="store_true", help="Write full diff to JSON file")
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -1617,6 +1623,7 @@ def main():
         "cgdb-suggest": _lazy("_builder.cgdb_suggest", "cmd_cgdb_suggest"),
         "cgdb-tour": _lazy("_builder.cgdb_tour", "cmd_cgdb_tour"),
         "cgdb-freshness": _lazy("_builder.cgdb_freshness", "cmd_cgdb_freshness"),
+        "cgdb-compare": _lazy("_builder.cgdb_compare", "cmd_cgdb_compare"),
     }
     handler = commands.get(args.command)
     if handler is None:

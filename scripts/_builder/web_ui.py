@@ -573,7 +573,42 @@ body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
 .community-box { fill: none; stroke: #ccc; stroke-dasharray: 2,2; }
 .community-label { font-size: 11px; fill: #888; text-anchor: middle; }
 .path-list { background: #f6f6f6; padding: 6px; border-radius: 4px;
-             margin-top: 8px; font-family: monospace; font-size: 11px; }
+              margin-top: 8px; font-family: monospace; font-size: 11px; }
+.action-btns { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+.action-btn { padding: 4px 8px; background: #4a90e2; color: #fff; border: none;
+              border-radius: 3px; cursor: pointer; font-size: 11px; }
+.action-btn:hover { background: #357ab8; }
+.action-btn.secondary { background: #666; }
+.action-btn.secondary:hover { background: #555; }
+#code-panel { position: absolute; right: 0; top: 50px; bottom: 0; width: 400px;
+              background: #1e1e1e; color: #d4d4d4; padding: 12px; overflow-y: auto;
+              font-family: "Cascadia Code", "Fira Code", monospace; font-size: 12px;
+              display: none; border-left: 2px solid #444; }
+#code-panel pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
+#code-panel .close { position: absolute; top: 8px; right: 12px; color: #888;
+                     cursor: pointer; font-size: 16px; }
+#impact-panel { position: absolute; right: 0; top: 50px; bottom: 0; width: 400px;
+                background: #fff; padding: 12px; overflow-y: auto;
+                display: none; border-left: 2px solid #e94a4a; }
+#impact-panel .close { position: absolute; top: 8px; right: 12px; color: #888;
+                        cursor: pointer; font-size: 16px; }
+.impact-item { padding: 4px 0; border-bottom: 1px solid #eee; font-size: 12px; }
+.impact-item .depth { color: #999; margin-right: 6px; }
+.suggestion-item { padding: 8px; margin: 4px 0; background: #f8f8f8;
+                   border-radius: 4px; font-size: 12px; }
+.suggestion-item .priority { font-weight: bold; }
+.suggestion-item .priority.high { color: #e94a4a; }
+.suggestion-item .priority.medium { color: #f0a030; }
+.suggestion-item .priority.low { color: #888; }
+body.dark { background: #1a1a2e; color: #ccc; }
+body.dark #sidebar { background: #16213e; border-right: 1px solid #334; }
+body.dark #topbar { background: #0d1b2a; }
+body.dark .node { fill: #16213e; stroke: #4a90e2; }
+body.dark .node-label { fill: #aaa; }
+body.dark .edge { stroke: #445; }
+body.dark #stats { background: #16213e; color: #aaa; border: 1px solid #334; }
+body.dark #controls button { background: #16213e; color: #ccc; border: 1px solid #334; }
+body.dark #code-panel { background: #0d1117; }
 </style>
 </head>
 <body>
@@ -582,6 +617,9 @@ body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
   <input id="search" placeholder="Search function name..." />
   <button id="search-btn">Search</button>
   <button id="reload-btn">Reload</button>
+  <button id="suggest-btn">Suggest</button>
+  <button id="tour-btn">Tour</button>
+  <button id="dark-btn">Dark</button>
 </div>
 <div id="sidebar">
   <h2 id="node-title">Select a node</h2>
@@ -601,9 +639,18 @@ body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
 <div id="stats"></div>
 <div id="controls">
   <button onclick="zoom(1.2)">+</button>
-  <button onclick="zoom(0.8)">−</button>
+  <button onclick="zoom(0.8)">&#x2212;</button>
   <button onclick="resetView()">Reset</button>
   <button onclick="expandNeighbors()">Expand</button>
+</div>
+<div id="code-panel">
+  <span class="close" onclick="document.getElementById('code-panel').style.display='none'">&times;</span>
+  <pre id="code-content"></pre>
+</div>
+<div id="impact-panel">
+  <span class="close" onclick="document.getElementById('impact-panel').style.display='none'">&times;</span>
+  <h2>Impact Analysis</h2>
+  <div id="impact-content"></div>
 </div>
 
 <script>
@@ -649,7 +696,67 @@ async function loadNodeDetails(nodeId) {
     html += `<div class="field"><div class="field-label">${label}</div>` +
             `<div class="field-value">${escapeHtml(value)}</div></div>`;
   }
+  // Action buttons
+  html += `<div class="action-btns">` +
+    `<button class="action-btn" onclick="loadCode('${escapeHtml(nodeId)}')">View Code</button>` +
+    `<button class="action-btn" onclick="loadImpact('${escapeHtml(nodeId)}')">Impact</button>` +
+    `</div>`;
   document.getElementById('node-details').innerHTML = html;
+}
+
+async function loadCode(nodeId) {
+  const data = await api('/api/code?node=' + encodeURIComponent(nodeId));
+  document.getElementById('code-content').textContent = data.code || '(no source available)';
+  document.getElementById('code-panel').style.display = 'block';
+  document.getElementById('impact-panel').style.display = 'none';
+}
+
+async function loadImpact(nodeId) {
+  const data = await api('/api/impact?node=' + encodeURIComponent(nodeId));
+  let html = `<p><b>${data.affected_count}</b> functions affected</p>`;
+  if (data.affected) {
+    data.affected.slice(0, 50).forEach(a => {
+      html += `<div class="impact-item"><span class="depth">d${a.depth}</span>` +
+              `<b>${escapeHtml(a.name)}</b> <span style="color:#999">${escapeHtml(a.domain)}</span></div>`;
+    });
+    if (data.affected_count > 50)
+      html += `<p style="color:#999">...and ${data.affected_count - 50} more</p>`;
+  }
+  document.getElementById('impact-content').innerHTML = html;
+  document.getElementById('impact-panel').style.display = 'block';
+  document.getElementById('code-panel').style.display = 'none';
+}
+
+async function loadSuggestions() {
+  const data = await api('/api/suggestions');
+  if (!data.suggestions || data.suggestions.length === 0) {
+    alert('No suggestions — graph looks healthy!');
+    return;
+  }
+  let html = '';
+  data.suggestions.forEach(s => {
+    html += `<div class="suggestion-item">` +
+      `<span class="priority ${s.priority}">[${s.priority.toUpperCase()}]</span> ` +
+      `<b>${s.category}</b><br>${escapeHtml(s.message)}`;
+    if (s.action) html += `<br><code>${escapeHtml(s.action)}</code>`;
+    html += `</div>`;
+  });
+  document.getElementById('impact-content').innerHTML =
+    `<h2>Suggestions</h2>` + html;
+  document.getElementById('impact-panel').style.display = 'block';
+  document.getElementById('code-panel').style.display = 'none';
+}
+
+async function loadTour() {
+  const data = await api('/api/tour');
+  if (!data.tour) {
+    alert('Tour not available');
+    return;
+  }
+  const blob = new Blob([data.tour], {type: 'text/markdown'});
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 async function search() {
@@ -785,6 +892,11 @@ document.getElementById('reload-btn').addEventListener('click', async () => {
   await api('/api/reload', { method: 'POST' });
   loadSummary();
   if (cache.focus) focusNode(cache.focus, 1);
+});
+document.getElementById('suggest-btn').addEventListener('click', loadSuggestions);
+document.getElementById('tour-btn').addEventListener('click', loadTour);
+document.getElementById('dark-btn').addEventListener('click', () => {
+  document.body.classList.toggle('dark');
 });
 
 // Initial load

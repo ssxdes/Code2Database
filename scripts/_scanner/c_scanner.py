@@ -94,19 +94,9 @@ class CTreeSitterScanner(BaseScanner):
     _ASM_INLINE_RE = re.compile(r'\basm_inline\b')
 
     def _parse(self, source_bytes: bytes):
-        # Pre-process: strip __attribute__((...)) that confuses tree-sitter-c.
-        # Replace with whitespace of the same byte length to preserve offsets.
         source_text = source_bytes.decode('utf-8', errors='replace')
         source_text = self._ATTR_STRIP_RE.sub(lambda m: ' ' * len(m.group(0)), source_text)
-
-        # Replace asm_inline with __asm__ (same byte length) so tree-sitter-c
-        # parses it as gnu_asm_expression instead of ERROR nodes.
-        # asm_inline (10 chars) → __asm__ (7 chars) + 3 spaces to preserve offsets
         source_text = self._ASM_INLINE_RE.sub('__asm__   ', source_text)
-
-        # For MSVC __asm { body } blocks: extract their content for later processing,
-        # then replace with same-length whitespace to preserve offsets.
-        # We'll process the extracted content in _extract via the _msvc_asm_blocks list.
         self._msvc_asm_blocks = []
         for m in self._MSVC_ASM_RE.finditer(source_text):
             self._msvc_asm_blocks.append({
@@ -114,9 +104,10 @@ class CTreeSitterScanner(BaseScanner):
                 "start_byte": m.start(),
                 "end_byte": m.end(),
             })
-        # Replace MSVC blocks with whitespace
         source_text = self._MSVC_ASM_RE.sub(lambda m: ' ' * len(m.group(0)), source_text)
-
+        # Cache the preprocessed text so _extract can reuse it
+        # without decoding source_bytes a second time.
+        self._cached_source_text = source_text
         return self.parser.parse(source_text.encode('utf-8'))
 
     def _extract_vtable_registrations(self, tree, source_bytes: bytes,
@@ -287,7 +278,15 @@ class CTreeSitterScanner(BaseScanner):
                  source_root: str, domain: str):
         functions = []
         edges = []
-        source_text = source_bytes.decode('utf-8', errors='replace')
+        # Reuse the preprocessed text from _parse if available (avoids
+        # re-decoding source_bytes). The _parse method already decoded
+        # source_bytes and applied attribute stripping / asm_inline
+        # replacement / MSVC __asm extraction. The _extract method needs
+        # the same preprocessed text for PP condition extraction and
+        # export macro scanning.
+        source_text = getattr(self, '_cached_source_text', None)
+        if source_text is None:
+            source_text = source_bytes.decode('utf-8', errors='replace')
 
         # Extract export macro usages (e.g., EXPORT_SYMBOL(func_name))
         # Functions wrapped in export macros are public API entries regardless

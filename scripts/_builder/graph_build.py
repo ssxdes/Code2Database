@@ -4132,18 +4132,20 @@ def build_graph(extraction: dict, profile: dict = None,
                 _fn_ptr_cb_fields[func_name].add(field)
 
     if _fn_ptr_cb_fields:
-        # Build: caller_node -> {target_node} for CALLBACK_ARG edges
+        # Single-pass edge traversal: build _cbarg_from, _callers_by_name,
+        # and _invoked_to_invoker_ids simultaneously (was 3 separate traversals).
         _cbarg_from = defaultdict(set)
-        for u, v, d in G.edges(data=True):
-            if d.get("confidence") == "CALLBACK_ARG":
-                _cbarg_from[u].add(v)
-
-        # Build: target_func_name -> {caller_node_ids}
         _callers_by_name = defaultdict(set)
         for u, v, d in G.edges(data=True):
+            conf = d.get("confidence", "")
+            conc = d.get("concurrency", "")
+            if conf == "CALLBACK_ARG":
+                _cbarg_from[u].add(v)
             v_name = G.nodes[v].get("name", "") if v in G else ""
             if v_name:
                 _callers_by_name[v_name].add(u)
+            if conc == "INVOKES" and v_name:
+                _invoked_to_invoker_ids.setdefault(v_name, set()).add(u)
 
         # For each function with cb_fn fn_ptr_calls, bridge through callers
         _bridged_count = 0

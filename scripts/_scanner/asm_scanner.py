@@ -519,7 +519,7 @@ class _RegisterTracker:
         # --- AT&T syntax MOV: mov $imm, %dst / mov %src, %dst ---
         if self._syntax == "att":
             # AT&T: operand order is src, dst; registers have % prefix; immediates have $ prefix
-            m = re.match(r'\bmov[a-z]*\s+\$(.+?)\s*,\s*%([a-zA-Z_]\w*)', stripped)
+            m = _ATT_MOV_IMM_RE.match(stripped)
             if m:
                 src_val = m.group(1).strip()
                 dst = self._canonical(m.group(2).lower().lstrip('%'))
@@ -534,7 +534,7 @@ class _RegisterTracker:
                     self._regs[dst] = f"const:{src_val}"
                 return
 
-            m = re.match(r'\bmov[a-z]*\s+%([a-zA-Z_]\w*)\s*,\s*%([a-zA-Z_]\w*)', stripped)
+            m = _ATT_MOV_REG_RE.match(stripped)
             if m:
                 src = self._canonical(m.group(1).lower())
                 dst = self._canonical(m.group(2).lower())
@@ -573,7 +573,7 @@ class _RegisterTracker:
 
         # --- AArch64-specific patterns (check BEFORE general _MOV_RE) ---
         # AArch64 MOV: mov[zk] Xd, #imm / mov Xd, Xs
-        m = re.match(r'\bmov[zk]?\s+([xw]\d+)\s*,\s*#?(.+)', stripped, re.IGNORECASE)
+        m = _AARCH64_MOV_RE.match(stripped)
         if m:
             dst = self._canonical(m.group(1).lower())
             src = m.group(2).strip()
@@ -594,7 +594,7 @@ class _RegisterTracker:
             return
 
         # --- AArch64 LDR/STR (load/store) ---
-        m = re.match(r'\bldr\s+([xw]\d+)\s*,\s*\[([^\]]+)\]', stripped, re.IGNORECASE)
+        m = _AARCH64_LDR_RE.match(stripped)
         if m:
             dst = self._canonical(m.group(1).lower())
             mem = m.group(2).strip()

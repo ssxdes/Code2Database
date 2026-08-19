@@ -121,25 +121,26 @@ def detect_framework(filepath: str, language: str = "") -> FrameworkHint | None:
 def detect_frameworks_for_project(source_root: str) -> list[FrameworkHint]:
     """Scan source root for framework indicators.
 
-    Returns list of unique detected frameworks.
+    Returns list of unique detected frameworks. Walks the source tree
+    but exits early once all known framework patterns have been found.
     """
     seen = set()
     results = []
+    target_count = len(_FRAMEWORK_PATTERNS) if hasattr(_FRAMEWORK_PATTERNS, '__len__') else 30
 
     for dirpath, dirnames, filenames in os.walk(source_root):
-        # Skip hidden and build directories
         dirnames[:] = [d for d in dirnames
                        if not d.startswith('.') and d not in
                        ('__pycache__', 'node_modules', 'build', '_build')
                        and not d.startswith('cmake-build-')]
-
         for fname in filenames:
             fpath = os.path.join(dirpath, fname)
             hint = detect_framework(fpath)
             if hint and hint.name not in seen:
                 seen.add(hint.name)
                 results.append(hint)
-
+                if len(seen) >= target_count:
+                    return results
     return results
 
 

@@ -264,51 +264,53 @@ def _score_entry_points(G, source_root: str = "") -> dict:
 
     Returns dict of node_id → score.
     """
+    from collections import Counter
     frameworks = detect_frameworks_for_project(source_root) if source_root else []
     scores = {}
+
+    # Precompute call-only in/out degrees via a single edge traversal,
+    # replacing the per-node predecessors()/successors() traversal that
+    # was O(V × avg_degree) with O(E + V).
+    call_in_deg = Counter()
+    call_out_deg = Counter()
+    for u, v, edata in G.edges(data=True):
+        if edata.get("relation", "") in ("CONTAINS", "IMPORTS"):
+            continue
+        call_in_deg[v] += 1
+        if not G.nodes[v].get("is_empty", False):
+            call_out_deg[u] += 1
 
     for nid, nd in G.nodes(data=True):
         if nd.get("is_empty", False):
             continue
         if "dead_code" in nd.get("labels", []):
             continue
-        # Filter test functions — they should never be entry points
         _test_patterns = (
             r'^test_', r'^testcase_', r'^spec_', r'^bench_', r'^benchmark_',
             r'^mock_', r'^stub_', r'^fake_',
             r'^generateTest', r'^generate_test',
-            r'^main$',  # unless in an app directory
+            r'^main$',
         )
         _name_lower = nd.get("name", "").lower()
         _source = nd.get("source_file", "")
         if any(re.match(p, _name_lower) or re.search(p, _name_lower) for p in _test_patterns):
-            # Exception: main() in app directories is a legitimate entry point
             if not (_name_lower == "main" and "/app/" in _source):
                 continue
-        # Skip external/unresolved nodes — they're not entry points in our codebase
         if nd.get("domain", "") == "external":
             continue
         if not nd.get("source_file", ""):
             continue
-
         is_api = "API_entry" in nd.get("labels", [])
-        # Skip file nodes (they are CONTAINS containers, not entry points)
         if "file" in nd.get("labels", []):
             continue
-        caller_count = sum(1 for pred in G.predecessors(nid)
-                           if (G.get_edge_data(pred, nid) or {}).get("relation") not in ("CONTAINS", "IMPORTS"))
-        # Filter out edges to empty nodes and non-call edges from callee count
-        real_callee_count = sum(1 for succ in G.successors(nid)
-                                if not G.nodes[succ].get("is_empty", False)
-                                and (G.get_edge_data(nid, succ) or {}).get("relation") not in ("CONTAINS", "IMPORTS"))
-
+        caller_count = call_in_deg.get(nid, 0)
+        real_callee_count = call_out_deg.get(nid, 0)
         score = _calculate_entry_point_score(
             nd.get("name", ""), is_api, caller_count, real_callee_count,
             frameworks)
         if score > 0:
             scores[nid] = score
 
-    # Store scores on nodes
     for nid, score in scores.items():
         G.nodes[nid]["entry_score"] = score
 

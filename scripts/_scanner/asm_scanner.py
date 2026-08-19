@@ -391,6 +391,40 @@ _CMP_RE = re.compile(
 _CMOV_RE = re.compile(
     r'\bcmov([a-z]+)\s+([a-zA-Z_]\w*)\s*,\s*([a-zA-Z_]\w*)', re.IGNORECASE)
 
+# Pre-compiled AT&T / AArch64 patterns for _RegisterTracker.process_line
+_ATT_MOV_IMM_RE = re.compile(
+    r'\bmov[a-z]*\s+\$(.+?)\s*,\s*%([a-zA-Z_]\w*)')
+_ATT_MOV_REG_RE = re.compile(
+    r'\bmov[a-z]*\s+%([a-zA-Z_]\w*)\s*,\s*%([a-zA-Z_]\w*)')
+_ATT_ALU_RE = re.compile(
+    r'\b(add|sub|and|or|xor|imul|mul|neg|not|inc|dec|shl|shr|sar|rol|ror)\s+'
+    r'%([a-zA-Z_]\w*)\s*,\s*%([a-zA-Z_]\w*)')
+_ATT_PUSH_RE = re.compile(r'\bpush\s+%([a-zA-Z_]\w*)')
+_ATT_POP_RE = re.compile(r'\bpop\s+%([a-zA-Z_]\w*)')
+_AARCH64_MOV_RE = re.compile(
+    r'\bmov[zk]?\s+([xw]\d+)\s*,\s*#?(.+)', re.IGNORECASE)
+_AARCH64_LDR_RE = re.compile(
+    r'\bldr\s+([xw]\d+)\s*,\s*\[([^\]]+)\]', re.IGNORECASE)
+_AARCH64_ADDSUB_RE = re.compile(
+    r'\b(add|sub)\s+([xw]\d+)\s*,\s*([xw]\d+)\s*,\s*(.+)', re.IGNORECASE)
+_IDENT_RE = re.compile(r'^[a-zA-Z_]\w*$')
+_AARCH64_REGNAME_RE = re.compile(r'^[xw]\d+$')
+
+# Pre-compiled macro-body variants of kernel asm func/end macros.
+# These replace the per-line `pat.pattern.replace(r'(\w+)', r'(\\?\w+)')` calls.
+_KERNEL_ASM_FUNC_MACROS_MACROBODY = [
+    re.compile(p.pattern.replace(r'(\w+)', r'(\\?\w+)'))
+    for p in _KERNEL_ASM_FUNC_MACROS
+]
+_KERNEL_ASM_END_MACROS_MACROBODY = [
+    re.compile(p.pattern.replace(r'(\w+)', r'(\\?\w+)'))
+    for p in _KERNEL_ASM_END_MACROS
+]
+
+# Module-level non-API path prefixes (avoid per-call allocation)
+_NON_API_PATHS_ASM = ('tools/', 'scripts/', 'selftests/', 'testing/',
+                      'documentation/', 'samples/', 'examples/')
+
 
 class _RegisterTracker:
     """Track register values and data flow within an assembly function.
@@ -512,8 +546,7 @@ class _RegisterTracker:
                 return
 
             # AT&T ALU: op %src, %dst (2-operand form, modifies dst)
-            m = re.match(r'\b(add|sub|and|or|xor|imul|mul|neg|not|inc|dec|shl|shr|sar|rol|ror)\s+'
-                         r'%([a-zA-Z_]\w*)\s*,\s*%([a-zA-Z_]\w*)', stripped)
+            m = _ATT_ALU_RE.match(stripped)
             if m:
                 op = m.group(1).lower()
                 src = self._canonical(m.group(2).lower())
@@ -524,12 +557,12 @@ class _RegisterTracker:
                 return
 
             # AT&T push/pop
-            m = re.match(r'\bpush\s+%([a-zA-Z_]\w*)', stripped)
+            m = _ATT_PUSH_RE.match(stripped)
             if m:
                 src = self._canonical(m.group(1).lower())
                 self._stack.append(self._regs.get(src, f"reg:{src}"))
                 return
-            m = re.match(r'\bpop\s+%([a-zA-Z_]\w*)', stripped)
+            m = _ATT_POP_RE.match(stripped)
             if m:
                 dst = self._canonical(m.group(1).lower())
                 if self._stack:
@@ -545,7 +578,7 @@ class _RegisterTracker:
             dst = self._canonical(m.group(1).lower())
             src = m.group(2).strip()
             src_lower = src.lower()
-            if re.match(r'^[xw]\d+$', src_lower):
+            if _AARCH64_REGNAME_RE.match(src_lower):
                 src_canon = self._canonical(src_lower)
                 self._transfers.append((src_canon, dst, line_num))
                 if src_canon in self._regs:
@@ -587,7 +620,7 @@ class _RegisterTracker:
             src = m.group(2).strip()
             # If src is a register, record transfer
             src_lower = src.lower()
-            if re.match(r'^[a-zA-Z_]\w*$', src):
+            if _IDENT_RE.match(src):
                 src_canon = self._canonical(src_lower)
                 self._transfers.append((src_canon, dst, line_num))
                 # Propagate value from src
@@ -646,7 +679,7 @@ class _RegisterTracker:
         if m:
             val = m.group(1).strip()
             val_lower = val.lower()
-            if re.match(r'^[a-zA-Z_]\w*$', val):
+            if _IDENT_RE.match(val):
                 src_canon = self._canonical(val_lower)
                 self._stack.append(self._regs.get(src_canon, f"reg:{src_canon}"))
             else:
@@ -672,7 +705,7 @@ class _RegisterTracker:
             if src:
                 src = src.strip()
                 src_lower = src.lower()
-                if re.match(r'^[a-zA-Z_]\w*$', src):
+                if _IDENT_RE.match(src):
                     src_canon = self._canonical(src_lower)
                     self._transfers.append((src_canon, dst, line_num))
             # ALU ops transform the value
@@ -962,9 +995,8 @@ class AsmRegexScanner(BaseScanner):
                     if param_name not in macro_def_call_params:
                         macro_def_call_params.append(param_name)
                 # Collect SYM_FUNC_START/ENTRY params: SYM_FUNC_START(\param)
-                for pat in _KERNEL_ASM_FUNC_MACROS:
-                    # Replace \param pattern in macro regex match
-                    m = re.match(pat.pattern.replace(r'(\w+)', r'(\\?\w+)'), stripped)
+                for pat in _KERNEL_ASM_FUNC_MACROS_MACROBODY:
+                    m = pat.match(stripped)
                     if m:
                         name = m.group(1)
                         if name.startswith('\\'):
@@ -973,8 +1005,8 @@ class AsmRegexScanner(BaseScanner):
                                 macro_def_func_start_params.append(pname)
                         break
                 # Collect SYM_FUNC_END/ENDPROC params
-                for pat in _KERNEL_ASM_END_MACROS:
-                    m = re.match(pat.pattern.replace(r'(\w+)', r'(\\?\w+)'), stripped)
+                for pat in _KERNEL_ASM_END_MACROS_MACROBODY:
+                    m = pat.match(stripped)
                     if m:
                         name = m.group(1)
                         if name.startswith('\\'):
@@ -2390,32 +2422,26 @@ class AsmRegexScanner(BaseScanner):
     def _classify_label(self, func_name, global_symbols, call_targets,
                         export_symbols):
         """Classify function into one of the 7 allowed labels."""
-        # Check if file is in a non-API path (tools/, testing/, samples/, etc.)
         current_fp = getattr(self, '_current_filepath', '').replace(os.sep, '/')
-        _NON_API_PATHS = ('tools/', 'scripts/', 'selftests/', 'testing/',
-                          'documentation/', 'samples/', 'examples/')
-        is_non_api_path = any(p in current_fp for p in _NON_API_PATHS)
+        is_non_api_path = any(p in current_fp for p in _NON_API_PATHS_ASM)
 
-        # 1. global-declared + entry point pattern → API_entry
         if func_name in global_symbols:
             return "API_entry" if not is_non_api_path else "unknown_end"
-        # 2. EXPORT_SYMBOL → API_entry
-        export_names = {e["name"] for e in export_symbols}
-        if func_name in export_names:
+        # Cache export_names set: export_symbols is static during pass 2,
+        # so we build the set once per file (keyed by list identity).
+        if id(export_symbols) != getattr(self, '_export_names_id', None):
+            self._export_names_id = id(export_symbols)
+            self._export_names_cache = {e["name"] for e in export_symbols}
+        if func_name in self._export_names_cache:
             return "API_entry" if not is_non_api_path else "unknown_end"
-        # 3. callback patterns
         if self._is_callback_by_name(func_name):
             return "callback_func"
-        # 4. constructor patterns
         if func_name.endswith('_init') or func_name.endswith('_ctor'):
             return "constructor"
-        # 5. destructor patterns
         if func_name.endswith('_fini') or func_name.endswith('_dtor'):
             return "destructor"
-        # 6. Referenced by call → unknown_end (subroutine)
         if func_name in call_targets:
             return "unknown_end"
-        # 7. Default
         return "unknown_end"
 
     def _extract_globals_regex(self, source, domain):

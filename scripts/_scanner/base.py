@@ -7,6 +7,7 @@ condition variable extraction, global definition extraction, etc.
 Subclasses must implement _parse() and _extract().
 """
 
+import bisect
 import hashlib
 import os
 import re
@@ -1657,6 +1658,11 @@ class BaseScanner(ABC):
                             lock_release_lines.append(rel_line)
                 if release_pat.search(line):
                     lock_release_lines.append(line_idx)
+            # Sort acquire/release lines for binary search. Implicit-release
+            # appends (e.g. `with lock:` block-end at line 10 followed by an
+            # explicit release on line 6) can produce out-of-order lists.
+            sorted_acquires = sorted(lock_acquire_lines)
+            sorted_releases = sorted(lock_release_lines)
             # Walk lines in program order. For each line:
             #  - if it's a write to a known local var, mark the var as written
             #    at this line.
@@ -1691,18 +1697,23 @@ class BaseScanner(ABC):
                     # critical section (between a lock_acquire and the
                     # subsequent lock_release) and the read line is after the
                     # release; otherwise 'program_order'.
+                    # The original condition was:
+                    #   ∃(acq, rel): acq <= write_line ∧ rel >= acq ∧
+                    #                rel >= write_line ∧ rel < line_idx
+                    # Since acq <= write_line ⇒ rel >= acq is implied by
+                    # rel >= write_line, this decouples into two independent
+                    # existence tests, each O(log) via bisect:
+                    #   (1) ∃ acq <= write_line
+                    #   (2) ∃ rel with write_line <= rel < line_idx
                     reason = 'program_order'
                     write_line = last_write_line[vname]
-                    for acq_line in lock_acquire_lines:
-                        if acq_line > write_line:
-                            continue
-                        # Find the next release after this acquire.
-                        for rel_line in lock_release_lines:
-                            if rel_line >= acq_line and write_line <= rel_line and line_idx > rel_line:
+                    if sorted_acquires and sorted_releases:
+                        a_idx = bisect.bisect_right(sorted_acquires, write_line)
+                        if a_idx > 0:
+                            r_idx = bisect.bisect_left(sorted_releases, write_line)
+                            if (r_idx < len(sorted_releases)
+                                    and sorted_releases[r_idx] < line_idx):
                                 reason = 'lock'
-                                break
-                        if reason == 'lock':
-                            break
                     key = (var_nid, var_nid, reason)
                     if key in seen_hb_keys:
                         continue

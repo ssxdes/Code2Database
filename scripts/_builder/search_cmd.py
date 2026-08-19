@@ -658,11 +658,12 @@ def cmd_search(args):
 
 
 def _cmd_search_from_sqlite(db_path: str, args):
-    """P0_fix: SQLite-native search — avoids loading full graph into memory.
+    """SQLite-native search — avoids loading full graph into memory.
 
     Uses SQL LIKE queries on functions table to find matches, then computes
-    degree via COUNT queries. Handles 1.5M-node graphs in seconds instead
-    of timing out.
+    degree via a single LEFT JOIN with GROUP BY subqueries (replacing the
+    former per-result N+1 COUNT queries). Handles 1.5M-node graphs in
+    seconds instead of timing out.
     """
     import sqlite3
     keywords = [kw.lower() for kw in args.keywords.split()]
@@ -678,9 +679,24 @@ def _cmd_search_from_sqlite(db_path: str, args):
                 "LOWER(source_file) LIKE ? OR LOWER(domain) LIKE ?)")
             params.extend([like, like, like, like])
         where_clause = " OR ".join(conditions)
-        sql = (f"SELECT id, name, source_file, domain, line_number, "
-               f"labels, signature, extra_json FROM functions "
-               f"WHERE ({where_clause})")
+        sql = (
+            "SELECT f.id, f.name, f.source_file, f.domain, f.line_number, "
+            "       f.labels, f.signature, f.extra_json, "
+            "       COALESCE(o.out_deg, 0) AS out_deg, "
+            "       COALESCE(i.in_deg,  0) AS in_deg "
+            "FROM functions f "
+            "LEFT JOIN ( "
+            "    SELECT invoker_id AS nid, COUNT(*) AS out_deg "
+            "    FROM edges WHERE relation = 'INVOKES' "
+            "    GROUP BY invoker_id "
+            ") o ON o.nid = f.id "
+            "LEFT JOIN ( "
+            "    SELECT invoked_id AS nid, COUNT(*) AS in_deg "
+            "    FROM edges WHERE relation = 'INVOKES' "
+            "    GROUP BY invoked_id "
+            ") i ON i.nid = f.id "
+            f"WHERE ({where_clause})"
+        )
         cur = conn.execute(sql, params)
         results = []
         for row in cur:
@@ -696,7 +712,6 @@ def _cmd_search_from_sqlite(db_path: str, args):
             source_lower = source.lower()
             domain_lower = domain.lower()
 
-            # Parse extra_json for semantic_desc, external_desc, api_constraints, is_empty
             extra = {}
             extra_raw = row_dict.get("extra_json")
             if extra_raw:
@@ -710,7 +725,6 @@ def _cmd_search_from_sqlite(db_path: str, args):
             ext_desc = (extra.get("external_desc") or "").lower()
             constraints = (extra.get("api_constraints") or "").lower()
 
-            # Score (matches the in-memory version, minus body_text and callee_args)
             score = 0
             for kw in keywords:
                 if kw in name_lower:
@@ -735,15 +749,9 @@ def _cmd_search_from_sqlite(db_path: str, args):
                 labels = json.loads(labels_raw) if labels_raw else []
             except (json.JSONDecodeError, TypeError):
                 labels = []
-            # Compute degree via COUNT queries
-            cur2 = conn.execute(
-                "SELECT COUNT(*) FROM edges WHERE invoker_id=? AND relation='INVOKES'",
-                (nid,))
-            out_deg = cur2.fetchone()[0]
-            cur2 = conn.execute(
-                "SELECT COUNT(*) FROM edges WHERE invoked_id=? AND relation='INVOKES'",
-                (nid,))
-            in_deg = cur2.fetchone()[0]
+            # Degree from the LEFT JOIN — no N+1 COUNT queries.
+            in_deg = int(row_dict.get("in_deg", 0))
+            out_deg = int(row_dict.get("out_deg", 0))
             results.append({
                 "id": nid,
                 "name": name,

@@ -18,6 +18,7 @@ predicate_id mapping based on byte ranges.
 This is the bridge that brings non-C/C++ languages onto the same L3.5
 config layer as the clang path.
 """
+import bisect
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -363,19 +364,47 @@ def annotate_nodes_with_predicates(
     the innermost containing range. Returns (nodes_with_pred_id, unique_preds).
 
     Falls back to UNCONDITIONAL.id for nodes not in any range.
+
+    Uses sorted ranges + bisect for O(N log R) instead of O(N × R).
+    For practical inputs (#ifdef, #[cfg], @Profile, //go:build), ranges
+    are either strictly nested or non-overlapping, so the first
+    containing range found via backward scan from the bisect position
+    is the innermost.
     """
     seen: Dict[Any, ConfigPredicate] = {UNCONDITIONAL.id: UNCONDITIONAL}
+    if not ranges:
+        for n in nodes:
+            n['config_predicate_id'] = UNCONDITIONAL.id
+        return nodes, list(seen.values())
+
+    # Sort ranges by (start ASC, end ASC). For nested ranges, outer ranges
+    # come first; for non-overlapping ranges, earlier positions come first.
+    sorted_ranges = sorted(ranges, key=lambda r: (r[0], r[1]))
+    range_starts = [r[0] for r in sorted_ranges]
+
     for n in nodes:
         bs = n.get(byte_start_key, 0)
         be = n.get(byte_end_key, bs)
+        # bisect_right finds the insertion point after all ranges with start <= bs.
+        # We scan backward from there, checking containment (start <= bs and be <= end).
+        # For nested/non-overlapping ranges (the practical case), the first
+        # containing range is the innermost, so we can break early.
         best_pred: Optional[ConfigPredicate] = None
         best_len = -1
-        for rs, re_, pred in ranges:
+        idx = bisect.bisect_right(range_starts, bs)
+        while idx > 0:
+            idx -= 1
+            rs, re_, pred = sorted_ranges[idx]
             if rs <= bs and be <= re_:
                 rlen = re_ - rs
                 if rlen < best_len or best_len < 0:
                     best_pred = pred
                     best_len = rlen
+                    # For nested/non-overlapping ranges, first match is innermost.
+                    break
+            # If this range's start is before bs but it doesn't contain the
+            # node, earlier ranges (with smaller start) are even more outer,
+            # so they might still contain it. Continue backward scan.
         if best_pred is None:
             n['config_predicate_id'] = UNCONDITIONAL.id
         else:

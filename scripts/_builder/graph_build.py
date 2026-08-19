@@ -5147,6 +5147,10 @@ def build_graph(extraction: dict, profile: dict = None,
     # turns domain "root" → "root.mballoc" for matching functions.
     domain_rules = profile.get("domain_rules", []) if profile else []
     if domain_rules:
+        _compiled_domain_rules = [
+            (re.compile(r.get("pattern", "")), r.get("domain_suffix", ""))
+            for r in domain_rules if r.get("pattern") and r.get("domain_suffix")
+        ]
         _domain_refined = 0
         for nid, ndata in G.nodes(data=True):
             if ndata.get("is_empty", False):
@@ -5155,10 +5159,8 @@ def build_graph(extraction: dict, profile: dict = None,
             domain = ndata.get("domain", "")
             if not name or not domain:
                 continue
-            for rule in domain_rules:
-                pattern = rule.get("pattern", "")
-                suffix = rule.get("domain_suffix", "")
-                if pattern and suffix and re.match(pattern, name):
+            for pat_re, suffix in _compiled_domain_rules:
+                if pat_re.match(name):
                     ndata["domain"] = f"{domain}.{suffix}" if domain else suffix
                     _domain_refined += 1
                     break

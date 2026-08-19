@@ -273,35 +273,40 @@ class FileWatcher:
         """Initialize inotify via ctypes. Returns False if unavailable."""
         try:
             import ctypes
-            libc = ctypes.CDLL("libc.so.6", use_errno=True)
-            # int inotify_init1(int flags)
+            import errno as _errno
+            try:
+                libc = ctypes.CDLL("libc.so.6", use_errno=True)
+            except OSError:
+                libc = ctypes.CDLL(None, use_errno=True)
             libc.inotify_init1.argtypes = [ctypes.c_int]
             libc.inotify_init1.restype = ctypes.c_int
-            # IN_NONBLOCK = 0x800 (Linux)
             fd = libc.inotify_init1(0x800)
             if fd < 0:
                 return False
             self._inotify_fd = fd
             self._libc = libc
-            # Watch each subdirectory
             self._watch_descriptors = []
             self._wd_to_path: Dict[int, str] = {}
-            # IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVE = 0x2 | 0x100 | 0x200 | 0x40 | 0x80
-            mask = 0x2 | 0x100 | 0x200 | 0x40 | 0x80
+            self._inotify_exhausted = False
+            mask = (0x2 | 0x8 | 0x100 | 0x200 | 0x40 | 0x80
+                    | 0x400 | 0x800 | 0x4)
             self._add_watch_recursive(self.source_root, mask)
+            if self._inotify_exhausted:
+                self._log("inotify watch limit exhausted; falling back to polling")
+                return False
             return True
-        except Exception as exc:
+        except Exception:
             self._inotify_fd = -1
             return False
 
     def _add_watch_recursive(self, dir_path: str, mask: int):
         """Add inotify watch for dir_path and all subdirectories."""
         import ctypes
+        import errno as _errno
         libc = self._libc
         libc.inotify_add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
         libc.inotify_add_watch.restype = ctypes.c_int
         for dirpath, dirnames, filenames in os.walk(dir_path):
-            # Filter excluded dirs
             dirnames[:] = [d for d in dirnames
                            if not self._is_excluded(os.path.join(dirpath, d))]
             wd = libc.inotify_add_watch(self._inotify_fd,
@@ -309,6 +314,11 @@ class FileWatcher:
             if wd >= 0:
                 self._watch_descriptors.append(wd)
                 self._wd_to_path[wd] = dirpath
+            else:
+                err = ctypes.get_errno()
+                if err == _errno.ENOSPC:
+                    self._inotify_exhausted = True
+                    return
 
     def _is_excluded(self, path: str) -> bool:
         """Check if path matches any exclude pattern."""
@@ -328,33 +338,47 @@ class FileWatcher:
         import ctypes
         while not self._stop:
             try:
-                # Read events (blocking, but fd is non-blocking so we sleep)
-                data = os.read(self._inotify_fd, 65536)
-                if not data:
-                    time.sleep(0.1)
-                    continue
-                # Parse inotify_event structs
-                # struct inotify_event {
-                #   int wd; uint32_t mask, cookie, len;
-                #   char name[len];
-                # }
-                offset = 0
-                while offset + 16 <= len(data):
-                    wd = int.from_bytes(data[offset:offset+4], "little", signed=True)
-                    mask = int.from_bytes(data[offset+4:offset+8], "little")
-                    name_len = int.from_bytes(data[offset+12:offset+16], "little")
-                    name = data[offset+16:offset+16+name_len].rstrip(b"\0").decode("utf-8", errors="replace")
-                    base_path = self._wd_to_path.get(wd, "")
-                    if base_path:
-                        full_path = os.path.join(base_path, name) if name else base_path
-                        if not self._is_excluded(full_path):
-                            ext = Path(full_path).suffix.lower()
-                            if ext in MONITORED_EXTS or not ext:  # dirs too
-                                if self._callback:
-                                    self._callback(full_path)
-                    offset += 16 + name_len
-            except OSError:
-                time.sleep(0.1)
+                import select as _select
+                _poller = _select.poll()
+                _poller.register(self._inotify_fd, _select.POLLIN)
+                while not self._stop:
+                    events = _poller.poll(1000)
+                    if not events:
+                        continue
+                    data = os.read(self._inotify_fd, 65536)
+                    if not data:
+                        continue
+                    offset = 0
+                    while offset + 16 <= len(data):
+                        wd = int.from_bytes(data[offset:offset+4], "little", signed=True)
+                        mask = int.from_bytes(data[offset+4:offset+8], "little")
+                        name_len = int.from_bytes(data[offset+12:offset+16], "little")
+                        name = data[offset+16:offset+16+name_len].rstrip(b"\0").decode("utf-8", errors="replace")
+                        base_path = self._wd_to_path.get(wd, "")
+                        if base_path:
+                            full_path = os.path.join(base_path, name) if name else base_path
+                            if not self._is_excluded(full_path):
+                                if mask & 0x1:
+                                    self._wd_to_path.pop(wd, None)
+                                elif mask & 0x100 and mask & 0x40000000:
+                                    if not self._inotify_exhausted:
+                                        _watch_mask = (0x2 | 0x8 | 0x100 | 0x200 | 0x40 | 0x80
+                                                       | 0x400 | 0x800 | 0x4)
+                                        import ctypes as _ct
+                                        _wd_new = self._libc.inotify_add_watch(
+                                            self._inotify_fd, full_path.encode("utf-8"), _watch_mask)
+                                        if _wd_new >= 0:
+                                            self._watch_descriptors.append(_wd_new)
+                                            self._wd_to_path[_wd_new] = full_path
+                                        else:
+                                            _err = _ct.get_errno()
+                                            if _err == 28:
+                                                self._inotify_exhausted = True
+                                ext = Path(full_path).suffix.lower()
+                                if ext in MONITORED_EXTS or not ext:
+                                    if self._callback:
+                                        self._callback(full_path)
+                        offset += 16 + name_len
             except Exception:
                 time.sleep(0.1)
 
@@ -472,16 +496,13 @@ class FileWatcher:
                     self._polling_state[full_path] = sig
 
     def _run_polling(self):
-        """Polling loop: compare signatures every 2 seconds.
+        """Polling loop: compare signatures every poll interval.
 
-        When use_content_hash is enabled, also use IncrementalSync's
-        detect_changes() to compare against the DB's stored content_hash
-        so that a file whose DB-stored hash differs (e.g., after a git pull
-        that touched the file outside the daemon's watch window) is also
-        detected as changed. This keeps the daemon's change detection in
-        sync with the cgdb_files table state.
+        Two-phase detection: first use fast mtime_ns+size fingerprint
+        to filter candidates, then compute expensive SHA-256 only for
+        files whose mtime/size changed. This reduces polling cost from
+        O(N_files × file_size) to O(N_files + changed_files × file_size).
         """
-        # Initialize IncrementalSync for DB-aware change detection
         incremental_sync = None
         if self.use_content_hash:
             try:
@@ -493,9 +514,11 @@ class FileWatcher:
             except Exception:
                 pass
 
+        _poll_interval = getattr(self, 'polling_interval', 2.0)
         while not self._stop:
-            time.sleep(2.0)
+            time.sleep(_poll_interval)
             current: Dict[str, str] = {}
+            candidates_for_hash = []
             for dirpath, dirnames, filenames in os.walk(self.source_root):
                 dirnames[:] = [d for d in dirnames
                                if not self._is_excluded(os.path.join(dirpath, d))]
@@ -506,22 +529,29 @@ class FileWatcher:
                         continue
                     if self._is_excluded(full_path):
                         continue
-                    sig = self._file_signature(full_path)
-                    if not sig:
+                    try:
+                        st = os.stat(full_path)
+                    except OSError:
                         continue
-                    current[full_path] = sig
+                    fast_sig = f"{st.st_mtime_ns}+{st.st_size}"
+                    current[full_path] = fast_sig
                     old_sig = self._polling_state.get(full_path)
-                    if old_sig is None or old_sig != sig:
-                        # New or modified file
-                        if self._callback:
-                            self._callback(full_path)
-            # Detect deleted files
+                    if old_sig is None or old_sig != fast_sig:
+                        candidates_for_hash.append(full_path)
+            for full_path in candidates_for_hash:
+                sig = self._file_signature(full_path)
+                if not sig:
+                    continue
+                current[full_path] = sig
+                old_content = self._polling_state.get(full_path)
+                if old_content is None or old_content != sig:
+                    if self._callback:
+                        self._callback(full_path)
             for old_path in list(self._polling_state.keys()):
                 if old_path not in current:
                     if self._callback:
-                        self._callback(old_path)  # signal deletion
+                        self._callback(old_path)
                     del self._polling_state[old_path]
-            # Update polling state
 
             # DB-aware change detection — compare current file content hashes
             # against the cgdb_files table's stored content_hash. Any file
@@ -540,7 +570,6 @@ class FileWatcher:
                             self.state.pending_events = len(self._pending)
                 except Exception:
                     pass  # best-effort DB-aware check
-            self._polling_state = current
             self._polling_state = current
 
 
@@ -769,19 +798,33 @@ class Daemon:
 
         Strips comments and whitespace from both, then compares. If equal,
         the change is format-only. Comment stripping is language-agnostic:
-        drops `//...`, `/* ... */`, and `#...` lines.
+        drops `//...` and `/* ... */` comments. Does NOT drop `#...`
+        lines because in C/C++ those are preprocessor directives
+        (#include, #define, #ifdef) that affect semantics.
         """
         def _strip(s: str) -> str:
             lines = []
+            in_block = False
             for line in s.splitlines():
                 stripped = line.strip()
                 if not stripped:
                     continue
-                if stripped.startswith("//") or stripped.startswith("#"):
+                if in_block:
+                    if "*/" in stripped:
+                        after = stripped[stripped.index("*/") + 2:].strip()
+                        in_block = False
+                        if after and not after.startswith("//"):
+                            lines.append("".join(after.split()))
                     continue
-                if stripped.startswith("/*") or stripped.endswith("*/"):
+                if "/*" in stripped:
+                    before = stripped[:stripped.index("/*")].strip()
+                    if before and not before.startswith("//"):
+                        lines.append("".join(before.split()))
+                    if "*/" not in stripped[stripped.index("/*") + 2:]:
+                        in_block = True
                     continue
-                # Remove inline whitespace for comparison
+                if stripped.startswith("//"):
+                    continue
                 lines.append("".join(stripped.split()))
             return "\n".join(lines)
         return _strip(prev) == _strip(cur)
@@ -1115,11 +1158,18 @@ class Daemon:
 
     def _accept_loop(self):
         """Accept connections and handle requests."""
+        _conn_sem = threading.Semaphore(64)
         while not self._stop and self._server_socket:
             try:
                 conn, _ = self._server_socket.accept()
-                threading.Thread(target=self._handle_client,
-                                  args=(conn,), daemon=True).start()
+                def _handle_with_sem(conn=conn):
+                    _conn_sem.acquire()
+                    try:
+                        self._handle_client(conn)
+                    finally:
+                        _conn_sem.release()
+                threading.Thread(target=_handle_with_sem,
+                                  daemon=True).start()
             except socket.timeout:
                 continue
             except OSError:
@@ -1128,6 +1178,7 @@ class Daemon:
     def _handle_client(self, conn: socket.socket):
         """Handle one client request."""
         try:
+            conn.settimeout(10.0)
             data = conn.recv(65536).decode("utf-8", errors="replace").strip()
             if not data:
                 return

@@ -939,7 +939,17 @@ class CTreeSitterScanner(BaseScanner):
 
     def _is_in_dead_range(self, byte_offset: int, dead_ranges: list) -> bool:
         """Check if a byte offset falls within a dead preprocessor range."""
-        for start, end in dead_ranges:
+        if not dead_ranges:
+            return False
+        # Binary search: dead_ranges is sorted by start (guaranteed by
+        # _build_pp_liveness which appends in source order). Find the
+        # last range with start <= byte_offset, then check if byte_offset
+        # is within [start, end).
+        import bisect
+        starts = [r[0] for r in dead_ranges]
+        idx = bisect.bisect_right(starts, byte_offset) - 1
+        if idx >= 0:
+            start, end = dead_ranges[idx]
             if start <= byte_offset < end:
                 return True
         return False
@@ -1576,55 +1586,52 @@ class CTreeSitterScanner(BaseScanner):
                 _collect_labels(child)
         _collect_labels(body_node)
 
-        def _get_pp_condition(byte_offset):
-            """Find active preprocessor condition at a byte offset.
+        # Pre-compute active condition at each pp_cond position for O(log P)
+        # lookup per call_expression, replacing the O(P) linear scan that
+        # was inside _get_pp_condition.
+        _pp_cond_positions = []
+        _pp_cond_snapshots = []  # (position, last_active_cond_text_or_None)
+        _active_stack = []
+        for _pos, _directive, _cond in pp_conds:
+            if _directive in ('if', 'ifdef', 'ifndef'):
+                _active_stack.append((_directive, _cond))
+            elif _directive == 'elif' and _active_stack:
+                _active_stack[-1] = ('elif', _cond)
+            elif _directive == 'else' and _active_stack:
+                _prev_d, _prev_c = _active_stack[-1]
+                if _prev_d == 'ifdef':
+                    _active_stack[-1] = ('ifndef', _prev_c)
+                elif _prev_d == 'ifndef':
+                    _active_stack[-1] = ('ifdef', _prev_c)
+                elif _prev_d in ('if', 'elif'):
+                    _active_stack[-1] = ('ifndef', _prev_c)
+            elif _directive == 'endif' and _active_stack:
+                _active_stack.pop()
+            _last_cond = None
+            if _active_stack:
+                _d, _c = _active_stack[-1]
+                _last_cond = _c.strip() if _c else _d
+            _pp_cond_positions.append(_pos)
+            _pp_cond_snapshots.append((_pos, _last_cond))
 
-            Combines the function-level ifdef conditions with the line-level
-            preprocessor condition tracked via regex.
-            Returns the most specific condition string, or None.
-            """
-            # Start with function-level conditions from the AST ifdef_stack
-            # These come from #ifdef/#if blocks that wrap the entire function
-            active = []
-            for pos, directive, cond in pp_conds:
-                if pos >= byte_offset:
-                    break
-                if directive in ('if', 'ifdef', 'ifndef'):
-                    active.append((directive, cond))
-                elif directive == 'elif' and active:
-                    # elif replaces the current level's condition
-                    active[-1] = ('elif', cond)
-                elif directive == 'else' and active:
-                    # #else inverts the current level's condition
-                    prev_d, prev_c = active[-1]
-                    if prev_d == 'ifdef':
-                        active[-1] = ('ifndef', prev_c)
-                    elif prev_d == 'ifndef':
-                        active[-1] = ('ifdef', prev_c)
-                    elif prev_d in ('if', 'elif'):
-                        # For #if/#elif, #else means the negation
-                        active[-1] = ('ifndef' if prev_d == 'if' else 'ifndef', prev_c)
-                elif directive == 'endif' and active:
-                    active.pop()
-            # Build combined condition: function-level ifdef + line-level pp cond
-            # The function-level conditions (ifdef_conds) come from the AST
-            # walk and represent #ifdef/#if blocks wrapping the entire function.
-            # The line-level conditions (from regex pp_conds) capture ALL
-            # preprocessor directives including those inside the function body.
-            # We combine both, deduplicating where they overlap.
+        def _get_pp_condition(byte_offset):
+            """Find active preprocessor condition at a byte offset."""
+            if not _pp_cond_positions:
+                parts = list(ifdef_conds) if ifdef_conds else []
+                return " && ".join(parts) if parts else None
+            import bisect
+            idx = bisect.bisect_left(_pp_cond_positions, byte_offset)
+            if idx > 0:
+                _pos, _last_cond = _pp_cond_snapshots[idx - 1]
+            else:
+                _last_cond = None
             parts = []
             if ifdef_conds:
                 parts.extend(ifdef_conds)
-            if active:
-                d, c = active[-1]
-                # Normalize: extract just the condition text from the regex result.
-                # The regex produces "#ifdef FOO" or "#if EXPR" etc.
-                # We want just "FOO" or "EXPR" for dedup against ifdef_conds
-                # and cond_stack entries.
-                cond_text = c.strip() if c else d
-                already_present = any(cond_text in p for p in parts)
+            if _last_cond:
+                already_present = any(_last_cond in p for p in parts)
                 if not already_present:
-                    parts.append(cond_text)
+                    parts.append(_last_cond)
             if parts:
                 return " && ".join(parts)
             return None

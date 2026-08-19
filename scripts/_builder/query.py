@@ -2379,16 +2379,26 @@ def cmd_reverse_trace(args):
     # branch into all predecessors to collect every distinct path.
     # A path terminates when a node has no recorded reverse_edges (entry point).
     all_paths = []
+    _path_count = [0]
+    _max_paths = max_paths if 'max_paths' in dir() else 20
 
     def _collect_paths(node_id, current_path):
-        """Recursively collect paths from node_id back to entry points."""
+        """Recursively collect paths from node_id back to entry points.
+
+        Includes early termination: stops collecting once _max_paths
+        is reached, preventing path explosion in high-fan-in graphs.
+        """
+        if _path_count[0] >= _max_paths:
+            return
         preds = reverse_edges.get(node_id, [])
         if not preds:
-            # This is an entry point (no callers in reverse BFS range)
             if current_path:
                 all_paths.append(list(reversed(current_path)))
+                _path_count[0] += 1
             return
         for pred_id, ed in preds:
+            if _path_count[0] >= _max_paths:
+                return
             if pred_id not in visited and pred_id != crash_id:
                 continue
             caller_name = G.nodes[pred_id].get("name", pred_id)
@@ -2405,7 +2415,6 @@ def cmd_reverse_trace(args):
                 "invoker_id": pred_id,
                 "invoked_id": node_id,
             }
-            # Avoid cycles in path
             invoker_ids_in_path = {s["invoker_id"] for s in current_path}
             if pred_id in invoker_ids_in_path:
                 continue

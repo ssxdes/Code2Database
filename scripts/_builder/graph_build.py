@@ -4584,17 +4584,18 @@ def build_graph(extraction: dict, profile: dict = None,
                 # Find fn_ptr_call sources: functions that have fn_ptr_calls
                 # with this field_name and struct_chain matching sc_norm EXACTLY
                 fn_ptr_sources = set()
-                for caller_name, calls in extraction.get("fn_ptr_calls", {}).items():
-                    for call in calls:
-                        if call.get("field_name") == field_name:
-                            call_sc = call.get("struct_chain", "").replace("->", ".")
-                            # Require exact struct_chain match (not prefix)
-                            # to avoid connecting unrelated fn_ptr_call sites
-                            if call_sc == sc_norm:
-                                # Use pre-built name index for O(1) lookup
-                                caller_nid = _name_to_nid.get(caller_name)
-                                if caller_nid and caller_nid in G:
-                                    fn_ptr_sources.add(caller_nid)
+                _fn_ptr_caller_index = _fn_ptr_caller_index if '_fn_ptr_caller_index' in dir() else None
+                if _fn_ptr_caller_index is None:
+                    _fn_ptr_caller_index = {}
+                    for _fpc_caller, _fpc_calls in extraction.get("fn_ptr_calls", {}).items():
+                        for _fpc_call in _fpc_calls:
+                            _fpc_fn = _fpc_call.get("field_name", "")
+                            _fpc_sc = _fpc_call.get("struct_chain", "").replace("->", ".")
+                            if _fpc_fn and _fpc_sc:
+                                _fpc_cnid = _name_to_nid.get(_fpc_caller)
+                                if _fpc_cnid and _fpc_cnid in G:
+                                    _fn_ptr_caller_index.setdefault((_fpc_fn, _fpc_sc), set()).add(_fpc_cnid)
+                fn_ptr_sources = set(_fn_ptr_caller_index.get((field_name, sc_norm), set()))
                 if not fn_ptr_sources:
                     continue
                 # Create INFERRED edges from fn_ptr_call sources to resolved targets

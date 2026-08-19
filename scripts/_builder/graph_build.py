@@ -7141,12 +7141,28 @@ def cmd_build(args):
             # O(n) Python traversal of all nodes.
             print(f"[SQLite] Populating field_access/global_access tables...", file=sys.stderr)
             _field_start = time.time()
+            _fa_batch = []
+            _ga_batch = []
+            _BATCH_FA = 5000
             for nid, nd in G.nodes(data=True):
                 if nd.get("is_empty", False) or nd.get("node_type") == "file":
                     continue
-                store.store_field_access(dict(nd, id=nid), autocommit=False)
-                store.store_global_access(dict(nd, id=nid), autocommit=False)
-            store._conn.commit()  # flush accumulated field/global access rows
+                _nd_copy = dict(nd, id=nid)
+                if nd.get("fields_read") or nd.get("fields_written"):
+                    _fa_batch.append(_nd_copy)
+                    if len(_fa_batch) >= _BATCH_FA:
+                        store.store_field_access_batch(_fa_batch, autocommit=False)
+                        _fa_batch.clear()
+                if nd.get("globals_read") or nd.get("globals_written"):
+                    _ga_batch.append(_nd_copy)
+                    if len(_ga_batch) >= _BATCH_FA:
+                        store.store_global_access_batch(_ga_batch, autocommit=False)
+                        _ga_batch.clear()
+            if _fa_batch:
+                store.store_field_access_batch(_fa_batch, autocommit=False)
+            if _ga_batch:
+                store.store_global_access_batch(_ga_batch, autocommit=False)
+            store._conn.commit()
             print(f"[SQLite] field/global access populated in {time.time() - _field_start:.1f}s",
                   file=sys.stderr)
 

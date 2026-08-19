@@ -477,6 +477,73 @@ class SQLiteStore:
 
     # ---- Deficiency 1 fix: SQL-native field/global access storage ----
 
+    def store_field_access_batch(self, functions: List[Dict], autocommit: bool = True):
+        """Store field-access records for multiple functions at once.
+
+        More efficient than calling store_field_access per-function
+        because it avoids per-function Python call overhead and
+        uses a single executemany for all rows.
+        """
+        all_rows = []
+        for function in functions:
+            fid = function.get("id", "")
+            if not fid:
+                continue
+            fname = function.get("name", "")
+            domain = function.get("domain", "")
+            source = function.get("source_file", "")
+            line = function.get("line_number", 0) or function.get("line", 0)
+            thread_model = function.get("thread_model") or ""
+            for fr in function.get("fields_read", []) or []:
+                all_rows.append((fid, fname, domain, source, line, thread_model,
+                                 "read", fr.get("struct_chain", ""), fr.get("field_name", ""),
+                                 fr.get("target_func"), 1 if fr.get("is_param") else 0, None))
+            for fw in function.get("fields_written", []) or []:
+                all_rows.append((fid, fname, domain, source, line, thread_model,
+                                 "write", fw.get("struct_chain", ""), fw.get("field_name", ""),
+                                 fw.get("target_func"), 1 if fw.get("is_param") else 0,
+                                 fw.get("assigned_value")))
+        if not all_rows:
+            return
+        self._conn.executemany(
+            "INSERT INTO field_access (function_id, function_name, domain, "
+            "source_file, line_number, thread_model, access_type, struct_chain, "
+            "field_name, target_func, is_param, assigned_value) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            all_rows
+        )
+        if autocommit:
+            self._conn.commit()
+
+    def store_global_access_batch(self, functions: List[Dict], autocommit: bool = True):
+        """Store global-variable access records for multiple functions at once."""
+        all_rows = []
+        for function in functions:
+            fid = function.get("id", "")
+            if not fid:
+                continue
+            fname = function.get("name", "")
+            domain = function.get("domain", "")
+            source = function.get("source_file", "")
+            line = function.get("line_number", 0) or function.get("line", 0)
+            thread_model = function.get("thread_model") or ""
+            for gr in function.get("globals_read", []) or []:
+                all_rows.append((fid, fname, domain, source, line, thread_model,
+                                 "read", gr.get("name", "")))
+            for gw in function.get("globals_written", []) or []:
+                all_rows.append((fid, fname, domain, source, line, thread_model,
+                                 "write", gw.get("name", "")))
+        if not all_rows:
+            return
+        self._conn.executemany(
+            "INSERT INTO global_access (function_id, function_name, domain, "
+            "source_file, line_number, thread_model, access_type, global_name) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            all_rows
+        )
+        if autocommit:
+            self._conn.commit()
+
     def store_field_access(self, function: Dict, batch_size=1000, autocommit=True):
         """Store field-access records for one function (both reads and writes).
 

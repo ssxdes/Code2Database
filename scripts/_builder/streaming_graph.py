@@ -632,9 +632,12 @@ class LazySQLiteGraph:
         # Cache for single-node lookups (bounded LRU via dict size)
         self._node_cache = {}
         self._node_cache_max = 10000
-        # Cache for edge existence and edge data
         self._edge_cache = {}
         self._edge_cache_max = 50000
+        self._succ_cache = {}
+        self._succ_cache_max = 50000
+        self._pred_cache = {}
+        self._pred_cache_max = 50000
 
     def __contains__(self, node_id) -> bool:
         if node_id in self._node_cache:
@@ -853,31 +856,43 @@ class LazySQLiteGraph:
         return self._conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
 
     def degree(self, node_id: str) -> int:
-        in_d = self._conn.execute(
-            "SELECT COUNT(*) FROM edges WHERE invoked_id=? "
-            "AND relation NOT IN ('CONTAINS', 'IMPORTS')",
-            (node_id,)).fetchone()[0]
-        out_d = self._conn.execute(
-            "SELECT COUNT(*) FROM edges WHERE invoker_id=? "
-            "AND relation NOT IN ('CONTAINS', 'IMPORTS')",
-            (node_id,)).fetchone()[0]
+        in_d = len(list(self.predecessors(node_id)))
+        out_d = len(list(self.successors(node_id)))
         return in_d + out_d
 
     def predecessors(self, node_id: str):
+        cached = self._pred_cache.get(node_id)
+        if cached is not None:
+            yield from cached
+            return
         cur = self._conn.execute(
             "SELECT invoker_id FROM edges WHERE invoked_id=? "
             "AND relation NOT IN ('CONTAINS', 'IMPORTS')",
             (node_id,))
-        for row in cur:
-            yield row[0]
+        result = [row[0] for row in cur]
+        if len(self._pred_cache) >= self._pred_cache_max:
+            evict = self._pred_cache_max // 4
+            for k in list(self._pred_cache.keys())[:evict]:
+                del self._pred_cache[k]
+        self._pred_cache[node_id] = result
+        yield from result
 
     def successors(self, node_id: str):
+        cached = self._succ_cache.get(node_id)
+        if cached is not None:
+            yield from cached
+            return
         cur = self._conn.execute(
             "SELECT invoked_id FROM edges WHERE invoker_id=? "
             "AND relation NOT IN ('CONTAINS', 'IMPORTS')",
             (node_id,))
-        for row in cur:
-            yield row[0]
+        result = [row[0] for row in cur]
+        if len(self._succ_cache) >= self._succ_cache_max:
+            evict = self._succ_cache_max // 4
+            for k in list(self._succ_cache.keys())[:evict]:
+                del self._succ_cache[k]
+        self._succ_cache[node_id] = result
+        yield from result
 
     def in_edges(self, node_id: str, data: bool = False):
         if data:

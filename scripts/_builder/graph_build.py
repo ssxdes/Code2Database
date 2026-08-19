@@ -1957,7 +1957,11 @@ def build_graph(extraction: dict, profile: dict = None,
     id_registry = {}
     for func in functions:
         fid = func["id"]
-        id_registry[fid] = func
+        id_registry[fid] = {"id": fid,
+                             "name": func.get("name", ""),
+                             "domain": func.get("domain", "root"),
+                             "source_file": func.get("source_file", ""),
+                             "is_empty": func.get("is_empty", False)}
         # Compute FQN
         fqn = _compute_fqn(func, project_name)
         G.add_node(fid,

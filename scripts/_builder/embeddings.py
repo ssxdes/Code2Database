@@ -132,9 +132,10 @@ class NGramEmbeddings:
         self.max_vocab = max_vocab
         self.vocab_idf: Dict[str, float] = {}
         self.doc_vectors: Dict[str, Dict[str, float]] = {}
+        self._inverted_index: Dict[str, List[Tuple[str, float]]] = {}
 
     def fit(self, corpus: Dict[str, str]) -> None:
-        """Build the vocabulary and document vectors.
+        """Build the vocabulary, document vectors, and inverted index.
 
         Args:
             corpus: {doc_id: text} where text is the searchable content
@@ -145,7 +146,6 @@ class NGramEmbeddings:
         texts = list(corpus.values())
         doc_freq = _build_vocab(texts, n=self.n, max_size=self.max_vocab)
         N = len(texts)
-        # IDF = log(N / df) with smoothing
         self.vocab_idf = {
             ng: math.log((N + 1) / (df + 1)) + 1.0
             for ng, df in doc_freq.items()
@@ -153,19 +153,45 @@ class NGramEmbeddings:
         self.doc_vectors = {}
         for doc_id, text in corpus.items():
             self.doc_vectors[doc_id] = _tfidf_vector(text, self.vocab_idf, self.n)
+        # Build inverted index: n-gram → [(doc_id, weight)]
+        self._inverted_index = {}
+        for doc_id, doc_vec in self.doc_vectors.items():
+            for ng, weight in doc_vec.items():
+                self._inverted_index.setdefault(ng, []).append((doc_id, weight))
 
     def search(self, query: str, top_k: int = 10) -> List[Tuple[str, float]]:
-        """Return top_k (doc_id, similarity) pairs for the query."""
+        """Return top_k (doc_id, similarity) pairs for the query.
+
+        Uses the inverted index to only compute cosine similarity against
+        documents that share at least one n-gram with the query, instead
+        of scanning all doc_vectors.
+        """
         if not self.vocab_idf or not self.doc_vectors:
             return []
         q_vec = _tfidf_vector(query, self.vocab_idf, self.n)
         if not q_vec:
             return []
+        # Collect candidate documents via inverted index.
+        # Each query n-gram's postings list contributes partial dot product.
+        partial_dot: Dict[str, float] = {}
+        q_norm = math.sqrt(sum(v * v for v in q_vec.values()))
+        if q_norm == 0.0:
+            return []
+        for ng, q_weight in q_vec.items():
+            postings = self._inverted_index.get(ng)
+            if not postings:
+                continue
+            for doc_id, doc_weight in postings:
+                partial_dot[doc_id] = partial_dot.get(doc_id, 0.0) + q_weight * doc_weight
+        # Compute full cosine similarity only for candidates.
         scores = []
-        for doc_id, doc_vec in self.doc_vectors.items():
-            sim = _cosine_similarity(q_vec, doc_vec)
-            if sim > 0:
-                scores.append((doc_id, sim))
+        for doc_id, dot in partial_dot.items():
+            doc_vec = self.doc_vectors[doc_id]
+            doc_norm = math.sqrt(sum(v * v for v in doc_vec.values()))
+            if doc_norm > 0.0:
+                sim = dot / (q_norm * doc_norm)
+                if sim > 0:
+                    scores.append((doc_id, sim))
         scores.sort(key=lambda x: -x[1])
         return scores[:top_k]
 
@@ -199,6 +225,11 @@ class NGramEmbeddings:
                        max_vocab=data.get("max_vocab", DEFAULT_MAX_NGRAMS))
             emb.vocab_idf = data.get("vocab_idf", {})
             emb.doc_vectors = data.get("doc_vectors", {})
+            # Rebuild inverted index from loaded doc_vectors.
+            emb._inverted_index = {}
+            for doc_id, doc_vec in emb.doc_vectors.items():
+                for ng, weight in doc_vec.items():
+                    emb._inverted_index.setdefault(ng, []).append((doc_id, weight))
             return emb
         except (json.JSONDecodeError, KeyError, ValueError):
             return None

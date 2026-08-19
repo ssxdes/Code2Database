@@ -1440,6 +1440,18 @@ def main():
     p_cgc.add_argument("--source-graph", required=True, help="Source graph (e.g., feature branch)")
     p_cgc.add_argument("--json", action="store_true", help="Write full diff to JSON file")
 
+    p_em = sub.add_parser("export-mermaid",
+                           help="Export call chains as Mermaid flowchart diagrams")
+    p_em.add_argument("--graph", required=True)
+    p_em.add_argument("--mode", choices=["chain", "domain", "paths", "function"],
+                      default="chain", help="Export mode")
+    p_em.add_argument("--node", default=None, help="Function name/ID")
+    p_em.add_argument("--from", dest="from", default=None, help="Start function (chain mode)")
+    p_em.add_argument("--to", dest="to", default=None, help="End function (chain mode)")
+    p_em.add_argument("--depth", type=int, default=5)
+    p_em.add_argument("--top", type=int, default=10, help="Top N paths (paths mode)")
+    p_em.add_argument("--output", default=None, help="Output file path")
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -1624,6 +1636,7 @@ def main():
         "cgdb-tour": _lazy("_builder.cgdb_tour", "cmd_cgdb_tour"),
         "cgdb-freshness": _lazy("_builder.cgdb_freshness", "cmd_cgdb_freshness"),
         "cgdb-compare": _lazy("_builder.cgdb_compare", "cmd_cgdb_compare"),
+        "export-mermaid": _lazy("_builder.export_mermaid", "cmd_export_mermaid"),
     }
     handler = commands.get(args.command)
     if handler is None:

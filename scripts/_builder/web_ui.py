@@ -899,6 +899,25 @@ document.getElementById('dark-btn').addEventListener('click', () => {
   document.body.classList.toggle('dark');
 });
 
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') {
+    if (e.key === 'Escape') e.target.blur();
+    return;
+  }
+  switch (e.key) {
+    case '/': e.preventDefault(); document.getElementById('search').focus(); break;
+    case 's': loadSuggestions(); break;
+    case 'd': document.body.classList.toggle('dark'); break;
+    case 't': loadTour(); break;
+    case 'r': document.getElementById('reload-btn').click(); break;
+    case 'Escape':
+      document.getElementById('code-panel').style.display = 'none';
+      document.getElementById('impact-panel').style.display = 'none';
+      break;
+  }
+});
+
 // Initial load
 loadSummary();
 window.addEventListener('resize', () => render());

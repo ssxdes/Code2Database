@@ -82,61 +82,65 @@ def _read_message():
     Fallback: when no Content-Length header is present (simple line-based
     clients), the first non-empty line is treated as the JSON body. This
     handles both framed and unframed inputs.
+
+    Uses stdin.buffer (binary) to correctly handle Content-Length as
+    byte count (not character count). This prevents protocol desync
+    when the JSON body contains multi-byte UTF-8 characters.
     """
-    # Read headers until empty line. A line that doesn't look like a header
-    # (no "key: value" pattern) is treated as the body for the fallback path.
+    stdin = sys.stdin.buffer
     content_length = None
     fallback_body = None
     while True:
-        line = sys.stdin.readline()
+        line = stdin.readline()
         if not line:
             return None  # EOF
         line = line.strip()
         if not line:
             break  # End of headers
-        if line.lower().startswith("content-length:"):
+        if line.lower().startswith(b"content-length:"):
             try:
-                content_length = int(line.split(":", 1)[1].strip())
+                content_length = int(line.split(b":", 1)[1].strip())
             except ValueError:
                 pass
-        elif ":" in line and not line.startswith("{"):
-            # Looks like another header (e.g., "Content-Type: ...") — ignore.
+        elif b":" in line and not line.startswith(b"{"):
             continue
         else:
-            # Doesn't look like a header — treat as the body for fallback.
             fallback_body = line
             break
 
     if content_length is not None:
-        # Read exactly content_length bytes
-        data = sys.stdin.read(content_length)
-        if not data:
+        if content_length > 10_000_000:
+            return None
+        data = stdin.read(content_length)
+        if not data or len(data) < content_length:
             return None
     elif fallback_body is not None:
-        # Fallback: the line we already read IS the JSON body.
         data = fallback_body
     else:
-        # Fallback: try reading a single JSON line (for simple clients).
-        line = sys.stdin.readline()
+        line = stdin.readline()
         if not line:
             return None
         data = line.strip()
 
     try:
-        return json.loads(data)
-    except json.JSONDecodeError:
+        return json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return None
 
 
 def _write_message(msg: dict):
     """Write a JSON-RPC message to stdout (MCP stdio transport).
 
-    Includes Content-Length header per MCP spec.
+    Uses stdout.buffer (binary) to ensure Content-Length matches the
+    actual byte count sent, preventing protocol desync with clients
+    that count bytes (which is all of them per MCP spec).
     """
-    body = json.dumps(msg, ensure_ascii=False)
-    header = f"Content-Length: {len(body.encode('utf-8'))}\r\n\r\n"
-    sys.stdout.write(header + body)
-    sys.stdout.flush()
+    stdout = sys.stdout.buffer
+    body_bytes = json.dumps(msg, ensure_ascii=False).encode("utf-8")
+    header = f"Content-Length: {len(body_bytes)}\r\n\r\n".encode("ascii")
+    stdout.write(header)
+    stdout.write(body_bytes)
+    stdout.flush()
 
 
 # ---------------------------------------------------------------------------
@@ -950,7 +954,7 @@ def _tool_cgdb_search_symbols(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available — run scan with --extraction-backend auto"}]
-        return store.search_symbols(query, kind=kind, limit=limit)
+    return store.search_symbols(query, kind=kind, limit=limit)
 
 def _tool_cgdb_get_definition(args: dict, graph_dir: str) -> list:
     """Find definition nodes by name (function/var/field/typedef)."""
@@ -960,7 +964,7 @@ def _tool_cgdb_get_definition(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-        return store.get_definition(name, limit=int(args.get("limit", 10)))
+    return store.get_definition(name, limit=int(args.get("limit", 10)))
 
 def _tool_cgdb_get_function_body(args: dict, graph_dir: str) -> dict:
     """Return the function body source text for a function (name or id)."""
@@ -1108,7 +1112,7 @@ def _tool_cgdb_find_type_definition(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-        return store.find_type_definition(name, limit=int(args.get("limit", 10)))
+    return store.find_type_definition(name, limit=int(args.get("limit", 10)))
 
 def _tool_cgdb_find_ops_impls(args: dict, graph_dir: str) -> list:
     """Find functions bound to a vtable field (e.g., file_operations.read_iter)."""
@@ -1130,7 +1134,7 @@ def _tool_cgdb_find_cfg_paths(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-        return store.find_cfg_paths(int(func_id), max_len=int(args.get("max_len", 10)))
+    return store.find_cfg_paths(int(func_id), max_len=int(args.get("max_len", 10)))
 
 def _tool_cgdb_find_data_flow(args: dict, graph_dir: str) -> dict:
     """Find def-use chain entries for a variable."""
@@ -1140,7 +1144,7 @@ def _tool_cgdb_find_data_flow(args: dict, graph_dir: str) -> dict:
     store = _cgdb_store(graph_dir)
     if store is None:
         return {"error": "cgdb tables not available"}
-        return store.find_data_flow(int(var_id))
+    return store.find_data_flow(int(var_id))
 
 def _tool_cgdb_find_aliases(args: dict, graph_dir: str) -> list:
     """Find aliases of a pointer (may_alias / must_alias / no_alias)."""
@@ -1150,7 +1154,7 @@ def _tool_cgdb_find_aliases(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-        return store.find_aliases(int(ptr_id))
+    return store.find_aliases(int(ptr_id))
 
 def _tool_cgdb_find_lock_held_calls(args: dict, graph_dir: str) -> list:
     """Find calls made while a lock is held in a function."""
@@ -1160,7 +1164,7 @@ def _tool_cgdb_find_lock_held_calls(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-        return store.find_lock_held_calls(int(func_id))
+    return store.find_lock_held_calls(int(func_id))
 
 def _tool_cgdb_check_race_condition(args: dict, graph_dir: str) -> list:
     """Heuristic race-condition check for a function."""
@@ -1170,7 +1174,7 @@ def _tool_cgdb_check_race_condition(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-        return store.check_race_condition(int(func_id))
+    return store.check_race_condition(int(func_id))
 
 def _tool_cgdb_find_configs_for(args: dict, graph_dir: str) -> list:
     """Return the config predicate text_form for the given node."""
@@ -1180,7 +1184,7 @@ def _tool_cgdb_find_configs_for(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-        return store.find_configs_for(int(node_id))
+    return store.find_configs_for(int(node_id))
 
 def _tool_cgdb_find_nodes_under_config(args: dict, graph_dir: str) -> list:
     """Find nodes whose config_predicate matches the given predicate text."""
@@ -1190,14 +1194,14 @@ def _tool_cgdb_find_nodes_under_config(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-        return store.find_nodes_under_config(config, limit=int(args.get("limit", 500)))
+    return store.find_nodes_under_config(config, limit=int(args.get("limit", 500)))
 
 def _tool_cgdb_index_status(args: dict, graph_dir: str) -> dict:
     """Return overall cgdb index statistics."""
     store = _cgdb_store(graph_dir)
     if store is None:
         return {"error": "cgdb tables not available"}
-        return store.index_status()
+    return store.index_status()
 
 def _tool_cgdb_time_travel_query(args: dict, graph_dir: str) -> dict:
     """Return the state of a node at a specific version_id."""
@@ -1217,7 +1221,7 @@ def _tool_cgdb_list_versions(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-        return store.list_versions(limit=int(args.get("limit", 50)))
+    return store.list_versions(limit=int(args.get("limit", 50)))
 
 # ---------------------------------------------------------------------------
 # Tool registry

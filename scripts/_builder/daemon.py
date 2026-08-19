@@ -443,7 +443,7 @@ class FileWatcher:
         except OSError:
             return ""
         if not self.use_content_hash:
-            return f"{st.st_mtime}+{st.st_size}"
+            return f"{st.st_mtime_ns}+{st.st_size}"
         # Content hash — slower but matches cgdb incremental-sync baseline.
         try:
             import hashlib
@@ -453,7 +453,7 @@ class FileWatcher:
                     h.update(chunk)
             return h.hexdigest()
         except (IOError, OSError):
-            return f"{st.st_mtime}+{st.st_size}"  # fallback
+            return f"{st.st_mtime_ns}+{st.st_size}"  # fallback
 
     def _init_polling_state(self):
         """Initialize polling state by scanning current files."""
@@ -568,7 +568,8 @@ class Daemon:
         self._pending: Set[str] = set()
         self._pending_lock = threading.Lock()
         self._last_sync_time = 0.0
-        self._event_timestamps: List[float] = []  # for circuit breaker
+        from collections import deque
+        self._event_timestamps = deque()  # for circuit breaker
         self._socket_path = f"/tmp/code2database-daemon-{Path(self.graph_dir).name}.sock"
         self._socket_thread: Optional[threading.Thread] = None
         self._server_socket: Optional[socket.socket] = None
@@ -577,7 +578,8 @@ class Daemon:
         # by long-running syncs. Main loop dispatches sync jobs to this worker;
         # status is reported via _sync_busy / _sync_pending_jobs.
         self._sync_worker_thread: Optional[threading.Thread] = None
-        self._sync_jobs: List[Dict] = []  # queued jobs: {kind, paths, queued_at}
+        from collections import deque
+        self._sync_jobs = deque()  # queued jobs: {kind, paths, queued_at}
         self._sync_jobs_lock = threading.Lock()
         self._sync_busy = False
         self._sync_busy_lock = threading.Lock()
@@ -804,7 +806,7 @@ class Daemon:
             job = None
             with self._sync_jobs_lock:
                 if self._sync_jobs:
-                    job = self._sync_jobs.pop(0)
+                    job = self._sync_jobs.popleft()
             if job is None:
                 time.sleep(0.2)
                 continue
@@ -884,8 +886,21 @@ class Daemon:
                 self.stop()
             signal.signal(signal.SIGTERM, handler)
             signal.signal(signal.SIGINT, handler)
+            def reload_handler(signum, frame):
+                self._log("SIGHUP received, reloading config")
+                try:
+                    self._apply_env_overrides()
+                    if self.profile_path and os.path.exists(self.profile_path):
+                        from pathlib import Path
+                        import json
+                        profile = json.loads(Path(self.profile_path).read_text(encoding="utf-8"))
+                        self.config = {**type(self)._DEFAULT_CONFIG, **(profile.get("daemon", {}) or {})}
+                        self._apply_env_overrides()
+                    self._log("config reloaded")
+                except Exception as exc:
+                    self._log(f"reload failed: {exc}")
+            signal.signal(signal.SIGHUP, reload_handler)
         except (ValueError, OSError):
-            # Not in main thread — skip signal handlers
             pass
 
     def _on_file_change(self, path: str):
@@ -899,9 +914,9 @@ class Daemon:
         self._write_state()
 
     def _prune_old_events(self, now: float):
-        """Remove events older than 60 seconds (for circuit breaker)."""
         cutoff = now - 60.0
-        self._event_timestamps = [t for t in self._event_timestamps if t > cutoff]
+        while self._event_timestamps and self._event_timestamps[0] < cutoff:
+            self._event_timestamps.popleft()
 
     def _sync_incremental(self):
         """Run incremental sync: re-scan only changed files.

@@ -1975,13 +1975,14 @@ def cmd_param_flow(args):
               file=sys.stderr)
 
     # BFS: trace the parameter through the call chain
+    from collections import deque
     visited = set()
     flow_steps = []
     # Each queue item: (function_id, param_to_track, depth, path_so_far)
-    queue = [(from_id, param_name, 0, [from_id])]
+    queue = deque([(from_id, param_name, 0, [from_id])])
 
     while queue:
-        cur_id, cur_param, depth, path = queue.pop(0)
+        cur_id, cur_param, depth, path = queue.popleft()
         if depth >= max_depth:
             continue
         if cur_id in visited:

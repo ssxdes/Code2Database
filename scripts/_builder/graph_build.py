@@ -2326,6 +2326,15 @@ def build_graph(extraction: dict, profile: dict = None,
     # Build caller→struct_chain lookup from fn_ptr_calls for context-aware dispatch.
     # fn_ptr_calls format: {caller_name: [{field_name, struct_chain}, ...]}
     _fn_ptr_struct_lookup = {}  # (caller_name, field_name) → struct_chain
+    _fa_collision_index = set()  # (field_name, target_func, struct_chain)
+    _fa_collision_no_chain = {}  # field_name → {target_func, ...}
+    for fa in extraction.get("field_assignments", []):
+        _fn_chain = fa.get("struct_chain", "")
+        _fn_field = fa.get("field_name", "")
+        _fn_target = fa.get("target_func", "")
+        if _fn_field and _fn_target:
+            _fa_collision_index.add((_fn_field, _fn_target, _fn_chain))
+            _fa_collision_no_chain.setdefault(_fn_field, set()).add(_fn_target)
     for caller_name, calls in extraction.get("fn_ptr_calls", {}).items():
         for call in calls:
             fn_field = call.get("field_name", "")
@@ -3264,18 +3273,9 @@ def build_graph(extraction: dict, profile: dict = None,
             # assigned to this field via a field_assignment record.
             source_func = source_id.rsplit(".", 1)[-1] if "." in source_id else source_id
             struct_chain = _fn_ptr_struct_lookup.get((source_func, target_name), "")
-            has_fa = False
-            for fa in extraction.get("field_assignments", []):
-                fa_chain = fa.get("struct_chain", "")
-                fa_field = fa.get("field_name", "")
-                fa_target = fa.get("target_func", "")
-                # Match: same field name, and target func matches the
-                # function we resolved to, with matching or absent struct
-                if (fa_field == target_name
-                        and fa_target == target_name
-                        and (fa_chain == struct_chain or not struct_chain)):
-                    has_fa = True
-                    break
+            has_fa = (target_name in _fa_collision_no_chain and
+                      target_name in _fa_collision_no_chain.get(target_name, set()) and
+                      (not struct_chain or (target_name, target_name, struct_chain) in _fa_collision_index))
             if not has_fa:
                 continue  # Name collision — skip
 

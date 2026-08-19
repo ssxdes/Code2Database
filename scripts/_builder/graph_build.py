@@ -370,6 +370,18 @@ _SA_GLOBAL_PREFIX_RE = re.compile(r'\b(g_[A-Za-z_]\w*|g[A-Z][A-Za-z0-9_]*)\b')
 _SA_ANY_WRITE_RE = re.compile(
     r'\b([A-Za-z_]\w*)\s*(\+|-|\*|\/|\||\&|\^|\%|<<|>>)?=\s*[^=]'
 )
+_SA_FIELD_ACCESS_RE = re.compile(
+    r'(\b[A-Za-z_]\w*)\s*(?:->|\.)\s*([A-Za-z_]\w*)\b'
+)
+_SA_FIELD_WRITE_RE = re.compile(
+    r'(\b[A-Za-z_]\w*)\s*(?:->|\.)\s*([A-Za-z_]\w*)\s*(\+|-|\*|\/|\||\&|\^|\%|<<|>>)?=\s*([^;,\n]{1,80})'
+)
+# FN_PTR parameter name detection — used in edge processing loop.
+_FN_PTR_PARAM_RE = re.compile(
+    r'^(cb_fn|cpl_cb|cb|fn|func|handler|callback|op|action|proc|'
+    r'routine|build_io_fn|disconnected_qpair_cb)$|'
+    r'_cb$|_fn$|_handler$|_callback$|_routine$'
+)
 
 
 def _extract_state_access(body_text: str, local_vars: list, params: list,
@@ -550,23 +562,19 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
 
     # Match: identifier->identifier or identifier.identifier
     # Exclude: function calls (identifier(...)), common C keywords
-    _FIELD_ACCESS_RE = re.compile(
-        r'(\b[A-Za-z_]\w*)\s*(?:->|\.)\s*([A-Za-z_]\w*)\b'
-    )
+    # Uses module-level _SA_FIELD_ACCESS_RE
     # Write pattern: the field access is followed by assignment operator.
     # Capture the assigned RHS expression (truncated to ~60 chars) so callers
     # can distinguish "bh->b_bdev = NULL" from "bh->b_bdev = bdev" — this is
     # critical for null-pointer-deref analysis where only the NULL writers
     # are suspects.
-    _FIELD_WRITE_RE = re.compile(
-        r'(\b[A-Za-z_]\w*)\s*(?:->|\.)\s*([A-Za-z_]\w*)\s*(\+|-|\*|\/|\||\&|\^|\%|<<|>>)?=\s*([^;,\n]{1,80})'
-    )
+    # Uses module-level _SA_FIELD_WRITE_RE
 
     written_field_keys = set()  # (obj, field) pairs that are written
     seen_written_keys = set()  # for O(1) dedup of fields_written entries
     for e in fields_written:
         seen_written_keys.add((e.get("struct_chain", ""), e.get("field_name", "")))
-    for m in _FIELD_WRITE_RE.finditer(body_text):
+    for m in _SA_FIELD_WRITE_RE.finditer(body_text):
         obj_name = m.group(1)
         field_name = m.group(2)
         # Skip common non-struct identifiers and C keywords.
@@ -597,7 +605,7 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
     # accessed by this function, and field-level tracking is set-based
     # (we don't need to record both reads and writes for the same field).
     seen_read_keys = set()
-    for m in _FIELD_ACCESS_RE.finditer(body_text):
+    for m in _SA_FIELD_ACCESS_RE.finditer(body_text):
         obj_name = m.group(1)
         field_name = m.group(2)
         if obj_name in ('return', 'if', 'else', 'while', 'for', 'switch',
@@ -3127,11 +3135,7 @@ def build_graph(extraction: dict, profile: dict = None,
         # Detect by: unresolved name (no domain prefix) that matches common
         # fn_ptr parameter patterns.
         if target_id == target_name and '.' not in target_id:
-            _FN_PTR_PARAM_RE = re.compile(
-                r'^(cb_fn|cpl_cb|cb|fn|func|handler|callback|op|action|proc|'
-                r'routine|build_io_fn|disconnected_qpair_cb)$|'
-                r'_cb$|_fn$|_handler$|_callback$|_routine$'
-            )
+            # Uses module-level _FN_PTR_PARAM_RE
             if _FN_PTR_PARAM_RE.match(target_id):
                 continue
 

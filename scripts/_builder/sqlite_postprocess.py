@@ -408,19 +408,19 @@ def _build_callgraph_summary_md_from_sqlite(db_path, outdir, source_root="", bui
         "WHERE domain IS NOT NULL AND domain != ''"
     ).fetchone()[0]
 
-    # API entries
-    api_count = conn.execute(
-        "SELECT COUNT(*) FROM functions WHERE labels LIKE '%API_entry%'"
-    ).fetchone()[0]
-    thread_count = conn.execute(
-        "SELECT COUNT(*) FROM functions WHERE labels LIKE '%thread_processor%'"
-    ).fetchone()[0]
-    callback_count = conn.execute(
-        "SELECT COUNT(*) FROM functions WHERE labels LIKE '%callback_func%'"
-    ).fetchone()[0]
-    endpoint_count = conn.execute(
-        "SELECT COUNT(*) FROM functions WHERE labels LIKE '%out_end%' OR labels LIKE '%unknown_end%'"
-    ).fetchone()[0]
+    # Single-pass label statistics (was 4 separate full-table scans)
+    label_stats = conn.execute(
+        "SELECT "
+        "SUM(CASE WHEN labels LIKE '%API_entry%' THEN 1 ELSE 0 END) as api_count, "
+        "SUM(CASE WHEN labels LIKE '%thread_processor%' THEN 1 ELSE 0 END) as thread_count, "
+        "SUM(CASE WHEN labels LIKE '%callback_func%' THEN 1 ELSE 0 END) as callback_count, "
+        "SUM(CASE WHEN labels LIKE '%out_end%' OR labels LIKE '%unknown_end%' THEN 1 ELSE 0 END) as endpoint_count "
+        "FROM functions"
+    ).fetchone()
+    api_count = label_stats[0] or 0
+    thread_count = label_stats[1] or 0
+    callback_count = label_stats[2] or 0
+    endpoint_count = label_stats[3] or 0
 
     # Domain stats (exclude empty/blank domains — synthetic vtable nodes
     # have domain='' and shouldn't pollute the distribution)

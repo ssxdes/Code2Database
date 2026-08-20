@@ -436,6 +436,86 @@ def _compute_hub_info(G: nx.DiGraph, node_id: str) -> dict:
     return result
 
 
+def _build_describe_result_from_sqlite(nd, callers_raw, callees_raw, detail, context_mode, include_body, graph_dir):
+    """Build describe-node result from SQLite queries (no graph load needed)."""
+    node_id = nd.get("id", "")
+    callers = []
+    for r in callers_raw:
+        callers.append({
+            "id": r.get("id", ""),
+            "name": r.get("name", ""),
+            "location": f"{r.get('source_file', '')}:{r.get('line_number', 0) or r.get('line', 0)}",
+            "call_order": r.get("call_order"),
+            "call_condition": r.get("call_condition", ""),
+            "concurrency": r.get("concurrency", ""),
+        })
+    callees = []
+    for r in callees_raw:
+        callees.append({
+            "id": r.get("id", ""),
+            "name": r.get("name", ""),
+            "location": f"{r.get('source_file', '')}:{r.get('line_number', 0) or r.get('line', 0)}",
+            "call_order": r.get("call_order"),
+            "call_condition": r.get("call_condition", ""),
+            "concurrency": r.get("concurrency", ""),
+        })
+    all_conditions = set()
+    for c in callees:
+        if c.get("call_condition"):
+            all_conditions.add(c["call_condition"])
+    for c in callers:
+        if c.get("call_condition"):
+            all_conditions.add(c["call_condition"])
+    branches = [{"condition": c.get("call_condition", ""),
+                 "target": c.get("id", ""),
+                 "target_name": c.get("name", ""),
+                 "target_location": c.get("location", "")}
+                for c in callees if c.get("call_condition")]
+    labels = nd.get("labels", [])
+    confidence_summary = {}
+    for c in callers + callees:
+        conf = c.get("confidence", "EXTRACTED")
+        confidence_summary[conf] = confidence_summary.get(conf, 0) + 1
+    result = {
+        "id": node_id,
+        "name": nd.get("name", ""),
+        "domain": nd.get("domain", ""),
+        "source_file": nd.get("source_file", ""),
+        "line": nd.get("line", 0),
+        "labels": labels,
+        "signature": nd.get("signature", ""),
+        "semantic_desc": nd.get("semantic_desc", ""),
+        "external_desc": nd.get("external_desc", ""),
+        "api_constraints": nd.get("api_constraints", ""),
+        "callers": callers[:50],
+        "callees": callees[:50],
+        "branches": branches[:20],
+        "conditions": sorted(all_conditions)[:10],
+        "caller_count": len(callers),
+        "callee_count": len(callees),
+        "confidence_summary": confidence_summary,
+    }
+    if include_body or detail == "full":
+        result["body_text"] = nd.get("body_text", "")[:2000]
+    if context_mode:
+        source_file = nd.get("source_file", "")
+        line_num = nd.get("line", 0)
+        if source_file and line_num:
+            try:
+                with open(source_file, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+                start = max(0, line_num - 6)
+                end = min(len(lines), line_num + 5)
+                result["context"] = {
+                    "file": source_file,
+                    "line": line_num,
+                    "snippet": "".join(lines[start:end]),
+                }
+            except OSError:
+                pass
+    return result
+
+
 @cached_query('describe-node', ttl=600,
               touched_nodes_fn=_node_arg_touched,
               capture_stdout=True)
@@ -446,6 +526,51 @@ def cmd_describe_node(args):
     detail = getattr(args, "detail", "full")
     context_mode = getattr(args, "context", False)
     include_body = getattr(args, "include_body", False)
+
+    # Fast path: if SQLite DB exists, query node + neighbors directly
+    # instead of loading the full graph (O(V+E) → O(log V + degree))
+    db_path = os.path.join(graph_dir, "code2database.db")
+    if os.path.exists(db_path):
+        from _builder.graph_build import _load_node_from_sqlite
+        nd = _load_node_from_sqlite(db_path, node_id)
+        if not nd:
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            candidates = [r[0] for r in conn.execute(
+                "SELECT id FROM functions WHERE id LIKE ? LIMIT 5",
+                (f"%{node_id}%",)).fetchall()]
+            conn.close()
+            if candidates:
+                print(f"Node '{node_id}' not found. Similar: {candidates[:5]}", file=sys.stderr)
+            else:
+                print(f"Node '{node_id}' not found in graph.", file=sys.stderr)
+            sys.exit(1)
+        # Query callers and callees directly from SQLite
+        import sqlite3
+        _conn = sqlite3.connect(db_path)
+        _conn.row_factory = sqlite3.Row
+        _callers = []
+        for row in _conn.execute(
+            "SELECT e.invoker_id AS id, e.call_order, e.call_condition, e.concurrency, "
+            "e.confidence, f.name, f.source_file, f.line_number "
+            "FROM edges e JOIN functions f ON e.invoker_id = f.id "
+            "WHERE e.invoked_id = ? AND e.relation NOT IN ('CONTAINS', 'IMPORTS')",
+            (node_id,)):
+            _callers.append(dict(row))
+        _callees = []
+        for row in _conn.execute(
+            "SELECT e.invoked_id AS id, e.call_order, e.call_condition, e.concurrency, "
+            "e.confidence, f.name, f.source_file, f.line_number "
+            "FROM edges e JOIN functions f ON e.invoked_id = f.id "
+            "WHERE e.invoker_id = ? AND e.relation NOT IN ('CONTAINS', 'IMPORTS')",
+            (node_id,)):
+            _callees.append(dict(row))
+        _conn.close()
+        # Build result directly from SQL queries — no graph load needed
+        result = _build_describe_result_from_sqlite(nd, _callers, _callees, detail, context_mode, include_body, graph_dir)
+        result["_token_count"] = 0
+        print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+        return
 
     G = _load_full_graph(graph_dir)
 

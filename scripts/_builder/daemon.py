@@ -1109,24 +1109,42 @@ class Daemon:
     def _mark_file_stale(self, file_path: str):
         """Mark all functions in file_path as stale in the graph."""
         try:
-            from _builder.graph_build import _load_full_graph
-            # Skip if graph not yet built (daemon may run before first build)
             master_path = Path(self.graph_dir) / "code2database_master.json"
             db_path = Path(self.graph_dir) / "code2database.db"
             if not master_path.exists() and not db_path.exists():
                 self._log(f"graph not yet built, skipping stale-mark for {file_path}")
                 return
-            G = _load_full_graph(self.graph_dir)
-            for nid, nd in G.nodes(data=True):
-                if nd.get("is_empty", False):
-                    continue
-                source_file = nd.get("source_file", "")
-                # Normalize paths for comparison
+
+            norm_file = os.path.normpath(os.path.abspath(file_path))
+            base_name = os.path.basename(norm_file)
+
+            if db_path.exists():
+                import sqlite3
+                conn = sqlite3.connect(str(db_path))
                 try:
-                    if os.path.samefile(source_file, file_path):
-                        nd["stale"] = True
-                except (OSError, FileNotFoundError):
+                    conn.execute(
+                        "UPDATE functions SET stale = 1 "
+                        "WHERE source_file = ? OR source_file LIKE ?",
+                        (norm_file, f"%/{base_name}")
+                    )
+                    conn.commit()
+                except sqlite3.Error:
                     pass
+                finally:
+                    conn.close()
+                return
+
+            from _builder.graph_build import _load_full_graph
+            G = _load_full_graph(self.graph_dir)
+            if not hasattr(self, '_file_to_nodes_cache'):
+                self._file_to_nodes_cache = {}
+                for nid, nd in G.nodes(data=True):
+                    sf = nd.get("source_file", "")
+                    if sf:
+                        norm_sf = os.path.normpath(os.path.abspath(sf))
+                        self._file_to_nodes_cache.setdefault(norm_sf, []).append(nid)
+            for nid in self._file_to_nodes_cache.get(norm_file, []):
+                G.nodes[nid]["stale"] = True
         except Exception as exc:
             self._log(f"mark_file_stale failed: {exc}")
 

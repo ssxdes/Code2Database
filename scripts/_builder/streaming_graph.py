@@ -302,7 +302,8 @@ class StreamingGraph:
             is_new = edge_key not in self._edge_data
             if is_new:
                 self._edge_data[edge_key] = dict(attrs)
-                self._edge_set.add(edge_key)
+                if self._deferred:
+                    self._edge_set.add(edge_key)
                 self._edge_count += 1
                 # Update degree tracking (only for new edges)
                 self._out_degree[u] = self._out_degree.get(u, 0) + 1

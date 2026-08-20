@@ -1224,7 +1224,14 @@ def cmd_trace_chain(args):
                 queue.append((succ, path + [succ]))
 
     path_to_use = found_path if found_path else []
-    # When no to_id: return a BFS-ordered traversal from from_id
+    if to_id and not path_to_use:
+        result = {
+            "from": from_id, "to": to_id,
+            "path": [], "steps": [],
+            "error": f"Target '{to_id}' not reachable from '{from_id}'",
+        }
+        _output_result(result, getattr(args, 'json', False))
+        return
     bfs_parent = {}  # node → parent in BFS tree (for correct edge annotation)
     if not to_id and not path_to_use:
         # Re-traverse BFS to get ordered visit list

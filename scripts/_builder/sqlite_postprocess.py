@@ -776,8 +776,6 @@ def _build_scenarios_file_from_sqlite(db_path, outdir, build_info=None,
     _MACRO_RE = re.compile(r'^[A-Z][A-Z0-9_]{2,}$')
 
     scenarios = []
-    # Get API entries sorted by out-degree (most connected = most important)
-    # Limit to 50 to avoid excessive per-entry query time on large graphs
     api_rows = conn.execute(
         "SELECT f.id, f.name, f.domain, f.signature, "
         "COALESCE(out_cnt.cnt, 0) as out_deg "
@@ -789,26 +787,25 @@ def _build_scenarios_file_from_sqlite(db_path, outdir, build_info=None,
         "LIMIT 50"
     ).fetchall()
 
+    # Pre-build adjacency list from edges (1 query instead of 300+ per-hop queries)
+    adj = defaultdict(list)
+    name_map = {row[0]: row[1] for row in conn.execute(
+        "SELECT id, name FROM functions").fetchall()}
+    for caller, callee, call_order, cond, conc in conn.execute(
+        "SELECT invoker_id, invoked_id, call_order, call_condition, concurrency "
+        "FROM edges WHERE relation = 'INVOKES' ORDER BY invoker_id, call_order"
+    ).fetchall():
+        adj[caller].append((callee, name_map.get(callee, ""), cond or "", conc or ""))
+
     for api_id, name, domain, sig, out_deg in api_rows:
-        # Skip macro-like names (ALL_UPPERCASE patterns)
         if _MACRO_RE.match(name):
             continue
-
-        # Trace execution path: follow INVOKES edges up to 6 hops.
-        # At each hop, pick ONE callee to follow (prefer real calls over
-        # conditional placeholders). Append only the chosen callee to the
-        # chain so the displayed path reflects the actual traversal.
         chain = []
         visited = {api_id}
         current_id = api_id
         concurrent_fns = []
         for hop in range(6):
-            callees = conn.execute(
-                "SELECT f.id, f.name, e.call_condition, e.concurrency "
-                "FROM edges e JOIN functions f ON e.invoked_id = f.id "
-                "WHERE e.invoker_id = ? AND e.relation = 'INVOKES' "
-                "ORDER BY e.call_order LIMIT 10", (current_id,)
-            ).fetchall()
+            callees = adj.get(current_id, [])
 
             if not callees:
                 break

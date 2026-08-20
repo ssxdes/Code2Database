@@ -387,7 +387,8 @@ _FN_PTR_PARAM_RE = re.compile(
 def _extract_state_access(body_text: str, local_vars: list, params: list,
                           globals_data: dict, field_assignments: list,
                           node_name: str = "",
-                          _cached_globals: dict = None) -> dict:
+                          _cached_globals: dict = None,
+                          language: str = "") -> dict:
     """Extract global variable and struct field read/write information from body_text.
 
     Scans function body text for patterns indicating access to global variables
@@ -509,29 +510,31 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
 
     seen_written_names = set(e["name"] for e in globals_written)
     seen_read_names = set(e["name"] for e in globals_read)
-    for m in _SA_GLOBAL_PREFIX_RE.finditer(body_text):
-        vname = m.group(1)
-        if vname in local_names or vname in global_var_names:
-            continue
-        # Skip very short names and common C keywords/types
-        if len(vname) <= 2 or vname in ('goto', 'get'):
-            continue
-        is_write = vname in written_any
-        entry = {"name": vname, "type": "", "source_file": "",
-                 "inferred": True}
-        if is_write:
-            if vname not in seen_written_names:
-                seen_written_names.add(vname)
-                globals_written.append(entry)
-            # Inferred globals written are also implicitly read (write-then-read
-            # pattern is common; conservative assumption to surface the var).
-            if vname not in seen_read_names:
-                seen_read_names.add(vname)
-                globals_read.append(entry)
-        else:
-            if vname not in seen_read_names:
-                seen_read_names.add(vname)
-                globals_read.append(entry)
+    # g_ prefix is a C/C++ naming convention; skip for other languages
+    if not language or language in ('c', 'cpp', 'cpp_header'):
+        for m in _SA_GLOBAL_PREFIX_RE.finditer(body_text):
+            vname = m.group(1)
+            if vname in local_names or vname in global_var_names:
+                continue
+            # Skip very short names and common C keywords/types
+            if len(vname) <= 2 or vname in ('goto', 'get'):
+                continue
+            is_write = vname in written_any
+            entry = {"name": vname, "type": "", "source_file": "",
+                     "inferred": True}
+            if is_write:
+                if vname not in seen_written_names:
+                    seen_written_names.add(vname)
+                    globals_written.append(entry)
+                # Inferred globals written are also implicitly read (write-then-read
+                # pattern is common; conservative assumption to surface the var).
+                if vname not in seen_read_names:
+                    seen_read_names.add(vname)
+                    globals_read.append(entry)
+            else:
+                if vname not in seen_read_names:
+                    seen_read_names.add(vname)
+                    globals_read.append(entry)
 
     # --- Struct field access ---
     fields_read = []
@@ -686,7 +689,8 @@ def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
         access_info = _extract_state_access(body, local_vars, params,
                                             globals_data, field_assignments,
                                             node_name,
-                                            _cached_globals=_cached_globals)
+                                            _cached_globals=_cached_globals,
+                                            language=ndata.get("language", ""))
         out = {}
         for key in ("globals_read", "globals_written",
                     "fields_read", "fields_written"):

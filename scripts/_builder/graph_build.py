@@ -5635,12 +5635,21 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
         # serialization time and file size. indent=2 on 100K+ entries
         # can take minutes; compact mode is 5-10x faster.
         _use_indent = len(func_rows) < 500
-        Path(filepath).write_text(
-            json.dumps(domain_data, ensure_ascii=False,
-                      indent=2 if _use_indent else None,
-                      separators=(",", ":") if not _use_indent else None) + "\n",
-            encoding="utf-8"
-        )
+        _sep = (",", ":") if not _use_indent else None
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write('{"type":"code2database_domain","format_version":3,')
+            f.write(f'"domain":{json.dumps(domain, ensure_ascii=False)},')
+            f.write('"functions":')
+            f.write(json.dumps(func_rows, ensure_ascii=False, separators=_sep))
+            f.write(',"function_details":')
+            f.write(json.dumps(func_details, ensure_ascii=False, separators=_sep))
+            f.write(',"empty_nodes":')
+            f.write(json.dumps(empty_rows, ensure_ascii=False, separators=_sep))
+            f.write(',"edge_fields":')
+            f.write(json.dumps(EDGE_FIELDS, ensure_ascii=False, separators=_sep))
+            f.write(',"edges":')
+            f.write(json.dumps(compact_edges, ensure_ascii=False, separators=_sep))
+            f.write('}\n')
 
         domain_map[domain] = rel_path
         total_nodes += len(nodes)

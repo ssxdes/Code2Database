@@ -437,7 +437,7 @@ def _compute_hub_info(G: nx.DiGraph, node_id: str) -> dict:
 
 
 @cached_query('describe-node', ttl=600,
-              touched_nodes_fn=_describe_node_touched,
+              touched_nodes_fn=_node_arg_touched,
               capture_stdout=True)
 def cmd_describe_node(args):
     """Return ALL info about a node in one call — replaces search+neighbors+source-read."""
@@ -2062,6 +2062,20 @@ def cmd_param_flow(args):
     _output_result(result, json_mode)
 
 
+def _node_arg_touched(args) -> frozenset:
+    """Return the set of node_ids a node-based query depends on."""
+    try:
+        node_id = getattr(args, "node", "") or ""
+        if node_id:
+            return frozenset({node_id})
+    except Exception:
+        pass
+    return frozenset()
+
+
+@cached_query('blast-radius', ttl=600,
+              touched_nodes_fn=_node_arg_touched,
+              capture_stdout=True)
 def cmd_blast_radius(args):
     """Handle blast-radius command — show what's affected when a function changes."""
     graph_dir = args.graph

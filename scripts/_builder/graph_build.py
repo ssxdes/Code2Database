@@ -1147,24 +1147,21 @@ def _load_full_graph(graph_dir: str) -> nx.DiGraph:
 
 
 def _load_full_graph_from_sqlite(db_path: str) -> nx.DiGraph:
-    """P0_fix: Load the full invocation graph from SQLite (code2database.db).
+    """Load the full invocation graph from SQLite (code2database.db).
 
-    Used when code2database_master.json is absent — i.e., builds that used
-    --storage sqlite --low-memory (required for projects >100K functions
-    where JSON master would be too large).
-
-    Loads nodes from `functions` table and edges from `edges` table,
-    deserializing JSON fields (labels, extra_json) on the fly. Decompresses
-    body_text_compressed via zlib if needed.
-
-    Memory note: For 1.5M nodes this consumes ~8-12 GB RAM. Callers that
-    need lower memory should use targeted queries (describe-node, neighbors)
-    that can load a single node via _load_node_from_sqlite instead of the
-    full graph.
+    For large graphs (>=50K nodes), returns a LazySQLiteGraph that
+    queries SQLite on demand instead of loading everything into memory.
+    For small graphs, eagerly loads all nodes and edges into a DiGraph.
     """
     import sqlite3
-    import zlib
+    conn = sqlite3.connect(db_path)
+    node_count = conn.execute("SELECT COUNT(*) FROM functions").fetchone()[0]
+    conn.close()
+    if node_count >= 50000:
+        from _builder.streaming_graph import LazySQLiteGraph
+        return LazySQLiteGraph(db_path)
 
+    import zlib
     G = nx.DiGraph()
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row

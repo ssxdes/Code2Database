@@ -1964,24 +1964,33 @@ def cmd_scan(args):
     _compile_commands_arg = getattr(args, 'compile_commands', '') or ''
     _clang_args_arg = getattr(args, 'clang_args', '') or ''
     _no_interactive = getattr(args, 'no_interactive', False)
-    # Determine if we'll actually use the clang backend (c/cpp files + auto/clang)
+
+    # Single os.walk to detect c/cpp files AND compute source stats
+    _SOURCE_EXTS = {'.c', '.h', '.cpp', '.hpp', '.cc', '.cxx', '.go', '.py', '.java', '.rs', '.s', '.S', '.asm'}
+    _C_CPP_EXTS = {'.c', '.h', '.cpp', '.hpp', '.cc', '.cxx', '.s', '.S'}
+    _has_c_cpp = False
+    source_bytes = 0
+    source_files = 0
+    for dirpath, dirnames, filenames in os.walk(source):
+        dirnames[:] = [d for d in dirnames if not d.startswith('.')
+                        and d not in ('__pycache__', 'node_modules',
+                                      '.git', 'build', 'dist', 'venv')]
+        for fname in filenames:
+            ext = os.path.splitext(fname)[1].lower()
+            if ext in _SOURCE_EXTS:
+                fpath = os.path.join(dirpath, fname)
+                try:
+                    source_bytes += os.path.getsize(fpath)
+                    source_files += 1
+                except OSError:
+                    pass
+            if ext in _C_CPP_EXTS:
+                _has_c_cpp = True
+
     _will_use_clang = _extraction_backend in ('auto', 'clang')
     if _will_use_clang and _extraction_backend == 'auto':
-        # For 'auto' on non-c/cpp projects, clang is not used; skip prompt.
-        # Detect by scanning source for c/cpp files.
-        _has_c_cpp = False
-        for _dirpath, _dirnames, _filenames in os.walk(source):
-            _dirnames[:] = [d for d in _dirnames if not d.startswith('.')
-                            and d not in ('__pycache__', 'node_modules',
-                                          '.git', 'build', 'dist', 'venv')]
-            for _fn in _filenames:
-                if os.path.splitext(_fn)[1].lower() in (
-                        '.c', '.h', '.cpp', '.hpp', '.cc', '.cxx', '.s', '.S'):
-                    _has_c_cpp = True
-                    break
-            if _has_c_cpp:
-                break
         _will_use_clang = _has_c_cpp
+
     if _will_use_clang and not _compile_commands_arg and not _clang_args_arg:
         if _no_interactive:
             print("[CompileCommands] No --compile-commands or --clang-args provided "
@@ -2007,21 +2016,7 @@ def cmd_scan(args):
                       "Then re-run with --compile-commands <path>.",
                       file=sys.stderr)
 
-    # Compute source size for comparison
-    source_bytes = 0
-    source_files = 0
-    _SOURCE_EXTS = {'.c', '.h', '.cpp', '.hpp', '.cc', '.cxx', '.go', '.py', '.java', '.rs', '.s', '.S', '.asm'}
-    for dirpath, dirnames, filenames in os.walk(source):
-        dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in
-                       ('__pycache__', 'node_modules', '.git', 'build', 'dist', 'venv')]
-        for fname in filenames:
-            if os.path.splitext(fname)[1].lower() in _SOURCE_EXTS:
-                fpath = os.path.join(dirpath, fname)
-                try:
-                    source_bytes += os.path.getsize(fpath)
-                    source_files += 1
-                except OSError:
-                    pass
+    # source_bytes and source_files already computed above in the merged walk
 
     tracker.begin("scan", metadata={
         "source_files": source_files,

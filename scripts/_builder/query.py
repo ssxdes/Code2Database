@@ -2450,6 +2450,9 @@ def cmd_field_access(args):
     _output_result(result, getattr(args, 'json', False))
 
 
+@cached_query('reverse-trace', ttl=600,
+              touched_nodes_fn=_node_arg_touched,
+              capture_stdout=True)
 def cmd_reverse_trace(args):
     """Reverse trace from a crash point: BFS backward through callers,
     annotating each path with condition and concurrency info.

@@ -3562,9 +3562,9 @@ def build_graph(extraction: dict, profile: dict = None,
                         for struct_type in matched_structs:
                             regs = vtable_index[struct_type].get(field_name, [])
                             if len(regs) > _MAX_VTABLE_DISPATCH_PER_CALL:
-                                regs = sorted(regs, key=lambda r: (
-                                    -(1 if set(re.split(r'[._/]', r.get("source_file", "").lower()))
-                                      & set(re.split(r'[._]', inline_domain.lower())) else 0),
+                                _inline_parts = set(re.split(r'[._]', inline_domain.lower()))
+                                regs = sorted(regs, key=lambda r, _ip=_inline_parts: (
+                                    -(1 if set(re.split(r'[._/]', r.get("source_file", "").lower())) & _ip else 0),
                                     r.get("source_file", "")))[:_MAX_VTABLE_DISPATCH_PER_CALL]
                             for reg in regs:
                                 func_name = reg["func_name"]
@@ -4062,9 +4062,9 @@ def build_graph(extraction: dict, profile: dict = None,
                                 break
                     _iw_field_cap = _effective_vtable_cap(field_name)
                     if len(regs) > _iw_field_cap:
-                        regs = sorted(regs, key=lambda r: (
-                            -(1 if set(re.split(r'[._/]', r.get("source_file", "").lower()))
-                              & set(re.split(r'[._]', caller_domain.lower())) else 0),
+                        _caller_parts = set(re.split(r'[._]', caller_domain.lower()))
+                        regs = sorted(regs, key=lambda r, _cp=_caller_parts: (
+                            -(1 if set(re.split(r'[._/]', r.get("source_file", "").lower())) & _cp else 0),
                             r.get("source_file", "")))[:_iw_field_cap]
                     for reg in regs:
                         func_name = reg["func_name"]

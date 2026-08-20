@@ -167,19 +167,22 @@ def _resolve_detailed_chain(G: nx.DiGraph, start_id: str, bindings: dict,
         visited.add(nid)
         nd = G.nodes[nid]
 
+        # Pre-collect all successor data in one pass
+        all_succ_data = []
         for succ in G.successors(nid):
             ed = G.get_edge_data(nid, succ) or {}
             if ed.get("relation") in ("CONTAINS", "IMPORTS"):
                 continue
-            cond = ed.get("call_condition", "")
-            conc = ed.get("concurrency", "")
             succ_nd = G.nodes[succ]
             succ_name = succ_nd.get("name", "")
-
             if _is_scenario_noise_target(succ_name):
                 continue
+            all_succ_data.append((succ, ed, succ_nd, succ_name))
 
-            # Check if this branch is alive given bindings
+        for succ, ed, succ_nd, succ_name in all_succ_data:
+            cond = ed.get("call_condition", "")
+            conc = ed.get("concurrency", "")
+
             alive = True
             if conc == "vtable_dispatch":
                 alive = _is_vtable_dispatch_alive(ed, bindings)
@@ -196,16 +199,11 @@ def _resolve_detailed_chain(G: nx.DiGraph, start_id: str, bindings: dict,
             elif conc in ("spawn_target", "thread_spawn", "goroutine"):
                 action = "spawn"
                 is_concurrent = True
-                # Find concurrent calls after this spawn
                 spawn_order = ed.get("call_order") or 0
-                main_calls = []
-                for s2 in G.successors(nid):
-                    ed2 = G.get_edge_data(nid, s2) or {}
-                    if ed2.get("call_order") is not None and ed2["call_order"] > spawn_order and \
-                       ed2.get("concurrency") not in ("spawn_target", "callback"):
-                        s2_name = G.nodes[s2].get("name", "")
-                        if not _is_scenario_noise_target(s2_name):
-                            main_calls.append(s2_name)
+                main_calls = [s2_name for (s2, e2, _, s2_name) in all_succ_data
+                              if e2.get("call_order") is not None
+                              and e2["call_order"] > spawn_order
+                              and e2.get("concurrency") not in ("spawn_target", "callback")]
                 concurrent_windows.append({
                     "spawn_at": f"{nid}:{ed.get('call_order', '')}",
                     "thread_fn": succ_name,

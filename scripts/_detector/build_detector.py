@@ -523,40 +523,82 @@ class BuildDetector:
             ("bazel", _BazelDetector()),
         ]
 
+    _SKIP_DIRS = frozenset({'.git', 'build', '_build', 'node_modules', 'out', 'dist', 'target', '__pycache__'})
+
     def detect(self, source_root: str) -> BuildInfo:
         """Auto-detect build system and extract information.
 
-        Returns BuildInfo with the best matching build system.
-        If multiple build systems are found, merges macros from all.
+        Single os.walk for all build file detection + config.h scan.
         """
         best_info = BuildInfo(source_root)
         all_infos = []
 
-        for name, detector in self._detectors:
-            config_files = detector.detect(source_root)
+        # Single walk to collect ALL build-related files
+        _cmake_files = []
+        _make_files = []
+        _spec_files = []
+        _meson_files = []
+        _autotools_files = []
+        _kconfig_files = []
+        _bazel_files = []
+        _config_h_files = []
+        _config_names = frozenset({'config.h', 'config.hpp', 'autoconf.h',
+                                    'configuration.h', 'build-config.h',
+                                    'project-config.h', 'llvm-config.h'})
+
+        for root, dirs, files in os.walk(source_root):
+            dirs[:] = [d for d in dirs if not d.startswith('.')
+                       and d not in self._SKIP_DIRS
+                       and not d.startswith('cmake-build-')]
+            for f in files:
+                if f == 'CMakeLists.txt' or f.endswith('.cmake'):
+                    _cmake_files.append(os.path.join(root, f))
+                elif f in ('Makefile', 'GNUmakefile', 'makefile') or f.endswith('.mk'):
+                    _make_files.append(os.path.join(root, f))
+                elif f.endswith('.spec'):
+                    _spec_files.append(os.path.join(root, f))
+                elif f == 'meson.build' or f == 'meson_options.txt':
+                    _meson_files.append(os.path.join(root, f))
+                elif f in ('configure.ac', 'configure.in', 'Makefile.am'):
+                    _autotools_files.append(os.path.join(root, f))
+                elif f == 'Kconfig' or f == 'Kconfig.*':
+                    _kconfig_files.append(os.path.join(root, f))
+                elif f == 'WORKSPACE' or f == 'BUILD' or f == 'BUILD.bazel' or f.endswith('.bzl'):
+                    _bazel_files.append(os.path.join(root, f))
+                if f in _config_names:
+                    _config_h_files.append(os.path.join(root, f))
+
+        # Process detected files with their respective extractors
+        _detectors = [
+            (_cmake_files, self._detectors[0][1]),
+            (_make_files, self._detectors[1][1]),
+            (_spec_files, self._detectors[2][1]),
+            (_meson_files, self._detectors[3][1]),
+            (_autotools_files, self._detectors[4][1]),
+            (_kconfig_files, self._detectors[5][1]),
+            (_bazel_files, self._detectors[6][1]),
+        ]
+        for config_files, detector in _detectors:
             if config_files:
                 info = detector.extract(config_files, source_root)
                 all_infos.append(info)
 
-        if not all_infos:
-            # Check for generated config.h files even without build system detection
-            self._scan_config_headers(source_root, best_info.macros)
+        # Parse config.h files
+        for path in _config_h_files:
+            _parse_config_h(path, best_info.macros)
+
+        if not all_infos and not _config_h_files:
             return best_info
 
-        # Use the first detected system as primary
-        best_info = all_infos[0]
-
-        # Merge macros from additional build systems
-        for info in all_infos[1:]:
-            for k, v in info.macros.items():
-                if k not in best_info.macros:
-                    best_info.macros[k] = v
-            best_info.config_files.extend(info.config_files)
-            best_info.targets.extend(info.targets)
-            best_info.include_dirs.extend(info.include_dirs)
-
-        # Also scan for config.h files
-        self._scan_config_headers(source_root, best_info.macros)
+        if all_infos:
+            best_info = all_infos[0]
+            for info in all_infos[1:]:
+                for k, v in info.macros.items():
+                    if k not in best_info.macros:
+                        best_info.macros[k] = v
+                best_info.config_files.extend(info.config_files)
+                best_info.targets.extend(info.targets)
+                best_info.include_dirs.extend(info.include_dirs)
 
         # Deduplicate include dirs
         seen = set()

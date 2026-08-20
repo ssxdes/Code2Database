@@ -31,12 +31,19 @@ def _build_callgraph_summary_md(G: nx.DiGraph, outdir: str, source_root: str = "
 
     domains = defaultdict(lambda: {"apis": [], "internal": [], "thread_entries": [],
                                     "callback_entries": [], "endpoints": []})
+    api_ids = []
+    ep_ids = []
+    dead_funcs = []
+    flow_hotspots = []
+    _flow_api_entries = []
+    _flow_endpoint_entries = []
     for nid, ndata in G.nodes(data=True):
         if ndata.get("is_empty", False):
             continue
         dom = ndata.get("domain", "root")
         labels = ndata.get("labels", [])
-        entry = {"id": nid, "name": ndata.get("name", ""),
+        name = ndata.get("name", "")
+        entry = {"id": nid, "name": name,
                  "signature": ndata.get("signature", ""),
                  "source_file": ndata.get("source_file", ""),
                  "line": ndata.get("line", 0),
@@ -46,19 +53,42 @@ def _build_callgraph_summary_md(G: nx.DiGraph, outdir: str, source_root: str = "
                  "semantic_desc": ndata.get("semantic_desc", "")}
         if "API_entry" in labels:
             domains[dom]["apis"].append(entry)
+            api_ids.append(nid)
+            _flow_api_entries.append({"id": nid, "name": name, "domain": dom})
         elif ("out_end" in labels or "unknown_end" in labels) and (
                 dom.startswith("external_") or dom == "external"
                 or not ndata.get("source_file", "")):
-            # Only include truly external endpoints: nodes in external domains
-            # or nodes without source files (unresolved/external). Internal
-            # leaf functions with source files are just leaves, not endpoints.
             domains[dom]["endpoints"].append(entry)
+            ep_ids.append(nid)
+            _flow_endpoint_entries.append({"id": nid, "name": name, "domain": dom})
         else:
             domains[dom]["internal"].append(entry)
         if "thread_processor" in labels:
             domains[dom]["thread_entries"].append(entry)
         if "callback_func" in labels:
             domains[dom]["callback_entries"].append(entry)
+        if "dead_code" in labels:
+            dead_funcs.append(name or nid)
+        if "API_entry" in labels:
+            for p in ndata.get("params", []):
+                pname = p.get("name", "")
+                if not pname:
+                    continue
+                ptype = p.get("type", "")
+                flows_conditions = []
+                flows_callees = []
+                for cv in ndata.get("condition_vars", []):
+                    if pname in cv.get("vars", []):
+                        flows_conditions.append(cv.get("condition", ""))
+                for ca in ndata.get("callee_args", []):
+                    for arg in ca.get("args", []):
+                        if pname in (arg.get("value", "") or ""):
+                            flows_callees.append(ca.get("callee", ""))
+                if flows_conditions or flows_callees:
+                    flow_hotspots.append(
+                        f"- `{pname}` ({ptype}): flows from {name}(param)"
+                        f" → {', '.join(flows_conditions[:3])}"
+                        f" → {{{', '.join(flows_callees[:5])}}}")
 
     all_apis = []
     for dom in sorted(domains.keys()):
@@ -171,9 +201,6 @@ def _build_callgraph_summary_md(G: nx.DiGraph, outdir: str, source_root: str = "
             lines.append("")
 
     # Critical Paths with Mermaid diagram
-    api_ids = [nid for nid, d in G.nodes(data=True) if "API_entry" in d.get("labels", [])]
-    ep_ids = [nid for nid, d in G.nodes(data=True)
-              if "out_end" in d.get("labels", []) or "unknown_end" in d.get("labels", [])]
     chains = []
     top_paths = []
     n_nodes = G.number_of_nodes()
@@ -360,30 +387,7 @@ def _build_callgraph_summary_md(G: nx.DiGraph, outdir: str, source_root: str = "
             lines.append(f"| {ep['name']} | {cls} | {desc} | {caller_str or '—'} |")
         lines.append("")
 
-    # Data Flow Hotspots
-    flow_hotspots = []
-    for nid, ndata in G.nodes(data=True):
-        if ndata.get("is_empty", False):
-            continue
-        if "API_entry" not in ndata.get("labels", []):
-            continue
-        for p in ndata.get("params", []):
-            pname = p["name"]
-            ptype = p.get("type", "")
-            flows_conditions = []
-            flows_callees = []
-            for cv in ndata.get("condition_vars", []):
-                if pname in cv.get("vars", []):
-                    flows_conditions.append(cv["condition"])
-            for ca in ndata.get("callee_args", []):
-                for arg in ca.get("args", []):
-                    if pname in arg.get("value", ""):
-                        flows_callees.append(ca.get("callee", ""))
-            if flows_conditions or flows_callees:
-                flow_hotspots.append(
-                    f"- `{pname}` ({ptype}): flows from {ndata.get('name', '')}(param)"
-                    f" → {', '.join(flows_conditions[:3])}"
-                    f" → {{{', '.join(flows_callees[:5])}}}")
+    # Data Flow Hotspots (already collected in main traversal above)
     if flow_hotspots:
         lines.append("## Data Flow Hotspots")
         lines.append("")
@@ -419,8 +423,6 @@ def _build_callgraph_summary_md(G: nx.DiGraph, outdir: str, source_root: str = "
         macro_names = list(build_info.get('defined_macros', {}).keys())
         if macro_names:
             lines.append(f"| Defined macros | {', '.join(macro_names[:15])} |")
-        dead_funcs = [nd.get("name", nid) for nid, nd in G.nodes(data=True)
-                      if "dead_code" in nd.get("labels", [])]
         if dead_funcs:
             dead_list = ", ".join(dead_funcs[:10])
             if len(dead_funcs) > 10:

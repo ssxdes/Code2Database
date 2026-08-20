@@ -624,13 +624,9 @@ class LazySQLiteGraph:
 
     def __init__(self, db_path: str):
         import sqlite3
-        from _builder.sqlite_store import SQLiteStore
         self._db_path = db_path
         self._conn = sqlite3.connect(db_path)
         self._conn.row_factory = sqlite3.Row
-        self._store = SQLiteStore(db_path)
-        self._store.connect()
-        # Cache for single-node lookups (bounded LRU via dict size)
         self._node_cache = {}
         self._node_cache_max = 10000
         self._edge_cache = {}
@@ -1020,10 +1016,12 @@ class LazySQLiteGraph:
             self._conn.close()
         except Exception:
             pass
-        try:
-            self._store.close()
-        except Exception:
-            pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
 
 class _LazyNodeView:

@@ -1239,33 +1239,39 @@ def _build_context_pack_from_sqlite(db_path, outdir, source_root="", build_info=
 
     # Standard pack: API entries with call relationships
     api_names = [r[0] for r in api_rows]
+    api_ids = [r[3] for r in api_rows]
     standard = {
         "total_functions": node_count,
         "total_edges": edge_count,
         "domains": domains,
         "api_entries": [],
     }
+    # Batch query: get callees for ALL APIs in 2 queries (was 2N)
+    all_callees = {}
+    all_callers = {}
+    if api_ids:
+        _ph = ','.join('?' * len(api_ids))
+        for api_id, name, cond, conc, conf in conn.execute(
+            f"SELECT e.invoker_id, f.name, e.call_condition, e.concurrency, e.confidence "
+            f"FROM edges e JOIN functions f ON e.invoked_id = f.id "
+            f"WHERE e.invoker_id IN ({_ph}) "
+            f"AND e.relation NOT IN ('CONTAINS', 'IMPORTS')", api_ids):
+            all_callees.setdefault(api_id, []).append(
+                {"name": name, "condition": cond or "",
+                 "concurrency": conc or "", "confidence": conf or ""})
+        for api_id, name, cond, conc, conf in conn.execute(
+            f"SELECT e.invoked_id, f.name, e.call_condition, e.concurrency, e.confidence "
+            f"FROM edges e JOIN functions f ON e.invoker_id = f.id "
+            f"WHERE e.invoked_id IN ({_ph}) "
+            f"AND e.relation NOT IN ('CONTAINS', 'IMPORTS')", api_ids):
+            all_callers.setdefault(api_id, []).append(
+                {"name": name, "condition": cond or "",
+                 "concurrency": conc or "", "confidence": conf or ""})
     for name, domain, sig, api_id in api_rows:
-        callees = conn.execute(
-            "SELECT f.name, e.call_condition, e.concurrency, e.confidence "
-            "FROM edges e JOIN functions f ON e.invoked_id = f.id "
-            "WHERE e.invoker_id = ? "
-            "AND e.relation NOT IN ('CONTAINS', 'IMPORTS') LIMIT 20", (api_id,)
-        ).fetchall()
-        callers = conn.execute(
-            "SELECT f.name, e.call_condition, e.concurrency, e.confidence "
-            "FROM edges e JOIN functions f ON e.invoker_id = f.id "
-            "WHERE e.invoked_id = ? "
-            "AND e.relation NOT IN ('CONTAINS', 'IMPORTS') LIMIT 20", (api_id,)
-        ).fetchall()
         standard["api_entries"].append({
             "name": name, "domain": domain, "signature": sig or "",
-            "callees": [{"name": c[0], "condition": c[1] or "",
-                         "concurrency": c[2] or "", "confidence": c[3] or ""}
-                        for c in callees],
-            "callers": [{"name": c[0], "condition": c[1] or "",
-                         "concurrency": c[2] or "", "confidence": c[3] or ""}
-                        for c in callers],
+            "callees": all_callees.get(api_id, [])[:20],
+            "callers": all_callers.get(api_id, [])[:20],
         })
     standard_path = os.path.join(outdir, ".code2database_context_pack_standard.json")
     Path(standard_path).write_text(

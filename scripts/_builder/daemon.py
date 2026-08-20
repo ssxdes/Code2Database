@@ -614,7 +614,8 @@ class Daemon:
         self._sync_busy_lock = threading.Lock()
         self._last_sync_result: Optional[Dict] = None
         # D32: track last-synced content per path for format-only filtering
-        self._last_synced_content: Dict[str, str] = {}
+        self._last_synced_content = {}
+        self._last_synced_content_max = 1000
 
     def start(self):
         """Start the daemon (foreground; blocks until stop())."""
@@ -665,7 +666,14 @@ class Daemon:
                 # Idle — check if we should sleep
                 if now - last_activity > idle_sleep:
                     self.state.status = STATUS_IDLE
+                    if getattr(self, '_state_dirty', False):
+                        self._write_state()
+                        self._state_dirty = False
+                elif getattr(self, '_state_dirty', False) and \
+                     now - getattr(self, '_last_state_write', 0) > 1.0:
                     self._write_state()
+                    self._state_dirty = False
+                    self._last_state_write = now
                 time.sleep(1.0)
                 continue
             # Wait for debounce + batch window
@@ -782,13 +790,14 @@ class Daemon:
             prev = self._last_synced_content.get(p)
             if prev is None:
                 kept.append(p)
-                self._last_synced_content[p] = content
-                continue
-            if self._is_format_only_change(prev, content):
-                # Skip — only formatting changed
-                self._last_synced_content[p] = content
-                continue
-            kept.append(p)
+            elif self._is_format_only_change(prev, content):
+                pass  # Skip — only formatting changed
+            else:
+                kept.append(p)
+            # Update cache with LRU eviction
+            if len(self._last_synced_content) >= self._last_synced_content_max:
+                _oldest = next(iter(self._last_synced_content))
+                del self._last_synced_content[_oldest]
             self._last_synced_content[p] = content
         return kept
 
@@ -954,7 +963,10 @@ class Daemon:
             self._pending.add(path)
             self.state.pending_events = len(self._pending)
         self._last_sync_time = now
-        self._write_state()
+        self._state_dirty = True
+        if now - getattr(self, '_last_state_write', 0) > 1.0:
+            self._write_state()
+            self._last_state_write = now
 
     def _prune_old_events(self, now: float):
         cutoff = now - 60.0

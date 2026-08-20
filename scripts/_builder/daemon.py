@@ -616,14 +616,21 @@ class Daemon:
         # status is reported via _sync_busy / _sync_pending_jobs.
         self._sync_worker_thread: Optional[threading.Thread] = None
         from collections import deque
-        self._sync_jobs = deque()  # queued jobs: {kind, paths, queued_at}
+        self._sync_jobs = deque()
         self._sync_jobs_lock = threading.Lock()
         self._sync_busy = False
         self._sync_busy_lock = threading.Lock()
         self._last_sync_result: Optional[Dict] = None
-        # D32: track last-synced content per path for format-only filtering
         self._last_synced_content = {}
         self._last_synced_content_max = 1000
+        self._state_dirty = False
+        self._last_state_write = 0.0
+
+        # Crash recovery: check for previous daemon state
+        _old_state = DaemonState.read(self.graph_dir)
+        if _old_state and _old_state.status == STATUS_SYNCING:
+            self._log("recovering from crash: last sync was in-progress")
+        self._recovered_pending_count = _old_state.pending_events if _old_state else 0
 
     def start(self):
         """Start the daemon (foreground; blocks until stop())."""
@@ -631,6 +638,10 @@ class Daemon:
         self._setup_signal_handlers()
         self._start_socket_server()
         self._start_sync_worker()
+        if self._recovered_pending_count > 0:
+            self._log(f"recovering {self._recovered_pending_count} pending events via bulk sync")
+            self._enqueue_sync_job("bulk", [])
+            self._recovered_pending_count = 0
         # Start file watcher. Enable content-hash polling when cgdb is in use
         # so the daemon's change detection matches the cgdb incremental-sync
         # baseline (SHA-256 instead of mtime+size).

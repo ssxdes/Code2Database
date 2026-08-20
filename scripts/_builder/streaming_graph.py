@@ -639,13 +639,23 @@ class LazySQLiteGraph:
         self._succ_cache_max = 50000
         self._pred_cache = {}
         self._pred_cache_max = 50000
+        self._node_neg_cache = set()
 
     def __contains__(self, node_id) -> bool:
         if node_id in self._node_cache:
             return True
+        if node_id in self._node_neg_cache:
+            return False
         row = self._conn.execute(
             "SELECT 1 FROM functions WHERE id=? LIMIT 1", (node_id,)).fetchone()
-        return row is not None
+        if row is not None:
+            return True
+        if len(self._node_neg_cache) >= self._node_cache_max:
+            _evict = self._node_cache_max // 4
+            for k in list(self._node_neg_cache.keys())[:_evict]:
+                del self._node_neg_cache[k]
+        self._node_neg_cache.add(node_id)
+        return False
 
     def has_node(self, node_id: str) -> bool:
         return node_id in self

@@ -34,14 +34,10 @@ def _open_db(db_path):
 # ---------------------------------------------------------------------------
 
 def _build_indexes_from_sqlite(db_path, outdir):
-    """Build all index files from SQLite instead of NetworkX DiGraph.
+    """Build all index files from SQLite.
 
-    This is the low-memory replacement for _build_indexes(G, outdir).
-    It queries the SQLite database directly to build:
-    1. Reverse index (callers/callees per node)
-    2. Condition index (branch conditions per node)
-    3. Chains index (API_entry → endpoint paths) — simplified for large graphs
-    4. Concurrency index
+    Merges reverse index, condition index, and concurrency index
+    into a single edges table scan (was 3-5 separate scans).
     """
     conn = _open_db(db_path)
 
@@ -49,28 +45,115 @@ def _build_indexes_from_sqlite(db_path, outdir):
     edge_count = conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
     print(f"[sqlite-index] {node_count} nodes, {edge_count} edges", file=sys.stderr)
 
-    # 1. Reverse index — streaming write
     _ri_path = os.path.join(outdir, ".code2database_reverse_index.json")
-    print(f"[sqlite-index] Writing reverse index...", file=sys.stderr)
-    _build_reverse_index_sqlite(conn, outdir, _ri_path)
-
-    # 2. Condition index — build from edges with call_condition
     _ci_path = os.path.join(outdir, ".code2database_condition_index.json")
-    print(f"[sqlite-index] Writing condition index...", file=sys.stderr)
-    _build_condition_index_sqlite(conn, outdir, _ci_path)
-
-    # 3. Concurrency index — edges with concurrency info
     _conc_path = os.path.join(outdir, ".code2database_concurrency_index.json")
-    print(f"[sqlite-index] Writing concurrency index...", file=sys.stderr)
-    _build_concurrency_index_sqlite(conn, outdir, _conc_path)
 
-    # 4. Chains index — simplified (shortest path from API_entry to endpoints)
+    if node_count <= 100000:
+        _build_indexes_merged_small(conn, outdir, _ri_path, _ci_path, _conc_path, node_count)
+    else:
+        _build_reverse_index_streaming(conn, _ri_path, node_count)
+        _build_condition_index_sqlite(conn, outdir, _ci_path)
+        _build_concurrency_index_sqlite(conn, outdir, _conc_path)
+
     _chains_path = os.path.join(outdir, ".code2database_chains.json")
     _chains_lite_path = os.path.join(outdir, ".code2database_chains_lite.json")
     print(f"[sqlite-index] Writing chains index...", file=sys.stderr)
     _build_chains_index_sqlite(conn, outdir, _chains_path, _chains_lite_path)
 
     conn.close()
+
+
+def _build_indexes_merged_small(conn, outdir, ri_path, ci_path, conc_path, node_count):
+    """Build reverse + condition + concurrency indexes in a single edges scan.
+
+    For small graphs (≤100K nodes), merges 3 separate full-table scans
+    into 1 scan that dispatches to all 3 output files simultaneously.
+    """
+    all_func_ids = [row[0] for row in conn.execute(
+        "SELECT id FROM functions ORDER BY id"
+    ).fetchall()]
+
+    name_map = {row[0]: row[1] for row in conn.execute(
+        "SELECT id, name FROM functions"
+    ).fetchall()}
+
+    callers_map = defaultdict(list)
+    callees_map = defaultdict(list)
+    cond_map = defaultdict(list)
+    conc_map = defaultdict(list)
+
+    rows = conn.execute(
+        "SELECT invoker_id, invoked_id, call_order, call_condition, "
+        "concurrency, confidence, relation FROM edges "
+        "ORDER BY invoker_id"
+    ).fetchall()
+
+    for caller, callee, call_order, cond, conc, conf, rel in rows:
+        if rel in ('CONTAINS', 'IMPORTS'):
+            continue
+        if callee:
+            callers_map[callee].append((caller, call_order, cond or "", conc or ""))
+        if caller:
+            callees_map[caller].append((callee, call_order, cond or "", conc or ""))
+        if cond:
+            cond_map[caller].append({
+                "condition": cond, "target_node": callee,
+                "target_name": name_map.get(callee, ""), "condition_vars": []
+            })
+        if conc:
+            conc_map[caller].append({
+                "id": callee, "name": name_map.get(callee, ""),
+                "concurrency": conc, "confidence": conf or ""
+            })
+
+    with open(ri_path, "w", encoding="utf-8") as f:
+        f.write('{')
+        first = True
+        for nid in all_func_ids:
+            callers = [{"id": c[0], "call_order": c[1],
+                        "call_condition": c[2], "concurrency": c[3]}
+                       for c in callers_map.get(nid, [])]
+            callees = [{"id": c[0], "call_order": c[1],
+                        "call_condition": c[2], "concurrency": c[3]}
+                       for c in callees_map.get(nid, [])]
+            if not first:
+                f.write(',')
+            first = False
+            f.write(json.dumps(nid, ensure_ascii=False) + ':')
+            f.write(json.dumps({"callers": callers, "callees": callees},
+                               ensure_ascii=False, separators=(',', ':')))
+        f.write('}\n')
+
+    with open(ci_path, "w", encoding="utf-8") as f:
+        f.write('{')
+        first = True
+        for nid in all_func_ids:
+            branches = cond_map.get(nid, [])
+            if not branches:
+                continue
+            if not first:
+                f.write(',')
+            first = False
+            f.write(json.dumps(nid, ensure_ascii=False) + ':')
+            f.write(json.dumps(branches, ensure_ascii=False, separators=(',', ':')))
+        f.write('}\n')
+
+    with open(conc_path, "w", encoding="utf-8") as f:
+        f.write('{')
+        first = True
+        for nid in all_func_ids:
+            entries = conc_map.get(nid, [])
+            if not entries:
+                continue
+            if not first:
+                f.write(',')
+            first = False
+            f.write(json.dumps(nid, ensure_ascii=False) + ':')
+            f.write(json.dumps(entries, ensure_ascii=False, separators=(',', ':')))
+        f.write('}\n')
+
+    gc.collect()
 
 
 def _build_reverse_index_sqlite(conn, outdir, ri_path):

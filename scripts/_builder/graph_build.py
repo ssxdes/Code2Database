@@ -1769,41 +1769,20 @@ def _propagate_thread_models(G: nx.DiGraph, thread_models: dict) -> None:
 
 
 def _validate_stats_consistency(G: nx.DiGraph, pipeline_node_count: int) -> dict:
-    """Validate consistency between pipeline stats node count and context-pack function count.
-
-    The context pack excludes nodes that are empty, file-typed, or auto_created,
-    which leads to a different (lower) function count than the raw pipeline total.
-    This function computes both counts, warns if they diverge by more than 1%,
-    and returns a reconciliation dict for inclusion in pipeline stats.
-
-    Args:
-        G: The invocation graph DiGraph.
-        pipeline_node_count: The raw node count (G.number_of_nodes()) recorded
-            in the pipeline stats.
-
-    Returns:
-        A dict with keys: context_pack_count, pipeline_count, delta,
-        delta_pct, exceeds_threshold, explanation.
-    """
-    # Count using the same logic as _build_context_pack (index_pack.py):
-    # exclude is_empty, node_type=="file", auto_created
+    """Validate consistency between pipeline stats and context-pack count."""
     context_pack_count = 0
     excluded = {"empty": 0, "file": 0, "auto_created": 0, "dead_code": 0}
     for _, nd in G.nodes(data=True):
         if nd.get("is_empty", False):
             excluded["empty"] += 1
-            continue
-        if nd.get("node_type") == "file":
+        elif nd.get("node_type") == "file":
             excluded["file"] += 1
-            continue
-        if nd.get("auto_created", False):
+        elif nd.get("auto_created", False):
             excluded["auto_created"] += 1
-            continue
-        # dead_code is tracked but NOT excluded from the context-pack count;
-        # it is however excluded from some other outputs, so we record it.
-        if "dead_code" in nd.get("labels", []):
-            excluded["dead_code"] += 1
-        context_pack_count += 1
+        else:
+            if "dead_code" in nd.get("labels", []):
+                excluded["dead_code"] += 1
+            context_pack_count += 1
 
     delta = pipeline_node_count - context_pack_count
     delta_pct = (delta / pipeline_node_count * 100) if pipeline_node_count > 0 else 0.0

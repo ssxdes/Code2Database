@@ -322,15 +322,23 @@ class FileWatcher:
 
     def _is_excluded(self, path: str) -> bool:
         """Check if path matches any exclude pattern."""
+        import fnmatch
+        norm_path = path.replace("\\", "/")
+        parts = norm_path.split("/")
         for pat in self.exclude_patterns:
             if pat.endswith("/"):
-                if path.endswith(pat) or f"/{pat}" in path:
+                clean = pat.rstrip("/")
+                if clean in parts:
                     return True
             elif pat.startswith("*"):
-                if path.endswith(pat[1:]):
+                if fnmatch.fnmatch(os.path.basename(path), pat):
                     return True
-            elif pat in path:
-                return True
+            elif "/" in pat:
+                if pat in norm_path:
+                    return True
+            else:
+                if pat in parts:
+                    return True
         return False
 
     def _run_inotify(self):
@@ -1059,18 +1067,26 @@ class Daemon:
         self._write_state()
 
     def _run_transactional_sync(self, files: List[str]):
-        """Run incremental sync wrapped in a transaction."""
+        """Run incremental sync wrapped in a transaction with lock timeout."""
         try:
-            from _builder.transactions import transaction
+            from _builder.transactions import transaction, GraphLock
         except ImportError:
-            # No transaction support — direct sync
             self._run_direct_sync(files)
             return
         try:
-            with transaction(self.graph_dir, description=f"daemon sync {len(files)} files"):
+            lock = GraphLock(self.graph_dir, mode="w", timeout=30.0)
+            lock._acquire("w", 30.0)
+            try:
                 self._run_direct_sync(files)
+                lock._release()
+            except Exception:
+                lock._release()
+                raise
         except Exception as exc:
-            self._log(f"transactional sync failed: {exc}, falling back to direct")
+            if "timeout" in str(exc).lower() or "lock" in str(exc).lower():
+                self._log(f"transaction lock timeout (user tx in progress?), falling back to direct sync")
+            else:
+                self._log(f"transactional sync failed: {exc}, falling back to direct")
             self._run_direct_sync(files)
 
     def _run_direct_sync(self, files: List[str]):

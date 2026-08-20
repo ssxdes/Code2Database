@@ -624,21 +624,23 @@ class LazySQLiteGraph:
 
     def __init__(self, db_path: str):
         import sqlite3
+        from collections import OrderedDict
         self._db_path = db_path
         self._conn = sqlite3.connect(db_path)
         self._conn.row_factory = sqlite3.Row
-        self._node_cache = {}
+        self._node_cache = OrderedDict()
         self._node_cache_max = 10000
-        self._edge_cache = {}
+        self._edge_cache = OrderedDict()
         self._edge_cache_max = 50000
-        self._succ_cache = {}
+        self._succ_cache = OrderedDict()
         self._succ_cache_max = 50000
-        self._pred_cache = {}
+        self._pred_cache = OrderedDict()
         self._pred_cache_max = 50000
         self._node_neg_cache = set()
 
     def __contains__(self, node_id) -> bool:
         if node_id in self._node_cache:
+            self._node_cache.move_to_end(node_id)
             return True
         if node_id in self._node_neg_cache:
             return False
@@ -671,14 +673,12 @@ class LazySQLiteGraph:
 
     def _get_node_attrs(self, nid: str) -> dict:
         if nid in self._node_cache:
+            self._node_cache.move_to_end(nid)
             return self._node_cache[nid]
         attrs = self._fetch_node(nid)
         if attrs:
             if len(self._node_cache) >= self._node_cache_max:
-                # Evict ~25% of cache (simple FIFO eviction)
-                evict_count = self._node_cache_max // 4
-                for k in list(self._node_cache.keys())[:evict_count]:
-                    del self._node_cache[k]
+                self._node_cache.popitem(last=False)
             self._node_cache[nid] = attrs
         return attrs
 
@@ -780,6 +780,7 @@ class LazySQLiteGraph:
     def has_edge(self, u: str, v: str) -> bool:
         cache_key = (u, v)
         if cache_key in self._edge_cache:
+            self._edge_cache.move_to_end(cache_key)
             return self._edge_cache[cache_key] is not None
         row = self._conn.execute(
             "SELECT 1 FROM edges WHERE invoker_id=? AND invoked_id=? LIMIT 1",
@@ -787,9 +788,7 @@ class LazySQLiteGraph:
         exists = row is not None
         if not exists:
             if len(self._edge_cache) >= self._edge_cache_max:
-                evict_count = self._edge_cache_max // 4
-                for k in list(self._edge_cache.keys())[:evict_count]:
-                    del self._edge_cache[k]
+                self._edge_cache.popitem(last=False)
             self._edge_cache[cache_key] = None
         return exists
 
@@ -817,6 +816,7 @@ class LazySQLiteGraph:
     def get_edge_data(self, u: str, v: str) -> dict:
         cache_key = (u, v)
         if cache_key in self._edge_cache:
+            self._edge_cache.move_to_end(cache_key)
             return self._edge_cache[cache_key] or {}
         import json as _json
         row = self._conn.execute(
@@ -870,6 +870,7 @@ class LazySQLiteGraph:
     def predecessors(self, node_id: str):
         cached = self._pred_cache.get(node_id)
         if cached is not None:
+            self._pred_cache.move_to_end(node_id)
             yield from cached
             return
         cur = self._conn.execute(
@@ -878,15 +879,14 @@ class LazySQLiteGraph:
             (node_id,))
         result = [row[0] for row in cur]
         if len(self._pred_cache) >= self._pred_cache_max:
-            evict = self._pred_cache_max // 4
-            for k in list(self._pred_cache.keys())[:evict]:
-                del self._pred_cache[k]
+            self._pred_cache.popitem(last=False)
         self._pred_cache[node_id] = result
         yield from result
 
     def successors(self, node_id: str):
         cached = self._succ_cache.get(node_id)
         if cached is not None:
+            self._succ_cache.move_to_end(node_id)
             yield from cached
             return
         cur = self._conn.execute(
@@ -895,9 +895,7 @@ class LazySQLiteGraph:
             (node_id,))
         result = [row[0] for row in cur]
         if len(self._succ_cache) >= self._succ_cache_max:
-            evict = self._succ_cache_max // 4
-            for k in list(self._succ_cache.keys())[:evict]:
-                del self._succ_cache[k]
+            self._succ_cache.popitem(last=False)
         self._succ_cache[node_id] = result
         yield from result
 

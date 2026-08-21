@@ -1553,80 +1553,12 @@ class BaseScanner(ABC):
         # Per-language (acquire_pattern, release_pattern, kind, var_group)
         # Patterns are simple regex; the first capture group names the
         # sync variable (when present).
-        patterns_by_lang = {
-            'python': [
-                (r'\bwith\s+([A-Za-z_][A-Za-z0-9_\.]*)\s*:', None,
-                 'lock_acquire', 'with_stmt'),
-                (r'\b([A-Za-z_][A-Za-z0-9_]*)\.acquire\(\)', None,
-                 'lock_acquire', 'method_call'),
-                (r'\b([A-Za-z_][A-Za-z0-9_]*)\.release\(\)', None,
-                 'lock_release', 'method_call'),
-            ],
-            'go': [
-                (r'\b([A-Za-z_][A-Za-z0-9_]*)\.Lock\(\)', None,
-                 'lock_acquire', 'method_call'),
-                (r'\b([A-Za-z_][A-Za-z0-9_]*)\.Unlock\(\)', None,
-                 'lock_release', 'method_call'),
-                (r'\b([A-Za-z_][A-Za-z0-9_]*)\.RLock\(\)', None,
-                 'lock_acquire', 'method_call'),
-                (r'\b([A-Za-z_][A-Za-z0-9_]*)\.RUnlock\(\)', None,
-                 'lock_release', 'method_call'),
-                (r'<-\s*([A-Za-z_][A-Za-z0-9_]*)', None,
-                 'lock_acquire', 'channel_recv'),
-                (r'([A-Za-z_][A-Za-z0-9_]*)\s*<-', None,
-                 'lock_release', 'channel_send'),
-            ],
-            'rust': [
-                (r'\b([A-Za-z_][A-Za-z0-9_]*)\.lock\(\)\.unwrap\(\)', None,
-                 'lock_acquire', 'method_call'),
-                (r'\b([A-Za-z_][A-Za-z0-9_]*)\.read\(\)\.unwrap\(\)', None,
-                 'lock_acquire', 'method_call'),
-                (r'\b([A-Za-z_][A-Za-z0-9_]*)\.write\(\)\.unwrap\(\)', None,
-                 'lock_acquire', 'method_call'),
-            ],
-            'java': [
-                (r'\bsynchronized\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)', None,
-                 'lock_acquire', 'synchronized'),
-                (r'\b([A-Za-z_][A-Za-z0-9_]*)\.lock\(\)', None,
-                 'lock_acquire', 'method_call'),
-                (r'\b([A-Za-z_][A-Za-z0-9_]*)\.unlock\(\)', None,
-                 'lock_release', 'method_call'),
-            ],
-            'c': [
-                (r'\bpthread_mutex_lock\s*\(\s*&?\s*([A-Za-z_][A-Za-z0-9_]*)', None,
-                 'lock_acquire', 'pthread_mutex'),
-                (r'\bpthread_mutex_unlock\s*\(\s*&?\s*([A-Za-z_][A-Za-z0-9_]*)', None,
-                 'lock_release', 'pthread_mutex'),
-                (r'\bpthread_rwlock_rdlock\s*\(\s*&?\s*([A-Za-z_][A-Za-z0-9_]*)', None,
-                 'lock_acquire', 'pthread_rwlock'),
-                (r'\bpthread_rwlock_wrlock\s*\(\s*&?\s*([A-Za-z_][A-Za-z0-9_]*)', None,
-                 'lock_acquire', 'pthread_rwlock'),
-                (r'\bpthread_rwlock_unlock\s*\(\s*&?\s*([A-Za-z_][A-Za-z0-9_]*)', None,
-                 'lock_release', 'pthread_rwlock'),
-                (r'\bpthread_spin_lock\s*\(\s*&?\s*([A-Za-z_][A-Za-z0-9_]*)', None,
-                 'lock_acquire', 'pthread_spin'),
-                (r'\bpthread_spin_unlock\s*\(\s*&?\s*([A-Za-z_][A-Za-z0-9_]*)', None,
-                 'lock_release', 'pthread_spin'),
-                (r'\bsem_wait\s*\(\s*&?\s*([A-Za-z_][A-Za-z0-9_]*)', None,
-                 'lock_acquire', 'semaphore'),
-                (r'\bsem_post\s*\(\s*&?\s*([A-Za-z_][A-Za-z0-9_]*)', None,
-                 'lock_release', 'semaphore'),
-            ],
-            'cpp': [
-                (r'\bstd::mutex\b', None, 'lock_var', 'std_mutex'),
-                (r'\bstd::lock_guard\s*<[^>]*>\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)', None,
-                 'lock_acquire', 'lock_guard'),
-                (r'\bstd::unique_lock\s*<[^>]*>\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)', None,
-                 'lock_acquire', 'unique_lock'),
-                (r'\b([A-Za-z_][A-Za-z0-9_]*)\.lock\(\)', None,
-                 'lock_acquire', 'method_call'),
-                (r'\b([A-Za-z_][A-Za-z0-9_]*)\.unlock\(\)', None,
-                 'lock_release', 'method_call'),
-            ],
-        }
-        patterns = patterns_by_lang.get(language, [])
-        if not patterns:
+        # Pre-compiled merged sync regex per language (built once at module level)
+        from _scanner._sync_patterns import get_sync_patterns
+        merged_re, alt_meta = get_sync_patterns(language)
+        if merged_re is None:
             return []
+        alt_meta_by_name = {m[3]: m for m in alt_meta}
         for fn in functions:
             fn_id_str = fn.get('id', '') or ''
             fn_nid = fn_legacy_to_nid.get(fn_id_str)
@@ -1636,64 +1568,63 @@ class BaseScanner(ABC):
             if not body:
                 continue
             fn_start_byte = int(fn.get('start_byte', 0) or fn.get('byte_start', 0) or 0)
-            for acq_pat, _rel_pat, kind, style in patterns:
-                for m in re.finditer(acq_pat, body):
-                    var_name = m.group(1) if m.groups() else ''
-                    sync_var_nid = None
-                    if var_name:
-                        var_fqn = f'{fn_id_str}::{var_name}'
-                        sync_var_nid = unified_node_id(language, var_fqn)
-                        if sync_var_nid not in seen_node_ids:
-                            seen_node_ids.add(sync_var_nid)
-                            sv_bs = fn_start_byte + m.start(1) if m.groups() and fn_start_byte else 0
-                            sv_be = fn_start_byte + m.end(1) if m.groups() and fn_start_byte else 0
-                            sv_snippet = ''
-                            if sv_bs and sv_be and sv_be > sv_bs and source_bytes:
-                                if 0 <= sv_bs < sv_be <= len(source_bytes):
-                                    snip = source_bytes[sv_bs:sv_be].decode(
-                                        'utf-8', errors='replace')
-                                    if len(snip) > 4096:
-                                        snip = snip[:4096] + '…'
-                                    sv_snippet = snip
-                            cgdb_nodes.append({
-                                'id': sync_var_nid,
-                                'kind': 'var',
-                                'name': var_name,
-                                'fqn': var_fqn,
-                                'file_id': fid,
-                                'file_path': filepath,
-                                'line': 0,
-                                'col': 0,
-                                'byte_start': sv_bs,
-                                'byte_end': sv_be,
-                                'source_snippet': sv_snippet,
-                                'type_spelling': 'sync_var',
-                                'attrs': {'inferred_from': 'sync_pattern'},
-                                'source_layer': 'legacy',
-                                'confidence': 0.6,
-                                'enclosing_symbol_id': fn_nid,
-                            })
+            for m in merged_re.finditer(body):
+                gname = m.lastgroup
+                if gname is None:
+                    continue
+                kind, style, var_grp_idx, _ = alt_meta_by_name[gname]
+                var_name = m.group(var_grp_idx) if var_grp_idx is not None else ''
+                sync_var_nid = None
+                if var_name:
+                    var_fqn = f'{fn_id_str}::{var_name}'
+                    sync_var_nid = unified_node_id(language, var_fqn)
+                    if sync_var_nid not in seen_node_ids:
+                        seen_node_ids.add(sync_var_nid)
+                        sv_bs = fn_start_byte + m.start(var_grp_idx) if var_grp_idx is not None and fn_start_byte else 0
+                        sv_be = fn_start_byte + m.end(var_grp_idx) if var_grp_idx is not None and fn_start_byte else 0
+                        sv_snippet = ''
+                        if sv_bs and sv_be and sv_be > sv_bs and source_bytes:
+                            if 0 <= sv_bs < sv_be <= len(source_bytes):
+                                snip = source_bytes[sv_bs:sv_be].decode('utf-8', errors='replace')
+                                if len(snip) > 4096:
+                                    snip = snip[:4096] + '…'
+                                sv_snippet = snip
+                        cgdb_nodes.append({
+                            'id': sync_var_nid,
+                            'kind': 'var',
+                            'name': var_name,
+                            'fqn': var_fqn,
+                            'file_id': fid,
+                            'file_path': filepath,
+                            'line': 0,
+                            'col': 0,
+                            'byte_start': sv_bs,
+                            'byte_end': sv_be,
+                            'source_snippet': sv_snippet,
+                            'type_spelling': 'sync_var',
+                            'attrs': {'inferred_from': 'sync_pattern'},
+                            'source_layer': 'legacy',
+                            'confidence': 0.6,
+                            'enclosing_symbol_id': fn_nid,
+                        })
+                out.append({
+                    'function_id': fn_nid,
+                    'kind': kind,
+                    'sync_var_id': sync_var_nid,
+                    'acquire_stmt_id': None,
+                    'release_stmt_id': None,
+                })
+                if kind == 'lock_acquire' and style in (
+                    'with_stmt', 'synchronized', 'lock_guard',
+                    'unique_lock',
+                ):
                     out.append({
                         'function_id': fn_nid,
-                        'kind': kind,
+                        'kind': 'lock_release',
                         'sync_var_id': sync_var_nid,
                         'acquire_stmt_id': None,
                         'release_stmt_id': None,
                     })
-                    # `with lock:` (Python) and `synchronized (obj)` (Java)
-                    # implicitly release at block exit. Emit a matching
-                    # lock_release record so sync_primitives stays balanced.
-                    if kind == 'lock_acquire' and style in (
-                        'with_stmt', 'synchronized', 'lock_guard',
-                        'unique_lock',
-                    ):
-                        out.append({
-                            'function_id': fn_nid,
-                            'kind': 'lock_release',
-                            'sync_var_id': sync_var_nid,
-                            'acquire_stmt_id': None,
-                            'release_stmt_id': None,
-                        })
         return out
 
     def _emit_happens_before(self, language: str, functions: list,

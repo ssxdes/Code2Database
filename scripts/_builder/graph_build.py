@@ -7359,6 +7359,38 @@ def cmd_build(args):
                         _global_emitted = True
                         _cgdb_node_count += len(nodes)
                         _cgdb_edge_count += len(_edges_by_file.get(fp, []))
+
+                        # L1 lossless reconstruction layer ingest (C/C++ files only)
+                        if fp.endswith(('.c', '.cc', '.cpp', '.cxx',
+                                        '.h', '.hh', '.hpp', '.hxx',
+                                        '.m', '.mm')):
+                            try:
+                                from _builder.l1_ingest import ingest_l1
+                                from _builder.cgdb_ingest import file_id_for
+                                _l1_fid = file_id_for(fp)
+                                _l1_stats = ingest_l1(
+                                    conn=store._conn,
+                                    file_path=fp,
+                                    file_id=_l1_fid,
+                                    commit_hash=_build_commit_hash,
+                                    source_root=source_root,
+                                )
+                                if _l1_stats.get("consistency_ok"):
+                                    print(f"[l1] {os.path.basename(fp)}: "
+                                          f"{_l1_stats['tokens']} tokens, "
+                                          f"{_l1_stats['macros']} macros, "
+                                          f"{_l1_stats['pp_branches']} pp_branches, "
+                                          f"{_l1_stats['string_literals']} str_literals "
+                                          f"(sha256 ok)", file=sys.stderr)
+                                else:
+                                    print(f"[l1] {os.path.basename(fp)}: "
+                                          f"consistency_ok=False "
+                                          f"(disk={_l1_stats.get('disk_sha256','')[:8]}, "
+                                          f"rendered={_l1_stats.get('rendered_sha256','')[:8]})",
+                                          file=sys.stderr)
+                            except Exception as _l1_exc:
+                                print(f"[l1] WARNING: ingest failed for "
+                                      f"{os.path.basename(fp)}: {_l1_exc}", file=sys.stderr)
                     cgdb_store.close()
                     print(f"[cgdb] Wrote {_cgdb_node_count} nodes, "
                           f"{_cgdb_edge_count} edges, {len(cgdb_types_data)} types, "
@@ -7781,5 +7813,17 @@ def cmd_build(args):
     # parts of the graph get semantic descriptions first.
     if getattr(args, 'auto_enhance', False):
         _post_build_auto_enhance(args, outdir)
+
+    # Coverage report (best-effort, never blocks build)
+    try:
+        from _builder.coverage_report import write_coverage_report, write_file_coverage
+        _cov = write_coverage_report(outdir)
+        if _cov:
+            print(f"[coverage] Wrote {_cov}", file=sys.stderr)
+        _fcov = write_file_coverage(outdir)
+        if _fcov:
+            print(f"[coverage] Wrote {_fcov}", file=sys.stderr)
+    except Exception:
+        pass
 
 

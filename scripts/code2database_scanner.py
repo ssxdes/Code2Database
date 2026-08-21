@@ -378,8 +378,9 @@ def scan_directory(source_root: str, lang: str = "auto",
                    split_output: bool = False,
                    no_body_text: bool = False,
                    extraction_backend: str = None,
-                   compile_commands_path: str = None,
-                   clang_args: list = None) -> dict:
+                    compile_commands_path: str = None,
+                    clang_args: list = None,
+                    scan_subsystems: list = None) -> dict:
     """Scan all source files in a directory tree.
 
     Args:
@@ -486,6 +487,25 @@ def scan_directory(source_root: str, lang: str = "auto",
                 if lang != "auto":
                     continue
             file_list.append((fpath, file_lang))
+
+    # Subsystem filter — restrict scan to specified top-level subsystem directories
+    if scan_subsystems:
+        _subsystem_set = {s.strip('/') for s in scan_subsystems if s.strip()}
+        if _subsystem_set:
+            source_root_abs = os.path.abspath(source_root)
+            filtered = []
+            for fpath, flang in file_list:
+                rel = os.path.relpath(os.path.abspath(fpath), source_root_abs)
+                rel = rel.replace(os.sep, '/')
+                top = rel.split('/', 1)[0]
+                if top in _subsystem_set:
+                    filtered.append((fpath, flang))
+            _filtered_count = len(file_list) - len(filtered)
+            file_list = filtered
+            if not quiet:
+                print(f"[scan] Subsystem filter {sorted(_subsystem_set)}: "
+                      f"kept {len(file_list)} / {len(file_list) + _filtered_count} "
+                      f"files (dropped {_filtered_count})", file=sys.stderr)
 
     # Auto-detect large project: if > 10000 source files, treat as large.
     # This auto-enables split-output for better memory management.
@@ -1830,6 +1850,14 @@ def cmd_scan(args):
         sys.exit(1)
 
     macro_bindings = _parse_macros_str(args.macros) if args.macros else None
+    _scan_subsystems_list = None
+    _cli_subs = getattr(args, 'scan_subsystems', '') or ''
+    if _cli_subs:
+        _scan_subsystems_list = [s.strip() for s in _cli_subs.split(',') if s.strip()]
+    elif profile:
+        _prof_subs = (profile.get("scan_hints", {}) or {}).get("scan_subsystems", []) or []
+        if _prof_subs:
+            _scan_subsystems_list = list(_prof_subs)
     api_prefixes = args.api_prefixes.split(",") if args.api_prefixes else None
 
     # --auto-profile: generate .code2database_profile.json before scanning
@@ -2171,7 +2199,8 @@ def cmd_scan(args):
                                 no_body_text=getattr(args, 'no_body_text', False),
                                 extraction_backend=getattr(args, 'extraction_backend', 'auto'),
                                 compile_commands_path=getattr(args, 'compile_commands', '') or None,
-                                clang_args=_parse_clang_args(getattr(args, 'clang_args', '')))
+                                clang_args=_parse_clang_args(getattr(args, 'clang_args', '')),
+                                scan_subsystems=_scan_subsystems_list)
     _streamed = result.get("_streamed_to") is not None
     _split_dir = result.get("_split_dir")
 

@@ -91,6 +91,7 @@ _DEFAULT_PROFILE = {
         "vtable_module_keys": [],
         "domain_rules": [],
         "skip_dirs": [],  # Extra directories to skip (in addition to built-in _SKIP_DIRS)
+        "scan_subsystems": [],  # Restrict scan to specified top-level subsystem dirs (e.g., ['fs', 'mm'] for Linux kernel)
     },
     "dispatch_tuning": {
         # Max vtable dispatch targets per call site. Default 50; raise for kernel

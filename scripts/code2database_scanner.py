@@ -2700,6 +2700,9 @@ def main():
                          help="Skip interactive prompts (for CI/automated runs). "
                               "When set, scan proceeds with whatever --compile-commands / "
                               "--clang-args were provided (or none), without prompting.")
+    p_scan.add_argument("--scan-subsystems", default=None,
+                         help="Comma-separated subsystem names to restrict scan to "
+                              "(e.g., fs,mm,block for Linux kernel cross-subsystem analysis)")
 
     p_manifest = sub.add_parser("manifest", help="Save file fingerprint manifest")
     p_manifest.add_argument("--source", required=True, help="Source directory")

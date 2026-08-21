@@ -58,11 +58,18 @@ def _is_scenario_noise_target(name: str) -> bool:
 
 
 def _describe_node_touched(args) -> frozenset:
-    """Return the set of node_ids a describe-node query depends on.
+    """Return the set of node_ids a describe-node query depends on."""
+    try:
+        node_id = getattr(args, "node", "") or ""
+        if node_id:
+            return frozenset({node_id})
+    except Exception:
+        pass
+    return frozenset()
 
-    Used by the query cache for node-version invalidation: when any of these
-    nodes is updated, the cached describe-node result is dropped.
-    """
+
+def _node_arg_touched(args) -> frozenset:
+    """Return the set of node_ids a node-based query depends on."""
     try:
         node_id = getattr(args, "node", "") or ""
         if node_id:
@@ -2229,17 +2236,6 @@ def cmd_param_flow(args):
         "reached_end": len(flow_steps) > 0 and not flow_steps[-1]["next_hops"],
     }
     _output_result(result, json_mode)
-
-
-def _node_arg_touched(args) -> frozenset:
-    """Return the set of node_ids a node-based query depends on."""
-    try:
-        node_id = getattr(args, "node", "") or ""
-        if node_id:
-            return frozenset({node_id})
-    except Exception:
-        pass
-    return frozenset()
 
 
 @cached_query('blast-radius', ttl=600,

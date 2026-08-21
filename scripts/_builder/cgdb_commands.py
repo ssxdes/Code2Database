@@ -1048,3 +1048,40 @@ def cmd_cgdb_layer_summary(args):
         print(out_path)
     finally:
         store.close()
+
+def cmd_cgdb_coverage(args):
+    """Query graph coverage: --function NAME | --file PATH | neither for summary."""
+    import json as _json
+    import sys as _sys
+    from _builder.coverage_report import query_coverage
+    graph_dir = args.graph
+    function_name = getattr(args, 'function', None) or ''
+    file_path = getattr(args, 'file', None) or ''
+    result = query_coverage(graph_dir, function_name=function_name, file_path=file_path)
+    if result.get('status') == 'error':
+        _json.dump(result, _sys.stdout, ensure_ascii=False, indent=2)
+        _sys.exit(1)
+    _json.dump(result, _sys.stdout, ensure_ascii=False, indent=2)
+    print()
+
+
+def cmd_cgdb_write_coverage(args):
+    """(Re)write coverage reports."""
+    import json as _json
+    import sys as _sys
+    from _builder.coverage_report import write_coverage_report, write_file_coverage
+    graph_dir = args.graph
+    cov = write_coverage_report(graph_dir)
+    fcov = write_file_coverage(graph_dir)
+    result = {
+        'status': 'ok',
+        'coverage_report_path': cov,
+        'file_coverage_path': fcov,
+    }
+    if not cov and not fcov:
+        result['status'] = 'error'
+        result['error'] = 'No cgdb_files found or DB missing'
+        _json.dump(result, _sys.stdout, ensure_ascii=False, indent=2)
+        _sys.exit(1)
+    _json.dump(result, _sys.stdout, ensure_ascii=False, indent=2)
+    print()

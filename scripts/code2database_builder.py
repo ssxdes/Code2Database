@@ -23,7 +23,6 @@ from _builder.query import cmd_describe_node, cmd_resolve_chain, cmd_trace_chain
 from _builder.query_lang import cmd_query
 from _builder.value_flow import cmd_value_flow
 from _builder.lock_coverage import cmd_lock_coverage
-from _builder.path_feasibility import cmd_path_feasible
 from _builder.data_dep import cmd_data_dep
 from _builder.invariants import cmd_extract_invariants, cmd_find_invariants, cmd_apply_invariants
 from _builder.auto_enhance import cmd_auto_enhance, cmd_batch_confirm, cmd_rollback, cmd_fill_request, cmd_heuristic_enhance
@@ -69,7 +68,17 @@ from _builder.cgdb_commands import (
     cmd_cgdb_type_definition, cmd_cgdb_nodes_under_config,
     cmd_cgdb_path_feasible, cmd_cgdb_schema_version, cmd_cgdb_sql,
     cmd_cgdb_views, cmd_cgdb_get_source, cmd_cgdb_layer_summary,
+    cmd_cgdb_coverage, cmd_cgdb_write_coverage,
 )
+from _builder.cmd_report_tools import (
+    cmd_render_source, cmd_verify_consistency, cmd_edit_token,
+    cmd_insert_token, cmd_delete_token, cmd_find_macros,
+    cmd_get_pp_branches, cmd_get_string_literals,
+    cmd_commit_db_transaction, cmd_rollback_db_transaction,
+    cmd_insert_node_after, cmd_delete_node, cmd_add_function,
+)
+from _builder.runtime_guards import cmd_runtime_guards
+from _builder.path_feasibility import cmd_path_feasible
 from _builder.doc_code_align import (
     cmd_doc_code_check, cmd_doc_mark_stale, cmd_doc_alignment_report,
     cmd_doc_signature_diff,
@@ -1452,6 +1461,88 @@ def main():
     p_em.add_argument("--top", type=int, default=10, help="Top N paths (paths mode)")
     p_em.add_argument("--output", default=None, help="Output file path")
 
+    # --- Report-layer CLI commands (13 new) ---
+    p_rs = sub.add_parser("render-source", help="Render source from DB tokens")
+    p_rs.add_argument("--graph", required=True)
+    p_rs.add_argument("--file-id", type=int, default=None)
+    p_rs.add_argument("--name", default=None, help="File name to resolve file_id")
+
+    p_vc = sub.add_parser("verify-consistency", help="Verify DB render matches disk sha256")
+    p_vc.add_argument("--graph", required=True)
+    p_vc.add_argument("--file-id", type=int, default=None)
+    p_vc.add_argument("--name", default=None)
+
+    p_et = sub.add_parser("edit-token", help="Edit a token's spelling by token_id")
+    p_et.add_argument("--graph", required=True)
+    p_et.add_argument("--token-id", type=int, required=True)
+    p_et.add_argument("--new-text", required=True)
+
+    p_it = sub.add_parser("insert-token", help="Insert tokens after a given anchor token_id")
+    p_it.add_argument("--graph", required=True)
+    p_it.add_argument("--after-token-id", type=int, required=True)
+    p_it.add_argument("--tokens-json", default=None, help="JSON array of token dicts")
+
+    p_dt = sub.add_parser("delete-token", help="Delete a token by token_id")
+    p_dt.add_argument("--graph", required=True)
+    p_dt.add_argument("--token-id", type=int, required=True)
+
+    p_fm = sub.add_parser("find-macros", help="Find macro definitions and invocations")
+    p_fm.add_argument("--graph", required=True)
+    p_fm.add_argument("--name", default=None)
+
+    p_gpb = sub.add_parser("get-pp-branches", help="Get #ifdef branch tree for a file")
+    p_gpb.add_argument("--graph", required=True)
+    p_gpb.add_argument("--file-id", type=int, default=None)
+    p_gpb.add_argument("--name", default=None)
+
+    p_gsl = sub.add_parser("get-string-literals", help="Find string literals with optional pattern")
+    p_gsl.add_argument("--graph", required=True)
+    p_gsl.add_argument("--pattern", default=None)
+
+    p_cdbtx = sub.add_parser("commit-db-transaction", help="Commit a write-back transaction (render+compile+lint+sha256+git)")
+    p_cdbtx.add_argument("--graph", required=True)
+    p_cdbtx.add_argument("--transaction-id", required=True)
+    p_cdbtx.add_argument("--no-compile", action="store_true")
+    p_cdbtx.add_argument("--run-lint", action="store_true")
+    p_cdbtx.add_argument("--run-clang-format", action="store_true")
+    p_cdbtx.add_argument("--git-commit", action="store_true")
+    p_cdbtx.add_argument("--commit-message", default=None)
+
+    p_rdbtx = sub.add_parser("rollback-db-transaction", help="Roll back a write-back transaction")
+    p_rdbtx.add_argument("--graph", required=True)
+    p_rdbtx.add_argument("--transaction-id", required=True)
+
+    p_ina = sub.add_parser("insert-node-after", help="Insert a new AST node after an anchor")
+    p_ina.add_argument("--graph", required=True)
+    p_ina.add_argument("--ast-node-id", type=int, required=True)
+    p_ina.add_argument("--node-spec-json", default=None)
+
+    p_dn = sub.add_parser("delete-node", help="Soft-delete an AST node by ID")
+    p_dn.add_argument("--graph", required=True)
+    p_dn.add_argument("--ast-node-id", type=int, required=True)
+
+    p_af = sub.add_parser("add-function", help="Add a new function to the graph")
+    p_af.add_argument("--graph", required=True)
+    p_af.add_argument("--signature", required=True)
+    p_af.add_argument("--body-tokens-json", default=None)
+
+    # --- Runtime guards + coverage ---
+    p_rg = sub.add_parser("runtime-guards", help="Detect runtime guard patterns in path conditions")
+    p_rg.add_argument("--graph", required=True)
+    p_rg.add_argument("--conditions", required=True, help="Conditions separated by |||")
+
+    p_cgcov = sub.add_parser("cgdb-coverage", help="Query graph coverage: --function NAME | --file PATH")
+    p_cgcov.add_argument("--graph", required=True)
+    p_cgcov.add_argument("--function", default=None)
+    p_cgcov.add_argument("--file", default=None)
+
+    p_cgwcov = sub.add_parser("cgdb-write-coverage", help="Rewrite coverage reports")
+    p_cgwcov.add_argument("--graph", required=True)
+
+    # --- ffi-persist ---
+    p_ffiP = sub.add_parser("ffi-persist", help="Persist FFI edges into SQLite bridge tables")
+    p_ffiP.add_argument("--graph", required=True)
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -1637,6 +1728,23 @@ def main():
         "cgdb-freshness": _lazy("_builder.cgdb_freshness", "cmd_cgdb_freshness"),
         "cgdb-compare": _lazy("_builder.cgdb_compare", "cmd_cgdb_compare"),
         "export-mermaid": _lazy("_builder.export_mermaid", "cmd_export_mermaid"),
+        "render-source": cmd_render_source,
+        "verify-consistency": cmd_verify_consistency,
+        "edit-token": cmd_edit_token,
+        "insert-token": cmd_insert_token,
+        "delete-token": cmd_delete_token,
+        "find-macros": cmd_find_macros,
+        "get-pp-branches": cmd_get_pp_branches,
+        "get-string-literals": cmd_get_string_literals,
+        "commit-db-transaction": cmd_commit_db_transaction,
+        "rollback-db-transaction": cmd_rollback_db_transaction,
+        "insert-node-after": cmd_insert_node_after,
+        "delete-node": cmd_delete_node,
+        "add-function": cmd_add_function,
+        "runtime-guards": cmd_runtime_guards,
+        "cgdb-coverage": _lazy("_builder.cgdb_commands", "cmd_cgdb_coverage"),
+        "cgdb-write-coverage": _lazy("_builder.cgdb_commands", "cmd_cgdb_write_coverage"),
+        "ffi-persist": _lazy("_builder.ffi_bridge", "cmd_ffi_persist"),
     }
     handler = commands.get(args.command)
     if handler is None:

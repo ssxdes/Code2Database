@@ -1063,7 +1063,8 @@ def _tool_cgdb_get_source(args: dict, graph_dir: str) -> dict:
 
 
 def _tool_cgdb_find_invokers(args: dict, graph_dir: str) -> list:
-    """Find callers of a node (recursive CTE with cycle protection)."""
+    """Find callers of a node (recursive CTE with cycle protection).
+    Optionally follow indirect vtable dispatch via ops_bindings."""
     node_id = args.get("node_id")
     if node_id is None:
         return [{"error": "node_id required"}]
@@ -1073,12 +1074,15 @@ def _tool_cgdb_find_invokers(args: dict, graph_dir: str) -> list:
     depth = int(args.get("depth", 1))
     edge_types = args.get("edge_types", ["INVOKES"])
     limit = int(args.get("limit", 200))
+    include_vtable = bool(args.get("include_vtable_dispatch", False))
     return store.find_invokers(int(node_id), depth=depth,
-                               edge_types=edge_types, limit=limit)
+                               edge_types=edge_types, limit=limit,
+                               include_vtable_dispatch=include_vtable)
 
 
 def _tool_cgdb_find_invoked(args: dict, graph_dir: str) -> list:
-    """Find callees of a node (recursive CTE)."""
+    """Find callees of a node (recursive CTE).
+    Optionally resolve vtable dispatch via ops_bindings."""
     node_id = args.get("node_id")
     if node_id is None:
         return [{"error": "node_id required"}]
@@ -1088,8 +1092,10 @@ def _tool_cgdb_find_invoked(args: dict, graph_dir: str) -> list:
     depth = int(args.get("depth", 1))
     edge_types = args.get("edge_types", ["INVOKES"])
     limit = int(args.get("limit", 500))
+    include_vtable = bool(args.get("include_vtable_dispatch", False))
     return store.find_invoked(int(node_id), depth=depth,
-                               edge_types=edge_types, limit=limit)
+                              edge_types=edge_types, limit=limit,
+                              include_vtable_dispatch=include_vtable)
 
 
 def _tool_cgdb_get_struct_layout(args: dict, graph_dir: str) -> dict:
@@ -1622,7 +1628,7 @@ TOOLS = {
         "handler": _tool_cgdb_get_source,
     },
     "cgdb_find_invokers": {
-        "description": "Find callers of a node via recursive CTE with cycle protection.",
+        "description": "Find callers of a node via recursive CTE with cycle protection. Set include_vtable_dispatch to also follow indirect vtable dispatch via ops_bindings.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1630,13 +1636,14 @@ TOOLS = {
                 "depth": {"type": "integer", "description": "Recursive depth (default 1)"},
                 "edge_types": {"type": "array", "items": {"type": "string"}, "description": "Edge kinds to traverse (default [\"INVOKES\"])"},
                 "limit": {"type": "integer", "description": "Max results (default 200)"},
+                "include_vtable_dispatch": {"type": "boolean", "description": "Also follow indirect dispatch via ops_bindings and invoke_sites (finds vtable callers even when no pre-computed INVOKES edge exists)"},
             },
             "required": ["node_id"],
         },
         "handler": _tool_cgdb_find_invokers,
     },
     "cgdb_find_invoked": {
-        "description": "Find callees of a node via recursive CTE with cycle protection.",
+        "description": "Find callees of a node via recursive CTE with cycle protection. Set include_vtable_dispatch to also resolve vtable dispatch via ops_bindings.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1644,6 +1651,7 @@ TOOLS = {
                 "depth": {"type": "integer", "description": "Recursive depth (default 1)"},
                 "edge_types": {"type": "array", "items": {"type": "string"}, "description": "Edge kinds (default [\"INVOKES\"])"},
                 "limit": {"type": "integer", "description": "Max results (default 500)"},
+                "include_vtable_dispatch": {"type": "boolean", "description": "Also resolve vtable dispatch via ops_bindings (finds impl functions that may be invoked via function pointer calls)"},
             },
             "required": ["node_id"],
         },

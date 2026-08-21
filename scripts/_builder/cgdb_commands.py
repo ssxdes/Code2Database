@@ -541,7 +541,8 @@ def cmd_cgdb_find_invokers(args):
             sys.exit(1)
         _print_json(store.find_invokers(node_id, depth=args.depth,
                                         edge_types=args.edge_types.split(",") if args.edge_types else None,
-                                        limit=args.limit))
+                                        limit=args.limit,
+                                        include_vtable_dispatch=getattr(args, "include_vtable_dispatch", False)))
     finally:
         store.close()
 
@@ -558,7 +559,8 @@ def cmd_cgdb_find_invoked(args):
             sys.exit(1)
         _print_json(store.find_invoked(node_id, depth=args.depth,
                                         edge_types=args.edge_types.split(",") if args.edge_types else None,
-                                        limit=args.limit))
+                                        limit=args.limit,
+                                        include_vtable_dispatch=getattr(args, "include_vtable_dispatch", False)))
     finally:
         store.close()
 

@@ -1339,6 +1339,10 @@ def main():
     p_cgfc.add_argument("--edge-types", default=None,
                         help="Comma-separated edge kinds (default: INVOKES)")
     p_cgfc.add_argument("--limit", type=int, default=200)
+    p_cgfc.add_argument("--include-vtable-dispatch", action="store_true",
+                        help="Also follow indirect dispatch via ops_bindings "
+                             "and invoke_sites (finds vtable callers even "
+                             "when no pre-computed INVOKES edge exists)")
 
     p_cgce = sub.add_parser("cgdb-find-invoked",
                              help="Find callees (forward closure) of a node via recursive CTE")
@@ -1348,6 +1352,8 @@ def main():
     p_cgce.add_argument("--edge-types", default=None,
                         help="Comma-separated edge kinds (default: INVOKES)")
     p_cgce.add_argument("--limit", type=int, default=500)
+    p_cgce.add_argument("--include-vtable-dispatch", action="store_true",
+                        help="Also resolve vtable dispatch via ops_bindings")
 
     p_cgp = sub.add_parser("cgdb-path",
                             help="Find a call path from src to dst via recursive CTE")

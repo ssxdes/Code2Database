@@ -79,13 +79,15 @@ class CGDBReader(ABC):
     @abstractmethod
     def find_invokers(self, node_id: int, depth: int = 1,
                       edge_types: Optional[List[str]] = None,
-                      limit: int = 200) -> List[Dict[str, Any]]:
+                      limit: int = 200,
+                      include_vtable_dispatch: bool = False) -> List[Dict[str, Any]]:
         ...
 
     @abstractmethod
     def find_invoked(self, node_id: int, depth: int = 1,
                      edge_types: Optional[List[str]] = None,
-                     limit: int = 500) -> List[Dict[str, Any]]:
+                     limit: int = 500,
+                     include_vtable_dispatch: bool = False) -> List[Dict[str, Any]]:
         ...
 
     @abstractmethod
@@ -475,7 +477,8 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
 
     def find_invokers(self, node_id: int, depth: int = 1,
                       edge_types: Optional[List[str]] = None,
-                      limit: int = 200) -> List[Dict[str, Any]]:
+                      limit: int = 200,
+                      include_vtable_dispatch: bool = False) -> List[Dict[str, Any]]:
         conn = self._ensure_conn()
         if edge_types is None:
             edge_types = ["INVOKES"]
@@ -500,12 +503,57 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         """
         params = [node_id] + edge_types + [depth] + edge_types + [limit]
         rows = conn.execute(sql, params).fetchall()
-        return [{"id": r[0], "kind": r[1], "name": r[2], "fqn": r[3], "line": r[4]}
-                for r in rows]
+        results = [{"id": r[0], "kind": r[1], "name": r[2], "fqn": r[3], "line": r[4]}
+                   for r in rows]
+        if include_vtable_dispatch:
+            results = self._merge_vtable_dispatch_invokers(results, node_id, depth)
+        return results
+
+    def _merge_vtable_dispatch_invokers(self, direct_invokers, node_id, depth):
+        """Find indirect invokers via ops_bindings + invoke_sites."""
+        try:
+            seen_ids = {r["id"] for r in direct_invokers}
+            # Source 1: invoke_sites where dispatch_candidates contains node_id
+            site_rows = self._conn.execute(
+                "SELECT invoker_id, dispatch_candidates FROM invoke_sites "
+                "WHERE invoked_id = ? OR dispatch_candidates LIKE ?",
+                (node_id, f'%"{node_id}"%')).fetchall()
+            for invoker_id, dc_json in site_rows:
+                if invoker_id and invoker_id not in seen_ids:
+                    n = self.get_node(invoker_id)
+                    if n:
+                        seen_ids.add(invoker_id)
+                        direct_invokers.append({
+                            "id": invoker_id, "kind": n.get("kind", ""),
+                            "name": n.get("name", ""), "fqn": n.get("fqn", ""),
+                            "line": n.get("line", 0), "via_dispatch": True,
+                        })
+            # Source 2: ops_bindings where impl_function_id = node_id
+            bind_rows = self._conn.execute(
+                "SELECT DISTINCT ops_table_id, field_node_id FROM ops_bindings "
+                "WHERE impl_function_id = ?", (node_id,)).fetchall()
+            for ops_table_id, field_node_id in bind_rows:
+                site_rows2 = self._conn.execute(
+                    "SELECT DISTINCT invoker_id FROM invoke_sites "
+                    "WHERE invoked_id = ?", (field_node_id,)).fetchall()
+                for (invoker_id,) in site_rows2:
+                    if invoker_id and invoker_id not in seen_ids:
+                        n = self.get_node(invoker_id)
+                        if n:
+                            seen_ids.add(invoker_id)
+                            direct_invokers.append({
+                                "id": invoker_id, "kind": n.get("kind", ""),
+                                "name": n.get("name", ""), "fqn": n.get("fqn", ""),
+                                "line": n.get("line", 0), "via_dispatch": True,
+                            })
+        except Exception:
+            pass
+        return direct_invokers
 
     def find_invoked(self, node_id: int, depth: int = 1,
                      edge_types: Optional[List[str]] = None,
-                     limit: int = 500) -> List[Dict[str, Any]]:
+                     limit: int = 500,
+                     include_vtable_dispatch: bool = False) -> List[Dict[str, Any]]:
         conn = self._ensure_conn()
         if edge_types is None:
             edge_types = ["INVOKES"]
@@ -529,8 +577,63 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         """
         params = [node_id] + edge_types + [depth] + edge_types + [limit]
         rows = conn.execute(sql, params).fetchall()
-        return [{"id": r[0], "kind": r[1], "name": r[2], "fqn": r[3], "line": r[4]}
-                for r in rows]
+        results = [{"id": r[0], "kind": r[1], "name": r[2], "fqn": r[3], "line": r[4]}
+                   for r in rows]
+        if include_vtable_dispatch:
+            results = self._merge_vtable_dispatch_invoked(results, node_id, depth)
+        return results
+
+    def _merge_vtable_dispatch_invoked(self, direct_invoked, node_id, depth):
+        """Find indirect invoked functions via ops_bindings."""
+        try:
+            seen_ids = {r["id"] for r in direct_invoked}
+            site_rows = self._conn.execute(
+                "SELECT invoked_id, dispatch_candidates FROM invoke_sites "
+                "WHERE invoker_id = ?", (node_id,)).fetchall()
+            import json as _json
+            for invoked_id, dc_json in site_rows:
+                if dc_json:
+                    try:
+                        candidates = _json.loads(dc_json)
+                        for cand_id in candidates:
+                            if cand_id and cand_id not in seen_ids:
+                                n = self.get_node(cand_id)
+                                if n:
+                                    seen_ids.add(cand_id)
+                                    direct_invoked.append({
+                                        "id": cand_id, "kind": n.get("kind", ""),
+                                        "name": n.get("name", ""), "fqn": n.get("fqn", ""),
+                                        "line": n.get("line", 0), "via_dispatch": True,
+                                    })
+                    except (_json.JSONDecodeError, TypeError):
+                        pass
+                if invoked_id and invoked_id not in seen_ids:
+                    n = self.get_node(invoked_id)
+                    if n:
+                        seen_ids.add(invoked_id)
+                        direct_invoked.append({
+                            "id": invoked_id, "kind": n.get("kind", ""),
+                            "name": n.get("name", ""), "fqn": n.get("fqn", ""),
+                            "line": n.get("line", 0), "via_dispatch": True,
+                        })
+            # Also check ops_bindings for impl functions
+            bind_rows = self._conn.execute(
+                "SELECT DISTINCT impl_function_id, field_node_id FROM ops_bindings "
+                "WHERE ops_table_id IN (SELECT invoked_id FROM invoke_sites WHERE invoker_id = ?)",
+                (node_id,)).fetchall()
+            for impl_id, field_id in bind_rows:
+                if impl_id and impl_id not in seen_ids:
+                    n = self.get_node(impl_id)
+                    if n:
+                        seen_ids.add(impl_id)
+                        direct_invoked.append({
+                            "id": impl_id, "kind": n.get("kind", ""),
+                            "name": n.get("name", ""), "fqn": n.get("fqn", ""),
+                            "line": n.get("line", 0), "via_dispatch": True,
+                        })
+        except Exception:
+            pass
+        return direct_invoked
 
     def get_neighborhood(self, node_id: int, depth: int = 1,
                          max_nodes: int = 160) -> Dict[str, Any]:

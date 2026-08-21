@@ -288,6 +288,25 @@ class SQLiteStore:
             CREATE INDEX IF NOT EXISTS idx_functions_name ON functions(name);
             CREATE INDEX IF NOT EXISTS idx_functions_domain ON functions(domain);
             CREATE INDEX IF NOT EXISTS idx_functions_source ON functions(source_file);
+
+            CREATE VIRTUAL TABLE IF NOT EXISTS functions_fts USING fts5(
+                name, signature,
+                content='functions', content_rowid='rowid'
+            );
+            CREATE TRIGGER IF NOT EXISTS functions_ai AFTER INSERT ON functions BEGIN
+              INSERT INTO functions_fts(rowid, name, signature)
+              VALUES (new.rowid, new.name, new.signature);
+            END;
+            CREATE TRIGGER IF NOT EXISTS functions_ad AFTER DELETE ON functions BEGIN
+              INSERT INTO functions_fts(functions_fts, rowid, name, signature)
+              VALUES ('delete', old.rowid, old.name, old.signature);
+            END;
+            CREATE TRIGGER IF NOT EXISTS functions_au AFTER UPDATE ON functions BEGIN
+              INSERT INTO functions_fts(functions_fts, rowid, name, signature)
+              VALUES ('delete', old.rowid, old.name, old.signature);
+              INSERT INTO functions_fts(rowid, name, signature)
+              VALUES (new.rowid, new.name, new.signature);
+            END;
             CREATE INDEX IF NOT EXISTS idx_edges_invoker ON edges(invoker_id);
             CREATE INDEX IF NOT EXISTS idx_edges_invoked ON edges(invoked_id);
             CREATE INDEX IF NOT EXISTS idx_edges_relation ON edges(relation);
@@ -319,6 +338,13 @@ class SQLiteStore:
         # Apply cgdb (code graph database) 13-layer schema — additive, idempotent.
         # Tables coexist with legacy functions/edges for backward compatibility.
         apply_cgdb_schema(self._conn)
+        # Backfill FTS5 index from existing data
+        try:
+            self._conn.execute(
+                "INSERT INTO functions_fts(functions_fts) VALUES ('rebuild')")
+            self._conn.commit()
+        except Exception:
+            pass
 
     def close(self):
         """Close database connection."""

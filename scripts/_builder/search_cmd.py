@@ -470,11 +470,25 @@ def _parse_vtable_bindings(bindings_str):
 def cmd_path(args):
     G = _load_full_graph(args.graph)
 
+    missing = []
     for node_id, lookup in [(args.from_node, "from"), (args.to_node, "to")]:
         if node_id not in G:
             candidates = [n for n in G.nodes if node_id.lower() in n.lower()]
             print(f"Node '{node_id}' not found. Similar: {candidates[:5]}", file=sys.stderr)
-            sys.exit(1)
+            missing.append(node_id)
+    if missing:
+        try:
+            from _builder.coverage_report import path_not_found_hints
+            hints = path_not_found_hints(args.graph,
+                                        missing_src=missing[0] if missing else None,
+                                        missing_dst=missing[1] if len(missing) > 1 else None)
+            if hints.get('suggestion'):
+                print(f"Hints: {hints['suggestion']}", file=sys.stderr)
+            if hints.get('missing_common_subsystems'):
+                print(f"Missing common subsystems: {', '.join(hints['missing_common_subsystems'][:5])}", file=sys.stderr)
+        except Exception:
+            pass
+        sys.exit(1)
 
     no_filter = getattr(args, 'no_condition_filter', False)
     prefer_same_domain = getattr(args, 'prefer_same_domain', True)

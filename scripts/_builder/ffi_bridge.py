@@ -954,3 +954,142 @@ def cmd_ffi_types(args):
         "matches": results,
         "count": len(results),
     }, ensure_ascii=False, indent=2, default=str))
+
+_FFI_MECHANISM_TO_KIND = {
+    "ctypes": "ctypes",
+    "cffi": "cffi",
+    "pybind11": "pybind11",
+    "cgo": "cgo",
+    "extern_c": "extern_c",
+    "c_api": "c_api",
+}
+
+
+def _parse_ffi_symbol_id(symbol_id: str) -> dict:
+    """Parse 'language:file_path:function_name' into dict."""
+    parts = symbol_id.split(":", 2)
+    if len(parts) >= 3:
+        return {"language": parts[0], "file_path": parts[1], "function_name": parts[2]}
+    elif len(parts) == 2:
+        return {"language": parts[0], "file_path": "", "function_name": parts[1]}
+    return {"language": "", "file_path": "", "function_name": symbol_id}
+
+
+def _resolve_or_create_symbol(conn, symbol_id: str) -> int:
+    """Resolve a string symbol ID to a cgdb_nodes.id, creating placeholder if needed."""
+    parsed = _parse_ffi_symbol_id(symbol_id)
+    name = parsed["function_name"]
+    file_path = parsed["file_path"]
+    # Strategy 1: name + file_path
+    if file_path:
+        row = conn.execute(
+            "SELECT n.id FROM cgdb_nodes n JOIN cgdb_files f ON n.file_id = f.id "
+            "WHERE n.name = ? AND f.path LIKE ? LIMIT 1",
+            (name, f"%{file_path}%")).fetchone()
+        if row:
+            return row[0]
+    # Strategy 2: name only
+    row = conn.execute(
+        "SELECT id FROM cgdb_nodes WHERE name = ? LIMIT 1", (name,)).fetchone()
+    if row:
+        return row[0]
+    # Strategy 3: create placeholder
+    import sqlite3 as _sq
+    import time as _t
+    fid = None
+    if file_path:
+        fr = conn.execute(
+            "SELECT id FROM cgdb_files WHERE path LIKE ? LIMIT 1",
+            (f"%{file_path}%")).fetchone()
+        if fr:
+            fid = fr[0]
+    cur = conn.execute(
+        "INSERT INTO cgdb_nodes (kind, name, fqn, file_id, line, col, "
+        "byte_start, byte_end, source_layer, confidence, commit_hash) "
+        "VALUES ('function', ?, ?, ?, 0, 0, 0, 0, 'analysis', 0.5, 'ffi-detector')",
+        (name, name, fid))
+    return cur.lastrowid
+
+
+def persist_ffi_to_sqlite(conn, ffi_edges: list, clear_existing: bool = True) -> dict:
+    """Persist FFI edges into cross_lang_bindings / type_mappings / ffi_call_sites."""
+    stats = {"bindings": 0, "type_mappings": 0, "call_sites": 0, "skipped": 0}
+    if clear_existing:
+        conn.execute("DELETE FROM ffi_call_sites")
+        conn.execute("DELETE FROM type_mappings")
+        conn.execute("DELETE FROM cross_lang_bindings")
+    for edge in ffi_edges:
+        caller = edge.get("caller", "")
+        callee = edge.get("callee", "")
+        if not caller or not callee:
+            stats["skipped"] += 1
+            continue
+        from_id = _resolve_or_create_symbol(conn, caller)
+        to_id = _resolve_or_create_symbol(conn, callee)
+        ffi_mech = edge.get("ffi_mechanism", "other")
+        ffi_kind = _FFI_MECHANISM_TO_KIND.get(ffi_mech, "other")
+        from_lang = _parse_ffi_symbol_id(caller).get("language", "")
+        to_lang = _parse_ffi_symbol_id(callee).get("language", "")
+        cur = conn.execute(
+            "INSERT INTO cross_lang_bindings "
+            "(from_symbol_id, to_symbol_id, ffi_kind, calling_convention, "
+            "binding_source, confidence, aligned) "
+            "VALUES (?, ?, ?, 'cdecl', 'ffi-detect', 0.7, 1)",
+            (from_id, to_id, ffi_kind))
+        binding_id = cur.lastrowid
+        stats["bindings"] += 1
+        for tm in edge.get("type_mapping", []) or []:
+            mapping_kind = "lossy" if tm.get("lossy") else "marshalling"
+            marshalling_cost = "lossy" if tm.get("lossy") else "none"
+            conn.execute(
+                "INSERT INTO type_mappings "
+                "(from_type_id, to_type_id, from_type_spelling, to_type_spelling, "
+                "from_language, to_language, mapping_kind, marshalling_cost) "
+                "VALUES (NULL, NULL, ?, ?, ?, ?, ?, ?)",
+                (tm.get("from_type", ""), tm.get("to_type", ""),
+                 from_lang, to_lang, mapping_kind, marshalling_cost))
+            stats["type_mappings"] += 1
+        source_file = edge.get("source_file", "")
+        line_num = edge.get("line", 0)
+        if source_file:
+            fr = conn.execute(
+                "SELECT id FROM cgdb_files WHERE path LIKE ? LIMIT 1",
+                (f"%{source_file}%")).fetchone()
+            if fr and line_num:
+                conn.execute(
+                    "INSERT INTO ffi_call_sites "
+                    "(binding_id, file_id, line, col) VALUES (?, ?, ?, 0)",
+                    (binding_id, fr[0], line_num))
+                stats["call_sites"] += 1
+    conn.commit()
+    return stats
+
+
+def cmd_ffi_persist(args):
+    """Persist FFI edges from .code2database_ffi.json into SQLite bridge tables."""
+    import json as _json
+    import sys as _sys
+    import os as _os
+    import sqlite3 as _sq
+    graph_dir = args.graph
+    ffi_path = _os.path.join(graph_dir, ".code2database_ffi.json")
+    db_path = _os.path.join(graph_dir, "code2database.db")
+    if not _os.path.exists(ffi_path):
+        _json.dump({"status": "error", "error": f"FFI JSON not found: {ffi_path}"},
+                   _sys.stdout, indent=2)
+        _sys.exit(1)
+    if not _os.path.exists(db_path):
+        _json.dump({"status": "error", "error": f"Database not found: {db_path}"},
+                   _sys.stdout, indent=2)
+        _sys.exit(1)
+    with open(ffi_path, "r", encoding="utf-8") as f:
+        ffi_data = _json.load(f)
+    edges = ffi_data.get("edges", ffi_data) if isinstance(ffi_data, dict) else ffi_data
+    conn = _sq.connect(db_path)
+    try:
+        stats = persist_ffi_to_sqlite(conn, edges, clear_existing=True)
+        result = {"status": "ok", "edge_count": len(edges), **stats}
+        _json.dump(result, _sys.stdout, ensure_ascii=False, indent=2)
+        print()
+    finally:
+        conn.close()

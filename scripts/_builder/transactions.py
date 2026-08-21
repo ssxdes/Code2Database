@@ -463,10 +463,12 @@ class TransactionState:
     tx_id: str
     started_at: float
     description: str
-    snapshot_id: str  # snapshot taken at begin()
-    status: str  # 'active', 'committed', 'rolled_back', 'failed'
+    snapshot_id: str
+    status: str
     ended_at: Optional[float] = None
     error: Optional[str] = None
+    dirty_file_ids: list = field(default_factory=list)
+    consistency_results: list = field(default_factory=list)
 
 
 def _write_tx_state(graph_dir: str, state: TransactionState):
@@ -477,6 +479,8 @@ def _write_tx_state(graph_dir: str, state: TransactionState):
             "description": state.description, "snapshot_id": state.snapshot_id,
             "status": state.status, "ended_at": state.ended_at,
             "error": state.error,
+            "dirty_file_ids": getattr(state, 'dirty_file_ids', []),
+            "consistency_results": getattr(state, 'consistency_results', []),
         }, f, ensure_ascii=False, indent=2, default=str)
 
 
@@ -486,9 +490,67 @@ def _read_tx_state(graph_dir: str) -> Optional[TransactionState]:
         return None
     try:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
+        data.setdefault("dirty_file_ids", [])
+        data.setdefault("consistency_results", [])
         return TransactionState(**data)
     except (json.JSONDecodeError, TypeError, KeyError):
         return None
+
+
+def mark_file_dirty(graph_dir: str, file_id: int) -> None:
+    """Register a file_id as dirty in the current transaction state.
+
+    Called by MCP tools (edit_token, insert_token, delete_token, etc.)
+    so the post-commit consistency check knows which files to verify.
+    Outside a transaction, this is a no-op.
+    """
+    state = _read_tx_state(graph_dir)
+    if state is None or state.status != "active":
+        return
+    if file_id not in state.dirty_file_ids:
+        state.dirty_file_ids.append(file_id)
+        _write_tx_state(graph_dir, state)
+
+
+def _run_post_commit_consistency_check(graph_dir: str, state: TransactionState) -> None:
+    """Run verify_consistency on all dirty file_ids after commit."""
+    if not state.dirty_file_ids:
+        return
+    db_path = os.path.join(graph_dir, "code2database.db")
+    if not os.path.exists(db_path):
+        return
+    try:
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        try:
+            # Check if tokens table exists (tree-sitter-only graphs have no L1)
+            try:
+                conn.execute("SELECT 1 FROM tokens LIMIT 1")
+            except sqlite3.OperationalError:
+                return
+            from _builder.source_renderer import verify_consistency
+            for fid in state.dirty_file_ids:
+                try:
+                    cr = verify_consistency(conn, fid)
+                    state.consistency_results.append({
+                        "file_id": fid, "ok": cr.ok,
+                        "db_sha256": cr.db_sha256,
+                        "disk_sha256": cr.disk_sha256,
+                        "diff": cr.diff,
+                        "error_id": cr.error_id,
+                    })
+                    if not cr.ok:
+                        print(f"[tx] WARNING: consistency check failed for "
+                              f"file_id={fid}: {cr.diff or 'unknown'}",
+                              file=sys.stderr)
+                except Exception as exc:
+                    state.consistency_results.append({
+                        "file_id": fid, "ok": False, "error": str(exc),
+                    })
+        finally:
+            conn.close()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -497,7 +559,8 @@ def _read_tx_state(graph_dir: str) -> Optional[TransactionState]:
 
 @contextmanager
 def transaction(graph_dir: str, description: str = "",
-                keep_snapshots: int = 10) -> Iterator[TransactionState]:
+                keep_snapshots: int = 10,
+                verify_consistency: bool = True) -> Iterator[TransactionState]:
     """Context manager for an atomic graph update.
 
     Begins a transaction (snapshot + WAL + write lock), yields the
@@ -530,10 +593,17 @@ def transaction(graph_dir: str, description: str = "",
 
         try:
             yield tx_state
+            # Re-read state to pick up dirty_file_ids written by mark_file_dirty
+            latest = _read_tx_state(graph_dir)
+            if latest and latest.status == "active":
+                tx_state.dirty_file_ids = latest.dirty_file_ids
             # Commit
             clear_wal(graph_dir)
             tx_state.status = "committed"
             tx_state.ended_at = time.time()
+            # Post-commit consistency check (best-effort)
+            if verify_consistency and tx_state.dirty_file_ids:
+                _run_post_commit_consistency_check(graph_dir, tx_state)
             _write_tx_state(graph_dir, tx_state)
             # Prune old snapshots
             prune_snapshots(graph_dir, keep=keep_snapshots)

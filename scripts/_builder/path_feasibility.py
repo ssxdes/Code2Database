@@ -851,6 +851,11 @@ def cmd_path_feasible(args):
                     _walk(succ, new_path, new_conds, new_cfg_preds, depth + 1)
         _walk(node_id, [node_id], [], [], 0)
         results = []
+        try:
+            from _builder.runtime_guards import check_runtime_guards
+            _runtime_guards_available = True
+        except ImportError:
+            _runtime_guards_available = False
         for path, conds, cfg_preds in paths[:50]:  # cap
             feasible = solve_path_feasibility(conds)
             entry = {
@@ -869,6 +874,8 @@ def cmd_path_feasible(args):
                         "reason": "no --with-configs bindings provided",
                         "per_predicate": [],
                     }
+            if _runtime_guards_available and conds:
+                entry["runtime_guards"] = check_runtime_guards(conds)
             results.append(entry)
         if cgdb_store is not None:
             try:

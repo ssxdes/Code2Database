@@ -1426,6 +1426,35 @@ def cmd_trace_chain(args):
     _output_result(result, getattr(args, 'json', False))
 
 
+def _get_code_snippet_from_node(nd: dict, node_id: str, source_root: str = "",
+                                context_lines: int = 10, graph_dir: str = "") -> dict:
+    """Extract source code snippet from a node dict (no graph load needed)."""
+    source_file = nd.get("source_file", "")
+    line_num = nd.get("line", 0)
+    if not source_file or not line_num:
+        return {"error": "Node has no source location", "id": node_id, "name": nd.get("name", "")}
+    if source_root:
+        full_path = os.path.join(source_root, source_file)
+    else:
+        full_path = source_file
+    try:
+        with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+        start = max(0, line_num - context_lines - 1)
+        end = min(len(lines), line_num + context_lines)
+        snippet = "".join(lines[start:end])
+    except OSError:
+        snippet = nd.get("body_text", "")[:2000]
+    return {
+        "id": node_id,
+        "name": nd.get("name", ""),
+        "source_file": source_file,
+        "line": line_num,
+        "snippet": snippet,
+        "context_lines": context_lines,
+    }
+
+
 def _get_code_snippet(G: nx.DiGraph, node_id: str, source_root: str = "",
                        context_lines: int = 10, graph_dir: str = "") -> dict:
     """Extract source code snippet around a node's definition.
@@ -1482,32 +1511,47 @@ def _get_code_snippet(G: nx.DiGraph, node_id: str, source_root: str = "",
 
 
 def cmd_get_code_snippet(args):
-    """Handle get-code-snippet command.
-
-    With --persist: writes the read source code back to the node's
-    body_text field (as body_text_supplemented, non-destructive) so
-    subsequent describe-node --full can read it without re-reading source.
-    Requires user confirmation by default (DB write).
-    """
+    """Handle get-code-snippet command."""
     graph_dir = args.graph
     source_root = getattr(args, "source", "")
     node_id = args.node
     persist = getattr(args, "persist", False)
     auto_yes = getattr(args, "yes", False)
-    G = _load_full_graph(graph_dir)
 
-    if node_id not in G:
-        candidates = [n for n in G.nodes if node_id.lower() in n.lower()]
-        if candidates:
-            print(f"Node '{node_id}' not found. Similar: {candidates[:5]}", file=sys.stderr)
-        else:
-            print(f"Node '{node_id}' not found in graph.", file=sys.stderr)
-        sys.exit(1)
-
-    result = _get_code_snippet(G, node_id, source_root,
-                               context_lines=getattr(args, "context", 10),
-                               graph_dir=graph_dir)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    # SQLite fast path: query node directly instead of loading full graph
+    db_path = os.path.join(graph_dir, "code2database.db")
+    if os.path.exists(db_path):
+        import sqlite3
+        from _builder.graph_build import _load_node_from_sqlite
+        nd = _load_node_from_sqlite(db_path, node_id)
+        if not nd:
+            conn = sqlite3.connect(db_path)
+            candidates = [r[0] for r in conn.execute(
+                "SELECT id FROM functions WHERE id LIKE ? LIMIT 5",
+                (f"%{node_id}%",)).fetchall()]
+            conn.close()
+            if candidates:
+                print(f"Node '{node_id}' not found. Similar: {candidates[:5]}", file=sys.stderr)
+            else:
+                print(f"Node '{node_id}' not found in graph.", file=sys.stderr)
+            sys.exit(1)
+        result = _get_code_snippet_from_node(nd, node_id, source_root,
+                                              context_lines=getattr(args, "context", 10),
+                                              graph_dir=graph_dir)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        G = _load_full_graph(graph_dir)
+        if node_id not in G:
+            candidates = [n for n in G.nodes if node_id.lower() in n.lower()]
+            if candidates:
+                print(f"Node '{node_id}' not found. Similar: {candidates[:5]}", file=sys.stderr)
+            else:
+                print(f"Node '{node_id}' not found in graph.", file=sys.stderr)
+            sys.exit(1)
+        result = _get_code_snippet(G, node_id, source_root,
+                                    context_lines=getattr(args, "context", 10),
+                                    graph_dir=graph_dir)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
 
     # --persist: write the snippet back to the node's body_text field.
     # This is a DB write, so require user confirmation.

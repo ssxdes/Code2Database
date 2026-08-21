@@ -746,7 +746,7 @@ CREATE INDEX IF NOT EXISTS idx_attributes_kind ON attributes(attr_kind);
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS literals (
   id INTEGER PRIMARY KEY,
-  kind TEXT NOT NULL CHECK (kind IN ('int','float','char','imaginary','other')),
+  kind TEXT NOT NULL CHECK (kind IN ('int','float','char','string','imaginary','other')),
   value TEXT,
   raw_text TEXT NOT NULL,
   base INTEGER,

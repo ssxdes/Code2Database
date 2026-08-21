@@ -41,9 +41,185 @@ _RETURN_TYPE_kw_re = re.compile(
     r'\b(?:static|inline|extern|register|async|pub|unsafe)\b'
 )
 
-# Condition extraction patterns (one pair per language: if + switch/match).
-# Pre-compiled at module level so they're built once per process, not per
-# _emit_conditions call (which happens once per file).
+# Pre-compiled regexes for _infer_type_from_value (module-level for O(1) lookup)
+_INFER_INT_RE = re.compile(r'^-?\d[\d_]*L?$')
+_INFER_FLOAT_RE_1 = re.compile(r'^-?\d*\.\d+([eE][+-]?\d+)?$')
+_INFER_FLOAT_RE_2 = re.compile(r'^-?\d+\.\d*([eE][+-]?\d+)?$')
+_INFER_FLOAT_RE_3 = re.compile(r'^-?\d+[eE][+-]?\d+$')
+_INFER_COMPLEX_RE = re.compile(r'^-?\d*\.?\d+[jJ]$')
+_INFER_TYPE_CAST_RE = re.compile(r'^(int|str|float|bool|list|dict|set|tuple|bytes|complex)\s*\(')
+_INFER_PASCAL_CTOR_RE = re.compile(r'^([A-Z][A-Za-z0-9_]*)\s*\(')
+_INFER_QUALIFIED_CTOR_RE = re.compile(r'^([a-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*\.([A-Z][A-Za-z0-9_]*))\s*\(')
+_INFER_ARGPARSE_ATTR_RE = re.compile(r'^args\.\w+$')
+_INFER_INDEX_RE = re.compile(r'^[A-Za-z_]\w*\s*\[')
+_INFER_STR_METHOD_RE = re.compile(
+    r'\.(lower|upper|strip|lstrip|rstrip|replace|split|join|format|'
+    r'capitalize|title|swapcase|center|ljust|rjust|zfill|encode|decode|'
+    r'expandtabs)\s*\('
+)
+_INFER_LOWER_FIND_RE = re.compile(r'\.(rfind|find|index|rindex|count)\s*\(')
+_INFER_BOOL_PRED_RE = re.compile(
+    r'\.(startswith|endswith|isalpha|isdigit|isnumeric|isalnum|isupper|'
+    r'islower|isspace|isidentifier|isprintable)\s*\('
+)
+_INFER_ATTR_ANY_RE = re.compile(r'^[a-z_]\w*(\.[A-Za-z_]\w*)+$')
+_INFER_METHOD_ANY_RE = re.compile(r'^[a-z_]\w*(\.[A-Za-z_]\w*)+\s*\(')
+_INFER_EQ_RE = re.compile(r'(?<![\w.])==(?!=)')
+_INFER_NE_RE = re.compile(r'(?<![\w.])!=(?!=)')
+_INFER_BOOL_OPS_RE = re.compile(r'\b(and|or|not|in|is)\b')
+_INFER_COMPARE_RELOP_RE = re.compile(r'^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*\s*(<|>|<=|>=)')
+_INFER_STR_CONCAT_L_RE = re.compile(r'^[\'"].*[\'"]\s*\+\s*')
+_INFER_STR_CONCAT_R_RE = re.compile(r'\+\s*[\'"].*[\'"]\s*$')
+_INFER_GROUP_RE = re.compile(r'\.group\s*\(')
+_INFER_GROUPS_RE = re.compile(r'\.groups\s*\(')
+_INFER_PATH_DIV_RE = re.compile(r'^[A-Za-z_]\w*\s*/\s*')
+_INFER_PATH_DIV_NUM_RE = re.compile(r'^[A-Za-z_]\w*\s*/\s*\d')
+_INFER_USER_FN_RE = re.compile(r'^[a-z_][A-Za-z0-9_]*\s*\(')
+_INFER_ARITH_RE = re.compile(r'^\d+\s*[\*\+\-\/]\s*\d')
+_INFER_MUL_IDENT_RE = re.compile(r'^[A-Za-z_]\w*\s*\*\s*[A-Za-z_]\w*')
+_INFER_MUL_NUM_R_RE = re.compile(r'^[A-Za-z_]\w*\s*\*\s*\d')
+_INFER_MUL_NUM_L_RE = re.compile(r'^\d+\s*\*\s*[A-Za-z_]\w*')
+_INFER_TIME_DIFF_RE = re.compile(r'time\.\w+\s*\(\s*\)\s*-')
+_INFER_TIME_START_DIFF_RE = re.compile(r'-\s*\w+\.\w*_start\b')
+_INFER_TO_DICT_RE = re.compile(r'\.(to_dict|as_dict)\s*\(\s*\)\s*$')
+_INFER_TO_LIST_RE = re.compile(r'\.(to_list|as_list)\s*\(\s*\)\s*$')
+_INFER_TO_STR_RE = re.compile(r'\.(to_string|__str__)\s*\(\s*\)\s*$')
+_INFER_TO_JSON_RE = re.compile(r'\.(to_json|dumps)\s*\(\s*\)\s*$')
+_INFER_LIST_PLUS_RE = re.compile(r'^\w+\s*\+\s*\[')
+_INFER_LIST_PLUS_R_RE = re.compile(r'\[\s*\+\s*\w+')
+_INFER_START_POINT_RE = re.compile(r'\.start_point\[\d+\]')
+_INFER_END_POINT_RE = re.compile(r'\.end_point\[\d+\]')
+_INFER_ADD_INT_L_RE = re.compile(r'^[A-Za-z_]\w*\s*\+\s*\d+\s*$')
+_INFER_ADD_INT_R_RE = re.compile(r'^\d+\s*\+\s*[A-Za-z_]\w*\s*$')
+_INFER_GET_RE = re.compile(r'\.get\s*\(')
+_INFER_SETDEFAULT_RE = re.compile(r'\.setdefault\s*\(')
+_INFER_KEYS_RE = re.compile(r'\.keys\s*\(\s*\)\s*$')
+_INFER_VALUES_RE = re.compile(r'\.values\s*\(\s*\)\s*$')
+_INFER_ITEMS_RE = re.compile(r'\.items\s*\(\s*\)\s*$')
+_INFER_LIST_MUT_RE = re.compile(r'\.(append|extend|pop|insert|remove|clear|copy)\s*\(')
+_INFER_READ_RE = re.compile(r'\.read\s*\(\s*\)\s*$')
+_INFER_READLINES_RE = re.compile(r'\.readlines\s*\(\s*\)\s*$')
+_INFER_READLINE_RE = re.compile(r'\.readline\s*\(\s*\)\s*$')
+
+# Dispatch table: first identifier token → handler function
+def _infer_os_family(v: str) -> str:
+    if v.startswith(('os.environ.get(', 'os.getenv(')):
+        return 'str'
+    if v.startswith(('os.path.join(', 'os.path.abspath(', 'os.path.realpath(',
+                     'os.path.relpath(', 'os.path.normpath(', 'os.path.basename(',
+                     'os.path.dirname(')):
+        return 'str'
+    if v.startswith('os.path.splitext('):
+        return 'tuple'
+    if v.startswith(('os.path.exists(', 'os.path.isfile(', 'os.path.isdir(',
+                      'os.path.isabs(', 'os.path.islink(')):
+        return 'bool'
+    if v.startswith('os.path.getsize('):
+        return 'int'
+    if v.startswith('os.listdir('):
+        return 'list'
+    if v.startswith('os.walk('):
+        return 'Generator'
+    return ''
+
+
+def _infer_re_family(v: str) -> str:
+    if v.startswith('re.compile('):
+        return 're.Pattern'
+    if v.startswith(('re.match(', 're.search(')):
+        return 'Match'
+    if v.startswith('re.finditer('):
+        return 'Iterator'
+    if v.startswith('re.findall('):
+        return 'list'
+    if v.startswith(('re.sub(', 're.escape(')):
+        return 'str'
+    return ''
+
+
+def _infer_json_family(v: str) -> str:
+    if v.startswith(('json.load(', 'json.loads(')):
+        return 'Any'
+    if v.startswith('json.dumps('):
+        return 'str'
+    return ''
+
+
+def _infer_subprocess_family(v: str) -> str:
+    if v.startswith('subprocess.run('):
+        return 'CompletedProcess'
+    if v.startswith('subprocess.Popen('):
+        return 'Popen'
+    return ''
+
+
+def _infer_time_family(v: str) -> str:
+    if v.startswith(('time.time(', 'time.monotonic(', 'time.perf_counter(')):
+        return 'float'
+    if _INFER_TIME_DIFF_RE.search(v) or _INFER_TIME_START_DIFF_RE.search(v):
+        return 'float'
+    return ''
+
+
+def _infer_collections_family(v: str) -> str:
+    if v.startswith(('collections.defaultdict(', 'defaultdict(')):
+        return 'defaultdict'
+    if v.startswith(('collections.OrderedDict(', 'OrderedDict(')):
+        return 'OrderedDict'
+    if v.startswith(('collections.Counter(', 'Counter(')):
+        return 'Counter'
+    if v.startswith(('collections.deque(', 'deque(')):
+        return 'deque'
+    if v.startswith(('collections.namedtuple(', 'typing.NamedTuple(')):
+        return 'NamedTuple'
+    return ''
+
+
+def _infer_importlib_family(v: str) -> str:
+    if v.startswith('importlib.util.spec_from_file_location('):
+        return 'ModuleSpec'
+    if v.startswith('importlib.util.module_from_spec('):
+        return 'Module'
+    return ''
+
+
+_INFER_DISPATCH = {
+    'os': _infer_os_family,
+    're': _infer_re_family,
+    'json': _infer_json_family,
+    'subprocess': _infer_subprocess_family,
+    'time': _infer_time_family,
+    'collections': _infer_collections_family,
+    'importlib': _infer_importlib_family,
+    'defaultdict': lambda v: 'defaultdict' if v.startswith('defaultdict(') else '',
+    'OrderedDict': lambda v: 'OrderedDict' if v.startswith('OrderedDict(') else '',
+    'Counter': lambda v: 'Counter' if v.startswith('Counter(') else '',
+    'deque': lambda v: 'deque' if v.startswith('deque(') else '',
+    'frozenset': lambda v: 'frozenset' if v.startswith('frozenset(') else '',
+    'open': lambda v: 'IO' if v.startswith('open(') else '',
+    'lambda': lambda v: 'Callable' if v.startswith('lambda') else '',
+    'True': lambda v: 'bool' if v == 'True' else '',
+    'False': lambda v: 'bool' if v == 'False' else '',
+    'None': lambda v: 'None' if v == 'None' else '',
+    'Path': lambda v: 'Path' if v.startswith('Path(') else '',
+    'pathlib': lambda v: 'Path' if v.startswith('pathlib.Path(') else '',
+    'getattr': lambda v: 'Any' if v.startswith('getattr(') else '',
+    'setattr': lambda v: 'Any' if v.startswith('setattr(') else '',
+}
+
+_INFER_FIRST_TOKEN_RE = re.compile(r'^([A-Za-z_][A-Za-z0-9_]*)')
+
+
+class BaseScanner(ABC):
+    """Abstract base for language-specific code graph scanners."""
+
+    # Shared callback suffixes used across all language scanners.
+    # Subclasses should reference this via self._CALLBACK_SUFFIXES
+    # and may add language-specific suffixes by overriding.
+    _CALLBACK_SUFFIXES = ('_cb', '_callback', '_handler', '_fn',
+                          '_done', '_completion', '_cpl', '_event')
+
+
 _CONDITION_PATTERNS_BY_LANG = {
     'c': (re.compile(r'\bif\s*\(([^)]+)\)', re.DOTALL),
           re.compile(r'\bswitch\s*\(([^)]+)\)', re.DOTALL)),
@@ -2527,309 +2703,160 @@ class BaseScanner(ABC):
     def _infer_type_from_value(self, value: str) -> str:
         """Infer a Python type name from an assignment RHS value snippet.
 
-        Used to populate type_spelling for local vars when no explicit
-        annotation exists. Returns a short type name (e.g., 'str', 'int',
-        'list', 'dict', 'Foo') or '' if no inference is possible.
+        Uses a module-level dispatch table keyed by the first identifier
+        token, falling through to pre-compiled regex patterns.
         """
         if not value:
             return ''
         v = value.strip()
-        # Strip trailing comments / whitespace.
         v = re.split(r'\s+#', v)[0].strip()
         if not v:
             return ''
-        # String literals (single/double quoted, including triple-quoted).
-        if (v.startswith("'") and v.endswith("'")) or \
-           (v.startswith('"') and v.endswith('"')):
+
+        # Stage 1: dispatch on first identifier token
+        tok_m = _INFER_FIRST_TOKEN_RE.match(v)
+        if tok_m:
+            handler = _INFER_DISPATCH.get(tok_m.group(1))
+            if handler is not None:
+                result = handler(v)
+                if result:
+                    return result
+
+        # Stage 2: literal-form checks dispatched on first character
+        c0 = v[0]
+        if c0 == "'" or c0 == '"':
             return 'str'
-        # List literal: [1, 2, 3] or [x for x in y]
-        if v.startswith('[') and v.endswith(']'):
-            return 'list'
-        # Set literal: {1, 2, 3} — but {k: v} is dict, {} is dict.
-        if v.startswith('{') and v.endswith('}'):
-            if ':' in v[1:-1].lstrip(' {').rstrip(' }') and \
-               not v.startswith('set('):
-                # Check for k:v pattern (rough heuristic).
-                inner = v[1:-1].strip()
-                if inner and ':' in inner.split(',')[0]:
-                    return 'dict'
+        if c0 == '[':
+            if v.endswith(']'):
+                return 'list'
+            if ' for ' in v:
+                return 'list'
+            if len(v) >= 2:
+                return 'list'
+        elif c0 == '{':
             if v == '{}':
                 return 'dict'
-            return 'set'
-        # Tuple literal: (1, 2, 3) — but (x) is just x in parens.
-        if v.startswith('(') and v.endswith(')'):
-            inner = v[1:-1].strip()
-            if ',' in inner:
-                return 'tuple'
-            # Single-element tuple: (x,) — has trailing comma.
-            if inner.endswith(','):
-                return 'tuple'
-        # Boolean literals.
-        if v in ('True', 'False'):
-            return 'bool'
-        # None literal.
-        if v == 'None':
-            return 'None'
-        # Integer literal (possibly with underscores or L suffix).
-        if re.match(r'^-?\d[\d_]*L?$', v):
-            return 'int'
-        # Float literal (with decimal point or exponent).
-        if re.match(r'^-?\d*\.\d+([eE][+-]?\d+)?$', v) or \
-           re.match(r'^-?\d+\.\d*([eE][+-]?\d+)?$', v) or \
-           re.match(r'^-?\d+[eE][+-]?\d+$', v):
-            return 'float'
-        # Complex literal (e.g., 1+2j).
-        if re.match(r'^-?\d*\.?\d+[jJ]$', v):
-            return 'complex'
-        # Bytes literal.
-        if v.startswith(('b"', "b'")):
-            return 'bytes'
-        # f-string.
-        if v.startswith(('f"', "f'", 'rf"', "rf'", 'fr"', "fr'")):
+            if v.endswith('}'):
+                inner = v[1:-1].strip()
+                if inner and ':' in inner.split(',')[0] and ' for ' not in v:
+                    return 'dict'
+                if ' for ' in v and ':' not in v.split(' for ')[0]:
+                    return 'set'
+                if ' for ' in v and ':' in v.split(' for ')[0]:
+                    return 'dict'
+                return 'set'
+            if len(v) >= 2 and ':' in v.split(',', 1)[0] and ' for ' not in v:
+                return 'dict'
+            if len(v) >= 2 and ':' not in v.split(',', 1)[0]:
+                return 'set'
+        elif c0 == '(':
+            if v.endswith(')'):
+                inner = v[1:-1].strip()
+                if ',' in inner or inner.endswith(','):
+                    return 'tuple'
+            if ' for ' in v:
+                return 'Generator'
+        elif c0 in ('b', 'f', 'r') and len(v) >= 2 and v[1] in ("'", '"'):
+            if c0 == 'b':
+                return 'bytes'
             return 'str'
-        # re.compile(...) → re.Pattern (check before generic constructor).
-        if v.startswith('re.compile('):
-            return 're.Pattern'
-        # collections.namedtuple / typing.NamedTuple(...) → tuple subclass
-        if v.startswith(('collections.namedtuple(', 'typing.NamedTuple(')):
-            return 'NamedTuple'
-        # Lambda.
-        if v.startswith('lambda'):
-            return 'Callable'
-        # List/dict/set comprehension.
-        if v.startswith('[') and ' for ' in v:
-            return 'list'
-        if v.startswith('{') and ' for ' in v and ':' not in v.split(' for ')[0]:
-            return 'set'
-        if v.startswith('{') and ' for ' in v and ':' in v.split(' for ')[0]:
-            return 'dict'
-        # Generator expression.
-        if '(' in v and ' for ' in v:
-            return 'Generator'
-        # Type-cast: x = int("5") → int
-        m = re.match(r'^(int|str|float|bool|list|dict|set|tuple|bytes|complex)\s*\(', v)
+        elif c0 == '-' or c0.isdigit():
+            if v in ('True', 'False'):
+                return 'bool'
+            if _INFER_INT_RE.match(v):
+                return 'int'
+            if (_INFER_FLOAT_RE_1.match(v) or _INFER_FLOAT_RE_2.match(v)
+                    or _INFER_FLOAT_RE_3.match(v)):
+                return 'float'
+            if _INFER_COMPLEX_RE.match(v):
+                return 'complex'
+
+        # Stage 3: constructor / type-cast patterns
+        m = _INFER_TYPE_CAST_RE.match(v)
         if m:
             return m.group(1)
-        # Constructor call: Foo(...) → Foo (only if capitalized, which is
-        # the Python convention for class names).
-        m = re.match(r'^([A-Z][A-Za-z0-9_]*)\s*\(', v)
+        m = _INFER_PASCAL_CTOR_RE.match(v)
         if m:
             return m.group(1)
-        # Module-qualified constructor: bar.baz.Qux(...) → Qux (only if
-        # the final segment is capitalized).
-        m = re.match(r'^([a-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*\.([A-Z][A-Za-z0-9_]*))\s*\(', v)
+        m = _INFER_QUALIFIED_CTOR_RE.match(v)
         if m:
             return m.group(2)
-        # os.environ.get / os.getenv → str (check before generic .get).
-        if v.startswith(('os.environ.get(', 'os.getenv(')):
+
+        # Stage 4: pre-compiled regex chain (suffix/method/arithmetic patterns)
+        if _INFER_READ_RE.search(v):
+            return 'str|bytes'
+        if _INFER_READLINES_RE.search(v):
+            return 'list'
+        if _INFER_READLINE_RE.search(v):
             return 'str'
-        # dict.get(key, default) / dict.keys() / dict.values() / dict.items()
-        # → element type unknown but container known.
-        if re.search(r'\.get\s*\(', v) or re.search(r'\.setdefault\s*\(', v):
-            return 'Any'
-        if re.search(r'\.keys\s*\(\s*\)\s*$', v):
+        if _INFER_KEYS_RE.search(v):
             return 'KeysView'
-        if re.search(r'\.values\s*\(\s*\)\s*$', v):
+        if _INFER_VALUES_RE.search(v):
             return 'ValuesView'
-        if re.search(r'\.items\s*\(\s*\)\s*$', v):
+        if _INFER_ITEMS_RE.search(v):
             return 'ItemsView'
-        # list.append/extend/pop → list (the original list type, but we
-        # only know it's a list-like).
-        if re.search(r'\.(append|extend|pop|insert|remove|clear|copy)\s*\(', v):
+        if _INFER_TO_DICT_RE.search(v):
+            return 'dict'
+        if _INFER_TO_LIST_RE.search(v):
             return 'list'
-        # os.path.join(...) → str (path string).
-        if v.startswith(('os.path.join(', 'os.path.abspath(', 'os.path.realpath(',
-                         'os.path.relpath(', 'os.path.normpath(', 'os.path.basename(',
-                         'os.path.dirname(')):
+        if _INFER_TO_STR_RE.search(v):
             return 'str'
-        # os.listdir / os.walk → list / generator
-        if v.startswith('os.listdir('):
-            return 'list'
-        if v.startswith('os.walk('):
-            return 'Generator'
-        # re.match / re.search / re.finditer → Match / Match | None / Iterator[Match]
-        if v.startswith(('re.match(', 're.search(')):
-            return 'Match'
-        if v.startswith('re.finditer('):
-            return 'Iterator'
-        # re.findall → list
-        if v.startswith('re.findall('):
-            return 'list'
-        # open(...) → IO / file-like
-        if v.startswith('open('):
-            return 'IO'
-        # json.load / json.loads → Any (could be dict/list/str/etc.)
-        if v.startswith(('json.load(', 'json.loads(')):
-            return 'Any'
-        # json.dump / json.dumps → str (dumps) or None (dump)
-        if v.startswith('json.dumps('):
+        if _INFER_TO_JSON_RE.search(v):
             return 'str'
-        # importlib.util.spec_from_file_location → ModuleSpec
-        if v.startswith('importlib.util.spec_from_file_location('):
-            return 'ModuleSpec'
-        if v.startswith('importlib.util.module_from_spec('):
-            return 'Module'
-        # subprocess.run / Popen → CompletedProcess / Popen
-        if v.startswith('subprocess.run('):
-            return 'CompletedProcess'
-        if v.startswith('subprocess.Popen('):
-            return 'Popen'
-        # argparser attribute access (args.X) → unknown, mark as 'argparse_attr'.
-        if re.match(r'^args\.\w+$', v):
-            return 'argparse_attr'
-        # getattr(obj, name) / setattr / hasattr → Any / unknown
-        if v.startswith(('getattr(', 'setattr(')):
+        if _INFER_GROUP_RE.search(v) or _INFER_GROUPS_RE.search(v):
+            return 'str'
+        if _INFER_LIST_MUT_RE.search(v):
+            return 'list'
+        if _INFER_STR_METHOD_RE.search(v):
+            return 'str'
+        if _INFER_LOWER_FIND_RE.search(v):
+            return 'int'
+        if _INFER_BOOL_PRED_RE.search(v):
+            return 'bool'
+        if _INFER_GET_RE.search(v) or _INFER_SETDEFAULT_RE.search(v):
             return 'Any'
-        # Conditional expression: a if cond else b → type of a or b (we
-        # can't determine statically, mark as Any).
+        # Boolean expressions
+        if _INFER_EQ_RE.search(v) or _INFER_NE_RE.search(v) or _INFER_BOOL_OPS_RE.search(v):
+            return 'bool'
+        if _INFER_COMPARE_RELOP_RE.search(v):
+            return 'bool'
+        # Pathlib division (must precede generic arithmetic)
+        if _INFER_PATH_DIV_RE.match(v) and not _INFER_PATH_DIV_NUM_RE.match(v) \
+                and not v[0].isdigit():
+            return 'Path'
+        # Arithmetic -> int (with multiplication heuristics)
+        if _INFER_ARITH_RE.match(v) or _INFER_MUL_IDENT_RE.match(v) \
+                or _INFER_MUL_NUM_R_RE.match(v) or _INFER_MUL_NUM_L_RE.match(v):
+            return 'int'
+        if _INFER_ADD_INT_L_RE.match(v) or _INFER_ADD_INT_R_RE.match(v):
+            return 'int'
+        # List concat
+        if _INFER_LIST_PLUS_RE.search(v) or _INFER_LIST_PLUS_R_RE.search(v):
+            return 'list'
+        # String concat
+        if _INFER_STR_CONCAT_L_RE.search(v) or _INFER_STR_CONCAT_R_RE.search(v):
+            return 'str'
+        # tree-sitter positional ops
+        if _INFER_START_POINT_RE.search(v) or _INFER_END_POINT_RE.search(v):
+            return 'int'
+        # Conditional expression
         if ' if ' in v and ' else ' in v:
             return 'Any'
-        # Slicing / indexing: a[...] → element type unknown.
-        if re.match(r'^[A-Za-z_]\w*\s*\[', v):
+        # Indexing
+        if _INFER_INDEX_RE.match(v):
             return 'Any'
-        # String method calls that return str: .lower(), .upper(), .strip(),
-        # .lstrip(), .rstrip(), .replace(), .split(), .join(), .format(),
-        # .encode(), .decode(), .capitalize(), .title(), .swapcase(),
-        # .center(), .ljust(), .rjust(), .zfill().
-        if re.search(r'\.(lower|upper|strip|lstrip|rstrip|replace|split|join|format|capitalize|title|swapcase|center|ljust|rjust|zfill|encode|decode|expandtabs)\s*\(', v):
-            return 'str'
-        # re.sub / re.escape → str
-        if v.startswith(('re.sub(', 're.escape(')):
-            return 'str'
-        # os.path.splitext → tuple
-        if v.startswith('os.path.splitext('):
-            return 'tuple'
-        # os.path.exists / isfile / isdir / isabs → bool
-        if v.startswith(('os.path.exists(', 'os.path.isfile(', 'os.path.isdir(',
-                         'os.path.isabs(', 'os.path.islink(', 'os.path.isdir(')):
-            return 'bool'
-        # os.environ.get → str
-        if v.startswith('os.environ.get('):
-            return 'str'
-        # os.getenv → str
-        if v.startswith('os.getenv('):
-            return 'str'
-        # collections.defaultdict(...) → defaultdict
-        if v.startswith('collections.defaultdict(') or v.startswith('defaultdict('):
-            return 'defaultdict'
-        # collections.OrderedDict / Counter / deque
-        if v.startswith(('collections.OrderedDict(', 'OrderedDict(')):
-            return 'OrderedDict'
-        if v.startswith(('collections.Counter(', 'Counter(')):
-            return 'Counter'
-        if v.startswith(('collections.deque(', 'deque(')):
-            return 'deque'
-        # file.read() → str | bytes (depending on mode); use Any for safety.
-        if re.search(r'\.read\s*\(\s*\)\s*$', v):
-            return 'str|bytes'
-        if re.search(r'\.readlines\s*\(\s*\)\s*$', v):
-            return 'list'
-        if re.search(r'\.readline\s*\(\s*\)\s*$', v):
-            return 'str'
-        # Boolean expression: ==, !=, <, >, <=, >=, and, or, not, in, is.
-        if re.search(r'(?<![\w.])==(?!=)', v) or \
-           re.search(r'(?<![\w.])!=(?!=)', v) or \
-           re.search(r'\b(and|or|not|in|is)\b', v) or \
-           re.match(r'^\s*\(.*\)\s*$', v) and \
-           any(op in v for op in ('==', '!=', '<', '>', '<=', '>=')):
-            return 'bool'
-        # Comparison with relational operators.
-        if re.search(r'^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*\s*(<|>|<=|>=)', v):
-            return 'bool'
-        # String concatenation: "a" + "b" or x + "literal" → str
-        if re.search(r'^[\'"].*[\'"]\s*\+\s*', v) or re.search(r'\+\s*[\'"].*[\'"]\s*$', v):
-            return 'str'
-        # Match.group() / Match.groups() → str / tuple
-        if re.search(r'\.group\s*\(', v) or re.search(r'\.groups\s*\(', v):
-            return 'str'
-        # frozenset(...) → frozenset
-        if v.startswith('frozenset('):
-            return 'frozenset'
-        # pathlib operations: Path / subpath, Path.parent, Path.name, etc.
-        if re.search(r'^[A-Za-z_]\w*\s*/\s*', v) and \
-           not re.search(r'^\d', v) and \
-           not re.search(r'^[A-Za-z_]\w*\s*/\s*\d', v):
-            # Heuristic: name / something is likely pathlib Path division
-            # (in Python code using pathlib). Skip pure numeric division.
-            return 'Path'
-        if v.startswith(('Path(', 'pathlib.Path(')):
-            return 'Path'
-        # Function call to user-defined function (lowercase name with args).
-        # Can't infer return type statically, mark as Any.
-        if re.match(r'^[a-z_][A-Za-z0-9_]*\s*\(', v):
+        # Attribute access (no call)
+        if _INFER_ATTR_ANY_RE.match(v) and '(' not in v:
             return 'Any'
-        # os.path.getsize → int
-        if v.startswith('os.path.getsize('):
-            return 'int'
-        # time.time / time.monotonic / time.perf_counter → float
-        if v.startswith(('time.time(', 'time.monotonic(', 'time.perf_counter(')):
-            return 'float'
-        # Arithmetic on numeric literals → int (heuristic).
-        if re.match(r'^\d+\s*[\*\+\-\/]\s*\d', v) or \
-           re.match(r'^\d+\s*\*\s*\w+', v):
-            return 'int'
-        # Multiplication involving all-caps constants or simple identifiers
-        # is most likely int (e.g., max_tokens * _CHARS_PER_TOKEN).
-        if re.match(r'^[A-Za-z_]\w*\s*\*\s*[A-Za-z_]\w*', v) or \
-           re.match(r'^[A-Za-z_]\w*\s*\*\s*\d', v) or \
-           re.match(r'^\d+\s*\*\s*[A-Za-z_]\w*', v):
-            return 'int'
-        # Subtraction of time values: time.time() - x → float
-        if re.search(r'time\.\w+\s*\(\s*\)\s*-', v) or \
-           re.search(r'-\s*\w+\.\w*_start\b', v):
-            return 'float'
-        # String method .rfind / .find → int (substring position)
-        if re.search(r'\.(rfind|find|index|rindex|count)\s*\(', v):
-            return 'int'
-        # .startswith / .endswith / .isalpha / .isdigit / .isnumeric → bool
-        if re.search(r'\.(startswith|endswith|isalpha|isdigit|isnumeric|isalnum|isupper|islower|isspace|isidentifier|isprintable)\s*\(', v):
-            return 'bool'
-        # self.to_dict() / .to_dict() / .as_dict() → dict (conventional name)
-        if re.search(r'\.(to_dict|as_dict)\s*\(\s*\)\s*$', v):
-            return 'dict'
-        # .to_list() / .as_list() → list
-        if re.search(r'\.(to_list|as_list)\s*\(\s*\)\s*$', v):
-            return 'list'
-        # .to_string() / .__str__() → str
-        if re.search(r'\.(to_string|__str__)\s*\(\s*\)\s*$', v):
-            return 'str'
-        # .to_json() / .dumps() → str (JSON string)
-        if re.search(r'\.(to_json|dumps)\s*\(\s*\)\s*$', v):
-            return 'str'
-        # Attribute access on unknown object: mod.X, self.X, obj.X → Any
-        # (must come at the end so constructor patterns like bar.baz.Qux()
-        # are caught first).
-        if re.match(r'^[a-z_]\w*(\.[A-Za-z_]\w*)+$', v) and '(' not in v:
+        # Method call on attribute
+        if _INFER_METHOD_ANY_RE.match(v):
             return 'Any'
-        # Method call on attribute: obj.method(...) / self.x.method(...) → Any
-        # (catch-all for unknown method calls).
-        if re.match(r'^[a-z_]\w*(\.[A-Za-z_]\w*)+\s*\(', v):
+        # argparse attribute
+        if _INFER_ARGPARSE_ATTR_RE.match(v):
+            return 'argparse_attr'
+        # Lowercase user-function call
+        if _INFER_USER_FN_RE.match(v):
             return 'Any'
-        # List + element: path + [succ] → list
-        if re.search(r'^\w+\s*\+\s*\[', v) or re.search(r'\[\s*\+\s*\w+', v):
-            return 'list'
-        # Multi-line dict literal (starts with { but truncated due to newline)
-        # — if it starts with '{' and contains a colon in the first chunk,
-        # treat as dict. Require at least 2 chars to avoid matching `{` alone.
-        if len(v) >= 2 and v.startswith('{') and ':' in v.split(',', 1)[0] and 'for ' not in v:
-            return 'dict'
-        # Multi-line set literal (starts with { and has no colon in first chunk)
-        # — require at least 2 chars.
-        if len(v) >= 2 and v.startswith('{') and not v.endswith('}') and ':' not in v.split(',', 1)[0]:
-            return 'set'
-        # Multi-line list literal (starts with [ but truncated) — require at least 2 chars.
-        if len(v) >= 2 and v.startswith('[') and not v.endswith(']'):
-            return 'list'
-        # node.start_point[0] + 1 → int (heuristic for positional/line ops)
-        if re.search(r'\.start_point\[\d+\]', v) or \
-           re.search(r'\.end_point\[\d+\]', v):
-            return 'int'
-        # Arithmetic addition with int literal: x + 1, 1 + x → int
-        if re.match(r'^[A-Za-z_]\w*\s*\+\s*\d+\s*$', v) or \
-           re.match(r'^\d+\s*\+\s*[A-Za-z_]\w*\s*$', v):
-            return 'int'
-        if m:
-            return m.group(2)
         return ''
 
     def _extract_callee_args(self, call_node, source_bytes: bytes) -> str:

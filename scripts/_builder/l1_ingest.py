@@ -200,11 +200,14 @@ def ingest_l1(
         line_ending = "LF"
     encoding = "utf-8-sig" if has_bom else "utf-8"
 
-    # Update source_files_meta
+    # Update source_files_meta (UPSERT — original UPDATE-only silently no-op'd when row was absent)
     conn.execute(
-        "UPDATE source_files_meta SET encoding=?, line_ending=?, has_bom=?, "
-        "disk_sha256=? WHERE file_id=?",
-        (encoding, line_ending, int(has_bom), disk_sha, file_id)
+        "INSERT INTO source_files_meta (file_id, encoding, line_ending, "
+        "has_bom, disk_sha256) VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(file_id) DO UPDATE SET encoding=?, line_ending=?, "
+        "has_bom=?, disk_sha256=?",
+        (file_id, encoding, line_ending, int(has_bom), disk_sha,
+         encoding, line_ending, int(has_bom), disk_sha)
     )
 
     # Parse with libclang
@@ -346,8 +349,10 @@ def ingest_l1(
             seq += 1
             stats["tokens"] += 1
 
-        except Exception:
-            # Skip malformed tokens
+        except Exception as _tok_exc:
+            import sys as _sys
+            print(f"[l1] WARNING: token skipped at line {tok.extent.start.line if tok.extent else '?'}: "
+                  f"{_tok_exc}", file=_sys.stderr)
             continue
 
     # Walk cursor tree for macros / includes / pp directives / attributes
@@ -364,6 +369,41 @@ def ingest_l1(
             "UPDATE source_files_meta SET trailing_whitespace=? WHERE file_id=?",
             (trailing, file_id)
         )
+
+    # L1↔L2 alignment — link identifier tokens to cgdb_nodes by byte range overlap
+    try:
+        node_rows = conn.execute(
+            "SELECT id, byte_start, byte_end FROM cgdb_nodes "
+            "WHERE file_id = ? AND kind IN "
+            "('function','var','parameter','decl','enum_constant') "
+            "AND byte_end > byte_start",
+            (file_id,)
+        ).fetchall()
+        linked = 0
+        for node_id, nb_start, nb_end in node_rows:
+            tok_row = conn.execute(
+                "SELECT id FROM tokens WHERE file_id = ? "
+                "AND kind = 'identifier' "
+                "AND byte_offset < ? AND byte_offset + byte_length > ? "
+                "ORDER BY byte_offset LIMIT 1",
+                (file_id, nb_end, nb_start)
+            ).fetchone()
+            if tok_row is None:
+                tok_row = conn.execute(
+                    "SELECT id FROM tokens WHERE file_id = ? "
+                    "AND byte_offset < ? AND byte_offset + byte_length > ? "
+                    "ORDER BY byte_offset LIMIT 1",
+                    (file_id, nb_end, nb_start)
+                ).fetchone()
+            if tok_row is not None:
+                conn.execute(
+                    "UPDATE tokens SET ast_node_id = ? WHERE id = ?",
+                    (node_id, tok_row[0])
+                )
+                linked += 1
+        stats["l1_l2_linked"] = linked
+    except Exception:
+        stats["l1_l2_linked"] = 0
 
     conn.commit()
 

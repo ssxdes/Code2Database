@@ -79,15 +79,13 @@ class CGDBReader(ABC):
     @abstractmethod
     def find_invokers(self, node_id: int, depth: int = 1,
                       edge_types: Optional[List[str]] = None,
-                      limit: int = 200,
-                      include_vtable_dispatch: bool = False) -> List[Dict[str, Any]]:
+                      limit: int = 200) -> List[Dict[str, Any]]:
         ...
 
     @abstractmethod
     def find_invoked(self, node_id: int, depth: int = 1,
                      edge_types: Optional[List[str]] = None,
-                     limit: int = 500,
-                     include_vtable_dispatch: bool = False) -> List[Dict[str, Any]]:
+                     limit: int = 500) -> List[Dict[str, Any]]:
         ...
 
     @abstractmethod
@@ -479,6 +477,28 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                       edge_types: Optional[List[str]] = None,
                       limit: int = 200,
                       include_vtable_dispatch: bool = False) -> List[Dict[str, Any]]:
+        """Find reverse closure of a node (who invokes this node?).
+
+        By default traverses only INVOKES edges (direct calls). When
+        include_vtable_dispatch=True, also follows indirect dispatch via
+        the ops_bindings + invoke_sites tables — this finds callers
+        who invoke the node via `ops->field(...)` even when no pre-computed
+        INVOKES edge was emitted at scan time (e.g., the base pointer was
+        a function parameter, not a local ops_table variable).
+
+        The vtable dispatch traversal:
+        1. Find ops_bindings rows where impl_function_id = node_id (this
+           node is the implementation of some vtable field).
+        2. Find invoke_sites rows with invoke_kind='ops_bind' whose
+           dispatch_candidates JSON contains the target node_id — these
+           are the actual call sites that dispatch to this node.
+        3. Return their invoker_id as reverse invokers at depth=1.
+
+        Vtable-discovered invokers are returned at depth=1 (they are
+        direct indirect-callers, not transitive). The recursive CTE
+        continues to walk forward from each discovered invoker using
+        the same edge_types filter.
+        """
         conn = self._ensure_conn()
         if edge_types is None:
             edge_types = ["INVOKES"]
@@ -503,57 +523,173 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         """
         params = [node_id] + edge_types + [depth] + edge_types + [limit]
         rows = conn.execute(sql, params).fetchall()
-        results = [{"id": r[0], "kind": r[1], "name": r[2], "fqn": r[3], "line": r[4]}
-                   for r in rows]
-        if include_vtable_dispatch:
-            results = self._merge_vtable_dispatch_invokers(results, node_id, depth)
-        return results
+        direct_invokers = [{"id": r[0], "kind": r[1], "name": r[2],
+                            "fqn": r[3], "line": r[4]} for r in rows]
 
-    def _merge_vtable_dispatch_invokers(self, direct_invokers, node_id, depth):
-        """Find indirect invokers via ops_bindings + invoke_sites."""
+        if not include_vtable_dispatch:
+            return direct_invokers
+
+        # RPT-KERNEL-D10-upgrade: indirect call reverse tracing via
+        # ops_bindings + invoke_sites tables.
+        vtable_invokers = self._find_vtable_dispatch_invokers(
+            node_id, depth=depth, edge_types=edge_types, limit=limit)
+
+        # Merge by node id, preferring direct (which already has depth
+        # information from the CTE); vtable entries are marked via a
+        # 'via_dispatch' flag for downstream consumers.
+        seen_ids = {inv["id"] for inv in direct_invokers}
+        merged = list(direct_invokers)
+        for inv in vtable_invokers:
+            if inv["id"] in seen_ids:
+                continue
+            inv["via_dispatch"] = True
+            merged.append(inv)
+            seen_ids.add(inv["id"])
+        return merged
+
+    def _find_vtable_dispatch_invokers(self, node_id: int, depth: int = 1,
+                                       edge_types: Optional[List[str]] = None,
+                                       limit: int = 200
+                                       ) -> List[Dict[str, Any]]:
+        """Find invokers that dispatch to node_id via vtable indirection.
+
+        Two sources:
+        1. invoke_sites rows with invoke_kind='ops_bind' (or 'virtual'/
+           'function_pointer') whose dispatch_candidates JSON contains
+           node_id — the invoker_id column is the indirect caller.
+        2. ops_bindings rows where impl_function_id = node_id — for each
+           such binding, find invoke_sites whose invoked_id points to
+           the field_node_id (the function pointer slot), then walk up
+           to invoker_id. This handles the case where dispatch_candidates
+           is empty but the binding exists.
+
+        After collecting depth-1 indirect invokers, optionally recurse
+        further using the same edge_types filter (so depth=N reaches
+        callers-of-callers transitively).
+        """
+        conn = self._ensure_conn()
+        if edge_types is None:
+            edge_types = ["INVOKES"]
+
+        indirect_invokers: List[Dict[str, Any]] = []
+        seen_ids = {node_id}
+
+        # Source 1: invoke_sites with dispatch_candidates containing node_id
         try:
-            seen_ids = {r["id"] for r in direct_invokers}
-            # Source 1: invoke_sites where dispatch_candidates contains node_id
-            site_rows = self._conn.execute(
-                "SELECT invoker_id, dispatch_candidates FROM invoke_sites "
-                "WHERE invoked_id = ? OR dispatch_candidates LIKE ?",
-                (node_id, f'%"{node_id}"%')).fetchall()
-            for invoker_id, dc_json in site_rows:
-                if invoker_id and invoker_id not in seen_ids:
-                    n = self.get_node(invoker_id)
-                    if n:
-                        seen_ids.add(invoker_id)
-                        direct_invokers.append({
-                            "id": invoker_id, "kind": n.get("kind", ""),
-                            "name": n.get("name", ""), "fqn": n.get("fqn", ""),
-                            "line": n.get("line", 0), "via_dispatch": True,
-                        })
-            # Source 2: ops_bindings where impl_function_id = node_id
-            bind_rows = self._conn.execute(
-                "SELECT DISTINCT ops_table_id, field_node_id FROM ops_bindings "
-                "WHERE impl_function_id = ?", (node_id,)).fetchall()
-            for ops_table_id, field_node_id in bind_rows:
-                site_rows2 = self._conn.execute(
-                    "SELECT DISTINCT invoker_id FROM invoke_sites "
-                    "WHERE invoked_id = ?", (field_node_id,)).fetchall()
-                for (invoker_id,) in site_rows2:
-                    if invoker_id and invoker_id not in seen_ids:
-                        n = self.get_node(invoker_id)
-                        if n:
-                            seen_ids.add(invoker_id)
-                            direct_invokers.append({
-                                "id": invoker_id, "kind": n.get("kind", ""),
-                                "name": n.get("name", ""), "fqn": n.get("fqn", ""),
-                                "line": n.get("line", 0), "via_dispatch": True,
-                            })
-        except Exception:
+            invoke_site_rows = conn.execute(
+                "SELECT DISTINCT invoker_id FROM invoke_sites "
+                "WHERE invoke_kind IN ('ops_bind', 'virtual', 'function_pointer') "
+                "AND (dispatch_candidates LIKE ? OR invoked_id = ?)",
+                (f'%"{node_id}"%', node_id)
+            ).fetchall()
+            for r in invoke_site_rows:
+                invoker_id = r[0]
+                if invoker_id in seen_ids:
+                    continue
+                node_row = conn.execute(
+                    "SELECT id, kind, name, fqn, line FROM cgdb_nodes WHERE id = ?",
+                    (invoker_id,)
+                ).fetchone()
+                if node_row:
+                    indirect_invokers.append({
+                        "id": node_row[0], "kind": node_row[1],
+                        "name": node_row[2], "fqn": node_row[3],
+                        "line": node_row[4],
+                    })
+                    seen_ids.add(invoker_id)
+        except sqlite3.OperationalError:
+            # invoke_sites table may not exist on older graphs
             pass
-        return direct_invokers
+
+        # Source 2: ops_bindings → find function calls that use the same
+        # ops_table + field combination. Each such invoke_site's invoker_id
+        # is an indirect invoker of node_id.
+        try:
+            binding_rows = conn.execute(
+                "SELECT ops_table_id, field_node_id FROM ops_bindings "
+                "WHERE impl_function_id = ?",
+                (node_id,)
+            ).fetchall()
+            for ob_row in binding_rows:
+                ops_table_id, field_node_id = ob_row[0], ob_row[1]
+                # Find invoke_sites that target the field_node (the
+                # function pointer slot) on this ops_table. Since
+                # invoke_sites doesn't store ops_table_id directly, we
+                # rely on invoked_id matching field_node_id as a proxy.
+                site_rows = conn.execute(
+                    "SELECT DISTINCT invoker_id FROM invoke_sites "
+                    "WHERE invoked_id = ?",
+                    (field_node_id,)
+                ).fetchall()
+                for sr in site_rows:
+                    invoker_id = sr[0]
+                    if invoker_id in seen_ids:
+                        continue
+                    node_row = conn.execute(
+                        "SELECT id, kind, name, fqn, line FROM cgdb_nodes "
+                        "WHERE id = ?",
+                        (invoker_id,)
+                    ).fetchone()
+                    if node_row:
+                        indirect_invokers.append({
+                            "id": node_row[0], "kind": node_row[1],
+                            "name": node_row[2], "fqn": node_row[3],
+                            "line": node_row[4],
+                        })
+                        seen_ids.add(invoker_id)
+        except sqlite3.OperationalError:
+            pass
+
+        # Optional transitive recursion via direct INVOKES edges from
+        # each discovered indirect invoker. This lets depth>1 reach
+        # callers-of-indirect-callers.
+        if depth > 1 and indirect_invokers:
+            placeholders = ",".join("?" * len(edge_types))
+            for inv in list(indirect_invokers):
+                transitive_sql = f"""
+                    WITH RECURSIVE invokers(depth, node_id, path) AS (
+                        SELECT 1, src_id, ',' || src_id || ','
+                        FROM cgdb_edges
+                        WHERE dst_id = ? AND kind IN ({placeholders})
+                        UNION ALL
+                        SELECT c.depth + 1, e.src_id,
+                               c.path || e.src_id || ','
+                        FROM cgdb_edges e
+                        JOIN invokers c ON e.dst_id = c.node_id
+                        WHERE c.depth < ?
+                          AND e.kind IN ({placeholders})
+                          AND c.path NOT LIKE '%,' || e.src_id || ',%'
+                    )
+                    SELECT DISTINCT n.id, n.kind, n.name, n.fqn, n.line
+                    FROM invokers c JOIN cgdb_nodes n ON n.id = c.node_id
+                    LIMIT ?
+                """
+                t_params = ([inv["id"]] + edge_types + [depth - 1]
+                            + edge_types + [limit])
+                t_rows = conn.execute(transitive_sql, t_params).fetchall()
+                for r in t_rows:
+                    nid = r[0]
+                    if nid in seen_ids:
+                        continue
+                    indirect_invokers.append({
+                        "id": nid, "kind": r[1], "name": r[2],
+                        "fqn": r[3], "line": r[4],
+                    })
+                    seen_ids.add(nid)
+        return indirect_invokers[:limit]
 
     def find_invoked(self, node_id: int, depth: int = 1,
                      edge_types: Optional[List[str]] = None,
                      limit: int = 500,
                      include_vtable_dispatch: bool = False) -> List[Dict[str, Any]]:
+        """Find forward closure of a node (who does this node invoke?).
+
+        When include_vtable_dispatch=True, also follows indirect
+        dispatch via ops_bindings — if node_id invokes a vtable field
+        (function pointer slot), resolve through ops_bindings to the
+        impl functions that may be dispatched to. This is the symmetric
+        counterpart to find_invokers's --include-vtable-dispatch.
+        """
         conn = self._ensure_conn()
         if edge_types is None:
             edge_types = ["INVOKES"]
@@ -577,63 +713,143 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         """
         params = [node_id] + edge_types + [depth] + edge_types + [limit]
         rows = conn.execute(sql, params).fetchall()
-        results = [{"id": r[0], "kind": r[1], "name": r[2], "fqn": r[3], "line": r[4]}
-                   for r in rows]
-        if include_vtable_dispatch:
-            results = self._merge_vtable_dispatch_invoked(results, node_id, depth)
-        return results
+        direct_invoked = [{"id": r[0], "kind": r[1], "name": r[2],
+                           "fqn": r[3], "line": r[4]} for r in rows]
 
-    def _merge_vtable_dispatch_invoked(self, direct_invoked, node_id, depth):
-        """Find indirect invoked functions via ops_bindings."""
+        if not include_vtable_dispatch:
+            return direct_invoked
+
+        # RPT-KERNEL-D10-upgrade: forward vtable dispatch resolution.
+        # If node_id is an invoker that calls function pointer slots,
+        # resolve each slot through ops_bindings to the impl functions.
+        vtable_invoked = self._find_vtable_dispatch_invoked(
+            node_id, depth=depth, edge_types=edge_types, limit=limit)
+
+        seen_ids = {inv["id"] for inv in direct_invoked}
+        merged = list(direct_invoked)
+        for inv in vtable_invoked:
+            if inv["id"] in seen_ids:
+                continue
+            inv["via_dispatch"] = True
+            merged.append(inv)
+            seen_ids.add(inv["id"])
+        return merged
+
+    def _find_vtable_dispatch_invoked(self, node_id: int, depth: int = 1,
+                                      edge_types: Optional[List[str]] = None,
+                                      limit: int = 500
+                                      ) -> List[Dict[str, Any]]:
+        """Resolve forward vtable dispatch from node_id.
+
+        For each invoke_site where node_id is the invoker and the
+        invoked_id is a vtable field (function pointer slot), look up
+        ops_bindings to find all impl_function_id values that may be
+        dispatched to. Those impls are indirect "invoked" of node_id.
+        """
+        conn = self._ensure_conn()
+        if edge_types is None:
+            edge_types = ["INVOKES"]
+
+        indirect_invoked: List[Dict[str, Any]] = []
+        seen_ids = {node_id}
+
         try:
-            seen_ids = {r["id"] for r in direct_invoked}
-            site_rows = self._conn.execute(
+            # Find all invoke_sites where node_id is the invoker
+            site_rows = conn.execute(
                 "SELECT invoked_id, dispatch_candidates FROM invoke_sites "
-                "WHERE invoker_id = ?", (node_id,)).fetchall()
-            import json as _json
-            for invoked_id, dc_json in site_rows:
-                if dc_json:
-                    try:
-                        candidates = _json.loads(dc_json)
-                        for cand_id in candidates:
-                            if cand_id and cand_id not in seen_ids:
-                                n = self.get_node(cand_id)
-                                if n:
-                                    seen_ids.add(cand_id)
-                                    direct_invoked.append({
-                                        "id": cand_id, "kind": n.get("kind", ""),
-                                        "name": n.get("name", ""), "fqn": n.get("fqn", ""),
-                                        "line": n.get("line", 0), "via_dispatch": True,
-                                    })
-                    except (_json.JSONDecodeError, TypeError):
-                        pass
-                if invoked_id and invoked_id not in seen_ids:
-                    n = self.get_node(invoked_id)
-                    if n:
-                        seen_ids.add(invoked_id)
-                        direct_invoked.append({
-                            "id": invoked_id, "kind": n.get("kind", ""),
-                            "name": n.get("name", ""), "fqn": n.get("fqn", ""),
-                            "line": n.get("line", 0), "via_dispatch": True,
-                        })
-            # Also check ops_bindings for impl functions
-            bind_rows = self._conn.execute(
-                "SELECT DISTINCT impl_function_id, field_node_id FROM ops_bindings "
-                "WHERE ops_table_id IN (SELECT invoked_id FROM invoke_sites WHERE invoker_id = ?)",
-                (node_id,)).fetchall()
-            for impl_id, field_id in bind_rows:
-                if impl_id and impl_id not in seen_ids:
-                    n = self.get_node(impl_id)
-                    if n:
-                        seen_ids.add(impl_id)
-                        direct_invoked.append({
-                            "id": impl_id, "kind": n.get("kind", ""),
-                            "name": n.get("name", ""), "fqn": n.get("fqn", ""),
-                            "line": n.get("line", 0), "via_dispatch": True,
-                        })
-        except Exception:
+                "WHERE invoker_id = ?",
+                (node_id,)
+            ).fetchall()
+            for sr in site_rows:
+                invoked_id = sr[0]
+                dispatch_candidates_json = sr[1] or '[]'
+                # First: if dispatch_candidates is populated, use it
+                # directly — it's the scanner's best guess at the
+                # possible impl functions.
+                try:
+                    candidate_ids = json.loads(dispatch_candidates_json)
+                    if isinstance(candidate_ids, list):
+                        for cid in candidate_ids:
+                            if not isinstance(cid, int) or cid in seen_ids:
+                                continue
+                            node_row = conn.execute(
+                                "SELECT id, kind, name, fqn, line FROM cgdb_nodes "
+                                "WHERE id = ?",
+                                (cid,)
+                            ).fetchone()
+                            if node_row:
+                                indirect_invoked.append({
+                                    "id": node_row[0], "kind": node_row[1],
+                                    "name": node_row[2], "fqn": node_row[3],
+                                    "line": node_row[4],
+                                })
+                                seen_ids.add(cid)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+                # Second: if invoked_id points to a vtable field, look
+                # up ops_bindings to find all impl functions for that
+                # field across all ops_tables.
+                if invoked_id is not None:
+                    impl_rows = conn.execute(
+                        "SELECT DISTINCT impl_function_id FROM ops_bindings "
+                        "WHERE field_node_id = ?",
+                        (invoked_id,)
+                    ).fetchall()
+                    for ir in impl_rows:
+                        impl_id = ir[0]
+                        if impl_id in seen_ids:
+                            continue
+                        node_row = conn.execute(
+                            "SELECT id, kind, name, fqn, line FROM cgdb_nodes "
+                            "WHERE id = ?",
+                            (impl_id,)
+                        ).fetchone()
+                        if node_row:
+                            indirect_invoked.append({
+                                "id": node_row[0], "kind": node_row[1],
+                                "name": node_row[2], "fqn": node_row[3],
+                                "line": node_row[4],
+                            })
+                            seen_ids.add(impl_id)
+        except sqlite3.OperationalError:
             pass
-        return direct_invoked
+
+        # Optional transitive recursion via direct INVOKES edges.
+        if depth > 1 and indirect_invoked:
+            placeholders = ",".join("?" * len(edge_types))
+            for inv in list(indirect_invoked):
+                transitive_sql = f"""
+                    WITH RECURSIVE invoked(depth, node_id, path) AS (
+                        SELECT 1, dst_id, ',' || dst_id || ','
+                        FROM cgdb_edges
+                        WHERE src_id = ? AND kind IN ({placeholders})
+                        UNION ALL
+                        SELECT c.depth + 1, e.dst_id,
+                               c.path || e.dst_id || ','
+                        FROM cgdb_edges e
+                        JOIN invoked c ON e.src_id = c.node_id
+                        WHERE c.depth < ?
+                          AND e.kind IN ({placeholders})
+                          AND c.path NOT LIKE '%,' || e.dst_id || ',%'
+                    )
+                    SELECT DISTINCT n.id, n.kind, n.name, n.fqn, n.line
+                    FROM invoked c JOIN cgdb_nodes n ON n.id = c.node_id
+                    LIMIT ?
+                """
+                t_params = ([inv["id"]] + edge_types + [depth - 1]
+                            + edge_types + [limit])
+                t_rows = conn.execute(transitive_sql, t_params).fetchall()
+                for r in t_rows:
+                    nid = r[0]
+                    if nid in seen_ids:
+                        continue
+                    indirect_invoked.append({
+                        "id": nid, "kind": r[1], "name": r[2],
+                        "fqn": r[3], "line": r[4],
+                    })
+                    seen_ids.add(nid)
+        return indirect_invoked[:limit]
 
     def get_neighborhood(self, node_id: int, depth: int = 1,
                          max_nodes: int = 160) -> Dict[str, Any]:

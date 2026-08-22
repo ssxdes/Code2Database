@@ -539,10 +539,11 @@ def cmd_cgdb_find_invokers(args):
         if node_id is None:
             print(f"Error: node '{args.node}' not found", file=sys.stderr)
             sys.exit(1)
-        _print_json(store.find_invokers(node_id, depth=args.depth,
-                                        edge_types=args.edge_types.split(",") if args.edge_types else None,
-                                        limit=args.limit,
-                                        include_vtable_dispatch=getattr(args, "include_vtable_dispatch", False)))
+        _print_json(store.find_invokers(
+            node_id, depth=args.depth,
+            edge_types=args.edge_types.split(",") if args.edge_types else None,
+            limit=args.limit,
+            include_vtable_dispatch=getattr(args, "include_vtable_dispatch", False)))
     finally:
         store.close()
 
@@ -557,10 +558,11 @@ def cmd_cgdb_find_invoked(args):
         if node_id is None:
             print(f"Error: node '{args.node}' not found", file=sys.stderr)
             sys.exit(1)
-        _print_json(store.find_invoked(node_id, depth=args.depth,
-                                        edge_types=args.edge_types.split(",") if args.edge_types else None,
-                                        limit=args.limit,
-                                        include_vtable_dispatch=getattr(args, "include_vtable_dispatch", False)))
+        _print_json(store.find_invoked(
+            node_id, depth=args.depth,
+            edge_types=args.edge_types.split(",") if args.edge_types else None,
+            limit=args.limit,
+            include_vtable_dispatch=getattr(args, "include_vtable_dispatch", False)))
     finally:
         store.close()
 
@@ -574,8 +576,34 @@ def cmd_cgdb_path(args):
         src_id = _resolve_node_id(store, args.src, prefer_edges="out")
         dst_id = _resolve_node_id(store, args.dst, prefer_edges="in")
         if src_id is None or dst_id is None:
-            print(f"Error: src '{args.src}' or dst '{args.dst}' not found",
-                  file=sys.stderr)
+            missing_src = args.src if src_id is None else None
+            missing_dst = args.dst if dst_id is None else None
+            print(
+                f"Error: src '{args.src}' or dst '{args.dst}' not found",
+                file=sys.stderr,
+            )
+            # RPT-KERNEL-D14: emit actionable subsystem hints
+            try:
+                from _builder.coverage_report import path_not_found_hints
+                hints = path_not_found_hints(
+                    args.graph,
+                    missing_src=missing_src,
+                    missing_dst=missing_dst,
+                )
+                print(f"Hints: {hints['suggestion']}", file=sys.stderr)
+                if hints.get("coverage_report_path"):
+                    print(
+                        f"Coverage report: {hints['coverage_report_path']}",
+                        file=sys.stderr,
+                    )
+                if hints.get("missing_common_subsystems"):
+                    print(
+                        f"Missing common subsystems: "
+                        f"{', '.join(hints['missing_common_subsystems'][:5])}",
+                        file=sys.stderr,
+                    )
+            except Exception:
+                pass  # Hints are best-effort; never block the error path
             sys.exit(1)
         _print_json(store.invoke_path(src_id, dst_id, max_len=args.max_len))
     finally:
@@ -1051,39 +1079,47 @@ def cmd_cgdb_layer_summary(args):
     finally:
         store.close()
 
+
 def cmd_cgdb_coverage(args):
-    """Query graph coverage: --function NAME | --file PATH | neither for summary."""
-    import json as _json
-    import sys as _sys
+    """RPT-KERNEL-D15: Query graph coverage.
+
+    Three modes:
+      - `--function NAME`: Is function NAME in the graph? Returns matching
+        cgdb_nodes rows (name, fqn, file_path, line).
+      - `--file PATH`: Was file PATH scanned? Returns the cgdb_files row
+        plus functions defined in that file.
+      - neither: Returns subsystem-level summary (scanned/missing
+        subsystems, paths to coverage reports).
+    """
     from _builder.coverage_report import query_coverage
-    graph_dir = args.graph
-    function_name = getattr(args, 'function', None) or ''
-    file_path = getattr(args, 'file', None) or ''
-    result = query_coverage(graph_dir, function_name=function_name, file_path=file_path)
-    if result.get('status') == 'error':
-        _json.dump(result, _sys.stdout, ensure_ascii=False, indent=2)
-        _sys.exit(1)
-    _json.dump(result, _sys.stdout, ensure_ascii=False, indent=2)
-    print()
+    function_name = getattr(args, "function", None)
+    file_path = getattr(args, "file", None)
+    result = query_coverage(args.graph,
+                            function_name=function_name,
+                            file_path=file_path)
+    _print_json(result)
+    if result.get("status") == "error":
+        sys.exit(1)
 
 
 def cmd_cgdb_write_coverage(args):
-    """(Re)write coverage reports."""
-    import json as _json
-    import sys as _sys
-    from _builder.coverage_report import write_coverage_report, write_file_coverage
-    graph_dir = args.graph
-    cov = write_coverage_report(graph_dir)
-    fcov = write_file_coverage(graph_dir)
+    """RPT-KERNEL-D15: Manually (re)write the coverage reports.
+
+    Useful when the build was run before RPT-KERNEL-D14/D15 was integrated,
+    or after a manual DB modification (e.g., tx-commit) that added/removed
+    files. Writes both `.code2database_coverage_report.json` (subsystem
+    summary) and `.code2database_file_coverage.json` (file-level list).
+    """
+    from _builder.coverage_report import (
+        write_coverage_report, write_file_coverage,
+    )
+    cov = write_coverage_report(args.graph)
+    fcov = write_file_coverage(args.graph)
     result = {
-        'status': 'ok',
-        'coverage_report_path': cov,
-        'file_coverage_path': fcov,
+        "status": "ok",
+        "coverage_report_path": cov,
+        "file_coverage_path": fcov,
     }
-    if not cov and not fcov:
-        result['status'] = 'error'
-        result['error'] = 'No cgdb_files found or DB missing'
-        _json.dump(result, _sys.stdout, ensure_ascii=False, indent=2)
-        _sys.exit(1)
-    _json.dump(result, _sys.stdout, ensure_ascii=False, indent=2)
-    print()
+    _print_json(result)
+    if cov is None and fcov is None:
+        sys.exit(1)

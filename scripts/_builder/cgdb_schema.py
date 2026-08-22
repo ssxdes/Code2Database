@@ -742,7 +742,14 @@ CREATE INDEX IF NOT EXISTS idx_attributes_node ON attributes(ast_node_id);
 CREATE INDEX IF NOT EXISTS idx_attributes_kind ON attributes(attr_kind);
 
 -- ============================================================================
--- Report-L1: literals — numeric / char literals (parsed form)
+-- Report-L1: literals — numeric / char / string literals (parsed form).
+-- String literals get a parent row here (kind='string') plus a child row in
+-- string_literals with security_flags etc. The 'string' value was added to
+-- the CHECK constraint after the original schema shipped — l1_ingest.py
+-- inserts 'string' for the parent row, and the original constraint
+-- ('int','float','char','imaginary','other') silently rejected it via the
+-- bare `except Exception: continue` in the token loop, leaving the
+-- string_literals table empty.
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS literals (
   id INTEGER PRIMARY KEY,

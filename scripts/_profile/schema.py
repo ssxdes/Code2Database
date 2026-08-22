@@ -91,7 +91,12 @@ _DEFAULT_PROFILE = {
         "vtable_module_keys": [],
         "domain_rules": [],
         "skip_dirs": [],  # Extra directories to skip (in addition to built-in _SKIP_DIRS)
-        "scan_subsystems": [],  # Restrict scan to specified top-level subsystem dirs (e.g., ['fs', 'mm'] for Linux kernel)
+        # RPT-KERNEL-D9: optional subsystem filter — when set, only files
+        # whose path (relative to --source) starts with `<subsystem>/` are
+        # scanned. Useful for scanning a monorepo but limiting to specific
+        # subsystems (e.g., Linux kernel: ['fs', 'mm', 'block', 'kernel', 'lib']).
+        # Empty list = scan everything (default).
+        "scan_subsystems": [],
     },
     "dispatch_tuning": {
         # Max vtable dispatch targets per call site. Default 50; raise for kernel

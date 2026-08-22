@@ -10,10 +10,6 @@ from pathlib import Path
 
 from _scanner.utils import LANG_EXTENSIONS
 
-# Pre-compute the union of all source extensions once at import time
-# instead of re-computing on every save_manifest / detect_changes call.
-_ALL_SOURCE_EXTENSIONS = frozenset().union(*LANG_EXTENSIONS.values())
-
 
 # Directories to skip (build artifacts, VCS, dependencies)
 _SKIP_DIRS = frozenset({
@@ -44,14 +40,18 @@ def save_manifest(source_root: str, outdir: str) -> int:
     engineers can ask "which commit does this graph correspond to?" rather
     than the meaningless "when was the database updated?".
     """
+    all_extensions = set()
+    for exts in LANG_EXTENSIONS.values():
+        all_extensions |= exts
+
     manifest = {}
     for dirpath, dirnames, filenames in os.walk(source_root):
         dirnames[:] = [d for d in dirnames
                        if not d.startswith('.') and d not in _SKIP_DIRS]
         for fname in filenames:
             fpath = os.path.join(dirpath, fname)
-            dot = fpath.rfind('.'); ext = fpath[dot:].lower() if dot >= 0 else ''
-            if ext in _ALL_SOURCE_EXTENSIONS:
+            ext = Path(fpath).suffix.lower()
+            if ext in all_extensions:
                 rel = os.path.relpath(fpath, source_root)
                 manifest[rel] = _file_fingerprint(fpath)
 
@@ -96,7 +96,9 @@ def detect_changes(source_root: str, outdir: str) -> dict:
     old_manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     old_files = old_manifest.get("files", {})
 
-
+    all_extensions = set()
+    for exts in LANG_EXTENSIONS.values():
+        all_extensions |= exts
 
     current_files = {}
     for dirpath, dirnames, filenames in os.walk(source_root):
@@ -104,8 +106,8 @@ def detect_changes(source_root: str, outdir: str) -> dict:
                        if not d.startswith('.') and d not in _SKIP_DIRS]
         for fname in filenames:
             fpath = os.path.join(dirpath, fname)
-            dot = fpath.rfind('.'); ext = fpath[dot:].lower() if dot >= 0 else ''
-            if ext in _ALL_SOURCE_EXTENSIONS:
+            ext = Path(fpath).suffix.lower()
+            if ext in all_extensions:
                 rel = os.path.relpath(fpath, source_root)
                 current_files[rel] = _file_fingerprint(fpath)
 

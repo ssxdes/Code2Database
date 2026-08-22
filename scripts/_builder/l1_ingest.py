@@ -200,7 +200,9 @@ def ingest_l1(
         line_ending = "LF"
     encoding = "utf-8-sig" if has_bom else "utf-8"
 
-    # Update source_files_meta (UPSERT — original UPDATE-only silently no-op'd when row was absent)
+    # Upsert source_files_meta (INSERT if missing, UPDATE if present).
+    # The original UPDATE-only version silently no-op'd when the row didn't
+    # exist yet, leaving disk_sha256 empty and breaking verify_consistency.
     conn.execute(
         "INSERT INTO source_files_meta (file_id, encoding, line_ending, "
         "has_bom, disk_sha256) VALUES (?, ?, ?, ?, ?) "
@@ -350,6 +352,10 @@ def ingest_l1(
             stats["tokens"] += 1
 
         except Exception as _tok_exc:
+            # Log and skip — but don't silently swallow. The previous bare
+            # `except Exception: continue` hid a CHECK-constraint failure on
+            # literals.kind='string' for ~3 weeks, leaving string_literals
+            # empty. Print to stderr so future regressions are visible.
             import sys as _sys
             print(f"[l1] WARNING: token skipped at line {tok.extent.start.line if tok.extent else '?'}: "
                   f"{_tok_exc}", file=_sys.stderr)
@@ -370,7 +376,15 @@ def ingest_l1(
             (trailing, file_id)
         )
 
-    # L1↔L2 alignment — link identifier tokens to cgdb_nodes by byte range overlap
+    # RPT-P0-21: L1↔L2 alignment — link identifier tokens to cgdb_nodes
+    # by matching byte ranges. For each cgdb_node of kind function/var/
+    # parameter/decl in this file, find the token whose [byte_offset,
+    # byte_offset+byte_length) overlaps with [byte_start, byte_end) and
+    # set tokens.ast_node_id = cgdb_nodes.id.
+    #
+    # This is the *minimum* L1↔L2 join: it links declaration name tokens
+    # to their cgdb_node rows. Full per-expression alignment (linking
+    # every identifier reference to its declaration) is a P1 task.
     try:
         node_rows = conn.execute(
             "SELECT id, byte_start, byte_end FROM cgdb_nodes "
@@ -381,6 +395,8 @@ def ingest_l1(
         ).fetchall()
         linked = 0
         for node_id, nb_start, nb_end in node_rows:
+            # Find the token whose range overlaps with this node's range.
+            # Prefer an identifier token; fall back to any token.
             tok_row = conn.execute(
                 "SELECT id FROM tokens WHERE file_id = ? "
                 "AND kind = 'identifier' "
@@ -389,6 +405,7 @@ def ingest_l1(
                 (file_id, nb_end, nb_start)
             ).fetchone()
             if tok_row is None:
+                # Fallback: any token in the node's range
                 tok_row = conn.execute(
                     "SELECT id FROM tokens WHERE file_id = ? "
                     "AND byte_offset < ? AND byte_offset + byte_length > ? "
@@ -402,8 +419,13 @@ def ingest_l1(
                 )
                 linked += 1
         stats["l1_l2_linked"] = linked
-    except Exception:
+    except Exception as _align_exc:
+        # Best-effort — alignment is a P0-21 enhancement, not a correctness
+        # requirement for L1 ingest itself.
         stats["l1_l2_linked"] = 0
+        import sys as _sys
+        print(f"[l1] WARNING: L1↔L2 alignment failed for "
+              f"{os.path.basename(file_path)}: {_align_exc}", file=_sys.stderr)
 
     conn.commit()
 

@@ -850,12 +850,14 @@ def cmd_path_feasible(args):
                 else:
                     _walk(succ, new_path, new_conds, new_cfg_preds, depth + 1)
         _walk(node_id, [node_id], [], [], 0)
-        results = []
+        # RPT-KERNEL-D13: runtime guard analysis (bd_prepare_to_claim / sb_is_blkdev_sb /
+        # bd_holder != / mutex_is_locked) — complements compile-time #ifdef analysis.
         try:
             from _builder.runtime_guards import check_runtime_guards
             _runtime_guards_available = True
         except ImportError:
             _runtime_guards_available = False
+        results = []
         for path, conds, cfg_preds in paths[:50]:  # cap
             feasible = solve_path_feasibility(conds)
             entry = {
@@ -874,6 +876,7 @@ def cmd_path_feasible(args):
                         "reason": "no --with-configs bindings provided",
                         "per_predicate": [],
                     }
+            # RPT-KERNEL-D13: attach runtime guard analysis
             if _runtime_guards_available and conds:
                 entry["runtime_guards"] = check_runtime_guards(conds)
             results.append(entry)
@@ -892,3 +895,145 @@ def cmd_path_feasible(args):
 
     print("Specify --conditions or --node", file=sys.stderr)
     sys.exit(1)
+
+
+def cmd_path_guards(args):
+    """Prove reachability of a writer from an entry point, using guard conditions.
+
+    IMPROVE-OPT4: Given an entry point (--from) and a writer function (--to),
+    find all paths from entry to writer, accumulate guard conditions along
+    each path (from edge call_condition + function-body guard_condition for
+    the target field write), and use Z3/heuristic to prove whether the
+    conjunction of guards is satisfiable.
+
+    If ALL paths are infeasible (guards contradict) → writer is unreachable
+    in scene → reachable_in_scene should be "guarded_out" (stronger than
+    Optimization 1's "guarded" heuristic).
+
+    Usage:
+        path-guards --graph <dir> --from <entry> --to <writer>
+                    [--field <field_name>] [--value <value>]
+                    [--with-configs "CONFIG_X=true"]
+    """
+    import json
+    from collections import deque
+
+    graph_dir = args.graph
+    from_node = getattr(args, "from_node", "") or ""
+    to_node = getattr(args, "to_node", "") or ""
+    field_name = getattr(args, "field", "") or ""
+    value_filter = getattr(args, "value", "") or ""
+    max_depth = getattr(args, "max_depth", 8)
+    with_configs_spec = getattr(args, "with_configs", "") or ""
+    macro_bindings = parse_macro_bindings(with_configs_spec) if with_configs_spec else {}
+
+    if not from_node or not to_node:
+        print("Specify --from and --to", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        from _builder.graph_build import _load_full_graph
+    except ImportError:
+        sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+        from _builder.graph_build import _load_full_graph
+    G = _load_full_graph(graph_dir)
+    from _builder.utils import _find_node_id
+
+    from_id = _find_node_id(G, from_node)
+    to_id = _find_node_id(G, to_node)
+    if not from_id:
+        print(f"Entry node not found: {from_node}", file=sys.stderr)
+        sys.exit(1)
+    if not to_id:
+        print(f"Writer node not found: {to_node}", file=sys.stderr)
+        sys.exit(1)
+
+    # Forward BFS from entry to writer, collecting all simple paths
+    paths = []
+    queue = deque([(from_id, [from_id], [])])  # (nid, path, edge_conds)
+    seen_paths = set()
+    while queue and len(paths) < 50:
+        nid, path, conds = queue.popleft()
+        if nid == to_id:
+            key = tuple(path)
+            if key not in seen_paths:
+                seen_paths.add(key)
+                paths.append((path, conds))
+            continue
+        if len(path) >= max_depth:
+            continue
+        for succ in G.successors(nid):
+            if succ in path:
+                continue
+            ed = G.get_edge_data(nid, succ) or {}
+            if ed.get("relation") in ("CONTAINS", "IMPORTS"):
+                continue
+            cond = ed.get("call_condition", "")
+            new_conds = conds + ([cond] if cond else [])
+            queue.append((succ, path + [succ], new_conds))
+
+    # For each path, also collect the writer's guard_condition for the target field
+    to_ndata = G.nodes.get(to_id, {})
+    writer_guards = []
+    if field_name:
+        for fw in to_ndata.get("fields_written", []):
+            if fw.get("field_name", "") == field_name:
+                g = fw.get("guard_condition", "")
+                if g:
+                    writer_guards.append(g)
+                # If value filter, also check assigned_value
+                if value_filter:
+                    av = fw.get("assigned_value", "")
+                    # Only consider this writer if its assigned_value matches
+                    # (for NULL-form, use the helper)
+                    from _builder.query import _value_is_null_form, _value_is_null_form_match
+                    if av:
+                        if value_filter and not (av == value_filter or _value_is_null_form_match(av, value_filter)):
+                            continue
+                break
+
+    # Solve feasibility for each path
+    results = []
+    for path, edge_conds in paths:
+        all_conds = edge_conds + writer_guards
+        feasible = solve_path_feasibility(all_conds)
+        entry = {
+            "path": [G.nodes[n].get("name", n) for n in path],
+            "edge_conditions": edge_conds,
+            "writer_guards": writer_guards,
+            "all_conditions": all_conds,
+            "feasibility": feasible,
+        }
+        # If config bindings provided, also evaluate config feasibility
+        if macro_bindings and all_conds:
+            cfg_result = check_config_feasible(all_conds, macro_bindings)
+            entry["config_feasibility"] = cfg_result
+            # If config says infeasible, override verdict for this path
+            if cfg_result.get("feasible") is False:
+                entry["feasibility"]["feasible"] = False
+                entry["feasibility"]["reason"] = "guarded_out_by_config"
+        results.append(entry)
+
+    # Overall verdict: writer is reachable if ANY path is feasible
+    any_feasible = any(r["feasibility"].get("feasible") for r in results)
+    all_infeasible = bool(results) and all(
+        r["feasibility"].get("feasible") is False for r in results)
+    if any_feasible:
+        verdict = "reachable_in_scene"
+    elif all_infeasible:
+        verdict = "guarded_out_proven"
+    else:
+        verdict = "unknown"
+
+    print(json.dumps({
+        "from": G.nodes[from_id].get("name", from_id),
+        "to": G.nodes[to_id].get("name", to_id),
+        "field": field_name,
+        "value_filter": value_filter,
+        "paths_analyzed": len(results),
+        "verdict": verdict,
+        "reachable_in_scene": verdict == "reachable_in_scene",
+        "paths": results,
+        "z3_available": Z3_AVAILABLE,
+        "macro_bindings": macro_bindings,
+    }, ensure_ascii=False, indent=2, default=str))

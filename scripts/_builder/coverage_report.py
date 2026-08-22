@@ -1,312 +1,470 @@
-"""Coverage report generation and path-not-found hints.
+"""coverage_report — RPT-KERNEL-D14: build-time coverage report + path-not-found hints.
 
-Generates subsystem-level and file-level coverage reports during build,
-and provides actionable hints when path queries fail (e.g., "function
-looks like a net/ function — consider scanning net/").
+Generates `<graph_dir>/.code2database_coverage_report.json` after build,
+summarizing which subsystems (top-level source directories like fs/, mm/,
+kernel/, lib/, block/, net/) were scanned and how many files each contains.
+
+Also provides `path_not_found_hints()` — called from `cmd_cgdb_path` when
+src or dst node is missing, to suggest which common kernel subsystems the
+user might be missing from the graph.
+
+Closes the KERNEL-D14 gap from skill_vs_kasan_comparison.md: when path-not-found,
+the user gets actionable hints instead of a bare "not found" error.
 """
 import json
 import os
 import re
-import sys
-from typing import Dict, List, Optional, Any
+import sqlite3
+from collections import Counter
+from typing import Dict, List, Optional, Tuple
 
+
+# Common Linux kernel subsystems — used to suggest "you scanned fs/ but
+# might also need mm/ for this function name". Order roughly by how often
+# they appear in cross-subsystem bug investigations.
 _KERNEL_SUBSYSTEMS = [
-    'mm', 'kernel', 'lib', 'block', 'net', 'drivers', 'fs', 'security',
-    'crypto', 'ipc', 'sound', 'usr', 'init', 'virt', 'scripts', 'tools',
-    'arch', 'include', 'Documentation',
+    "mm", "kernel", "lib", "block", "net", "drivers", "fs", "security",
+    "crypto", "ipc", "sound", "usr", "init", "virt", "scripts", "tools",
+    "arch", "include", "Documentation",
 ]
 
+# Function-name → likely subsystem heuristics. Used when path-not-found to
+# suggest which subsystems might contain a definition for the missing name.
+# Keys are matched as substrings (lowercased) against the missing function name.
 _NAME_TO_SUBSYSTEM_HINTS = [
-    (re.compile(r'^(alloc|free|kmalloc|kfree|page_|folio_|slab|slob|slub|vmalloc|vfree|memcg|compaction|migrate| numa|hugetlb|cma|balloon|oom|page_alloc|__alloc|__free)'), 'mm'),
-    (re.compile(r'^(blk_|bio_|bdev_|gendisk|request_queue|submit_bio|endio|blkdev_|block_|__blk|__bio)'), 'block'),
-    (re.compile(r'^(kernel_|_kernel|do_|sys_|ksys_|__do_|start_kernel|rest_init|cpu_|smp_|init_|setup_)'), 'kernel'),
-    (re.compile(r'^(lib_|strtol|kstrtoul|list_|hlist_|rbtree|radix_tree|idr|flex_|string|checksum|crc|bitop|find_)'), 'lib'),
-    (re.compile(r'^(skb_|sock_|net_|dev_|ethtool|napi|ip_|tcp_|udp_|icmp|arp_|netlink|route_|fib_|neigh_|inet_)'), 'net'),
-    (re.compile(r'^(ext4_|ext3_|xfs_|btrfs_|f2fs_|nfs_|fat_|vfat_|isofs_|jffs|ubifs|gfs2|ocfs2|nilfs|open_|close_|read_|write_|fs_|inode_|dentry_|file_|super_|mount_|namei_|stat_|fallocate|fadvise|readahead|truncate|setattr|getattr)'), 'fs'),
-    (re.compile(r'^(drv_|dev_|platform_|pci_|usb_|i2c_|spi_|mmc_|dma_|irq_|request_irq|free_irq|enable_irq|disable_irq|probe_|remove_|suspend_|resume_|driver_)'), 'drivers'),
-    (re.compile(r'^(security_|selinux_|smack_|apparmor|tomoyo|cap_|key_|cred_|audit|lsa|keyctl)'), 'security'),
-    (re.compile(r'^(crypto_|crypto|sha|md5|aes|des|rsa|ecdh|crc32|crc16|ghash|chacha|poly1305|hkdf)'), 'crypto'),
-    (re.compile(r'^(ipc_|msg_|sem_|shm_|mq_|pipe_|fifo_)'), 'ipc'),
+    # mm/ — memory management
+    (r"^(alloc|free|kmalloc|kfree|vmalloc|vfree|kmalloc|kzalloc|kcalloc|"
+     r"page_|__page_|folio_|memmap|pfn|gfp|slab|slob|sput|krealloc|"
+     r"memblock|numa|zap|unmap|munmap|mmap|brk|mremap|truncate|writeback|"
+     r"swap|swap_|readahead|filemap|folio|shrink|isolate|"
+     r"pgd|pud|pmd|pte|tlb|set_pte|pte_|tlb_|__tlb|flush_tlb)", "mm"),
+    # block/ — block layer
+    (r"^(blk_|bio_|submit_|rq_|__rq_|request_queue|blkdev_|gendisk|"
+     r"bio_alloc|bio_put|blk_queue|blk_mq|blkcg|blk_|elevator)", "block"),
+    # kernel/ — core kernel
+    (r"^(sched_|scheduler|task_|rcu_|spin_|raw_spin|mutex_|sema|"
+     r"completion_|wait_|wake_up_|try_to_wake|sched_|__sched|"
+     r"printk|pr_|panic|oops|bug|warn|kobject|kref|klist|"
+     r"cpu_|cpumask|smp_|ipi_|irq_|hrtimer|timer_|work_|"
+     r"notifier|atomic_|refcount|percpu)", "kernel"),
+    # lib/ — helpers
+    (r"^(str|memcmp|memcpy|memset|memmove|strlen|strncpy|strscpy|"
+     r"list_|hlist|rbtree|radix_tree|xarray|bitmap|"
+     r"sort|bsearch|find_|__find_|idr|crc|hash|rhashtable)", "lib"),
+    # net/ — networking
+    (r"^(net_|sock_|socket_|sk_|skb_|dev_|netdev_|eth_|ipv[46]|tcp_|udp_|"
+     r"ip_|packet_|recv_|send_|sendmsg|recvmsg|netlink_|"
+     r"nla_|nlmsg|nf_|xt_|conntrack|neigh_|route_|dst_|fib_|"
+     r"inet_|sin_|saddr|daddr)", "net"),
+    # fs/ — filesystems (already scanned typically, but if missing)
+    (r"^(vfs_|inode_|dentry_|file_|super_|s_op|i_op|f_op|"
+     r"path_|d_path|mount_|kern_mount|do_mount|"
+     r"open_|close_|read_|write_|lseek|fsync|flock|"
+     r"pagecache|address_space|a_ops|readpage|writepage|"
+     r"buffer_|bh_|ll_rw_block|submit_bh|mark_buffer_|"
+     r"ext4_|ext3_|ext2_|xfs_|btrfs_|f2fs_|nfs_|fat_|ntfs_)", "fs"),
+    # drivers/ — device drivers
+    (r"^(driver_|pci_|usb_|platform_|of_|devm_|clk_|regmap_|"
+     r"i2c_|spi_|dma_|dmaengine|gpio_|irq_|interrupt_|"
+     r"rtc_|hwmon_|input_|tty_|serial_|char_|misc_|"
+     r"scsi_|ata_|sata_|nvme_|drm_|gpu_|fb_|lcd_|backlight)", "drivers"),
+    # security/ — security subsystem
+    (r"^(security_|selinux_|smack_|apparmor|cap_|"
+     r"selinux|capable|ns_capable|has_capability)", "security"),
+    # crypto/ — crypto
+    (r"^(crypto_|cipher_|hash_|hmac_|aead_|skcipher|"
+     r"sha[0-9]|md5|aes|rsa|ecdh|crc32|crc16)", "crypto"),
+    # ipc/ — IPC
+    (r"^(ipc_|shm_|sem_|msg_|mq_|mqueue|shmget|shmctl)", "ipc"),
 ]
 
 
 def _subsystem_from_path(path: str) -> str:
-    norm = path.replace('\\', '/')
-    parts = norm.split('/')
-    if len(parts) >= 1 and parts[0]:
-        return parts[0]
-    return ''
+    """Extract the top-level subsystem from a file path.
+
+    'fs/ext4/inode.c' → 'fs'
+    'mm/page_alloc.c' → 'mm'
+    'include/linux/sched.h' → 'include'
+    'foo/bar.c' → 'foo' (non-kernel paths get their top dir)
+    """
+    if not path:
+        return "root"
+    # Strip leading ./ or /
+    p = path.lstrip("./")
+    parts = p.split("/")
+    if len(parts) == 1:
+        return "root"
+    return parts[0]
 
 
 def write_coverage_report(graph_dir: str) -> Optional[str]:
-    db_path = os.path.join(graph_dir, 'code2database.db')
+    """Write `<graph_dir>/.code2database_coverage_report.json`.
+
+    Reads `cgdb_files.path` from the SQLite DB (if present) and groups files
+    by top-level subsystem. Returns the path written, or None if DB missing
+    or no cgdb_files rows.
+    """
+    db_path = os.path.join(graph_dir, "code2database.db")
     if not os.path.exists(db_path):
         return None
-    import sqlite3
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
     try:
-        try:
-            rows = conn.execute(
-                "SELECT path, language, line_count, byte_count FROM cgdb_files"
-            ).fetchall()
-        except sqlite3.OperationalError:
-            return None
-        if not rows:
-            return None
-        subsystems = {}
-        for row in rows:
-            sub = _subsystem_from_path(row['path'])
-            if sub:
-                entry = subsystems.setdefault(sub, {
-                    'file_count': 0, 'line_count': 0,
-                    'languages': set(),
-                })
-                entry['file_count'] += 1
-                entry['line_count'] += row['line_count'] or 0
-                if row['language']:
-                    entry['languages'].add(row['language'])
-        scanned = sorted(subsystems.keys())
-        missing = [s for s in _KERNEL_SUBSYSTEMS if s not in subsystems]
-        for s in sorted(subsystems.keys()):
-            if s not in _KERNEL_SUBSYSTEMS:
-                missing.append(s)
-        report = {
-            'type': 'code2database_coverage_report',
-            'generated_by': 'graph_build',
-            'graph_dir': graph_dir,
-            'scanned_subsystems': scanned,
-            'missing_common_subsystems': missing,
-            'total_files': len(rows),
-            'subsystem_details': {
-                s: {'file_count': v['file_count'],
-                    'line_count': v['line_count'],
-                    'languages': sorted(v['languages'])}
-                for s, v in sorted(subsystems.items())
-            },
-        }
-        out_path = os.path.join(graph_dir, '.code2database_coverage_report.json')
-        with open(out_path, 'w', encoding='utf-8') as f:
-            json.dump(report, f, ensure_ascii=False, indent=2)
-        return out_path
-    except Exception as exc:
-        return None
-    finally:
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute(
+            "SELECT path, language FROM cgdb_files"
+        ).fetchall()
         conn.close()
-
-
-def write_file_coverage(graph_dir: str) -> Optional[str]:
-    db_path = os.path.join(graph_dir, 'code2database.db')
-    if not os.path.exists(db_path):
+    except sqlite3.Error:
         return None
-    import sqlite3
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        try:
-            rows = conn.execute(
-                "SELECT path, language, line_count, byte_count, commit_hash "
-                "FROM cgdb_files ORDER BY path"
-            ).fetchall()
-        except sqlite3.OperationalError:
-            return None
-        if not rows:
-            return None
-        files = []
-        langs = {}
-        subs = {}
-        total_lines = 0
-        total_bytes = 0
-        for row in rows:
-            sub = _subsystem_from_path(row['path'])
-            files.append({
-                'path': row['path'], 'language': row['language'] or '',
-                'line_count': row['line_count'] or 0,
-                'byte_count': row['byte_count'] or 0,
-                'commit_hash': row['commit_hash'] or '',
-            })
-            lang = row['language'] or 'unknown'
-            langs[lang] = langs.get(lang, 0) + 1
-            if sub:
-                subs[sub] = subs.get(sub, 0) + 1
-            total_lines += row['line_count'] or 0
-            total_bytes += row['byte_count'] or 0
-        report = {
-            'type': 'code2database_file_coverage',
-            'generated_by': 'graph_build',
-            'graph_dir': graph_dir,
-            'total_files': len(rows),
-            'total_lines': total_lines,
-            'total_bytes': total_bytes,
-            'languages': langs,
-            'subsystems': subs,
-            'files': files,
-        }
-        out_path = os.path.join(graph_dir, '.code2database_file_coverage.json')
-        with open(out_path, 'w', encoding='utf-8') as f:
-            json.dump(report, f, ensure_ascii=False, indent=2)
-        return out_path
-    except Exception:
+    if not rows:
         return None
-    finally:
-        conn.close()
+
+    subsystem_files: Dict[str, List[str]] = {}
+    subsystem_langs: Dict[str, Counter] = {}
+    for path, lang in rows:
+        sub = _subsystem_from_path(path)
+        subsystem_files.setdefault(sub, []).append(path)
+        subsystem_langs.setdefault(sub, Counter())[lang or "unknown"] += 1
+
+    total_files = len(rows)
+    report = {
+        "type": "code2database_coverage_report",
+        "generated_by": "RPT-KERNEL-D14",
+        "graph_dir": graph_dir,
+        "total_files": total_files,
+        "subsystem_count": len(subsystem_files),
+        "subsystems": [
+            {
+                "name": sub,
+                "file_count": len(subsystem_files[sub]),
+                "languages": dict(subsystem_langs.get(sub, Counter())),
+                "sample_paths": sorted(subsystem_files[sub])[:5],
+            }
+            for sub, _files in sorted(
+                subsystem_files.items(),
+                key=lambda kv: (-len(kv[1]), kv[0]),
+            )
+        ],
+        "missing_common_subsystems": [
+            s for s in _KERNEL_SUBSYSTEMS
+            if s not in subsystem_files and s != "root"
+        ],
+    }
+    out_path = os.path.join(graph_dir, ".code2database_coverage_report.json")
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+    return out_path
 
 
 def _guess_subsystem_for_name(name: str) -> List[str]:
-    hints = []
-    for pat, sub in _NAME_TO_SUBSYSTEM_HINTS:
-        if pat.match(name):
-            if sub not in hints:
-                hints.append(sub)
-    return hints
+    """Given a function name like 'folio_batch_add' or 'blk_mq_submit_bio',
+    return a list of subsystems likely to contain its definition, ordered
+    by match strength.
+    """
+    if not name:
+        return []
+    # Strip common prefixes (root_, domain_, legacy_) used in JSON graph IDs
+    cleaned = name
+    for prefix in ("root_", "domain_", "legacy_"):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix):]
+    cleaned_lower = cleaned.lower()
+    matches = []
+    for pattern, sub in _NAME_TO_SUBSYSTEM_HINTS:
+        if re.match(pattern, cleaned_lower):
+            matches.append(sub)
+    # Deduplicate while preserving order
+    seen = set()
+    ordered = []
+    for s in matches:
+        if s not in seen:
+            ordered.append(s)
+            seen.add(s)
+    return ordered
 
 
-def path_not_found_hints(graph_dir: str, missing_src: Optional[str] = None,
-                         missing_dst: Optional[str] = None) -> Dict[str, Any]:
-    coverage_path = os.path.join(graph_dir, '.code2database_coverage_report.json')
+def path_not_found_hints(
+    graph_dir: str,
+    missing_src: Optional[str] = None,
+    missing_dst: Optional[str] = None,
+) -> Dict:
+    """Generate actionable hints when `cgdb-path` cannot find src/dst.
+
+    Returns a dict with:
+      - `scanned_subsystems`: list of subsystems already in the graph
+      - `missing_common_subsystems`: list of common kernel subsystems NOT in graph
+      - `src_subsystem_hints`: subsystems likely to contain missing_src's definition
+      - `dst_subsystem_hints`: subsystems likely to contain missing_dst's definition
+      - `coverage_report_path`: path to .code2database_coverage_report.json (if exists)
+      - `suggestion`: human-readable string with concrete next steps
+    """
+    cov_path = os.path.join(graph_dir, ".code2database_coverage_report.json")
     scanned = []
-    coverage_report_path = None
-    if os.path.exists(coverage_path):
+    missing_common = []
+    if os.path.exists(cov_path):
         try:
-            with open(coverage_path, 'r', encoding='utf-8') as f:
+            with open(cov_path, "r", encoding="utf-8") as f:
                 cov = json.load(f)
-            scanned = cov.get('scanned_subsystems', [])
-            coverage_report_path = coverage_path
-        except Exception:
+            scanned = [s["name"] for s in cov.get("subsystems", [])]
+            missing_common = cov.get("missing_common_subsystems", [])
+        except (json.JSONDecodeError, OSError):
             pass
-    if not scanned:
-        db_path = os.path.join(graph_dir, 'code2database.db')
-        if os.path.exists(db_path):
-            import sqlite3
-            conn = sqlite3.connect(db_path)
-            try:
-                try:
-                    rows = conn.execute("SELECT DISTINCT path FROM cgdb_files").fetchall()
-                    for row in rows:
-                        sub = _subsystem_from_path(row[0])
-                        if sub and sub not in scanned:
-                            scanned.append(sub)
-                except sqlite3.OperationalError:
-                    pass
-            finally:
-                conn.close()
-    suggestions = []
-    for name, missing in [('source', missing_src), ('target', missing_dst)]:
-        if not missing:
-            continue
-        hints = _guess_subsystem_for_name(missing)
-        for hint in hints:
-            if hint not in scanned:
-                suggestions.append(
-                    f"{name} '{missing}' looks like a {hint}/ function — "
-                    f"consider scanning {hint}/ (currently not in graph)")
-    missing_common = [s for s in _KERNEL_SUBSYSTEMS if s not in scanned]
-    if not suggestions and not missing_common:
-        suggestion = "no specific subsystem hints available"
     else:
-        parts = []
-        if suggestions:
-            parts.append('; '.join(suggestions))
-        if missing_common:
-            parts.append(f"Missing common subsystems: {', '.join(missing_common[:5])}")
-        suggestion = ' | '.join(parts) if parts else "no hints"
+        # Fallback: query SQLite directly
+        db_path = os.path.join(graph_dir, "code2database.db")
+        if os.path.exists(db_path):
+            try:
+                conn = sqlite3.connect(db_path)
+                rows = conn.execute("SELECT path FROM cgdb_files").fetchall()
+                conn.close()
+                scanned = sorted(set(
+                    _subsystem_from_path(r[0]) for r in rows
+                ))
+                missing_common = [
+                    s for s in _KERNEL_SUBSYSTEMS
+                    if s not in scanned and s != "root"
+                ]
+            except sqlite3.Error:
+                pass
+
+    src_hints = _guess_subsystem_for_name(missing_src) if missing_src else []
+    dst_hints = _guess_subsystem_for_name(missing_dst) if missing_dst else []
+
+    # Build the suggestion string
+    parts = []
+    if missing_src and src_hints:
+        unscanned_src = [s for s in src_hints if s not in scanned]
+        if unscanned_src:
+            parts.append(
+                f"source '{missing_src}' looks like a {unscanned_src[0]}/ "
+                f"function — consider scanning {unscanned_src[0]}/ "
+                f"(currently not in graph)"
+            )
+    if missing_dst and dst_hints:
+        unscanned_dst = [s for s in dst_hints if s not in scanned]
+        if unscanned_dst:
+            parts.append(
+                f"target '{missing_dst}' looks like a {unscanned_dst[0]}/ "
+                f"function — consider scanning {unscanned_dst[0]}/ "
+                f"(currently not in graph)"
+            )
+    if missing_common and not parts:
+        parts.append(
+            f"common kernel subsystems NOT in graph: "
+            f"{', '.join(missing_common[:5])}. Consider re-scanning with "
+            f"`--source /path/to/kernel` to include those subsystems."
+        )
+    if not parts:
+        parts.append(
+            "no specific subsystem hints — verify the function name is "
+            "spelled correctly, or re-scan the full source tree."
+        )
+
     return {
-        'suggestion': suggestion,
-        'scanned_subsystems': scanned,
-        'missing_common_subsystems': missing_common,
-        'coverage_report_path': coverage_report_path,
+        "scanned_subsystems": scanned,
+        "missing_common_subsystems": missing_common,
+        "src_subsystem_hints": src_hints,
+        "dst_subsystem_hints": dst_hints,
+        "coverage_report_path": cov_path if os.path.exists(cov_path) else None,
+        "suggestion": " | ".join(parts),
     }
 
 
-def query_coverage(graph_dir: str, function_name: str = '',
-                   file_path: str = '') -> Dict[str, Any]:
-    db_path = os.path.join(graph_dir, 'code2database.db')
+def write_file_coverage(graph_dir: str) -> Optional[str]:
+    """Write `<graph_dir>/.code2database_file_coverage.json` listing every
+    scanned file path (relative to source root) and per-file stats.
+
+    This complements `write_coverage_report()` (which groups by subsystem)
+    by providing the full file-level list — useful for diagnosing "was
+    file Y scanned?" without opening SQLite directly.
+
+    Returns the path written, or None if DB missing or no cgdb_files rows.
+    """
+    db_path = os.path.join(graph_dir, "code2database.db")
     if not os.path.exists(db_path):
-        return {'status': 'error', 'error': f'Database not found: {db_path}'}
-    import sqlite3
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+        return None
+    try:
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute(
+            "SELECT path, language, line_count, byte_count, "
+            "commit_hash FROM cgdb_files ORDER BY path"
+        ).fetchall()
+        conn.close()
+    except sqlite3.Error:
+        return None
+    if not rows:
+        return None
+
+    files = []
+    by_lang: Counter = Counter()
+    by_subsystem: Counter = Counter()
+    for path, lang, line_count, byte_count, commit_hash in rows:
+        files.append({
+            "path": path,
+            "language": lang or "unknown",
+            "line_count": line_count or 0,
+            "byte_count": byte_count or 0,
+            "commit_hash": commit_hash or "",
+        })
+        by_lang[lang or "unknown"] += 1
+        by_subsystem[_subsystem_from_path(path)] += 1
+
+    report = {
+        "type": "code2database_file_coverage",
+        "generated_by": "RPT-KERNEL-D15",
+        "graph_dir": graph_dir,
+        "total_files": len(files),
+        "total_lines": sum(f["line_count"] for f in files),
+        "total_bytes": sum(f["byte_count"] for f in files),
+        "languages": dict(by_lang),
+        "subsystems": dict(by_subsystem.most_common()),
+        "files": files,
+    }
+    out_path = os.path.join(graph_dir, ".code2database_file_coverage.json")
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+    return out_path
+
+
+def query_coverage(
+    graph_dir: str,
+    function_name: Optional[str] = None,
+    file_path: Optional[str] = None,
+) -> Dict:
+    """Answer two questions:
+
+    - `--function X`: Is function X in the graph? Returns matching
+      cgdb_nodes rows (name, fqn, file_path, line) — useful for
+      diagnosing "why didn't analysis find this function?"
+    - `--file Y`: Was file Y scanned? Returns the cgdb_files row if
+      present, plus a list of all functions defined in that file.
+
+    If neither argument is given, returns the subsystem-level summary
+    (same as `path_not_found_hints()` minus the suggestion).
+    """
+    db_path = os.path.join(graph_dir, "code2database.db")
+    if not os.path.exists(db_path):
+        return {
+            "status": "error",
+            "error": f"{db_path} not found",
+        }
+    try:
+        conn = sqlite3.connect(db_path)
+    except sqlite3.Error as exc:
+        return {"status": "error", "error": f"cannot open DB: {exc}"}
+
+    result: Dict = {"status": "ok", "graph_dir": graph_dir}
+
     try:
         if function_name:
+            # Match by exact name, then by FQN suffix, then by name LIKE
             rows = conn.execute(
-                "SELECT n.id, n.name, n.fqn, f.path AS file_path, n.line "
-                "FROM cgdb_nodes n LEFT JOIN cgdb_files f ON n.file_id = f.id "
-                "WHERE n.name = ? AND n.kind IN ('function','method','constructor','destructor') "
-                "LIMIT 50", (function_name,)).fetchall()
+                "SELECT n.id, n.name, n.fqn, n.file_id, n.line, "
+                "f.path AS file_path, n.kind, n.source_layer "
+                "FROM cgdb_nodes n "
+                "LEFT JOIN cgdb_files f ON n.file_id = f.id "
+                "WHERE n.name = ? OR n.fqn LIKE ? OR n.name LIKE ? "
+                "ORDER BY n.name LIMIT 100",
+                (function_name, f"%{function_name}",
+                 f"%{function_name}%")
+            ).fetchall()
+            result["function_query"] = {
+                "query": function_name,
+                "match_count": len(rows),
+                "matches": [
+                    {
+                        "id": r[0],
+                        "name": r[1],
+                        "fqn": r[2],
+                        "file_id": r[3],
+                        "line": r[4],
+                        "file_path": r[5],
+                        "kind": r[6],
+                        "source_layer": r[7],
+                    }
+                    for r in rows
+                ],
+            }
             if not rows:
-                rows = conn.execute(
-                    "SELECT n.id, n.name, n.fqn, f.path AS file_path, n.line "
-                    "FROM cgdb_nodes n LEFT JOIN cgdb_files f ON n.file_id = f.id "
-                    "WHERE n.fqn LIKE ? AND n.kind IN ('function','method') "
-                    "LIMIT 50", (f'%{function_name}',)).fetchall()
-            if not rows:
-                rows = conn.execute(
-                    "SELECT n.id, n.name, n.fqn, f.path AS file_path, n.line "
-                    "FROM cgdb_nodes n LEFT JOIN cgdb_files f ON n.file_id = f.id "
-                    "WHERE n.name LIKE ? AND n.kind IN ('function','method') "
-                    "LIMIT 50", (f'%{function_name}%',)).fetchall()
-            if not rows:
+                # No match — fall back to subsystem hint
                 hints = _guess_subsystem_for_name(function_name)
-                return {
-                    'status': 'not_found', 'function': function_name,
-                    'match_count': 0, 'subsystem_hints': hints,
-                    'suggestion': f"'{function_name}' may be in {', '.join(hints)}/ — not scanned" if hints else '',
-                }
-            return {
-                'status': 'found', 'function': function_name,
-                'match_count': len(rows),
-                'matches': [{'id': r['id'], 'name': r['name'], 'fqn': r['fqn'],
-                              'file_path': r['file_path'], 'line': r['line']}
-                             for r in rows],
-            }
-        elif file_path:
+                result["function_query"]["subsystem_hints"] = hints
+                result["function_query"]["suggestion"] = (
+                    f"function '{function_name}' not in graph; "
+                    f"name looks like it could belong to: "
+                    f"{', '.join(hints) if hints else '(no match)'}. "
+                    f"Consider re-scanning that subsystem."
+                )
+
+        if file_path:
+            # Match by exact path, then by path suffix
             rows = conn.execute(
-                "SELECT id, path, language, line_count FROM cgdb_files "
-                "WHERE path = ? LIMIT 1", (file_path,)).fetchall()
-            if not rows:
-                rows = conn.execute(
-                    "SELECT id, path, language, line_count FROM cgdb_files "
-                    "WHERE path LIKE ? LIMIT 1", (f'%/{file_path}',)).fetchall()
-            if not rows:
-                rows = conn.execute(
-                    "SELECT id, path, language, line_count FROM cgdb_files "
-                    "WHERE path LIKE ? LIMIT 1", (f'%{file_path}%',)).fetchall()
-            if not rows:
-                return {'status': 'not_scanned', 'file': file_path, 'scanned': False}
-            file_row = rows[0]
-            funcs = conn.execute(
-                "SELECT id, name, fqn, line FROM cgdb_nodes "
-                "WHERE file_id = ? AND kind IN ('function','method','constructor','destructor') "
-                "ORDER BY line LIMIT 200", (file_row['id'],)).fetchall()
-            return {
-                'status': 'found', 'file': file_path, 'scanned': True,
-                'file_id': file_row['id'], 'language': file_row['language'],
-                'line_count': file_row['line_count'],
-                'function_count': len(funcs),
-                'functions': [{'id': r['id'], 'name': r['name'], 'fqn': r['fqn'], 'line': r['line']}
-                               for r in funcs],
+                "SELECT id, path, language, line_count, byte_count, "
+                "commit_hash FROM cgdb_files "
+                "WHERE path = ? OR path LIKE ? OR path LIKE ? "
+                "ORDER BY path LIMIT 10",
+                (file_path, f"%/{file_path}", f"%{file_path}%")
+            ).fetchall()
+            scanned_files = [
+                {
+                    "id": r[0], "path": r[1], "language": r[2],
+                    "line_count": r[3], "byte_count": r[4],
+                    "commit_hash": r[5],
+                }
+                for r in rows
+            ]
+            result["file_query"] = {
+                "query": file_path,
+                "scanned": len(scanned_files) > 0,
+                "matches": scanned_files,
             }
-        else:
-            scanned = []
-            try:
-                file_rows = conn.execute("SELECT DISTINCT path FROM cgdb_files").fetchall()
-                for fr in file_rows:
-                    sub = _subsystem_from_path(fr['path'])
-                    if sub and sub not in scanned:
-                        scanned.append(sub)
-            except sqlite3.OperationalError:
-                pass
-            missing = [s for s in _KERNEL_SUBSYSTEMS if s not in scanned]
-            return {
-                'status': 'summary', 'scanned_subsystems': scanned,
-                'missing_common_subsystems': missing,
-                'total_files': len(file_rows) if 'file_rows' in dir() else 0,
-                'coverage_report_path': os.path.join(graph_dir, '.code2database_coverage_report.json')
-                    if os.path.exists(os.path.join(graph_dir, '.code2database_coverage_report.json')) else None,
-                'file_coverage_path': os.path.join(graph_dir, '.code2database_file_coverage.json')
-                    if os.path.exists(os.path.join(graph_dir, '.code2database_file_coverage.json')) else None,
+            if scanned_files:
+                # List functions defined in the first matching file
+                file_id = scanned_files[0]["id"]
+                fn_rows = conn.execute(
+                    "SELECT name, fqn, line, kind FROM cgdb_nodes "
+                    "WHERE file_id = ? AND kind IN "
+                    "('function', 'method', 'constructor', 'destructor') "
+                    "ORDER BY line LIMIT 200",
+                    (file_id,)
+                ).fetchall()
+                result["file_query"]["functions_in_file"] = [
+                    {"name": r[0], "fqn": r[1], "line": r[2], "kind": r[3]}
+                    for r in fn_rows
+                ]
+                result["file_query"]["function_count"] = len(fn_rows)
+
+        if not function_name and not file_path:
+            # No query — return subsystem summary
+            file_rows = conn.execute(
+                "SELECT path FROM cgdb_files"
+            ).fetchall()
+            scanned = sorted(set(
+                _subsystem_from_path(r[0]) for r in file_rows
+            ))
+            missing_common = [
+                s for s in _KERNEL_SUBSYSTEMS
+                if s not in scanned and s != "root"
+            ]
+            result["summary"] = {
+                "scanned_subsystems": scanned,
+                "missing_common_subsystems": missing_common,
+                "total_files": len(file_rows),
+                "coverage_report_path": (
+                    os.path.join(graph_dir,
+                                 ".code2database_coverage_report.json")
+                    if os.path.exists(os.path.join(
+                        graph_dir, ".code2database_coverage_report.json"))
+                    else None
+                ),
+                "file_coverage_path": (
+                    os.path.join(graph_dir,
+                                 ".code2database_file_coverage.json")
+                    if os.path.exists(os.path.join(
+                        graph_dir, ".code2database_file_coverage.json"))
+                    else None
+                ),
             }
-    except Exception as exc:
-        return {'status': 'error', 'error': str(exc)}
     finally:
         conn.close()
+
+    return result

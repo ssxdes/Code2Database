@@ -19,7 +19,7 @@ from _builder.logging_utils import configure_logging, get_logger, parse_log_leve
 # most common operations (build, search, describe, trace, query).
 from _builder.graph_build import cmd_build, _detect_build_system
 from _builder.search_cmd import cmd_load, cmd_search, cmd_path, cmd_neighbors, cmd_impact, cmd_domain
-from _builder.query import cmd_describe_node, cmd_resolve_chain, cmd_trace_chain, cmd_diff_chains, cmd_get_code_snippet, cmd_blast_radius, cmd_io_path, cmd_reverse_trace, cmd_field_access, cmd_param_flow, cmd_describe_commit, cmd_node_history, cmd_graph_provenance, cmd_blame_node, cmd_find_commits
+from _builder.query import cmd_describe_node, cmd_resolve_chain, cmd_trace_chain, cmd_diff_chains, cmd_get_code_snippet, cmd_blast_radius, cmd_io_path, cmd_reverse_trace, cmd_field_access, cmd_field_flow, cmd_param_flow, cmd_describe_commit, cmd_node_history, cmd_graph_provenance, cmd_blame_node, cmd_find_commits
 from _builder.query_lang import cmd_query
 from _builder.value_flow import cmd_value_flow
 from _builder.lock_coverage import cmd_lock_coverage
@@ -78,7 +78,7 @@ from _builder.cmd_report_tools import (
     cmd_insert_node_after, cmd_delete_node, cmd_add_function,
 )
 from _builder.runtime_guards import cmd_runtime_guards
-from _builder.path_feasibility import cmd_path_feasible
+from _builder.path_feasibility import cmd_path_feasible, cmd_path_guards
 from _builder.doc_code_align import (
     cmd_doc_code_check, cmd_doc_mark_stale, cmd_doc_alignment_report,
     cmd_doc_signature_diff,
@@ -883,6 +883,23 @@ def main():
                       help="Filter writes by assigned RHS value (e.g., 'NULL' for null-pointer-deref analysis)")
     p_fa.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # field-flow — combine field-access writers with reverse-trace call chains
+    # for null-pointer-deref / use-after-free / race-condition root-cause analysis.
+    # Answers "who set field X to value Y, and how is that writer reached from entry points?"
+    p_ff = sub.add_parser("field-flow",
+                          help="Trace field writes + their call chains (combines field-access + reverse-trace)")
+    p_ff.add_argument("--graph", required=True, help="Call graph output directory")
+    p_ff.add_argument("--struct", default="", help="Struct name (e.g., buffer_head, block_device)")
+    p_ff.add_argument("--field", required=True,
+                      help="Field name (e.g., b_bdev, bd_inode) — the field written to NULL/special value")
+    p_ff.add_argument("--value", default="",
+                      help="Filter writes by assigned RHS value (e.g., 'NULL' for NULL-deref analysis)")
+    p_ff.add_argument("--max-depth", type=int, default=8,
+                      help="Max reverse-trace depth from each writer (default: 8)")
+    p_ff.add_argument("--max-paths-per-writer", type=int, default=5,
+                      help="Max call chains per writer to return (default: 5)")
+    p_ff.add_argument("--json", action="store_true", help="Output as JSON")
+
     # watch
     p_watch = sub.add_parser("watch", help="Auto-sync: watch source directory and update incrementally")
     p_watch.add_argument("--source", required=True, help="Source directory to watch")
@@ -968,6 +985,23 @@ def main():
                       help="Walk paths from this node and check feasibility")
     p_pf.add_argument("--max-depth", type=int, default=5, help="Max path depth")
     p_pf.add_argument("--with-configs", default="",
+                      help="Macro bindings for config-predicate feasibility "
+                           "(e.g., 'CONFIG_X=true,CONFIG_Y=false')")
+
+    # IMPROVE-OPT4: path-guards — prove writer reachability from entry point
+    p_pg = sub.add_parser("path-guards",
+                          help="Prove writer reachability from entry using guard conditions")
+    p_pg.add_argument("--graph", required=True, help="Call graph output directory")
+    p_pg.add_argument("--from", dest="from_node", required=True,
+                      help="Entry point function name or node ID")
+    p_pg.add_argument("--to", dest="to_node", required=True,
+                      help="Writer function name or node ID")
+    p_pg.add_argument("--field", default="",
+                      help="Target field name (e.g., 'b_bdev') — used to look up writer's guard_condition")
+    p_pg.add_argument("--value", default="",
+                      help="Filter writer by assigned value (e.g., 'NULL')")
+    p_pg.add_argument("--max-depth", type=int, default=8, help="Max path depth for forward BFS")
+    p_pg.add_argument("--with-configs", default="",
                       help="Macro bindings for config-predicate feasibility "
                            "(e.g., 'CONFIG_X=true,CONFIG_Y=false')")
 
@@ -1631,6 +1665,7 @@ def main():
         "get-code-snippet": cmd_get_code_snippet,
         "blast-radius": cmd_blast_radius,
         "field-access": cmd_field_access,
+        "field-flow": cmd_field_flow,
         "io-path": cmd_io_path,
         "param-flow": cmd_param_flow,
         "extract-signals": cmd_extract_signals,
@@ -1649,6 +1684,7 @@ def main():
         "lock-coverage": cmd_lock_coverage,
         # Deficiency 6: path feasibility
         "path-feasible": cmd_path_feasible,
+        "path-guards": cmd_path_guards,
         # Deficiency 7: data dependency
         "data-dep": cmd_data_dep,
         # Deficiency 8: invariants

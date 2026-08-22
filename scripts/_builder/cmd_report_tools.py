@@ -1,197 +1,200 @@
-"""CLI wrappers for the 13 report-layer MCP tools.
+"""cmd_report_tools — CLI wrappers for the 13 design-report write-back/L1 commands.
 
-Each function takes argparse args, constructs the dict expected by the
-corresponding _tool_* handler in mcp_report_tools.py, and prints JSON.
+These commands wrap the MCP tool handlers in mcp_report_tools.py so they
+can be invoked from the code2database_builder CLI. Each cmd_* function
+takes argparse args, builds a dict matching the MCP tool's inputSchema,
+calls the underlying _tool_* handler, and prints JSON to stdout.
+
+Implements the 13 commands listed in Code2Database-最终差距分析与优化报告.md
+(RPT-P0-13):
+
+  L1 写回与一致性 (5):
+    - render-source        (file_id)
+    - verify-consistency   (file_id)
+    - edit-token           (token_id, new_text)
+    - insert-token         (after_token_id, tokens JSON)
+    - delete-token         (token_id)
+
+  L1 信息查询 (3):
+    - find-macros          (name?)
+    - get-pp-branches      (file_id)
+    - get-string-literals  (pattern?)
+
+  事务化写回 (2):
+    - commit-db-transaction       (transaction_id, run_compile, run_lint,
+                                   run_clang_format, git_commit, commit_message)
+    - rollback-db-transaction     (transaction_id)
+
+  高级语义编辑 (3):
+    - insert-node-after    (ast_node_id, node_spec JSON)
+    - delete-node          (ast_node_id)
+    - add-function         (signature, body_tokens JSON)
+
+Convention: <graph_dir>/code2database.db (same as MCP server and cgdb_commands).
 """
 import json
 import os
 import sys
+from typing import Any
+
+from _builder.mcp_report_tools import (
+    _tool_render_source,
+    _tool_verify_consistency,
+    _tool_edit_token,
+    _tool_insert_token,
+    _tool_delete_token,
+    _tool_find_macros,
+    _tool_get_pp_branches,
+    _tool_get_string_literals,
+    _tool_commit_db_transaction,
+    _tool_rollback_db_transaction,
+    _tool_insert_node_after,
+    _tool_delete_node,
+    _tool_add_function,
+)
 
 
-def _print_json(obj):
-    print(json.dumps(obj, ensure_ascii=False, indent=2, default=str))
+def _print_json(obj: Any) -> None:
+    print(json.dumps(obj, indent=2, default=str, ensure_ascii=False))
 
 
-def _graph_or_cwd(args):
-    return getattr(args, 'graph', None) or os.getcwd()
+def _graph_or_cwd(args) -> str:
+    """Return graph_dir; default to cwd if --graph not given."""
+    return getattr(args, "graph", None) or os.getcwd()
 
 
-def _get_file_id(args):
-    fid = getattr(args, 'file_id', None)
-    if fid is not None:
-        return int(fid)
-    name = getattr(args, 'name', None) or getattr(args, 'node', None)
-    if name:
-        db_path = os.path.join(_graph_or_cwd(args), 'code2database.db')
-        if os.path.exists(db_path):
-            import sqlite3
-            conn = sqlite3.connect(db_path)
-            try:
-                row = conn.execute(
-                    "SELECT id FROM cgdb_files WHERE path LIKE ? LIMIT 1",
-                    (f'%{name}%',)).fetchone()
-                if row:
-                    return row[0]
-            finally:
-                conn.close()
-    return 0
-
+# ---------------------------------------------------------------------------
+# L1 写回与一致性 (5)
+# ---------------------------------------------------------------------------
 
 def cmd_render_source(args):
-    from _builder.mcp_report_tools import _tool_render_source
+    """Render source code from DB tokens for a file_id."""
     graph_dir = _graph_or_cwd(args)
-    file_id = _get_file_id(args)
-    _print_json(_tool_render_source({'file_id': file_id}, graph_dir))
+    result = _tool_render_source({"file_id": args.file_id}, graph_dir)
+    _print_json(result)
 
 
 def cmd_verify_consistency(args):
-    from _builder.mcp_report_tools import _tool_verify_consistency
+    """Verify DB-token-rendered source sha256 matches disk file sha256."""
     graph_dir = _graph_or_cwd(args)
-    file_id = _get_file_id(args)
-    _print_json(_tool_verify_consistency({'file_id': file_id}, graph_dir))
+    result = _tool_verify_consistency({"file_id": args.file_id}, graph_dir)
+    _print_json(result)
 
 
 def cmd_edit_token(args):
-    from _builder.mcp_report_tools import _tool_edit_token
+    """Edit a single token's spelling by token_id (DB only — commit to write)."""
     graph_dir = _graph_or_cwd(args)
-    _print_json(_tool_edit_token({
-        'token_id': int(getattr(args, 'token_id', 0)),
-        'new_text': getattr(args, 'new_text', ''),
-    }, graph_dir))
+    result = _tool_edit_token(
+        {"token_id": args.token_id, "new_text": args.new_text},
+        graph_dir,
+    )
+    _print_json(result)
 
 
 def cmd_insert_token(args):
-    from _builder.mcp_report_tools import _tool_insert_token
+    """Insert tokens after a given anchor token_id (DB only — commit to write)."""
     graph_dir = _graph_or_cwd(args)
-    import json as _json
-    tokens = []
-    tokens_json = getattr(args, 'tokens_json', None)
-    if tokens_json:
-        try:
-            tokens = _json.loads(tokens_json)
-        except _json.JSONDecodeError:
-            print(f"Error: invalid --tokens-json", file=sys.stderr)
-            sys.exit(1)
-    _print_json(_tool_insert_token({
-        'after_token_id': int(getattr(args, 'after_token_id', 0)),
-        'tokens': tokens,
-    }, graph_dir))
+    tokens = json.loads(args.tokens_json) if args.tokens_json else []
+    result = _tool_insert_token(
+        {"after_token_id": args.after_token_id, "tokens": tokens},
+        graph_dir,
+    )
+    _print_json(result)
 
 
 def cmd_delete_token(args):
-    from _builder.mcp_report_tools import _tool_delete_token
+    """Delete a token by token_id (DB only — commit to write)."""
     graph_dir = _graph_or_cwd(args)
-    _print_json(_tool_delete_token({
-        'token_id': int(getattr(args, 'token_id', 0)),
-    }, graph_dir))
+    result = _tool_delete_token({"token_id": args.token_id}, graph_dir)
+    _print_json(result)
 
+
+# ---------------------------------------------------------------------------
+# L1 信息查询 (3)
+# ---------------------------------------------------------------------------
 
 def cmd_find_macros(args):
-    from _builder.mcp_report_tools import _tool_find_macros
+    """Find macros by name (or list all if no name)."""
     graph_dir = _graph_or_cwd(args)
-    _print_json(_tool_find_macros({
-        'name': getattr(args, 'name', None) or '',
-    }, graph_dir))
+    result = _tool_find_macros({"name": args.name}, graph_dir)
+    _print_json(result)
 
 
 def cmd_get_pp_branches(args):
-    from _builder.mcp_report_tools import _tool_get_pp_branches
+    """Get #if/#ifdef/#elif branches for a file_id."""
     graph_dir = _graph_or_cwd(args)
-    file_id = _get_file_id(args)
-    _print_json(_tool_get_pp_branches({'file_id': file_id}, graph_dir))
+    result = _tool_get_pp_branches({"file_id": args.file_id}, graph_dir)
+    _print_json(result)
 
 
 def cmd_get_string_literals(args):
-    from _builder.mcp_report_tools import _tool_get_string_literals
+    """Find string literals matching a regex pattern."""
     graph_dir = _graph_or_cwd(args)
-    _print_json(_tool_get_string_literals({
-        'pattern': getattr(args, 'pattern', None) or '',
-    }, graph_dir))
+    result = _tool_get_string_literals({"pattern": args.pattern}, graph_dir)
+    _print_json(result)
 
+
+# ---------------------------------------------------------------------------
+# 事务化写回 (2)
+# ---------------------------------------------------------------------------
 
 def cmd_commit_db_transaction(args):
-    from _builder.writeback_pipeline import commit_db_transaction as _commit
-    from _builder.writeback_pipeline import WritebackResult
+    """Commit a pending DB transaction: render + clang-format + compile + lint
+    + sha256 verify + write to disk + (optional) git commit. Rolls back on
+    any failure."""
     graph_dir = _graph_or_cwd(args)
-    tx_id = getattr(args, 'transaction_id', '') or ''
-    if not tx_id:
-        print("Error: --transaction-id required", file=sys.stderr)
-        sys.exit(1)
-    import sqlite3
-    db_path = os.path.join(graph_dir, 'code2database.db')
-    if not os.path.exists(db_path):
-        print(f"Error: database not found at {db_path}", file=sys.stderr)
-        sys.exit(1)
-    conn = sqlite3.connect(db_path)
-    try:
-        result = _commit(
-            conn, graph_dir, graph_dir, tx_id,
-            run_compile=not getattr(args, 'no_compile', False),
-            run_lint=getattr(args, 'run_lint', False),
-            run_clang_format=getattr(args, 'run_clang_format', False),
-            git_commit=getattr(args, 'git_commit', False),
-            commit_message=getattr(args, 'commit_message', None),
-        )
-        _print_json(result.to_dict())
-    finally:
-        conn.close()
+    result = _tool_commit_db_transaction(
+        {
+            "transaction_id": args.transaction_id,
+            "run_compile": args.run_compile,
+            "run_lint": args.run_lint,
+            "run_clang_format": args.run_clang_format,
+            "git_commit": args.git_commit,
+            "commit_message": args.commit_message,
+        },
+        graph_dir,
+    )
+    _print_json(result)
 
 
 def cmd_rollback_db_transaction(args):
-    from _builder.writeback_pipeline import rollback_db_transaction as _rollback
+    """Roll back a pending DB transaction (undo DB-side edits)."""
     graph_dir = _graph_or_cwd(args)
-    tx_id = getattr(args, 'transaction_id', '') or ''
-    if not tx_id:
-        print("Error: --transaction-id required", file=sys.stderr)
-        sys.exit(1)
-    import sqlite3
-    db_path = os.path.join(graph_dir, 'code2database.db')
-    conn = sqlite3.connect(db_path)
-    try:
-        ok = _rollback(conn, graph_dir, tx_id)
-        _print_json({'rolled_back': ok})
-    finally:
-        conn.close()
+    result = _tool_rollback_db_transaction(
+        {"transaction_id": args.transaction_id},
+        graph_dir,
+    )
+    _print_json(result)
 
+
+# ---------------------------------------------------------------------------
+# 高级语义编辑 (3)
+# ---------------------------------------------------------------------------
 
 def cmd_insert_node_after(args):
-    from _builder.mcp_report_tools import _tool_insert_node_after
+    """Insert a new AST node after the given anchor ast_node_id."""
     graph_dir = _graph_or_cwd(args)
-    import json as _json
-    node_spec = {}
-    spec_json = getattr(args, 'node_spec_json', None)
-    if spec_json:
-        try:
-            node_spec = _json.loads(spec_json)
-        except _json.JSONDecodeError:
-            print("Error: invalid --node-spec-json", file=sys.stderr)
-            sys.exit(1)
-    _print_json(_tool_insert_node_after({
-        'ast_node_id': int(getattr(args, 'ast_node_id', 0)),
-        'node_spec': node_spec,
-    }, graph_dir))
+    node_spec = json.loads(args.node_spec_json) if args.node_spec_json else {}
+    result = _tool_insert_node_after(
+        {"ast_node_id": args.ast_node_id, "node_spec": node_spec},
+        graph_dir,
+    )
+    _print_json(result)
 
 
 def cmd_delete_node(args):
-    from _builder.mcp_report_tools import _tool_delete_node
+    """Delete an AST node by ast_node_id (DB only — commit to write)."""
     graph_dir = _graph_or_cwd(args)
-    _print_json(_tool_delete_node({
-        'ast_node_id': int(getattr(args, 'ast_node_id', 0)),
-    }, graph_dir))
+    result = _tool_delete_node({"ast_node_id": args.ast_node_id}, graph_dir)
+    _print_json(result)
 
 
 def cmd_add_function(args):
-    from _builder.mcp_report_tools import _tool_add_function
+    """Add a new function node with the given signature and body tokens."""
     graph_dir = _graph_or_cwd(args)
-    import json as _json
-    body_tokens = []
-    body_json = getattr(args, 'body_tokens_json', None)
-    if body_json:
-        try:
-            body_tokens = _json.loads(body_json)
-        except _json.JSONDecodeError:
-            pass
-    _print_json(_tool_add_function({
-        'signature': getattr(args, 'signature', ''),
-        'body_tokens': body_tokens,
-    }, graph_dir))
+    body_tokens = json.loads(args.body_tokens_json) if args.body_tokens_json else []
+    result = _tool_add_function(
+        {"signature": args.signature, "body_tokens": body_tokens},
+        graph_dir,
+    )
+    _print_json(result)

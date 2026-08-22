@@ -463,12 +463,19 @@ class TransactionState:
     tx_id: str
     started_at: float
     description: str
-    snapshot_id: str
-    status: str
+    snapshot_id: str  # snapshot taken at begin()
+    status: str  # 'active', 'committed', 'rolled_back', 'failed'
     ended_at: Optional[float] = None
     error: Optional[str] = None
-    dirty_file_ids: list = field(default_factory=list)
-    consistency_results: list = field(default_factory=list)
+    # RPT-P0-15: file_ids whose tokens/literals/source_files_meta were mutated
+    # during this transaction. Tracked so that commit() can run
+    # source_renderer.verify_consistency() on just the touched files (cheap)
+    # rather than the whole graph (expensive on 700K+ node builds).
+    dirty_file_ids: List[int] = field(default_factory=list)
+    # RPT-P0-15: results of the post-commit consistency check. Each entry is
+    # {"file_id": int, "ok": bool, "diff": str|None}. Empty if no dirty files
+    # or if consistency checking was disabled.
+    consistency_results: List[Dict[str, Any]] = field(default_factory=list)
 
 
 def _write_tx_state(graph_dir: str, state: TransactionState):
@@ -479,8 +486,8 @@ def _write_tx_state(graph_dir: str, state: TransactionState):
             "description": state.description, "snapshot_id": state.snapshot_id,
             "status": state.status, "ended_at": state.ended_at,
             "error": state.error,
-            "dirty_file_ids": getattr(state, 'dirty_file_ids', []),
-            "consistency_results": getattr(state, 'consistency_results', []),
+            "dirty_file_ids": state.dirty_file_ids,
+            "consistency_results": state.consistency_results,
         }, f, ensure_ascii=False, indent=2, default=str)
 
 
@@ -490,67 +497,13 @@ def _read_tx_state(graph_dir: str) -> Optional[TransactionState]:
         return None
     try:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
+        # Be tolerant of older tx_state.json files written before
+        # dirty_file_ids / consistency_results were added — default them.
         data.setdefault("dirty_file_ids", [])
         data.setdefault("consistency_results", [])
         return TransactionState(**data)
     except (json.JSONDecodeError, TypeError, KeyError):
         return None
-
-
-def mark_file_dirty(graph_dir: str, file_id: int) -> None:
-    """Register a file_id as dirty in the current transaction state.
-
-    Called by MCP tools (edit_token, insert_token, delete_token, etc.)
-    so the post-commit consistency check knows which files to verify.
-    Outside a transaction, this is a no-op.
-    """
-    state = _read_tx_state(graph_dir)
-    if state is None or state.status != "active":
-        return
-    if file_id not in state.dirty_file_ids:
-        state.dirty_file_ids.append(file_id)
-        _write_tx_state(graph_dir, state)
-
-
-def _run_post_commit_consistency_check(graph_dir: str, state: TransactionState) -> None:
-    """Run verify_consistency on all dirty file_ids after commit."""
-    if not state.dirty_file_ids:
-        return
-    db_path = os.path.join(graph_dir, "code2database.db")
-    if not os.path.exists(db_path):
-        return
-    try:
-        import sqlite3
-        conn = sqlite3.connect(db_path)
-        try:
-            # Check if tokens table exists (tree-sitter-only graphs have no L1)
-            try:
-                conn.execute("SELECT 1 FROM tokens LIMIT 1")
-            except sqlite3.OperationalError:
-                return
-            from _builder.source_renderer import verify_consistency
-            for fid in state.dirty_file_ids:
-                try:
-                    cr = verify_consistency(conn, fid)
-                    state.consistency_results.append({
-                        "file_id": fid, "ok": cr.ok,
-                        "db_sha256": cr.db_sha256,
-                        "disk_sha256": cr.disk_sha256,
-                        "diff": cr.diff,
-                        "error_id": cr.error_id,
-                    })
-                    if not cr.ok:
-                        print(f"[tx] WARNING: consistency check failed for "
-                              f"file_id={fid}: {cr.diff or 'unknown'}",
-                              file=sys.stderr)
-                except Exception as exc:
-                    state.consistency_results.append({
-                        "file_id": fid, "ok": False, "error": str(exc),
-                    })
-        finally:
-            conn.close()
-    except Exception:
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -572,6 +525,17 @@ def transaction(graph_dir: str, description: str = "",
             patch_from_diff(graph_dir, diff_text, source_root)
             # ... other mutations ...
         # On normal exit: committed. On exception: rolled back.
+
+    RPT-P0-15: After commit, if `verify_consistency=True` and the
+    TransactionState has any `dirty_file_ids` (populated via
+    `mark_file_dirty()`), source_renderer.verify_consistency() is run on
+    each touched file_id. Mismatches are recorded in
+    `tx_state.consistency_results` and a warning is printed to stderr —
+    they do NOT abort the commit (the DB change is already durable), but
+    they surface that the DB now diverges from disk and a write-back
+    (render_to_disk) is needed to reconcile. Set `verify_consistency=False`
+    to skip the check entirely (e.g., for graph edits that don't touch
+    tokens).
     """
     # Acquire write lock
     with write_lock(graph_dir, timeout=60.0):
@@ -593,18 +557,29 @@ def transaction(graph_dir: str, description: str = "",
 
         try:
             yield tx_state
-            # Re-read state to pick up dirty_file_ids written by mark_file_dirty
-            latest = _read_tx_state(graph_dir)
-            if latest and latest.status == "active":
-                tx_state.dirty_file_ids = latest.dirty_file_ids
             # Commit
             clear_wal(graph_dir)
+            # RPT-P0-15: re-read the state file to pick up any
+            # mark_file_dirty() calls made inside the `with` block.
+            # mark_file_dirty writes its own copy of the state to disk,
+            # so the in-memory `tx_state` may be stale at this point.
+            fresh_state = _read_tx_state(graph_dir)
+            if fresh_state is not None:
+                # Preserve our snapshot_id / tx_id / started_at / description
+                # (those don't change mid-tx) but adopt the dirty_file_ids
+                # that mark_file_dirty() accumulated.
+                tx_state.dirty_file_ids = fresh_state.dirty_file_ids
             tx_state.status = "committed"
             tx_state.ended_at = time.time()
-            # Post-commit consistency check (best-effort)
+            _write_tx_state(graph_dir, tx_state)
+
+            # RPT-P0-15: post-commit consistency check on dirty files.
+            # This is best-effort — if source_renderer isn't importable
+            # (e.g., the graph_dir doesn't have a tokens table yet) we
+            # skip silently rather than fail the commit.
             if verify_consistency and tx_state.dirty_file_ids:
                 _run_post_commit_consistency_check(graph_dir, tx_state)
-            _write_tx_state(graph_dir, tx_state)
+
             # Prune old snapshots
             prune_snapshots(graph_dir, keep=keep_snapshots)
         except Exception as exc:
@@ -616,6 +591,87 @@ def transaction(graph_dir: str, description: str = "",
             tx_state.error = str(exc)
             _write_tx_state(graph_dir, tx_state)
             raise
+
+
+def mark_file_dirty(graph_dir: str, file_id: int) -> None:
+    """Record that `file_id`'s L1 state (tokens / literals / source_files_meta)
+    was mutated inside the current active transaction.
+
+    Call this from MCP tool handlers (edit_token, insert_token, delete_token,
+    insert_node_after, etc.) after they write to the tokens table. At commit
+    time, `transaction()` will run `source_renderer.verify_consistency()`
+    on each dirty file_id and record the result in
+    `TransactionState.consistency_results`.
+
+    Safe to call outside an active transaction — silently no-ops so callers
+    don't need to gate on tx-state themselves.
+    """
+    state = _read_tx_state(graph_dir)
+    if not state or state.status != "active":
+        return  # No active transaction — nothing to mark
+    if file_id not in state.dirty_file_ids:
+        state.dirty_file_ids.append(file_id)
+        _write_tx_state(graph_dir, state)
+
+
+def _run_post_commit_consistency_check(graph_dir: str,
+                                        tx_state: TransactionState) -> None:
+    """Run source_renderer.verify_consistency() on each dirty file_id and
+    record results in tx_state.consistency_results. Prints a warning to
+    stderr for any mismatch (does NOT abort — the commit is already durable).
+
+    Silently skips if source_renderer can't be imported or the DB doesn't
+    have a tokens table yet (e.g., brand-new graph_dir with no L1 ingest).
+    """
+    db_path = os.path.join(graph_dir, "code2database.db")
+    if not os.path.exists(db_path):
+        return
+    try:
+        import sqlite3
+        from _builder.source_renderer import verify_consistency
+    except ImportError:
+        return
+    conn: Optional[sqlite3.Connection] = None
+    try:
+        conn = sqlite3.connect(db_path)
+        # Verify the tokens table exists — skip silently if not (graph_dir
+        # may be a non-L1 graph, e.g., tree-sitter-only).
+        cur = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name='tokens' LIMIT 1"
+        )
+        if cur.fetchone() is None:
+            return
+        for fid in tx_state.dirty_file_ids:
+            try:
+                cr = verify_consistency(conn, int(fid))
+                tx_state.consistency_results.append({
+                    "file_id": int(fid),
+                    "ok": bool(cr.ok),
+                    "diff": cr.diff,
+                })
+                if not cr.ok:
+                    print(
+                        f"[tx] WARNING: consistency check failed for "
+                        f"file_id={fid}: {cr.diff}",
+                        file=sys.stderr,
+                    )
+            except Exception as exc:
+                tx_state.consistency_results.append({
+                    "file_id": int(fid),
+                    "ok": False,
+                    "diff": f"verify_consistency raised: {exc}",
+                })
+        # Persist the consistency results into the tx_state file so
+        # callers / `tx-status` can see them after the fact.
+        _write_tx_state(graph_dir, tx_state)
+    except Exception as exc:
+        # Best-effort — don't raise from a post-commit hook.
+        print(f"[tx] WARNING: consistency check skipped: {exc}",
+              file=sys.stderr)
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -690,10 +746,18 @@ def recover_unfinished_wal(graph_dir: str) -> Dict:
 def cmd_tx_begin(args):
     """Begin a transaction (manual mode — most users use the context manager).
 
-    Usage: tx-begin --graph <dir> --description "..."
+    Usage:
+      tx-begin --graph <dir> --description "..."                # graph-level tx
+      tx-begin --graph <dir> --file-id N --description "..."    # writeback tx
+
+    When --file-id is provided, this also registers a pending write-back
+    transaction via WritebackPipeline.begin(file_id), so the subsequent
+    tx-commit can run the full render→compile→lint→git pipeline.
     """
     graph_dir = args.graph
     description = getattr(args, "description", "")
+    file_id = getattr(args, "file_id", None)
+
     snap = create_snapshot(graph_dir, description=description or "manual tx_begin")
     tx_state = TransactionState(
         tx_id=f"tx_{int(time.time() * 1000)}",
@@ -701,27 +765,120 @@ def cmd_tx_begin(args):
         snapshot_id=snap.id, status="active",
     )
     _write_tx_state(graph_dir, tx_state)
-    print(json.dumps({
+
+    response: Dict[str, Any] = {
         "tx_id": tx_state.tx_id, "snapshot_id": snap.id,
         "started_at": tx_state.started_at, "status": "active",
-    }, ensure_ascii=False, indent=2, default=str))
+    }
+
+    # RPT-P0-16: If --file-id given, also register a write-back tx.
+    if file_id is not None:
+        try:
+            import sqlite3 as _sqlite3
+            from _builder.writeback_pipeline import WritebackPipeline
+            db_path = os.path.join(graph_dir, "code2database.db")
+            conn = _sqlite3.connect(db_path)
+            try:
+                pipe = WritebackPipeline(conn, graph_dir, graph_dir)
+                writeback_tx_id = pipe.begin(int(file_id))
+                # Stash the writeback_tx_id in tx_state so cmd_tx_commit
+                # can find it later. We use the `error` field as a scratch
+                # pad — actually no, let's add it to dirty_file_ids-style
+                # by storing it in the description suffix. Simpler: write
+                # it to a separate key in tx_state.json via _write_tx_state.
+                # Easiest: append to description so it round-trips.
+                tx_state.description = (
+                    f"{description} [writeback_tx={writeback_tx_id}]"
+                ).strip()
+                _write_tx_state(graph_dir, tx_state)
+                response["writeback_tx_id"] = writeback_tx_id
+                response["file_id"] = int(file_id)
+            finally:
+                conn.close()
+        except Exception as exc:
+            # Don't fail the whole tx-begin if writeback init fails —
+            # just warn. The graph-level tx is still active.
+            print(f"[tx-begin] WARNING: writeback init failed: {exc}",
+                  file=sys.stderr)
+
+    print(json.dumps(response, ensure_ascii=False, indent=2, default=str))
 
 
 def cmd_tx_commit(args):
-    """Commit the current transaction (clears WAL)."""
+    """Commit the current transaction (clears WAL).
+
+    Usage:
+      tx-commit --graph <dir>                                            # graph-level only
+      tx-commit --graph <dir> --run-compile --git-commit --commit-message "..."  # writeback
+
+    If the active transaction was started with --file-id (i.e., a writeback
+    tx is pending in the meta table), this runs the full
+    render→compile→lint→clang-format→sha256→write-disk→git-commit pipeline
+    via WritebackPipeline.commit() and reports the result.
+    """
     graph_dir = args.graph
     state = _read_tx_state(graph_dir)
     if not state or state.status != "active":
         print("No active transaction to commit", file=sys.stderr)
         sys.exit(1)
+
+    # RPT-P0-16: Check for a pending write-back tx. We stored its id in
+    # the description as "[writeback_tx=<uuid>]".
+    writeback_tx_id: Optional[str] = None
+    if state.description and "writeback_tx=" in state.description:
+        import re
+        m = re.search(r"writeback_tx=([a-f0-9-]+)", state.description)
+        if m:
+            writeback_tx_id = m.group(1)
+
+    response: Dict[str, Any] = {
+        "tx_id": state.tx_id, "status": "committed",
+        "ended_at": None,
+    }
+
+    if writeback_tx_id is not None:
+        # Run the write-back pipeline.
+        try:
+            import sqlite3 as _sqlite3
+            from _builder.writeback_pipeline import WritebackPipeline
+            db_path = os.path.join(graph_dir, "code2database.db")
+            conn = _sqlite3.connect(db_path)
+            try:
+                pipe = WritebackPipeline(conn, graph_dir, graph_dir)
+                result = pipe.commit(
+                    writeback_tx_id,
+                    run_compile=getattr(args, "run_compile", True),
+                    run_lint=getattr(args, "run_lint", False),
+                    run_clang_format=getattr(args, "run_clang_format", False),
+                    git_commit=getattr(args, "git_commit", False),
+                    commit_message=getattr(args, "commit_message", None),
+                )
+                response["writeback"] = result.to_dict()
+                if not result.applied:
+                    # Writeback failed — but the graph-level tx (snapshot,
+                    # WAL) is still ok. Mark the tx as committed-with-failure
+                    # rather than rolling back the whole graph snapshot,
+                    # because the user may want to inspect the failure.
+                    state.error = (
+                        f"writeback failed at {result.failure_stage}: "
+                        f"{result.failure_detail}"
+                    )
+            finally:
+                conn.close()
+        except Exception as exc:
+            state.error = f"writeback pipeline raised: {exc}"
+            print(f"[tx-commit] WARNING: writeback failed: {exc}",
+                  file=sys.stderr)
+
+    # Standard commit: clear WAL + mark committed
     clear_wal(graph_dir)
     state.status = "committed"
     state.ended_at = time.time()
     _write_tx_state(graph_dir, state)
-    print(json.dumps({
-        "tx_id": state.tx_id, "status": "committed",
-        "ended_at": state.ended_at,
-    }, ensure_ascii=False, indent=2, default=str))
+    response["ended_at"] = state.ended_at
+    if state.error:
+        response["error"] = state.error
+    print(json.dumps(response, ensure_ascii=False, indent=2, default=str))
 
 
 def cmd_tx_rollback(args):

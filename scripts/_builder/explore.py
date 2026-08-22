@@ -55,6 +55,13 @@ def _tokenize_query(query: str) -> list:
 
     Handles: whitespace, camelCase splitting, snake_case splitting, CJK characters.
     E.g., "myApiInit" → ["my", "api", "init"], "module_open" → ["module", "open"]
+
+    BUG-DESCRIPTION MODE (IMPROVE-2): when the query contains a long snake_case
+    identifier (>= 3 underscore-separated parts, like "__find_get_block_slow"),
+    preserve it as a single compound token IN ADDITION to its parts. This lets
+    the scorer do exact-name matching for bug descriptions that quote a function
+    name verbatim. Without this, "__find_get_block_slow null pointer dereference
+    buffer" loses the strong signal of the exact function name.
     """
     # First split camelCase: insert boundary before uppercase after lowercase
     split_camel = re.sub(r'([a-z])([A-Z])', r'\1 \2', query)
@@ -70,6 +77,97 @@ def _tokenize_query(query: str) -> list:
             seen.add(t)
             result.append(t)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Bug-keyword detection (IMPROVE-2)
+# ---------------------------------------------------------------------------
+# When a user types "null pointer dereference buffer" or "use-after-free in
+# jbd2_journal_cancel_revoke", we want to (a) recognize this is a bug-analysis
+# query, (b) down-rank generic tokens (null, pointer, dereference, get, set)
+# that match thousands of unrelated functions, and (c) boost domain affinity
+# (buffer/block/inode → fs/bdev/block subsystems).
+
+_BUG_KEYWORDS = {
+    # NULL/UAF class
+    "null", "nullptr", "nil", "ptr", "pointer", "deref", "dereference",
+    "nullptr", "use", "after", "free", "uaf", "dangling", "wild",
+    # Race class
+    "race", "racy", "concurrency", "concurrent", "atomicity", "toctou",
+    "lockless", "unsynchronized", "data", "thread",
+    # Leak class
+    "leak", "leaked", "memory", "resource", "unreleased", "orphan",
+    # Crash class
+    "crash", "panic", "oops", "bug", "kasan", "kmsan", "ubsan",
+    "stack", "overflow", "underflow", "corrupt", "corruption",
+    # Generic verbs that match too many functions — down-rank
+    "get", "set", "put", "find", "do", "handle", "process", "make",
+}
+
+# Tokens so common they match 100+ functions in any large codebase.
+# Scorer penalizes these to keep them from dominating results.
+_GENERIC_TOKENS = {
+    "get", "set", "put", "find", "do", "make", "init", "exit", "free",
+    "null", "ptr", "pointer", "data", "val", "value", "ret", "return",
+    "err", "error", "fail", "check", "test", "is", "has", "the", "a",
+    "an", "in", "of", "for", "to", "with", "and", "or", "not",
+}
+
+# Domain affinity map — when a query mentions these tokens, prefer nodes
+# in the listed domains (file-path prefixes). Helps disambiguate "buffer"
+# (which could be any subsystem) toward fs/bdev/block.
+_DOMAIN_AFFINITY = {
+    # buffer / block / bh → filesystem / block layer
+    "buffer": ["fs", "block", "bdev", "jbd2", "ext4", "xfs", "mpage"],
+    "block": ["block", "bdev", "fs", "buffer"],
+    "bh": ["fs", "buffer", "jbd2", "block"],
+    "bdev": ["block", "bdev", "fs"],
+    "inode": ["fs", "ext4", "xfs", "inode", "vfs"],
+    "page": ["mm", "page", "fs", "filemap"],
+    "folio": ["mm", "page", "fs"],
+    "journal": ["jbd2", "fs", "ext4", "journal"],
+    "revoke": ["jbd2", "journal", "revoke"],
+    "commit": ["jbd2", "journal", "transaction"],
+    "transaction": ["jbd2", "journal", "transaction"],
+    # Concurrency tokens prefer kernel/sync/mm subsystems
+    "lock": ["kernel", "sync", "locking", "spinlock", "mutex"],
+    "spinlock": ["kernel", "locking", "spinlock"],
+    "mutex": ["kernel", "locking", "mutex"],
+    "rcu": ["kernel", "rcu"],
+    "atomic": ["kernel", "atom"],
+    # Memory tokens prefer mm/
+    "memory": ["mm", "mem", "kasan"],
+    "kasan": ["mm", "kasan"],
+    "page_alloc": ["mm", "page_alloc"],
+    # Process tokens prefer kernel/
+    "task": ["kernel", "sched", "task"],
+    "process": ["kernel", "sched", "process"],
+    "thread": ["kernel", "sched", "thread"],
+    "cpu": ["kernel", "sched", "cpu"],
+    # Network tokens
+    "socket": ["net", "socket"],
+    "skb": ["net", "skb"],
+    "packet": ["net", "packet"],
+}
+
+
+def _detect_bug_query(tokens: list) -> bool:
+    """Return True if the query looks like a bug-analysis description.
+
+    Trigger: query contains any bug-keyword (null, race, leak, crash, etc.)
+    OR contains a function-name-shaped token (>= 3 parts separated by _).
+    """
+    for t in tokens:
+        if t in _BUG_KEYWORDS:
+            return True
+    # Long snake_case function names are a strong bug-report signal
+    joined = "_".join(tokens)
+    if len(tokens) >= 3 and any(len(t) >= 3 for t in tokens):
+        # e.g., "__find_get_block_slow" tokenizes to find, get, block, slow
+        # — 4 parts, all >= 3 chars. Treat as bug query.
+        if len([t for t in tokens if len(t) >= 3]) >= 3:
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -169,21 +267,33 @@ def _expand_synonyms(tokens: list) -> list:
     return expanded
 
 
-def _score_node_relevance(nd: dict, query_tokens: list, focus_domain: str = None) -> float:
+def _score_node_relevance(nd: dict, query_tokens: list, focus_domain: str = None,
+                          bug_query: bool = False) -> float:
     """Score how relevant a node is to the query tokens.
 
     Factors: name match, signature match, semantic_desc match, domain match,
-    focus_domain bonus/penalty.
+    focus_domain bonus/penalty, generic-token penalty, bug-query domain affinity.
 
     `query_tokens` may be either a list of strings (treated as originals) or
     a list of (token, is_synonym) tuples from _expand_synonyms. Synonyms get
     a lower weight to preserve original-token priority.
+
+    IMPROVE-2: When `bug_query` is True (query contains null/deref/race/leak
+    keywords OR a long snake_case function name), apply:
+      - Generic-token penalty: tokens like "get", "set", "null", "pointer"
+        match too many functions — multiply their contribution by 0.4
+      - Domain affinity: if a token (e.g., "buffer") maps to the node's
+        domain in _DOMAIN_AFFINITY, add a +2 bonus
+      - Compound-name bonus: if the full query's joined form (e.g.,
+        "find_get_block_slow") equals the node name, add a strong +8 bonus
+        (this preserves the exact function name signal that was being lost)
     """
     score = 0.0
     name = nd.get("name", "").lower()
     sig = nd.get("signature", "").lower()
     desc = (nd.get("semantic_desc", "") or nd.get("external_desc", "")).lower()
     domain = nd.get("domain", "").lower()
+    source_file = nd.get("source_file", "").lower()
 
     # Normalize tokens to (token, is_synonym) tuples
     normalized = []
@@ -193,9 +303,27 @@ def _score_node_relevance(nd: dict, query_tokens: list, focus_domain: str = None
         else:
             normalized.append((t, False))
 
+    # IMPROVE-2: compound-name exact match — preserves the signal of a
+    # bug-report query that quotes the function name verbatim.
+    # E.g., query tokens [find, get, block, slow] join to "find_get_block_slow"
+    # which exactly matches the function name.
+    if bug_query:
+        original_tokens = [t for t, is_syn in normalized if not is_syn]
+        if original_tokens:
+            joined = "_".join(original_tokens)
+            if name == joined:
+                score += 8.0
+            elif name.endswith("_" + joined) or name.startswith(joined + "_"):
+                score += 5.0
+            elif joined in name:
+                score += 4.0
+
     for token, is_synonym in normalized:
         # Synonyms get reduced weight (0.5x) to keep original-token priority
         weight = 0.5 if is_synonym else 1.0
+        # IMPROVE-2: generic-token penalty in bug queries
+        if bug_query and token in _GENERIC_TOKENS and not is_synonym:
+            weight *= 0.4
         # Match against name components (snake_case / camelCase split) to
         # avoid false matches like "put" matching "compute". A token matches
         # the name if it equals the whole name, equals a name part, or is a
@@ -222,6 +350,15 @@ def _score_node_relevance(nd: dict, query_tokens: list, focus_domain: str = None
         if token == domain and not is_synonym:
             score += 0.5 * weight
 
+        # IMPROVE-2: domain affinity bonus
+        if bug_query and token in _DOMAIN_AFFINITY:
+            preferred_domains = _DOMAIN_AFFINITY[token]
+            # Check against domain string AND source_file path prefix
+            for pd in preferred_domains:
+                if pd in domain or domain.startswith(pd) or ("/" + pd) in source_file:
+                    score += 2.0
+                    break
+
     # Boost API entries and thread entries
     labels = nd.get("labels", [])
     if "API_entry" in labels:
@@ -246,10 +383,19 @@ def _find_relevant_nodes(G: nx.DiGraph, query_tokens: list, top_n: int = 20,
     Uses suffix index for fast lookup when available, falls back to linear scan.
     Synonym expansion is applied to the scoring tokens (original tokens get
     higher weight than synonym variants).
+
+    IMPROVE-2: Detects bug-analysis queries (null/deref/race/leak keywords OR
+    long snake_case function names) and passes bug_query=True to the scorer.
+    Bug queries apply generic-token penalty, domain affinity, and compound-name
+    exact-match bonus to avoid irrelevant results like tools/perf, drivers/hid
+    for queries about __find_get_block_slow.
     """
     # Expand query tokens with synonyms for scoring (original tokens
     # retain priority via the is_synonym weight in _score_node_relevance).
     expanded_tokens = _expand_synonyms(query_tokens)
+
+    # IMPROVE-2: detect bug-analysis query shape
+    bug_query = _detect_bug_query(query_tokens)
 
     # Try suffix-index accelerated lookup first
     candidate_ids = set()
@@ -311,6 +457,23 @@ def _find_relevant_nodes(G: nx.DiGraph, query_tokens: list, top_n: int = 20,
                         "SELECT id FROM functions WHERE name LIKE ? LIMIT 100",
                         (like_pattern_rev,)):
                         candidate_ids.add(row[0])
+
+            # IMPROVE-2: bug-query candidate boost — try exact joined-name
+            # match (e.g., "find_get_block_slow" → __find_get_block_slow).
+            # This ensures the actual function named in the bug report is
+            # in the candidate set even when generic-token substring matches
+            # would otherwise dominate.
+            if bug_query and query_tokens:
+                joined = "_".join(t.lower() for t in query_tokens)
+                for row in conn.execute(
+                    "SELECT id FROM functions WHERE name = ? OR name LIKE ? LIMIT 50",
+                    (joined, "%" + joined + "%")):
+                    candidate_ids.add(row[0])
+                # Also try with leading underscores (kernel convention)
+                for row in conn.execute(
+                    "SELECT id FROM functions WHERE name LIKE ? LIMIT 50",
+                    ("__" + joined,)):
+                    candidate_ids.add(row[0])
 
             # 3. Per-token substring matches (fallback for partial queries)
             for token in query_tokens:
@@ -374,7 +537,9 @@ def _find_relevant_nodes(G: nx.DiGraph, query_tokens: list, top_n: int = 20,
                 ndata = G.nodes[nid]
                 if ndata.get("is_empty", False):
                     continue
-                score = _score_node_relevance(ndata, expanded_tokens, focus_domain=focus_domain)
+                score = _score_node_relevance(ndata, expanded_tokens,
+                                              focus_domain=focus_domain,
+                                              bug_query=bug_query)
                 if score > 0:
                     scored.append((nid, score, ndata))
     else:
@@ -382,7 +547,9 @@ def _find_relevant_nodes(G: nx.DiGraph, query_tokens: list, top_n: int = 20,
         for nid, ndata in G.nodes(data=True):
             if ndata.get("is_empty", False):
                 continue
-            score = _score_node_relevance(ndata, expanded_tokens, focus_domain=focus_domain)
+            score = _score_node_relevance(ndata, expanded_tokens,
+                                          focus_domain=focus_domain,
+                                          bug_query=bug_query)
             if score > 0:
                 scored.append((nid, score, ndata))
 
@@ -766,63 +933,56 @@ def cmd_explore_flow(args):
         "key_paths": key_paths,
     }
 
-    # Token budget control — incremental estimation: serialize the full
-    # result once, then for each trimming step estimate the token reduction
-    # by serializing only the removed portion (much smaller than the whole
-    # result). Avoids 8+ full json.dumps calls on the entire result dict.
+    # Token budget control
     result_json = json.dumps(result, ensure_ascii=False)
-    running_tokens = estimate_tokens(result_json)
+    result_tokens = estimate_tokens(result_json)
 
-    def _tok(obj) -> int:
-        return estimate_tokens(json.dumps(obj, ensure_ascii=False))
-
-    if max_tokens > 0 and running_tokens > max_tokens:
+    if max_tokens > 0 and result_tokens > max_tokens:
+        # Progressively trim
+        # 1. Trim top_matches to fewer entries
         if len(result.get("top_matches", [])) > 5:
-            removed = result["top_matches"][5:]
             result["top_matches"] = result["top_matches"][:5]
-            running_tokens -= _tok(removed)
-        sg = result.get("subgraph", {})
-        if "edges" in sg:
-            old_edges = sg["edges"]
-            new_edges = [{k: v for k, v in e.items()
-                          if k in ("from_name", "to_name", "call_condition", "concurrency")}
-                         for e in old_edges]
-            running_tokens -= _tok(old_edges) - _tok(new_edges)
-            sg["edges"] = new_edges
-        if running_tokens > max_tokens and "nodes" in sg:
-            old_nodes = sg["nodes"]
-            new_nodes = {nid: {k: v for k, v in nd.items()
-                               if k in ("id", "name", "domain", "exec_summary")}
-                         for nid, nd in old_nodes.items()}
-            running_tokens -= _tok(old_nodes) - _tok(new_nodes)
-            sg["nodes"] = new_nodes
-            if "edges" in sg:
-                old_edges = sg["edges"]
-                new_edges = [{k: v for k, v in e.items() if k in ("from_name", "to_name")}
-                             for e in old_edges]
-                running_tokens -= _tok(old_edges) - _tok(new_edges)
-                sg["edges"] = new_edges
-        if running_tokens > max_tokens:
-            old_paths = result.get("key_paths", [])
-            new_paths = [{"from": p["from"], "to": p["to"], "length": p["length"],
-                          "steps": [s["name"] for s in p.get("steps", [])]}
-                         for p in old_paths]
-            running_tokens -= _tok(old_paths) - _tok(new_paths)
-            result["key_paths"] = new_paths
-        if running_tokens > max_tokens:
+        # 2. Remove edge data
+        if "edges" in result.get("subgraph", {}):
+            result["subgraph"]["edges"] = [
+                {k: v for k, v in e.items() if k in ("from_name", "to_name", "call_condition", "concurrency")}
+                for e in result["subgraph"]["edges"]
+            ]
+        # 3. Trim node data to minimal
+        result_json = json.dumps(result, ensure_ascii=False)
+        if estimate_tokens(result_json) > max_tokens:
+            result["subgraph"]["nodes"] = {
+                nid: {k: v for k, v in ndata.items() if k in ("id", "name", "domain", "exec_summary")}
+                for nid, ndata in result["subgraph"]["nodes"].items()
+            }
+            result["subgraph"]["edges"] = [
+                {k: v for k, v in e.items() if k in ("from_name", "to_name")}
+                for e in result.get("subgraph", {}).get("edges", [])
+            ]
+        # 4. Trim paths
+        result_json = json.dumps(result, ensure_ascii=False)
+        if estimate_tokens(result_json) > max_tokens:
+            result["key_paths"] = [
+                {"from": p["from"], "to": p["to"], "length": p["length"],
+                 "steps": [s["name"] for s in p.get("steps", [])]}
+                for p in result.get("key_paths", [])
+            ]
+        # 5. Truncate subgraph edges if still over budget
+        result_json = json.dumps(result, ensure_ascii=False)
+        if estimate_tokens(result_json) > max_tokens:
             edges = result.get("subgraph", {}).get("edges", [])
-            while edges and running_tokens > max_tokens:
-                removed_half = edges[len(edges)//2:]
+            # Keep only half the edges, repeat if needed
+            while edges and estimate_tokens(json.dumps(result, ensure_ascii=False)) > max_tokens:
                 edges = edges[:len(edges)//2]
-                running_tokens -= _tok(removed_half)
                 result["subgraph"]["edges"] = edges
-        if running_tokens > max_tokens:
-            if "subgraph" in result:
-                running_tokens -= _tok(result.pop("subgraph"))
-            if "key_paths" in result:
-                running_tokens -= _tok(result.pop("key_paths"))
-        if running_tokens > max_tokens:
-            result_json = json.dumps(result, ensure_ascii=False)
+        # 6. Remove subgraph entirely if still over budget
+        result_json = json.dumps(result, ensure_ascii=False)
+        if estimate_tokens(result_json) > max_tokens:
+            result.pop("subgraph", None)
+            result.pop("key_paths", None)
+        # 6. Final truncation
+        result_json = json.dumps(result, ensure_ascii=False)
+        if estimate_tokens(result_json) > max_tokens:
             truncated = truncate_to_tokens(result_json, max_tokens)
             try:
                 last_brace = truncated.rfind('}')
@@ -831,6 +991,5 @@ def cmd_explore_flow(args):
             except json.JSONDecodeError:
                 pass
 
-    final_json = json.dumps(result, ensure_ascii=False)
-    result["_token_count"] = estimate_tokens(final_json)
+    result["_token_count"] = estimate_tokens(json.dumps(result, ensure_ascii=False))
     print(json.dumps(result, ensure_ascii=False, indent=2))

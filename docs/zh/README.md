@@ -197,7 +197,7 @@ bash scripts/setup.sh --languages c,go
 | **LLM 自动语义增强** | 置信度阈值自动写入（EXTRACTED+证据自动应用；INFERRED 需确认；AMBIGUOUS 拒绝）+ 批量确认和回滚——`auto-enhance`、`batch-confirm`、`rollback`、`fill-request` |
 | **事务性更新** | WAL + 快照 + fcntl 文件锁的原子多步更新——`tx-begin`/`commit`/`rollback`/`status`/`snapshot`/`restore`/`list-snapshots`/`replay-wal` |
 | **跨语言 FFI** | Python ctypes / Go cgo / Rust `extern "C"` 边界追踪 + 类型 marshalling——`ffi-detect`、`ffi-list`、`ffi-trace`、`ffi-types` |
-| **交互式 Web UI** | 单文件 HTML/SVG/JS，平移/缩放、点击聚焦、路径高亮、社区 LOD——`web-ui` |
+| **交互式 Web UI** | 单文件 HTML/cytoscape.js/JS，平移/缩放、点击聚焦、聚焦+上下文淡出、路径高亮、3 种布局算法 (flow/rings/force)、社区复合分组、LOD 标签隐藏、边 `call_condition` 标签、边类型过滤、右键上下文菜单、小地图、FTS5 搜索——`web-ui` |
 | **BUG 基准测试** | GraphInvestigator vs GrepInvestigator——衡量召回、精度、工具调用、token、时间——`bug-benchmark` |
 | **Profile 健康度与自动演化** | 7 类 0-100 评分；自动检测新回调模式；绑定 git/svn HEAD——`profile-health`、`profile-evolve`、`profile-bind-version` |
 | **文档-代码对齐** | 检测返回值/参数/签名/陈旧文档不匹配——`doc-code-check`、`doc-mark-stale`、`doc-alignment-report`、`doc-signature-diff`。`describe-node` 暴露 `doc_code_mismatches` |
@@ -235,7 +235,7 @@ bash scripts/setup.sh --languages c,go
 | **自动增强** | `auto-enhance`/`batch-confirm`/`rollback` — 置信度阈值自动写入 |
 | **事务** | `tx-begin`/`commit`/`rollback` — WAL + 快照 + fcntl 锁 |
 | **FFI 追踪** | `ffi-detect`/`list`/`trace`/`types` — Python ctypes / Go cgo / Rust extern "C" |
-| **Web UI** | `web-ui` — 单文件 HTML/SVG/JS 交互式浏览器 |
+| **Web UI** | `web-ui` — 单文件 HTML/cytoscape.js/JS 交互式浏览器 |
 | **BUG 基准** | `bug-benchmark` — GraphInvestigator vs GrepInvestigator 召回/精度 |
 | **Profile 健康度** | `profile-health`/`evolve`/`bind-version` — 0-100 评分 + 自动演化 |
 | **文档-代码对齐** | `doc-code-check`/`mark-stale`/`alignment-report`/`signature-diff` — 检测文档-代码不匹配 |
@@ -329,7 +329,7 @@ bash scripts/setup.sh --languages c,go
 | **LLM 自动增强** | 置信度阈值自动写入 + 批量确认 + 回滚 — `auto-enhance` |
 | **事务性更新** | WAL + 快照 + fcntl 锁的原子写入 — `tx-begin`/`commit`/`rollback` |
 | **FFI 追踪** | Python ctypes / Go cgo / Rust extern "C" — `ffi-detect`/`list`/`trace`/`types` |
-| **交互式 Web UI** | 单文件 HTML/SVG/JS 浏览器 — `web-ui` |
+| **交互式 Web UI** | 单文件 HTML/cytoscape.js/JS 浏览器 — `web-ui` |
 | **BUG 基准测试** | GraphInvestigator vs GrepInvestigator 召回/精度 — `bug-benchmark` |
 | **Profile 健康度** | 0-100 评分 + 自动演化 + git/svn HEAD 绑定 — `profile-health`/`evolve`/`bind-version` |
 | **文档-代码对齐** | 检测文档-代码不匹配；`describe-node` 暴露 — `doc-code-check` |

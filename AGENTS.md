@@ -41,7 +41,7 @@ Capabilities:
 - LLM auto-semantic enhancement with confidence-threshold auto-write (`auto-enhance`, `batch-confirm`, `rollback`, `fill-request`)
 - Transactional updates with WAL + snapshots + fcntl locks (`tx-begin`/`commit`/`rollback`/`status`/`snapshot`/`restore`/`list-snapshots`/`replay-wal`)
 - Cross-language FFI tracing — Python ctypes / Go cgo / Rust extern "C" (`ffi-detect`/`list`/`trace`/`types`)
-- Interactive Web UI — single-file HTML/SVG/JS (`web-ui`)
+- Interactive Web UI — single-file HTML/cytoscape.js/JS (`web-ui`)
 - BUG benchmark — GraphInvestigator vs GrepInvestigator (`bug-benchmark`)
 - Profile health (0-100 across 7 categories) + auto-evolution + git/svn HEAD binding (`profile-health`, `profile-evolve`, `profile-bind-version`)
 - Doc-code dual-source truth alignment — return value / param / signature / stale-doc mismatch detection (`doc-code-check`, `doc-mark-stale`, `doc-alignment-report`, `doc-signature-diff`)
@@ -136,7 +136,7 @@ Documentation is available in English (`docs/en/`) and Chinese (`docs/zh/`). The
 | Auto-enhancement | `auto-enhance`, `batch-confirm`, `rollback`, `fill-request` | LLM auto-semantic enhancement with confidence thresholds |
 | Transactions | `tx-begin`, `tx-commit`, `tx-rollback`, `tx-status`, `tx-snapshot`, `tx-restore`, `tx-list-snapshots`, `tx-replay-wal` | Transactional updates (WAL + snapshots + fcntl locks) |
 | FFI tracing | `ffi-detect`, `ffi-list`, `ffi-trace`, `ffi-types` | Cross-language FFI (Python ctypes / Go cgo / Rust extern "C") |
-| Web UI | `web-ui` | Interactive single-file HTML/SVG/JS viewer |
+| Web UI | `web-ui` | Interactive single-file HTML/cytoscape.js/JS viewer |
 | BUG benchmark | `bug-benchmark` | GraphInvestigator vs GrepInvestigator recall/precision |
 | Profile health | `profile-health`, `profile-evolve`, `profile-bind-version` | 0-100 scoring + auto-evolution + git/svn HEAD binding |
 | Doc-code alignment | `doc-code-check`, `doc-mark-stale`, `doc-alignment-report`, `doc-signature-diff` | Detect doc-code mismatches (return value / param / signature / stale-doc) |

@@ -5,6 +5,30 @@ All notable changes to Code2Database will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-08-22
+
+Patch release refactoring the Web UI to **cytoscape.js 3.28.1** for dense-graph UX.
+
+### Web UI refactor (WEBUI-REFACTOR)
+- cytoscape.js 3.28.1 inlined (CDN load; offline mode: npm pack cytoscape@3.28.1)
+- Three layout algorithms (flow/rings/force)
+- Focus+context fading
+- Edge bundling (curve-style: bezier)
+- Community compound nodes
+- LOD label hiding
+- Edge `call_condition` labels
+- Selector-based edge filter
+- Incremental sync (syncCyFromModel)
+- Preserved features (17 endpoints, cumulative model, nav, breadcrumb, etc.)
+
+### Documentation updates
+- New `docs/{en,zh}/references/web_ui.md` (17 endpoints + features + shortcuts)
+- README.md, docs/zh/README.md, AGENTS.md: HTML/SVG/JS → HTML/cytoscape.js/JS
+- Badge fix: 7+ASM → 6+ASM (C/C++ shared scanner)
+
+### Tests
+- 44 Web UI tests pass (17 HTTP endpoint + 23 GraphCache + 4 import)
+
 ## [1.1.0] - 2026-08-18
 
 This release closes major gaps identified in `report/Code2Database-最终差距分析与优化报告.md`

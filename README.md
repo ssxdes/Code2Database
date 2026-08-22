@@ -6,7 +6,7 @@
 
 **One scan. Persistent graph. Surgical queries. Fewer tool calls. Faster answers.**
 
-[![Languages](https://img.shields.io/badge/languages-7%20%2B%20ASM-orange)](#language-support)
+[![Languages](https://img.shields.io/badge/languages-6%20%2B%20ASM-orange)](#language-support)
 [![MCP Tools](https://img.shields.io/badge/MCP_tools-48-blueviolet)](#mcp-server)
 [![Query Commands](https://img.shields.io/badge/query_commands-122-success)](#command-reference)
 [![Sub-skills](https://img.shields.io/badge/sub_skills-3-9cf)](#skill-activation)
@@ -199,7 +199,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **LLM auto-semantic enhancement** | Confidence-threshold auto-write (EXTRACTED+evidence auto-applies; INFERRED requires confirm; AMBIGUOUS rejected) with batch-confirm and rollback — `auto-enhance`, `batch-confirm`, `rollback`, `fill-request`. |
 | **Transactional updates** | WAL + snapshots + fcntl file locks for atomic multi-step updates — `tx-begin`/`commit`/`rollback`/`status`/`snapshot`/`restore`/`list-snapshots`/`replay-wal`. |
 | **Cross-language FFI** | Python ctypes / Go cgo / Rust `extern "C"` boundary tracing with type marshalling — `ffi-detect`, `ffi-list`, `ffi-trace`, `ffi-types`. |
-| **Interactive Web UI** | Single-file HTML/SVG/JS with pan/zoom, click-to-focus, path highlighting, community LOD — `web-ui`. |
+| **Interactive Web UI** | Single-file HTML/cytoscape.js/JS with pan/zoom, click-to-focus, focus+context fading, path highlighting, 3 layout algorithms (flow/rings/force), community compound grouping, LOD label hiding, edge `call_condition` labels, edge type filter, right-click context menu, minimap, FTS5 search — `web-ui`. |
 | **BUG benchmark** | GraphInvestigator vs GrepInvestigator — measures recall, precision, tool calls, tokens, time — `bug-benchmark`. |
 | **Profile health & auto-evolution** | 0-100 score across 7 categories; auto-detects new callback patterns; binds to git/svn HEAD — `profile-health`, `profile-evolve`, `profile-bind-version`. |
 | **Doc-code alignment** | Detects return-value / param / signature / stale-doc mismatches between docs and code — `doc-code-check`, `doc-mark-stale`, `doc-alignment-report`, `doc-signature-diff`. `describe-node` surfaces `doc_code_mismatches`. |
@@ -237,7 +237,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **Auto-enhancement** | `auto-enhance` / `batch-confirm` / `rollback` — confidence-threshold auto-write |
 | **Transactions** | `tx-begin`/`commit`/`rollback` — WAL + snapshots + fcntl locks |
 | **FFI tracing** | `ffi-detect`/`list`/`trace`/`types` — Python ctypes / Go cgo / Rust extern "C" |
-| **Web UI** | `web-ui` — single-file HTML/SVG/JS interactive browser |
+| **Web UI** | `web-ui` — single-file HTML/cytoscape.js/JS interactive browser |
 | **BUG benchmark** | `bug-benchmark` — GraphInvestigator vs GrepInvestigator recall/precision |
 | **Profile health** | `profile-health`/`evolve`/`bind-version` — 0-100 score + auto-evolution |
 | **Doc-code alignment** | `doc-code-check`/`mark-stale`/`alignment-report`/`signature-diff` — detect doc-code mismatches |
@@ -305,7 +305,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 
 | Capability | What it gives you |
 |------------|-------------------|
-| **Languages** | 7 — C/C++, Go, Python, Java, Rust, ASM (Python + tree-sitter + ASM regex) |
+| **Languages** | 6 + ASM — C/C++ (shared scanner), Go, Python, Java, Rust, ASM (regex — no tree-sitter grammar) (Python + tree-sitter + ASM regex) |
 | **Storage** | JSON output + optional SQLite backend for large graphs |
 | **MCP server** | stdio transport, **48 query tools** (30 `code2database_*` + 18 `cgdb_*`) for LLM agents |
 | **CLI commands** | **122 commands** organized into 3 sub-skills (`/Code2Database` core, `/Code2Database-analysis`, `/Code2Database-ops`) — Build, Query, Trace, Concurrency, Knowledge, Memory, Provenance, Cypher, Data Flow, Lock Analysis, Path Feasibility, Invariants, Auto-Enhance, Transactions, FFI, Web UI, Benchmark, Profile Health, Doc-Code, Daemon, cgdb (clang backend) |
@@ -331,7 +331,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **LLM auto-enhancement** | Confidence-threshold auto-write + batch-confirm + rollback — `auto-enhance` |
 | **Transactional updates** | WAL + snapshots + fcntl locks for atomic writes — `tx-begin`/`commit`/`rollback` |
 | **FFI tracing** | Python ctypes / Go cgo / Rust extern "C" — `ffi-detect`/`list`/`trace`/`types` |
-| **Interactive Web UI** | Single-file HTML/SVG/JS browser — `web-ui` |
+| **Interactive Web UI** | Single-file HTML/cytoscape.js/JS browser — `web-ui` |
 | **BUG benchmark** | GraphInvestigator vs GrepInvestigator recall/precision — `bug-benchmark` |
 | **Profile health** | 0-100 score + auto-evolution + git/svn HEAD binding — `profile-health`/`evolve`/`bind-version` |
 | **Doc-code alignment** | Detect doc-code mismatches; surface in `describe-node` — `doc-code-check` |
@@ -526,7 +526,7 @@ Code2Database supports a **dual backend** for C/C++ extraction. You pick the bac
 **libclang is recommended, NOT required.** Tree-sitter-only mode is fully functional — every supported language can be scanned, built, and queried. The clang backend additionally populates the cgdb (code graph database) layer.
 
 ```bash
-# Tree-sitter only (no libclang) — works for all 7 languages
+# Tree-sitter only (no libclang) — works for all 6 + ASM languages
 python3 scripts/code2database_scanner.py scan --source /path --extraction-backend tree-sitter
 
 # Auto (uses clang if available, falls back to tree-sitter)

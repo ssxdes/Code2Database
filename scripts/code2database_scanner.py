@@ -378,9 +378,9 @@ def scan_directory(source_root: str, lang: str = "auto",
                    split_output: bool = False,
                    no_body_text: bool = False,
                    extraction_backend: str = None,
-                    compile_commands_path: str = None,
-                    clang_args: list = None,
-                    scan_subsystems: list = None) -> dict:
+                   compile_commands_path: str = None,
+                   clang_args: list = None,
+                   scan_subsystems: list = None) -> dict:
     """Scan all source files in a directory tree.
 
     Args:
@@ -400,6 +400,12 @@ def scan_directory(source_root: str, lang: str = "auto",
                            (files_processed, total_files, current_file).
                            When None and quiet is False, prints to stderr.
         quiet: If True, suppress progress output to stderr.
+        scan_subsystems: RPT-KERNEL-D9 — optional list of subsystem names
+                         (e.g., ['fs', 'mm', 'block', 'kernel', 'lib']) to
+                         restrict the scan to. Files whose path (relative to
+                         source_root) starts with `<subsystem>/` are kept;
+                         all others are filtered out. None or empty list =
+                         scan everything (default behavior).
     """
     # Default to sequential scanning if memory guard indicates critical memory
     _force_sequential = False
@@ -488,7 +494,10 @@ def scan_directory(source_root: str, lang: str = "auto",
                     continue
             file_list.append((fpath, file_lang))
 
-    # Subsystem filter — restrict scan to specified top-level subsystem directories
+    # RPT-KERNEL-D9: subsystem filter — restrict scan to specified
+    # top-level subsystem directories (e.g., ['fs', 'mm', 'block',
+    # 'kernel', 'lib'] for cross-subsystem Linux kernel analysis).
+    # Paths are matched relative to source_root using forward slashes.
     if scan_subsystems:
         _subsystem_set = {s.strip('/') for s in scan_subsystems if s.strip()}
         if _subsystem_set:
@@ -1850,14 +1859,6 @@ def cmd_scan(args):
         sys.exit(1)
 
     macro_bindings = _parse_macros_str(args.macros) if args.macros else None
-    _scan_subsystems_list = None
-    _cli_subs = getattr(args, 'scan_subsystems', '') or ''
-    if _cli_subs:
-        _scan_subsystems_list = [s.strip() for s in _cli_subs.split(',') if s.strip()]
-    elif profile:
-        _prof_subs = (profile.get("scan_hints", {}) or {}).get("scan_subsystems", []) or []
-        if _prof_subs:
-            _scan_subsystems_list = list(_prof_subs)
     api_prefixes = args.api_prefixes.split(",") if args.api_prefixes else None
 
     # --auto-profile: generate .code2database_profile.json before scanning
@@ -1992,33 +1993,24 @@ def cmd_scan(args):
     _compile_commands_arg = getattr(args, 'compile_commands', '') or ''
     _clang_args_arg = getattr(args, 'clang_args', '') or ''
     _no_interactive = getattr(args, 'no_interactive', False)
-
-    # Single os.walk to detect c/cpp files AND compute source stats
-    _SOURCE_EXTS = {'.c', '.h', '.cpp', '.hpp', '.cc', '.cxx', '.go', '.py', '.java', '.rs', '.s', '.S', '.asm'}
-    _C_CPP_EXTS = {'.c', '.h', '.cpp', '.hpp', '.cc', '.cxx', '.s', '.S'}
-    _has_c_cpp = False
-    source_bytes = 0
-    source_files = 0
-    for dirpath, dirnames, filenames in os.walk(source):
-        dirnames[:] = [d for d in dirnames if not d.startswith('.')
-                        and d not in ('__pycache__', 'node_modules',
-                                      '.git', 'build', 'dist', 'venv')]
-        for fname in filenames:
-            ext = os.path.splitext(fname)[1].lower()
-            if ext in _SOURCE_EXTS:
-                fpath = os.path.join(dirpath, fname)
-                try:
-                    source_bytes += os.path.getsize(fpath)
-                    source_files += 1
-                except OSError:
-                    pass
-            if ext in _C_CPP_EXTS:
-                _has_c_cpp = True
-
+    # Determine if we'll actually use the clang backend (c/cpp files + auto/clang)
     _will_use_clang = _extraction_backend in ('auto', 'clang')
     if _will_use_clang and _extraction_backend == 'auto':
+        # For 'auto' on non-c/cpp projects, clang is not used; skip prompt.
+        # Detect by scanning source for c/cpp files.
+        _has_c_cpp = False
+        for _dirpath, _dirnames, _filenames in os.walk(source):
+            _dirnames[:] = [d for d in _dirnames if not d.startswith('.')
+                            and d not in ('__pycache__', 'node_modules',
+                                          '.git', 'build', 'dist', 'venv')]
+            for _fn in _filenames:
+                if os.path.splitext(_fn)[1].lower() in (
+                        '.c', '.h', '.cpp', '.hpp', '.cc', '.cxx', '.s', '.S'):
+                    _has_c_cpp = True
+                    break
+            if _has_c_cpp:
+                break
         _will_use_clang = _has_c_cpp
-
     if _will_use_clang and not _compile_commands_arg and not _clang_args_arg:
         if _no_interactive:
             print("[CompileCommands] No --compile-commands or --clang-args provided "
@@ -2044,7 +2036,21 @@ def cmd_scan(args):
                       "Then re-run with --compile-commands <path>.",
                       file=sys.stderr)
 
-    # source_bytes and source_files already computed above in the merged walk
+    # Compute source size for comparison
+    source_bytes = 0
+    source_files = 0
+    _SOURCE_EXTS = {'.c', '.h', '.cpp', '.hpp', '.cc', '.cxx', '.go', '.py', '.java', '.rs', '.s', '.S', '.asm'}
+    for dirpath, dirnames, filenames in os.walk(source):
+        dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in
+                       ('__pycache__', 'node_modules', '.git', 'build', 'dist', 'venv')]
+        for fname in filenames:
+            if os.path.splitext(fname)[1].lower() in _SOURCE_EXTS:
+                fpath = os.path.join(dirpath, fname)
+                try:
+                    source_bytes += os.path.getsize(fpath)
+                    source_files += 1
+                except OSError:
+                    pass
 
     tracker.begin("scan", metadata={
         "source_files": source_files,
@@ -2187,6 +2193,18 @@ def cmd_scan(args):
             for _sd in _skip_dirs:
                 if _sd and _sd not in _exclude:
                     _exclude.append(_sd)
+        # RPT-KERNEL-D9: --scan-subsystems filter — CLI takes precedence;
+        # fall back to profile.scan_hints.scan_subsystems if specified.
+        # Lets the linux_kernel profile default to ['fs', 'mm', 'block',
+        # 'kernel', 'lib'] without requiring the user to pass the flag.
+        _scan_subsystems_list = None
+        _cli_subs = getattr(args, 'scan_subsystems', '') or ''
+        if _cli_subs:
+            _scan_subsystems_list = [s.strip() for s in _cli_subs.split(',') if s.strip()]
+        elif profile:
+            _prof_subs = (profile.get("scan_hints", {}) or {}).get("scan_subsystems", []) or []
+            if _prof_subs:
+                _scan_subsystems_list = list(_prof_subs)
         result = scan_directory(source, args.lang, macro_bindings=macro_bindings,
                                 workers=args.workers, api_prefixes=api_prefixes,
                                 profile=profile, memory_guard=memory_guard,
@@ -2701,6 +2719,13 @@ def main():
     p_scan.add_argument("--exclude-dirs", default="",
                          help="Comma-separated additional directory names to skip during scanning "
                               "(e.g., 'huawei,internal_tools')")
+    p_scan.add_argument("--scan-subsystems", default="",
+                         help="RPT-KERNEL-D9: comma-separated list of top-level subsystem "
+                              "directories to include in the scan (e.g., 'fs,mm,block,kernel,lib' "
+                              "for Linux kernel cross-subsystem analysis). Files whose path "
+                              "(relative to --source) does not start with one of these "
+                              "subsystems are filtered out. Useful when scanning a large "
+                              "monorepo but only specific subsystems are needed.")
     p_scan.add_argument("--auto-profile", action="store_true",
                          help="Auto-detect project configuration and generate "
                               ".code2database_profile.json before scanning. Runs "
@@ -2729,9 +2754,6 @@ def main():
                          help="Skip interactive prompts (for CI/automated runs). "
                               "When set, scan proceeds with whatever --compile-commands / "
                               "--clang-args were provided (or none), without prompting.")
-    p_scan.add_argument("--scan-subsystems", default=None,
-                         help="Comma-separated subsystem names to restrict scan to "
-                              "(e.g., fs,mm,block for Linux kernel cross-subsystem analysis)")
 
     p_manifest = sub.add_parser("manifest", help="Save file fingerprint manifest")
     p_manifest.add_argument("--source", required=True, help="Source directory")

@@ -533,82 +533,36 @@ _HTML_UI = r"""<!DOCTYPE html>
 <style>
 * { box-sizing: border-box; }
 body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-       background: #fafafa; color: #222; }
-#topbar { background: #1a1a2e; color: #fff; padding: 8px 16px;
-          display: flex; align-items: center; gap: 12px; }
+       background: #1a1a2e; color: #e0e0e0; }
+#topbar { background: #0d1b2a; color: #fff; padding: 8px 16px;
+          display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 #topbar h1 { font-size: 16px; margin: 0; font-weight: 500; }
-#topbar input { flex: 1; padding: 6px 10px; border-radius: 4px; border: none;
-                font-size: 13px; }
-#topbar button { padding: 6px 12px; background: #4a90e2; color: #fff;
+#topbar input { flex: 1; min-width: 200px; padding: 6px 10px; border-radius: 4px;
+                border: 1px solid #334; background: #16213e; color: #fff; font-size: 13px; }
+#topbar button, #topbar select { padding: 6px 12px; background: #4a90e2; color: #fff;
                  border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
 #topbar button:hover { background: #357ab8; }
-#sidebar { position: absolute; left: 0; top: 50px; bottom: 0; width: 320px;
-           background: #fff; border-right: 1px solid #ddd; overflow-y: auto;
-           padding: 12px; }
-#sidebar h2 { font-size: 14px; margin: 0 0 8px; }
+#cy { position: absolute; left: 0; top: 50px; right: 0; bottom: 0; background: #16213e; }
+#sidebar { position: absolute; right: 0; top: 50px; bottom: 0; width: 300px;
+           background: #0d1b2a; border-left: 1px solid #334; overflow-y: auto;
+           padding: 12px; color: #ccc; }
+#sidebar h2 { font-size: 14px; margin: 0 0 8px; color: #8ab; }
 #sidebar .field { margin-bottom: 8px; }
-#sidebar .field-label { color: #666; font-size: 11px; text-transform: uppercase; }
+#sidebar .field-label { color: #678; font-size: 11px; text-transform: uppercase; }
 #sidebar .field-value { font-size: 13px; word-break: break-word; }
-#canvas { position: absolute; left: 320px; top: 50px; right: 0; bottom: 0;
-          background: #fafafa; cursor: grab; }
-#canvas:active { cursor: grabbing; }
-#canvas svg { width: 100%; height: 100%; }
-.node { fill: #fff; stroke: #4a90e2; stroke-width: 1.5px; cursor: pointer; }
-.node.focused { stroke: #e94a4a; stroke-width: 3px; }
-.node.entry { fill: #e7f4ff; }
-.node.endpoint { fill: #fff4e7; }
-.node.ffi { fill: #f0e7ff; stroke: #a070d0; }
-.node-label { font-size: 11px; pointer-events: none; text-anchor: middle; }
-.edge { stroke: #999; stroke-width: 1px; fill: none; marker-end: url(#arrow); }
-.edge.ffi { stroke: #a070d0; stroke-dasharray: 4,2; }
-.edge.highlighted { stroke: #e94a4a; stroke-width: 3px; }
-.node.highlighted { stroke: #e94a4a; stroke-width: 3px; }
-#stats { position: absolute; right: 12px; top: 60px; background: #fff;
-         padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;
-         font-size: 12px; color: #444; }
-#controls { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 4px; }
-#controls button { padding: 6px 10px; background: #fff; border: 1px solid #ccc;
-                   border-radius: 4px; cursor: pointer; font-size: 12px; }
-#controls button:hover { background: #f0f0f0; }
-.community-box { fill: none; stroke: #ccc; stroke-dasharray: 2,2; }
-.community-label { font-size: 11px; fill: #888; text-anchor: middle; }
-.path-list { background: #f6f6f6; padding: 6px; border-radius: 4px;
-              margin-top: 8px; font-family: monospace; font-size: 11px; }
-.action-btns { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+#sidebar .action-btns { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
 .action-btn { padding: 4px 8px; background: #4a90e2; color: #fff; border: none;
               border-radius: 3px; cursor: pointer; font-size: 11px; }
 .action-btn:hover { background: #357ab8; }
-.action-btn.secondary { background: #666; }
-.action-btn.secondary:hover { background: #555; }
-#code-panel { position: absolute; right: 0; top: 50px; bottom: 0; width: 400px;
-              background: #1e1e1e; color: #d4d4d4; padding: 12px; overflow-y: auto;
-              font-family: "Cascadia Code", "Fira Code", monospace; font-size: 12px;
-              display: none; border-left: 2px solid #444; }
-#code-panel pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
-#code-panel .close { position: absolute; top: 8px; right: 12px; color: #888;
-                     cursor: pointer; font-size: 16px; }
-#impact-panel { position: absolute; right: 0; top: 50px; bottom: 0; width: 400px;
-                background: #fff; padding: 12px; overflow-y: auto;
-                display: none; border-left: 2px solid #e94a4a; }
-#impact-panel .close { position: absolute; top: 8px; right: 12px; color: #888;
-                        cursor: pointer; font-size: 16px; }
-.impact-item { padding: 4px 0; border-bottom: 1px solid #eee; font-size: 12px; }
-.impact-item .depth { color: #999; margin-right: 6px; }
-.suggestion-item { padding: 8px; margin: 4px 0; background: #f8f8f8;
-                   border-radius: 4px; font-size: 12px; }
-.suggestion-item .priority { font-weight: bold; }
-.suggestion-item .priority.high { color: #e94a4a; }
-.suggestion-item .priority.medium { color: #f0a030; }
-.suggestion-item .priority.low { color: #888; }
-body.dark { background: #1a1a2e; color: #ccc; }
-body.dark #sidebar { background: #16213e; border-right: 1px solid #334; }
-body.dark #topbar { background: #0d1b2a; }
-body.dark .node { fill: #16213e; stroke: #4a90e2; }
-body.dark .node-label { fill: #aaa; }
-body.dark .edge { stroke: #445; }
-body.dark #stats { background: #16213e; color: #aaa; border: 1px solid #334; }
-body.dark #controls button { background: #16213e; color: #ccc; border: 1px solid #334; }
-body.dark #code-panel { background: #0d1117; }
+#stats { position: absolute; left: 12px; bottom: 12px; background: rgba(13,27,42,0.9);
+         padding: 6px 10px; border-radius: 4px; font-size: 12px; color: #8ab; }
+#breadcrumb { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+#breadcrumb .crumb { cursor: pointer; color: #6ab; font-size: 12px; }
+#breadcrumb .crumb:hover { text-decoration: underline; }
+#breadcrumb .sep { color: #445; font-size: 12px; }
+#loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+           background: rgba(74,144,226,0.9); color: #fff; padding: 12px 24px;
+           border-radius: 8px; font-size: 14px; display: none; z-index: 9999; }
 </style>
 </head>
 <body>
@@ -616,147 +570,207 @@ body.dark #code-panel { background: #0d1117; }
   <h1>Code2Database</h1>
   <input id="search" placeholder="Search function name..." />
   <button id="search-btn">Search</button>
+  <select id="layout-select">
+    <option value="breadthfirst">Flow</option>
+    <option value="concentric">Rings</option>
+    <option value="cose">Force</option>
+  </select>
+  <button id="fit-btn">Fit</button>
   <button id="reload-btn">Reload</button>
   <button id="suggest-btn">Suggest</button>
-  <button id="tour-btn">Tour</button>
   <button id="dark-btn">Dark</button>
 </div>
+<div id="cy"></div>
 <div id="sidebar">
   <h2 id="node-title">Select a node</h2>
   <div id="node-details"></div>
 </div>
-<div id="canvas">
-  <svg id="svg">
-    <defs>
-      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
-              markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-        <path d="M 0 0 L 10 5 L 0 10 z" fill="#999"/>
-      </marker>
-    </defs>
-    <g id="viewport"></g>
-  </svg>
-</div>
 <div id="stats"></div>
-<div id="controls">
-  <button onclick="zoom(1.2)">+</button>
-  <button onclick="zoom(0.8)">&#x2212;</button>
-  <button onclick="resetView()">Reset</button>
-  <button onclick="expandNeighbors()">Expand</button>
-</div>
-<div id="code-panel">
-  <span class="close" onclick="document.getElementById('code-panel').style.display='none'">&times;</span>
-  <pre id="code-content"></pre>
-</div>
-<div id="impact-panel">
-  <span class="close" onclick="document.getElementById('impact-panel').style.display='none'">&times;</span>
-  <h2>Impact Analysis</h2>
-  <div id="impact-content"></div>
-</div>
-
+<div id="loading">Loading...</div>
+<!-- cytoscape.js 3.28.1: for offline use, replace this CDN script tag
+     with an inlined copy of cytoscape.min.js (npm pack cytoscape@3.28.1) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
 <script>
+let cy = null;
 let cache = { nodes: [], edges: [], focus: null };
+let allNodes = {};
+let allEdges = {};
+let expandedSet = new Set();
+let navHistory = [];
+let navFuture = [];
 let highlightPath = [];
-let viewTransform = { x: 0, y: 0, scale: 1 };
-let lastPan = null;
 
 async function api(path, opts) {
   const res = await fetch(path, opts || {});
   return res.json();
 }
 
+function showLoading() { document.getElementById('loading').style.display = 'block'; }
+function hideLoading() { document.getElementById('loading').style.display = 'none'; }
+
 async function loadSummary() {
   const s = await api('/api/graph/summary');
   document.getElementById('stats').innerHTML =
-    `${s.node_count} nodes • ${s.edge_count} edges • ${s.ffi_edge_count} FFI<br>` +
-    `${s.community_count} communities`;
+    s.node_count + ' nodes &middot; ' + s.edge_count + ' edges';
 }
 
-async function focusNode(nodeId, depth = 1) {
-  const data = await api('/api/neighbors/' + encodeURIComponent(nodeId) + '?depth=' + depth);
-  cache = data;
-  cache.focus = nodeId;
-  render();
-  loadNodeDetails(nodeId);
+function nodeClasses(node) {
+  let cls = [];
+  if (node.is_focused) cls.push('focused');
+  if (node.labels) {
+    if (node.labels.includes('API_entry')) cls.push('entry');
+    if (node.labels.includes('out_end') || node.labels.includes('unknown_end')) cls.push('endpoint');
+    if (node.labels.includes('ffi_boundary')) cls.push('ffi');
+  }
+  return cls.join(' ');
+}
+
+function edgeClasses(edge) {
+  let cls = [];
+  if (edge.relation === 'FFI') cls.push('ffi');
+  if (highlightPath.includes(edge.source) && highlightPath.includes(edge.target)) cls.push('highlighted');
+  return cls.join(' ');
+}
+
+function buildCyElements() {
+  let eles = [];
+  for (const [id, node] of Object.entries(allNodes)) {
+    eles.push({
+      data: { id: id, name: node.name || id, labels: node.labels || [] },
+      classes: nodeClasses(node)
+    });
+  }
+  for (const [key, edge] of Object.entries(allEdges)) {
+    eles.push({
+      data: { source: edge.source, target: edge.target, relation: edge.relation || 'INVOKES',
+               condition: edge.call_condition || '' },
+      classes: edgeClasses(edge)
+    });
+  }
+  return eles;
+}
+
+function runLayout() {
+  if (!cy) return;
+  const layoutName = document.getElementById('layout-select').value;
+  cy.layout({ name: layoutName, animate: true, padding: 42,
+    spacingFactor: 1.2 }).run();
+}
+
+function initCy() {
+  cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements: buildCyElements(),
+    style: [
+      { selector: 'node', style: { 'background-color': '#4a90e2', 'width': 24, 'height': 24,
+        'label': 'data(name)', 'font-size': '8px', 'color': '#ccc', 'text-valign': 'bottom',
+        'text-margin-y': 4 } },
+      { selector: 'node.entry', style: { 'background-color': '#e7f4ff', 'border-color': '#4a90e2', 'border-width': 2 } },
+      { selector: 'node.endpoint', style: { 'background-color': '#fff4e7', 'border-color': '#e94a4a' } },
+      { selector: 'node.ffi', style: { 'background-color': '#f0e7ff', 'border-color': '#a070d0' } },
+      { selector: 'node.focused', style: { 'border-color': '#e94a4a', 'border-width': 3 } },
+      { selector: 'edge', style: { 'width': 2, 'line-color': '#445', 'curve-style': 'bezier',
+        'target-arrow-shape': 'triangle', 'arrow-scale': 0.8 } },
+      { selector: 'edge.ffi', style: { 'line-color': '#a070d0', 'line-style': 'dashed' } },
+      { selector: 'edge.highlighted', style: { 'width': 4, 'line-color': '#e94a4a' } },
+      { selector: '.faded', style: { 'opacity': 0.15 } },
+      { selector: 'edge.show-condition', style: { 'label': 'data(condition)', 'font-size': '6px', 'color': '#678',
+        'text-rotation': 'autorotate' } },
+    ],
+    layout: { name: 'breadthfirst', animate: true, padding: 42, spacingFactor: 1.2 }
+  });
+  cy.on('tap', 'node', function(evt) {
+    focusNode(evt.target.id(), 1);
+  });
+  cy.on('tap', function(evt) {
+    if (evt.target === cy) {
+      cy.elements().removeClass('faded');
+    }
+  });
+}
+
+function syncCyFromModel() {
+  if (!cy) { initCy(); return; }
+  const currentIds = new Set(cy.nodes().map(n => n.id()));
+  const modelIds = new Set(Object.keys(allNodes));
+  for (const id of modelIds) {
+    if (!currentIds.has(id)) {
+      cy.add({ data: { id: id, name: allNodes[id].name || id, labels: allNodes[id].labels || [] } });
+    }
+  }
+  for (const id of currentIds) {
+    if (!modelIds.has(id)) {
+      cy.remove('#' + id);
+    }
+  }
+  runLayout();
+}
+
+function applyFocusContext(focusId) {
+  if (!cy) return;
+  cy.elements().removeClass('faded');
+  const connected = cy.elements('node#' + focusId + ' *edge, edge *node#' + focusId);
+  cy.elements().not(connected).not('#' + focusId).addClass('faded');
+}
+
+async function focusNode(nodeId, depth) {
+  showLoading();
+  try {
+    const data = await api('/api/neighbors/' + encodeURIComponent(nodeId) + '?depth=' + (depth || 1));
+    cache = data;
+    cache.focus = nodeId;
+    if (!allNodes[nodeId]) {
+      allNodes[nodeId] = { id: nodeId, name: nodeId, is_focused: true };
+    }
+    for (const n of (data.nodes || [])) {
+      allNodes[n.id] = n;
+    }
+    for (const e of (data.edges || [])) {
+      allEdges[e.source + '->' + e.target] = e;
+    }
+    syncCyFromModel();
+    loadNodeDetails(nodeId);
+    applyFocusContext(nodeId);
+  } finally { hideLoading(); }
 }
 
 async function loadNodeDetails(nodeId) {
-  const node = await api('/api/node/' + encodeURIComponent(nodeId));
-  document.getElementById('node-title').textContent = node.name || nodeId;
-  const fields = [
-    ['Domain', node.domain],
-    ['Labels', (node.labels || []).join(', ')],
-    ['Location', node.location],
-    ['Signature', node.signature],
-    ['Description', node.semantic_desc || node.external_desc || '(none)'],
-    ['Constraints', node.api_constraints || '(none)'],
-  ];
-  let html = '';
-  for (const [label, value] of fields) {
-    if (!value) continue;
-    html += `<div class="field"><div class="field-label">${label}</div>` +
-            `<div class="field-value">${escapeHtml(value)}</div></div>`;
-  }
-  // Action buttons
-  html += `<div class="action-btns">` +
-    `<button class="action-btn" onclick="loadCode('${escapeHtml(nodeId)}')">View Code</button>` +
-    `<button class="action-btn" onclick="loadImpact('${escapeHtml(nodeId)}')">Impact</button>` +
-    `</div>`;
-  document.getElementById('node-details').innerHTML = html;
+  try {
+    const node = await api('/api/node/' + encodeURIComponent(nodeId));
+    document.getElementById('node-title').textContent = node.name || nodeId;
+    let html = '';
+    const fields = [
+      ['Domain', node.domain], ['Labels', (node.labels||[]).join(', ')],
+      ['Location', node.location], ['Signature', node.signature],
+      ['Description', node.semantic_desc || node.external_desc || '(none)'],
+    ];
+    for (const [label, value] of fields) {
+      if (!value) continue;
+      html += '<div class="field"><div class="field-label">' + label + '</div>' +
+              '<div class="field-value">' + escapeHtml(value) + '</div></div>';
+    }
+    html += '<div class="action-btns">' +
+      '<button class="action-btn" onclick="loadCode(\''+escapeHtml(nodeId)+'\')">View Code</button>' +
+      '<button class="action-btn" onclick="loadImpact(\''+escapeHtml(nodeId)+'\')">Impact</button>' +
+      '</div>';
+    document.getElementById('node-details').innerHTML = html;
+  } catch(e) {}
 }
 
 async function loadCode(nodeId) {
   const data = await api('/api/code?node=' + encodeURIComponent(nodeId));
-  document.getElementById('code-content').textContent = data.code || '(no source available)';
-  document.getElementById('code-panel').style.display = 'block';
-  document.getElementById('impact-panel').style.display = 'none';
+  alert(data.code ? data.code.substring(0, 2000) : '(no source available)');
 }
 
 async function loadImpact(nodeId) {
   const data = await api('/api/impact?node=' + encodeURIComponent(nodeId));
-  let html = `<p><b>${data.affected_count}</b> functions affected</p>`;
-  if (data.affected) {
-    data.affected.slice(0, 50).forEach(a => {
-      html += `<div class="impact-item"><span class="depth">d${a.depth}</span>` +
-              `<b>${escapeHtml(a.name)}</b> <span style="color:#999">${escapeHtml(a.domain)}</span></div>`;
-    });
-    if (data.affected_count > 50)
-      html += `<p style="color:#999">...and ${data.affected_count - 50} more</p>`;
-  }
-  document.getElementById('impact-content').innerHTML = html;
-  document.getElementById('impact-panel').style.display = 'block';
-  document.getElementById('code-panel').style.display = 'none';
+  alert('Affected: ' + (data.affected_count || 0) + ' functions');
 }
 
-async function loadSuggestions() {
-  const data = await api('/api/suggestions');
-  if (!data.suggestions || data.suggestions.length === 0) {
-    alert('No suggestions — graph looks healthy!');
-    return;
-  }
-  let html = '';
-  data.suggestions.forEach(s => {
-    html += `<div class="suggestion-item">` +
-      `<span class="priority ${s.priority}">[${s.priority.toUpperCase()}]</span> ` +
-      `<b>${s.category}</b><br>${escapeHtml(s.message)}`;
-    if (s.action) html += `<br><code>${escapeHtml(s.action)}</code>`;
-    html += `</div>`;
-  });
-  document.getElementById('impact-content').innerHTML =
-    `<h2>Suggestions</h2>` + html;
-  document.getElementById('impact-panel').style.display = 'block';
-  document.getElementById('code-panel').style.display = 'none';
-}
-
-async function loadTour() {
-  const data = await api('/api/tour');
-  if (!data.tour) {
-    alert('Tour not available');
-    return;
-  }
-  const blob = new Blob([data.tour], {type: 'text/markdown'});
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[c]);
 }
 
 async function search() {
@@ -770,157 +784,31 @@ async function search() {
   }
 }
 
-async function findPath(fromId, toId) {
-  const data = await api('/api/path?from=' + encodeURIComponent(fromId) + '&to=' + encodeURIComponent(toId));
-  if (data.path) {
-    highlightPath = data.path;
-    await api('/api/highlight-path', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({path: highlightPath})
-    });
-    render();
-    const details = document.getElementById('node-details');
-    details.innerHTML += '<div class="path-list">Path: ' +
-      highlightPath.map(id => id.split(':').pop()).join(' → ') + '</div>';
-  } else {
-    alert('No path found');
-  }
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  })[c]);
-}
-
-function render() {
-  const svg = document.getElementById('svg');
-  let vp = document.getElementById('viewport');
-  vp.innerHTML = '';
-  vp.setAttribute('transform',
-    `translate(${viewTransform.x},${viewTransform.y}) scale(${viewTransform.scale})`);
-
-  // Layout: place nodes in a circle around the focus
-  const W = svg.clientWidth, H = svg.clientHeight;
-  const cx = W / 2, cy = H / 2;
-  const radius = Math.min(W, H) * 0.35;
-  const nodePos = {};
-  const focusIdx = cache.nodes.findIndex(n => n.id === cache.focus);
-  cache.nodes.forEach((n, i) => {
-    if (n.id === cache.focus) {
-      nodePos[n.id] = { x: cx, y: cy };
-    } else {
-      const angle = (i / Math.max(1, cache.nodes.length - 1)) * 2 * Math.PI;
-      nodePos[n.id] = { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius };
-    }
-  });
-
-  // Draw edges
-  for (const e of cache.edges) {
-    const s = nodePos[e.source], t = nodePos[e.target];
-    if (!s || !t) continue;
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    line.setAttribute('x1', s.x); line.setAttribute('y1', s.y);
-    line.setAttribute('x2', t.x); line.setAttribute('y2', t.y);
-    line.setAttribute('class', 'edge' +
-      (e.relation === 'FFI' ? ' ffi' : '') +
-      (highlightPath.includes(e.source) && highlightPath.includes(e.target) ? ' highlighted' : ''));
-    vp.appendChild(line);
-  }
-
-  // Draw nodes
-  for (const n of cache.nodes) {
-    const pos = nodePos[n.id];
-    if (!pos) continue;
-    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    circle.setAttribute('cx', pos.x); circle.setAttribute('cy', pos.y);
-    circle.setAttribute('r', 18);
-    let cls = 'node';
-    if (n.is_focused) cls += ' focused';
-    if (n.labels && n.labels.includes('API_entry')) cls += ' entry';
-    if (n.labels && (n.labels.includes('out_end') || n.labels.includes('unknown_end'))) cls += ' endpoint';
-    if (n.labels && n.labels.includes('ffi_boundary')) cls += ' ffi';
-    if (highlightPath.includes(n.id)) cls += ' highlighted';
-    circle.setAttribute('class', cls);
-    circle.addEventListener('click', () => focusNode(n.id, 1));
-    g.appendChild(circle);
-    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', pos.x);
-    text.setAttribute('y', pos.y + 32);
-    text.setAttribute('class', 'node-label');
-    text.textContent = (n.name || n.id).split(/[:.]/).pop().slice(0, 30);
-    g.appendChild(text);
-    vp.appendChild(g);
-  }
-}
-
-function zoom(factor) {
-  viewTransform.scale *= factor;
-  render();
-}
-
-function resetView() {
-  viewTransform = { x: 0, y: 0, scale: 1 };
-  render();
-}
-
-function expandNeighbors() {
-  if (cache.focus) focusNode(cache.focus, 2);
-}
-
-// Pan support
-document.getElementById('svg').addEventListener('mousedown', e => {
-  if (e.target.tagName === 'circle') return;
-  lastPan = { x: e.clientX, y: e.clientY };
-});
-document.getElementById('svg').addEventListener('mousemove', e => {
-  if (!lastPan) return;
-  viewTransform.x += e.clientX - lastPan.x;
-  viewTransform.y += e.clientY - lastPan.y;
-  lastPan = { x: e.clientX, y: e.clientY };
-  render();
-});
-document.getElementById('svg').addEventListener('mouseup', () => lastPan = null);
-document.getElementById('svg').addEventListener('mouseleave', () => lastPan = null);
-
 document.getElementById('search-btn').addEventListener('click', search);
 document.getElementById('search').addEventListener('keydown', e => {
   if (e.key === 'Enter') search();
 });
+document.getElementById('layout-select').addEventListener('change', runLayout);
+document.getElementById('fit-btn').addEventListener('click', () => { if (cy) cy.fit(undefined, 42); });
 document.getElementById('reload-btn').addEventListener('click', async () => {
   await api('/api/reload', { method: 'POST' });
   loadSummary();
   if (cache.focus) focusNode(cache.focus, 1);
 });
-document.getElementById('suggest-btn').addEventListener('click', loadSuggestions);
-document.getElementById('tour-btn').addEventListener('click', loadTour);
 document.getElementById('dark-btn').addEventListener('click', () => {
-  document.body.classList.toggle('dark');
+  document.body.style.background = document.body.style.background === '#0d1b2a' ? '#1a1a2e' : '#0d1b2a';
 });
-
-// Keyboard shortcuts
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT') {
-    if (e.key === 'Escape') e.target.blur();
-    return;
-  }
-  switch (e.key) {
+  if (e.target.tagName === 'INPUT') return;
+  switch(e.key) {
     case '/': e.preventDefault(); document.getElementById('search').focus(); break;
-    case 's': loadSuggestions(); break;
-    case 'd': document.body.classList.toggle('dark'); break;
-    case 't': loadTour(); break;
-    case 'r': document.getElementById('reload-btn').click(); break;
-    case 'Escape':
-      document.getElementById('code-panel').style.display = 'none';
-      document.getElementById('impact-panel').style.display = 'none';
-      break;
+    case 'f': if (cy) cy.fit(undefined, 42); break;
+    case 'Escape': if (cy) cy.elements().removeClass('faded'); break;
   }
 });
 
-// Initial load
 loadSummary();
-window.addEventListener('resize', () => render());
+window.addEventListener('resize', () => { if (cy) cy.resize(); });
 </script>
 </body>
 </html>

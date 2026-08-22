@@ -2012,11 +2012,11 @@ def cmd_scan(args):
                 break
         _will_use_clang = _has_c_cpp
     if _will_use_clang and not _compile_commands_arg and not _clang_args_arg:
-        if _no_interactive:
+        if _no_interactive or not sys.stdin.isatty():
             print("[CompileCommands] No --compile-commands or --clang-args provided "
-                  "and --no-interactive set. clang parsing may miss include paths "
-                  "and macro definitions. Set --compile-commands or --clang-args "
-                  "for accurate results.", file=sys.stderr)
+                  "and --no-interactive set (or stdin is not a TTY). clang parsing "
+                  "may miss include paths and macro definitions. Set --compile-commands "
+                  "or --clang-args for accurate results.", file=sys.stderr)
         else:
             _cc_path = _prompt_for_compile_commands(source)
             if _cc_path:

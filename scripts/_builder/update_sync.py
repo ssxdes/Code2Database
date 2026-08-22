@@ -555,7 +555,8 @@ def cmd_update(args):
     detect_result = subprocess.run(
         [sys.executable, scanner_script, "detect-changes",
          "--source", source, "--outdir", graph_dir],
-        capture_output=True, text=True
+        capture_output=True, text=True,
+        stdin=subprocess.DEVNULL
     )
     if detect_result.returncode != 0:
         print(f"Error detecting changes: {detect_result.stderr}", file=sys.stderr)
@@ -607,12 +608,15 @@ def cmd_update(args):
             files_arg = ",".join(to_scan)
             scan_cmd = [sys.executable, scanner_script, "scan",
                         "--source", source, "--files", files_arg,
-                        "--output", extraction_path]
+                        "--output", extraction_path,
+                        "--no-interactive"]
             if macros_str:
                 scan_cmd.extend(["--macros", macros_str])
             scan_result = subprocess.run(
                 scan_cmd,
-                capture_output=True, text=True
+                capture_output=True, text=True,
+                stdin=subprocess.DEVNULL,
+                timeout=3600
             )
             if scan_result.returncode != 0:
                 print(f"Error scanning changed files: {scan_result.stderr}", file=sys.stderr)
@@ -648,7 +652,8 @@ def cmd_update(args):
     subprocess.run(
         [sys.executable, scanner_script, "manifest",
          "--source", source, "--outdir", graph_dir],
-        capture_output=True, text=True
+        capture_output=True, text=True,
+        stdin=subprocess.DEVNULL
     )
 
     print(f"Updated invocation graph: {merged.number_of_nodes()} nodes, {merged.number_of_edges()} edges")

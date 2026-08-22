@@ -6528,8 +6528,10 @@ def cmd_build(args):
             scan_result = subprocess.run(
                 [sys.executable, scanner_script, "scan",
                  "--source", source_root, "--output", re_scan,
-                 "--macros", macros_str],
-                capture_output=True, text=True
+                 "--macros", macros_str,
+                 "--no-interactive"],
+                capture_output=True, text=True,
+                stdin=subprocess.DEVNULL
             )
             if scan_result.returncode == 0:
                 data = json.loads(Path(re_scan).read_text(encoding="utf-8"))

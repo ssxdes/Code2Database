@@ -42,11 +42,11 @@ def _git_changed_files(source_root: str, commit_range: str = None) -> list:
         # Uncommitted changes + last commit
         cmd = ["git", "-C", source_root, "diff", "--name-only", "HEAD"]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
     if result.returncode != 0:
         # Try staged/unstaged
         cmd = ["git", "-C", source_root, "diff", "--name-only"]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
 
     if result.returncode != 0 or not result.stdout:
         return []
@@ -61,7 +61,7 @@ def _svn_changed_files(source_root: str, revision_range: str = None) -> list:
     else:
         cmd = ["svn", "status", source_root]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
     if result.returncode != 0:
         return []
 

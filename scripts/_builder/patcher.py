@@ -299,11 +299,11 @@ def patch_from_git(graph_dir: str, source_root: str, commit_range: str = None):
         # First get uncommitted (working tree vs HEAD)
         cmd = ["git", "-C", source_root, "diff", "HEAD"]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
     if result.returncode != 0:
         # Fallback: just staged/unstaged
         cmd = ["git", "-C", source_root, "diff"]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
 
     if not result.stdout:
         print("No changes detected in git diff")
@@ -333,7 +333,7 @@ def light_scan(source_root: str, graph_dir: str, changed_files: list = None):
         if os.path.exists(os.path.join(source_root, ".git")):
             result = subprocess.run(
                 ["git", "-C", source_root, "diff", "--name-only"],
-                capture_output=True, text=True)
+                capture_output=True, text=True, stdin=subprocess.DEVNULL)
             if result.returncode == 0 and result.stdout:
                 changed_files = [os.path.join(source_root, f) for f in result.stdout.strip().split("\n") if f]
             else:

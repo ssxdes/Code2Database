@@ -370,25 +370,140 @@ _SA_GLOBAL_PREFIX_RE = re.compile(r'\b(g_[A-Za-z_]\w*|g[A-Z][A-Za-z0-9_]*)\b')
 _SA_ANY_WRITE_RE = re.compile(
     r'\b([A-Za-z_]\w*)\s*(\+|-|\*|\/|\||\&|\^|\%|<<|>>)?=\s*[^=]'
 )
-_SA_FIELD_ACCESS_RE = re.compile(
-    r'(\b[A-Za-z_]\w*)\s*(?:->|\.)\s*([A-Za-z_]\w*)\b'
+
+
+_GUARD_KW_RE = re.compile(r'\b(if|switch|else\s+if)\s*\(')
+
+
+# IMPROVE-OPT3: Match `<obj_name> = <source_expr>` where source_expr is a
+# field-chain (e.g., `jh->bh`, `mapping->private_list`) or function call.
+# Used by _trace_object_origin to find where a struct pointer variable was
+# initialized, so we can distinguish buffer_head objects from different
+# address_spaces — the key signal from KASAN_FINAL_REPORT that proves
+# journal_unmap_buffer's bh is a different object from the reader's bh.
+_OBJ_ASSIGN_RE = re.compile(
+    r'\b([A-Za-z_]\w*)\s*=\s*'
+    r'((?:[A-Za-z_]\w*\s*(?:->|\.)\s*)+[A-Za-z_]\w*'  # field chain: a->b->c
+    r'|[A-Za-z_]\w*\s*\([^)]*\))'  # or function call: foo(...)
 )
-_SA_FIELD_WRITE_RE = re.compile(
-    r'(\b[A-Za-z_]\w*)\s*(?:->|\.)\s*([A-Za-z_]\w*)\s*(\+|-|\*|\/|\||\&|\^|\%|<<|>>)?=\s*([^;,\n]{1,80})'
-)
-# FN_PTR parameter name detection — used in edge processing loop.
-_FN_PTR_PARAM_RE = re.compile(
-    r'^(cb_fn|cpl_cb|cb|fn|func|handler|callback|op|action|proc|'
-    r'routine|build_io_fn|disconnected_qpair_cb)$|'
-    r'_cb$|_fn$|_handler$|_callback$|_routine$'
-)
+
+
+def _trace_object_origin(body_text: str, obj_name: str, max_depth: int = 3) -> str:
+    """Trace where `obj_name` was initialized — backward through assignments.
+
+    IMPROVE-OPT3: For a field access like `bh->b_bdev`, the variable `bh` may
+    itself be assigned from a field chain (e.g., `bh = jh->bh`). Following
+    this chain gives us the object's "origin" — useful for distinguishing
+    buffer_head objects from different address_spaces.
+
+    Returns the source expression (e.g., "jh->bh" or "mapping->private_list")
+    or "" if no assignment is found within max_depth hops.
+
+    Limitations: only handles simple `var = expr` assignments; doesn't handle
+    compound initializers, function parameters (which are already param
+    origin), or control-flow-dependent assignments. This is a heuristic —
+    full type-flow analysis is task #206 (KERNEL-D10).
+    """
+    if not obj_name or max_depth <= 0:
+        return ""
+    seen = {obj_name}
+    current = obj_name
+    last_source = ""
+    for _ in range(max_depth):
+        # Find the last assignment to `current` in body_text
+        last_match = None
+        for m in _OBJ_ASSIGN_RE.finditer(body_text):
+            if m.group(1) == current:
+                last_match = m
+        if not last_match:
+            break
+        source = last_match.group(2).strip()
+        last_source = source
+        # If source is a field chain, extract the new head variable
+        # e.g., "jh->bh" → head = "jh"
+        head_match = re.match(r'([A-Za-z_]\w*)\s*(?:->|\.)', source)
+        if head_match:
+            head = head_match.group(1)
+            if head in seen:
+                return source  # cycle — return what we have
+            seen.add(head)
+            current = head
+            continue
+        else:
+            # Source is a function call or terminal — return it
+            return source
+    return last_source
+
+
+def _find_enclosing_guard(body_text: str, write_pos: int) -> str:
+    """Find the nearest enclosing if/switch guard condition for a field write at write_pos.
+
+    IMPROVE-OPT1: Walks body_text forward tracking brace depth and a stack of
+    (depth_at_block_entry, condition) for each if/switch block. Returns the
+    condition of the innermost block whose range contains write_pos, or "" if
+    the write is not inside any guarded block.
+
+    Used by null-pointer-deref analysis to surface the guard that protects a
+    NULL writer — e.g., `if (!sb_is_blkdev_sb(sb)) { bh->b_bdev = NULL; }` →
+    guard_condition = "!sb_is_blkdev_sb(sb)" → reachable_in_scene = "guarded".
+    This is the key piece that distinguishes a real bug from a false positive:
+    writers guarded by !sb_is_blkdev_sb() are unreachable during ext4 mount.
+
+    Limitations: only handles braced if/switch blocks (not single-statement
+    forms). `else` clauses are not handled separately — the if's condition is
+    returned for both branches, which is conservative (the agent can infer
+    that an `else` branch implies the negation).
+    """
+    if write_pos >= len(body_text):
+        return ""
+    stack = []  # list of (depth_inside_block, condition_text)
+    depth = 0
+    i = 0
+    n = len(body_text)
+    while i < n and i < write_pos:
+        ch = body_text[i]
+        if ch == '{':
+            depth += 1
+            i += 1
+            continue
+        if ch == '}':
+            depth -= 1
+            while stack and stack[-1][0] > depth:
+                stack.pop()
+            i += 1
+            continue
+        m = _GUARD_KW_RE.match(body_text, i)
+        if m:
+            j = m.end()  # position just after '('
+            paren_depth = 1
+            k = j
+            while k < n and paren_depth > 0:
+                if body_text[k] == '(':
+                    paren_depth += 1
+                elif body_text[k] == ')':
+                    paren_depth -= 1
+                k += 1
+            if paren_depth != 0:
+                i += 1
+                continue
+            condition = body_text[j:k - 1].strip()
+            p = k
+            while p < n and body_text[p] in ' \t\n\r':
+                p += 1
+            if p < n and body_text[p] == '{':
+                stack.append((depth + 1, condition))
+                i = p
+                continue
+            i = k
+            continue
+        i += 1
+    return stack[-1][1] if stack else ""
 
 
 def _extract_state_access(body_text: str, local_vars: list, params: list,
                           globals_data: dict, field_assignments: list,
                           node_name: str = "",
-                          _cached_globals: dict = None,
-                          language: str = "") -> dict:
+                          _cached_globals: dict = None) -> dict:
     """Extract global variable and struct field read/write information from body_text.
 
     Scans function body text for patterns indicating access to global variables
@@ -510,31 +625,29 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
 
     seen_written_names = set(e["name"] for e in globals_written)
     seen_read_names = set(e["name"] for e in globals_read)
-    # g_ prefix is a C/C++ naming convention; skip for other languages
-    if not language or language in ('c', 'cpp', 'cpp_header'):
-        for m in _SA_GLOBAL_PREFIX_RE.finditer(body_text):
-            vname = m.group(1)
-            if vname in local_names or vname in global_var_names:
-                continue
-            # Skip very short names and common C keywords/types
-            if len(vname) <= 2 or vname in ('goto', 'get'):
-                continue
-            is_write = vname in written_any
-            entry = {"name": vname, "type": "", "source_file": "",
-                     "inferred": True}
-            if is_write:
-                if vname not in seen_written_names:
-                    seen_written_names.add(vname)
-                    globals_written.append(entry)
-                # Inferred globals written are also implicitly read (write-then-read
-                # pattern is common; conservative assumption to surface the var).
-                if vname not in seen_read_names:
-                    seen_read_names.add(vname)
-                    globals_read.append(entry)
-            else:
-                if vname not in seen_read_names:
-                    seen_read_names.add(vname)
-                    globals_read.append(entry)
+    for m in _SA_GLOBAL_PREFIX_RE.finditer(body_text):
+        vname = m.group(1)
+        if vname in local_names or vname in global_var_names:
+            continue
+        # Skip very short names and common C keywords/types
+        if len(vname) <= 2 or vname in ('goto', 'get'):
+            continue
+        is_write = vname in written_any
+        entry = {"name": vname, "type": "", "source_file": "",
+                 "inferred": True}
+        if is_write:
+            if vname not in seen_written_names:
+                seen_written_names.add(vname)
+                globals_written.append(entry)
+            # Inferred globals written are also implicitly read (write-then-read
+            # pattern is common; conservative assumption to surface the var).
+            if vname not in seen_read_names:
+                seen_read_names.add(vname)
+                globals_read.append(entry)
+        else:
+            if vname not in seen_read_names:
+                seen_read_names.add(vname)
+                globals_read.append(entry)
 
     # --- Struct field access ---
     fields_read = []
@@ -565,19 +678,23 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
 
     # Match: identifier->identifier or identifier.identifier
     # Exclude: function calls (identifier(...)), common C keywords
-    # Uses module-level _SA_FIELD_ACCESS_RE
+    _FIELD_ACCESS_RE = re.compile(
+        r'(\b[A-Za-z_]\w*)\s*(?:->|\.)\s*([A-Za-z_]\w*)\b'
+    )
     # Write pattern: the field access is followed by assignment operator.
     # Capture the assigned RHS expression (truncated to ~60 chars) so callers
     # can distinguish "bh->b_bdev = NULL" from "bh->b_bdev = bdev" — this is
     # critical for null-pointer-deref analysis where only the NULL writers
     # are suspects.
-    # Uses module-level _SA_FIELD_WRITE_RE
+    _FIELD_WRITE_RE = re.compile(
+        r'(\b[A-Za-z_]\w*)\s*(?:->|\.)\s*([A-Za-z_]\w*)\s*(\+|-|\*|\/|\||\&|\^|\%|<<|>>)?=\s*([^;,\n]{1,80})'
+    )
 
     written_field_keys = set()  # (obj, field) pairs that are written
     seen_written_keys = set()  # for O(1) dedup of fields_written entries
     for e in fields_written:
         seen_written_keys.add((e.get("struct_chain", ""), e.get("field_name", "")))
-    for m in _SA_FIELD_WRITE_RE.finditer(body_text):
+    for m in _FIELD_WRITE_RE.finditer(body_text):
         obj_name = m.group(1)
         field_name = m.group(2)
         # Skip common non-struct identifiers and C keywords.
@@ -600,6 +717,22 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
         rhs = (m.group(4) or "").strip()
         if rhs:
             entry["assigned_value"] = rhs
+        # IMPROVE-OPT1: Capture the enclosing if/switch guard condition.
+        # This lets field-flow surface guards_on_path and reachable_in_scene,
+        # which is the key signal that distinguishes a real bug (writer
+        # reachable in scene) from a false positive (writer guarded out).
+        guard = _find_enclosing_guard(body_text, m.start())
+        if guard:
+            entry["guard_condition"] = guard
+        # IMPROVE-OPT3: Trace where obj_name was initialized, to distinguish
+        # objects from different address_spaces. The key KASAN_FINAL_REPORT
+        # insight: journal_unmap_buffer's bh comes from a different
+        # address_space than the reader's bh, so the writer doesn't affect
+        # the reader. object_origin captures the source chain (e.g.,
+        # "jh->bh") so the agent can compare writer and reader origins.
+        origin = _trace_object_origin(body_text, obj_name)
+        if origin:
+            entry["object_origin"] = origin
         fields_written.append(entry)
 
     # Read patterns: field access not on LHS.
@@ -608,7 +741,7 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
     # accessed by this function, and field-level tracking is set-based
     # (we don't need to record both reads and writes for the same field).
     seen_read_keys = set()
-    for m in _SA_FIELD_ACCESS_RE.finditer(body_text):
+    for m in _FIELD_ACCESS_RE.finditer(body_text):
         obj_name = m.group(1)
         field_name = m.group(2)
         if obj_name in ('return', 'if', 'else', 'while', 'for', 'switch',
@@ -619,7 +752,15 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
         if key in written_field_keys or key in seen_read_keys:
             continue
         seen_read_keys.add(key)
-        fields_read.append({"struct_chain": obj_name, "field_name": field_name})
+        read_entry = {"struct_chain": obj_name, "field_name": field_name}
+        # IMPROVE-OPT3: Trace object_origin for reads too — lets the agent
+        # compare writer's object_origin vs reader's object_origin to detect
+        # when they operate on different objects (e.g., buffer_head from
+        # bdev->bd_inode->i_mapping vs ext4_inode->i_mapping).
+        origin = _trace_object_origin(body_text, obj_name)
+        if origin:
+            read_entry["object_origin"] = origin
+        fields_read.append(read_entry)
 
     return {
         "globals_read": globals_read,
@@ -689,8 +830,7 @@ def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
         access_info = _extract_state_access(body, local_vars, params,
                                             globals_data, field_assignments,
                                             node_name,
-                                            _cached_globals=_cached_globals,
-                                            language=ndata.get("language", ""))
+                                            _cached_globals=_cached_globals)
         out = {}
         for key in ("globals_read", "globals_written",
                     "fields_read", "fields_written"):
@@ -1151,21 +1291,24 @@ def _load_full_graph(graph_dir: str) -> nx.DiGraph:
 
 
 def _load_full_graph_from_sqlite(db_path: str) -> nx.DiGraph:
-    """Load the full invocation graph from SQLite (code2database.db).
+    """P0_fix: Load the full invocation graph from SQLite (code2database.db).
 
-    For large graphs (>=50K nodes), returns a LazySQLiteGraph that
-    queries SQLite on demand instead of loading everything into memory.
-    For small graphs, eagerly loads all nodes and edges into a DiGraph.
+    Used when code2database_master.json is absent — i.e., builds that used
+    --storage sqlite --low-memory (required for projects >100K functions
+    where JSON master would be too large).
+
+    Loads nodes from `functions` table and edges from `edges` table,
+    deserializing JSON fields (labels, extra_json) on the fly. Decompresses
+    body_text_compressed via zlib if needed.
+
+    Memory note: For 1.5M nodes this consumes ~8-12 GB RAM. Callers that
+    need lower memory should use targeted queries (describe-node, neighbors)
+    that can load a single node via _load_node_from_sqlite instead of the
+    full graph.
     """
     import sqlite3
-    conn = sqlite3.connect(db_path)
-    node_count = conn.execute("SELECT COUNT(*) FROM functions").fetchone()[0]
-    conn.close()
-    if node_count >= 50000:
-        from _builder.streaming_graph import LazySQLiteGraph
-        return LazySQLiteGraph(db_path)
-
     import zlib
+
     G = nx.DiGraph()
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -1769,20 +1912,41 @@ def _propagate_thread_models(G: nx.DiGraph, thread_models: dict) -> None:
 
 
 def _validate_stats_consistency(G: nx.DiGraph, pipeline_node_count: int) -> dict:
-    """Validate consistency between pipeline stats and context-pack count."""
+    """Validate consistency between pipeline stats node count and context-pack function count.
+
+    The context pack excludes nodes that are empty, file-typed, or auto_created,
+    which leads to a different (lower) function count than the raw pipeline total.
+    This function computes both counts, warns if they diverge by more than 1%,
+    and returns a reconciliation dict for inclusion in pipeline stats.
+
+    Args:
+        G: The invocation graph DiGraph.
+        pipeline_node_count: The raw node count (G.number_of_nodes()) recorded
+            in the pipeline stats.
+
+    Returns:
+        A dict with keys: context_pack_count, pipeline_count, delta,
+        delta_pct, exceeds_threshold, explanation.
+    """
+    # Count using the same logic as _build_context_pack (index_pack.py):
+    # exclude is_empty, node_type=="file", auto_created
     context_pack_count = 0
     excluded = {"empty": 0, "file": 0, "auto_created": 0, "dead_code": 0}
     for _, nd in G.nodes(data=True):
         if nd.get("is_empty", False):
             excluded["empty"] += 1
-        elif nd.get("node_type") == "file":
+            continue
+        if nd.get("node_type") == "file":
             excluded["file"] += 1
-        elif nd.get("auto_created", False):
+            continue
+        if nd.get("auto_created", False):
             excluded["auto_created"] += 1
-        else:
-            if "dead_code" in nd.get("labels", []):
-                excluded["dead_code"] += 1
-            context_pack_count += 1
+            continue
+        # dead_code is tracked but NOT excluded from the context-pack count;
+        # it is however excluded from some other outputs, so we record it.
+        if "dead_code" in nd.get("labels", []):
+            excluded["dead_code"] += 1
+        context_pack_count += 1
 
     delta = pipeline_node_count - context_pack_count
     delta_pct = (delta / pipeline_node_count * 100) if pipeline_node_count > 0 else 0.0
@@ -1937,11 +2101,7 @@ def build_graph(extraction: dict, profile: dict = None,
     id_registry = {}
     for func in functions:
         fid = func["id"]
-        id_registry[fid] = {"id": fid,
-                             "name": func.get("name", ""),
-                             "domain": func.get("domain", "root"),
-                             "source_file": func.get("source_file", ""),
-                             "is_empty": func.get("is_empty", False)}
+        id_registry[fid] = func
         # Compute FQN
         fqn = _compute_fqn(func, project_name)
         G.add_node(fid,
@@ -2310,15 +2470,6 @@ def build_graph(extraction: dict, profile: dict = None,
     # Build caller→struct_chain lookup from fn_ptr_calls for context-aware dispatch.
     # fn_ptr_calls format: {caller_name: [{field_name, struct_chain}, ...]}
     _fn_ptr_struct_lookup = {}  # (caller_name, field_name) → struct_chain
-    _fa_collision_index = set()  # (field_name, target_func, struct_chain)
-    _fa_collision_no_chain = {}  # field_name → {target_func, ...}
-    for fa in extraction.get("field_assignments", []):
-        _fn_chain = fa.get("struct_chain", "")
-        _fn_field = fa.get("field_name", "")
-        _fn_target = fa.get("target_func", "")
-        if _fn_field and _fn_target:
-            _fa_collision_index.add((_fn_field, _fn_target, _fn_chain))
-            _fa_collision_no_chain.setdefault(_fn_field, set()).add(_fn_target)
     for caller_name, calls in extraction.get("fn_ptr_calls", {}).items():
         for call in calls:
             fn_field = call.get("field_name", "")
@@ -3128,7 +3279,11 @@ def build_graph(extraction: dict, profile: dict = None,
         # Detect by: unresolved name (no domain prefix) that matches common
         # fn_ptr parameter patterns.
         if target_id == target_name and '.' not in target_id:
-            # Uses module-level _FN_PTR_PARAM_RE
+            _FN_PTR_PARAM_RE = re.compile(
+                r'^(cb_fn|cpl_cb|cb|fn|func|handler|callback|op|action|proc|'
+                r'routine|build_io_fn|disconnected_qpair_cb)$|'
+                r'_cb$|_fn$|_handler$|_callback$|_routine$'
+            )
             if _FN_PTR_PARAM_RE.match(target_id):
                 continue
 
@@ -3257,9 +3412,18 @@ def build_graph(extraction: dict, profile: dict = None,
             # assigned to this field via a field_assignment record.
             source_func = source_id.rsplit(".", 1)[-1] if "." in source_id else source_id
             struct_chain = _fn_ptr_struct_lookup.get((source_func, target_name), "")
-            has_fa = (target_name in _fa_collision_no_chain and
-                      target_name in _fa_collision_no_chain.get(target_name, set()) and
-                      (not struct_chain or (target_name, target_name, struct_chain) in _fa_collision_index))
+            has_fa = False
+            for fa in extraction.get("field_assignments", []):
+                fa_chain = fa.get("struct_chain", "")
+                fa_field = fa.get("field_name", "")
+                fa_target = fa.get("target_func", "")
+                # Match: same field name, and target func matches the
+                # function we resolved to, with matching or absent struct
+                if (fa_field == target_name
+                        and fa_target == target_name
+                        and (fa_chain == struct_chain or not struct_chain)):
+                    has_fa = True
+                    break
             if not has_fa:
                 continue  # Name collision — skip
 
@@ -3542,9 +3706,9 @@ def build_graph(extraction: dict, profile: dict = None,
                         for struct_type in matched_structs:
                             regs = vtable_index[struct_type].get(field_name, [])
                             if len(regs) > _MAX_VTABLE_DISPATCH_PER_CALL:
-                                _inline_parts = set(re.split(r'[._]', inline_domain.lower()))
-                                regs = sorted(regs, key=lambda r, _ip=_inline_parts: (
-                                    -(1 if set(re.split(r'[._/]', r.get("source_file", "").lower())) & _ip else 0),
+                                regs = sorted(regs, key=lambda r: (
+                                    -(1 if set(re.split(r'[._/]', r.get("source_file", "").lower()))
+                                      & set(re.split(r'[._]', inline_domain.lower())) else 0),
                                     r.get("source_file", "")))[:_MAX_VTABLE_DISPATCH_PER_CALL]
                             for reg in regs:
                                 func_name = reg["func_name"]
@@ -4042,9 +4206,9 @@ def build_graph(extraction: dict, profile: dict = None,
                                 break
                     _iw_field_cap = _effective_vtable_cap(field_name)
                     if len(regs) > _iw_field_cap:
-                        _caller_parts = set(re.split(r'[._]', caller_domain.lower()))
-                        regs = sorted(regs, key=lambda r, _cp=_caller_parts: (
-                            -(1 if set(re.split(r'[._/]', r.get("source_file", "").lower())) & _cp else 0),
+                        regs = sorted(regs, key=lambda r: (
+                            -(1 if set(re.split(r'[._/]', r.get("source_file", "").lower()))
+                              & set(re.split(r'[._]', caller_domain.lower())) else 0),
                             r.get("source_file", "")))[:_iw_field_cap]
                     for reg in regs:
                         func_name = reg["func_name"]
@@ -4112,20 +4276,18 @@ def build_graph(extraction: dict, profile: dict = None,
                 _fn_ptr_cb_fields[func_name].add(field)
 
     if _fn_ptr_cb_fields:
-        # Single-pass edge traversal: build _cbarg_from, _callers_by_name,
-        # and _invoked_to_invoker_ids simultaneously (was 3 separate traversals).
+        # Build: caller_node -> {target_node} for CALLBACK_ARG edges
         _cbarg_from = defaultdict(set)
+        for u, v, d in G.edges(data=True):
+            if d.get("confidence") == "CALLBACK_ARG":
+                _cbarg_from[u].add(v)
+
+        # Build: target_func_name -> {caller_node_ids}
         _callers_by_name = defaultdict(set)
         for u, v, d in G.edges(data=True):
-            conf = d.get("confidence", "")
-            conc = d.get("concurrency", "")
-            if conf == "CALLBACK_ARG":
-                _cbarg_from[u].add(v)
             v_name = G.nodes[v].get("name", "") if v in G else ""
             if v_name:
                 _callers_by_name[v_name].add(u)
-            if conc == "INVOKES" and v_name:
-                _invoked_to_invoker_ids.setdefault(v_name, set()).add(u)
 
         # For each function with cb_fn fn_ptr_calls, bridge through callers
         _bridged_count = 0
@@ -4570,18 +4732,17 @@ def build_graph(extraction: dict, profile: dict = None,
                 # Find fn_ptr_call sources: functions that have fn_ptr_calls
                 # with this field_name and struct_chain matching sc_norm EXACTLY
                 fn_ptr_sources = set()
-                _fn_ptr_caller_index = _fn_ptr_caller_index if '_fn_ptr_caller_index' in dir() else None
-                if _fn_ptr_caller_index is None:
-                    _fn_ptr_caller_index = {}
-                    for _fpc_caller, _fpc_calls in extraction.get("fn_ptr_calls", {}).items():
-                        for _fpc_call in _fpc_calls:
-                            _fpc_fn = _fpc_call.get("field_name", "")
-                            _fpc_sc = _fpc_call.get("struct_chain", "").replace("->", ".")
-                            if _fpc_fn and _fpc_sc:
-                                _fpc_cnid = _name_to_nid.get(_fpc_caller)
-                                if _fpc_cnid and _fpc_cnid in G:
-                                    _fn_ptr_caller_index.setdefault((_fpc_fn, _fpc_sc), set()).add(_fpc_cnid)
-                fn_ptr_sources = set(_fn_ptr_caller_index.get((field_name, sc_norm), set()))
+                for caller_name, calls in extraction.get("fn_ptr_calls", {}).items():
+                    for call in calls:
+                        if call.get("field_name") == field_name:
+                            call_sc = call.get("struct_chain", "").replace("->", ".")
+                            # Require exact struct_chain match (not prefix)
+                            # to avoid connecting unrelated fn_ptr_call sites
+                            if call_sc == sc_norm:
+                                # Use pre-built name index for O(1) lookup
+                                caller_nid = _name_to_nid.get(caller_name)
+                                if caller_nid and caller_nid in G:
+                                    fn_ptr_sources.add(caller_nid)
                 if not fn_ptr_sources:
                     continue
                 # Create INFERRED edges from fn_ptr_call sources to resolved targets
@@ -5127,10 +5288,6 @@ def build_graph(extraction: dict, profile: dict = None,
     # turns domain "root" → "root.mballoc" for matching functions.
     domain_rules = profile.get("domain_rules", []) if profile else []
     if domain_rules:
-        _compiled_domain_rules = [
-            (re.compile(r.get("pattern", "")), r.get("domain_suffix", ""))
-            for r in domain_rules if r.get("pattern") and r.get("domain_suffix")
-        ]
         _domain_refined = 0
         for nid, ndata in G.nodes(data=True):
             if ndata.get("is_empty", False):
@@ -5139,8 +5296,10 @@ def build_graph(extraction: dict, profile: dict = None,
             domain = ndata.get("domain", "")
             if not name or not domain:
                 continue
-            for pat_re, suffix in _compiled_domain_rules:
-                if pat_re.match(name):
+            for rule in domain_rules:
+                pattern = rule.get("pattern", "")
+                suffix = rule.get("domain_suffix", "")
+                if pattern and suffix and re.match(pattern, name):
                     ndata["domain"] = f"{domain}.{suffix}" if domain else suffix
                     _domain_refined += 1
                     break
@@ -5614,21 +5773,12 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
         # serialization time and file size. indent=2 on 100K+ entries
         # can take minutes; compact mode is 5-10x faster.
         _use_indent = len(func_rows) < 500
-        _sep = (",", ":") if not _use_indent else None
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write('{"type":"code2database_domain","format_version":3,')
-            f.write(f'"domain":{json.dumps(domain, ensure_ascii=False)},')
-            f.write('"functions":')
-            f.write(json.dumps(func_rows, ensure_ascii=False, separators=_sep))
-            f.write(',"function_details":')
-            f.write(json.dumps(func_details, ensure_ascii=False, separators=_sep))
-            f.write(',"empty_nodes":')
-            f.write(json.dumps(empty_rows, ensure_ascii=False, separators=_sep))
-            f.write(',"edge_fields":')
-            f.write(json.dumps(EDGE_FIELDS, ensure_ascii=False, separators=_sep))
-            f.write(',"edges":')
-            f.write(json.dumps(compact_edges, ensure_ascii=False, separators=_sep))
-            f.write('}\n')
+        Path(filepath).write_text(
+            json.dumps(domain_data, ensure_ascii=False,
+                      indent=2 if _use_indent else None,
+                      separators=(",", ":") if not _use_indent else None) + "\n",
+            encoding="utf-8"
+        )
 
         domain_map[domain] = rel_path
         total_nodes += len(nodes)
@@ -7138,28 +7288,12 @@ def cmd_build(args):
             # O(n) Python traversal of all nodes.
             print(f"[SQLite] Populating field_access/global_access tables...", file=sys.stderr)
             _field_start = time.time()
-            _fa_batch = []
-            _ga_batch = []
-            _BATCH_FA = 5000
             for nid, nd in G.nodes(data=True):
                 if nd.get("is_empty", False) or nd.get("node_type") == "file":
                     continue
-                _nd_copy = dict(nd, id=nid)
-                if nd.get("fields_read") or nd.get("fields_written"):
-                    _fa_batch.append(_nd_copy)
-                    if len(_fa_batch) >= _BATCH_FA:
-                        store.store_field_access_batch(_fa_batch, autocommit=False)
-                        _fa_batch.clear()
-                if nd.get("globals_read") or nd.get("globals_written"):
-                    _ga_batch.append(_nd_copy)
-                    if len(_ga_batch) >= _BATCH_FA:
-                        store.store_global_access_batch(_ga_batch, autocommit=False)
-                        _ga_batch.clear()
-            if _fa_batch:
-                store.store_field_access_batch(_fa_batch, autocommit=False)
-            if _ga_batch:
-                store.store_global_access_batch(_ga_batch, autocommit=False)
-            store._conn.commit()
+                store.store_field_access(dict(nd, id=nid), autocommit=False)
+                store.store_global_access(dict(nd, id=nid), autocommit=False)
+            store._conn.commit()  # flush accumulated field/global access rows
             print(f"[SQLite] field/global access populated in {time.time() - _field_start:.1f}s",
                   file=sys.stderr)
 
@@ -7360,7 +7494,12 @@ def cmd_build(args):
                         _cgdb_node_count += len(nodes)
                         _cgdb_edge_count += len(_edges_by_file.get(fp, []))
 
-                        # L1 lossless reconstruction layer ingest (C/C++ files only)
+                        # RPT-P0-14: L1 lossless reconstruction layer ingest.
+                        # After the cgdb batch is written, ingest L1 token stream
+                        # + preprocessing info (macros, pp_branches, pragmas,
+                        # attributes, literals, string_literals, comments) for
+                        # C/C++ files. l1_ingest gracefully falls back to a
+                        # sha256-only record when libclang is unavailable.
                         if fp.endswith(('.c', '.cc', '.cpp', '.cxx',
                                         '.h', '.hh', '.hpp', '.hxx',
                                         '.m', '.mm')):
@@ -7376,21 +7515,29 @@ def cmd_build(args):
                                     source_root=source_root,
                                 )
                                 if _l1_stats.get("consistency_ok"):
-                                    print(f"[l1] {os.path.basename(fp)}: "
-                                          f"{_l1_stats['tokens']} tokens, "
-                                          f"{_l1_stats['macros']} macros, "
-                                          f"{_l1_stats['pp_branches']} pp_branches, "
-                                          f"{_l1_stats['string_literals']} str_literals "
-                                          f"(sha256 ok)", file=sys.stderr)
+                                    _l1_msg = (
+                                        f"[l1] {os.path.basename(fp)}: "
+                                        f"{_l1_stats['tokens']} tokens, "
+                                        f"{_l1_stats['macros']} macros, "
+                                        f"{_l1_stats['pp_branches']} pp_branches, "
+                                        f"{_l1_stats['string_literals']} str_literals "
+                                        f"(sha256 ok)"
+                                    )
                                 else:
-                                    print(f"[l1] {os.path.basename(fp)}: "
-                                          f"consistency_ok=False "
-                                          f"(disk={_l1_stats.get('disk_sha256','')[:8]}, "
-                                          f"rendered={_l1_stats.get('rendered_sha256','')[:8]})",
-                                          file=sys.stderr)
+                                    _l1_msg = (
+                                        f"[l1] {os.path.basename(fp)}: "
+                                        f"consistency_ok=False "
+                                        f"(disk={_l1_stats.get('disk_sha256','')[:8]}, "
+                                        f"rendered={_l1_stats.get('rendered_sha256','')[:8]})"
+                                    )
+                                print(_l1_msg, file=sys.stderr)
                             except Exception as _l1_exc:
+                                # L1 ingest is best-effort; don't fail the build
+                                # if it breaks. The cgdb tables are already
+                                # written, so the graph is usable without L1.
                                 print(f"[l1] WARNING: ingest failed for "
-                                      f"{os.path.basename(fp)}: {_l1_exc}", file=sys.stderr)
+                                      f"{os.path.basename(fp)}: {_l1_exc}",
+                                      file=sys.stderr)
                     cgdb_store.close()
                     print(f"[cgdb] Wrote {_cgdb_node_count} nodes, "
                           f"{_cgdb_edge_count} edges, {len(cgdb_types_data)} types, "
@@ -7775,6 +7922,20 @@ def cmd_build(args):
         if getattr(args, 'auto_enhance', False):
             _post_build_auto_enhance(args, outdir)
 
+        # RPT-KERNEL-D14/D15: write coverage reports (SQLite path).
+        try:
+            from _builder.coverage_report import (
+                write_coverage_report, write_file_coverage,
+            )
+            _cov = write_coverage_report(outdir)
+            if _cov:
+                print(f"[coverage] Wrote {_cov}", file=sys.stderr)
+            _fcov = write_file_coverage(outdir)
+            if _fcov:
+                print(f"[coverage] Wrote {_fcov}", file=sys.stderr)
+        except Exception:
+            pass  # Best-effort; never block build
+
         return  # Early return — all work done via SQLite path
     # Re-write with the reconciliation section included (JSON path)
     report = tracker.write_report(outdir)
@@ -7814,9 +7975,11 @@ def cmd_build(args):
     if getattr(args, 'auto_enhance', False):
         _post_build_auto_enhance(args, outdir)
 
-    # Coverage report (best-effort, never blocks build)
+    # RPT-KERNEL-D14/D15: write coverage reports (JSON path).
     try:
-        from _builder.coverage_report import write_coverage_report, write_file_coverage
+        from _builder.coverage_report import (
+            write_coverage_report, write_file_coverage,
+        )
         _cov = write_coverage_report(outdir)
         if _cov:
             print(f"[coverage] Wrote {_cov}", file=sys.stderr)
@@ -7824,6 +7987,6 @@ def cmd_build(args):
         if _fcov:
             print(f"[coverage] Wrote {_fcov}", file=sys.stderr)
     except Exception:
-        pass
+        pass  # Best-effort; never block build
 
 

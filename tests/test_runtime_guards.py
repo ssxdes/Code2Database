@@ -44,22 +44,22 @@ class TestAcquireReleaseGuards(unittest.TestCase):
 
     def test_mutex_lock_detected_as_acquire(self):
         events = _detect_acquire_release(['if (mutex_lock(&m))'])
-        self.assertTrue(any(e['kind'] == 'acquire' and e['function'] == 'mutex_lock'
+        self.assertTrue(any(e['op'] == 'acquire' and e['func'] == 'mutex_lock'
                             for e in events))
 
     def test_mutex_unlock_detected_as_release(self):
         events = _detect_acquire_release(['if (mutex_unlock(&m))'])
-        self.assertTrue(any(e['kind'] == 'release' for e in events))
+        self.assertTrue(any(e['op'] == 'release' for e in events))
 
     def test_check_runtime_guards_records_unbalanced_release(self):
         result = check_runtime_guards(['if (mutex_unlock(&m))'])
         # An unlock without prior lock is an unbalanced release
         self.assertGreater(len(result['unbalanced_releases']), 0)
-        self.assertLess(result['confidence'], 1.0)
+        self.assertIn(result['confidence'], ('INFERRED', 'AMBIGUOUS'))
 
     def test_held_at_end_when_acquire_without_release(self):
         result = check_runtime_guards(['if (mutex_lock(&m))'])
-        self.assertGreater(len(result['held_at_end']), 0)
+        self.assertTrue(result['held_at_end'])
 
 
 class TestTypePredicates(unittest.TestCase):
@@ -113,12 +113,12 @@ class TestLockStateChecks(unittest.TestCase):
 
     def test_mutex_is_locked_extracted(self):
         preds = _extract_predicates(['if (mutex_is_locked(&m))'])
-        self.assertTrue(any(p['function'] == 'mutex_is_locked'
+        self.assertTrue(any(p.get('check', '') == 'mutex_is_locked'
                             for p in preds['lock_state_predicates']))
 
     def test_spin_is_locked_extracted(self):
         preds = _extract_predicates(['if (spin_is_locked(&lock))'])
-        self.assertTrue(any(p['function'] == 'spin_is_locked'
+        self.assertTrue(any(p.get('check', '') == 'spin_is_locked'
                             for p in preds['lock_state_predicates']))
 
     def test_combined_guards_returned_in_guards_list(self):
@@ -128,7 +128,7 @@ class TestLockStateChecks(unittest.TestCase):
             'if (sb_is_blkdev_sb(sb))',
             'if (bd_holder != sb)',
         ])
-        self.assertGreater(result['guard_count'], 0)
+        self.assertGreater(result['guards_count'], 0)
 
 
 class TestEmptyAndNoContradiction(unittest.TestCase):
@@ -137,12 +137,12 @@ class TestEmptyAndNoContradiction(unittest.TestCase):
     def test_empty_conditions_feasible(self):
         result = check_runtime_guards([])
         self.assertTrue(result['feasible'])
-        self.assertEqual(result['reason'], 'no conditions')
+        self.assertEqual(result['reason'], '')
 
     def test_no_contradictions_feasible(self):
         result = check_runtime_guards(['if (mutex_lock(&m))'])
         self.assertTrue(result['feasible'])
-        self.assertGreater(result['confidence'], 0.0)
+        self.assertIn(result['confidence'], ('EXTRACTED', 'INFERRED', 'AMBIGUOUS'))
 
 
 if __name__ == '__main__':

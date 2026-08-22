@@ -1,7 +1,7 @@
 {
   "name": "Code2Database",
   "version": "1.1.0",
-  "description": "Scan C/C++/Go/Python/Java/Rust/ASM codebases and generate a persistent directed code graph. v1.1 adds design-report compliance: cgdb schema v4 (L1 token-stream tables + L3 IR tables + L4 derived tables + cross-language bridge tables), source renderer + sha256 character-level consistency check, transactional write-back loop (render+clang-format+compile+lint+sha256+git commit), 28 design-report MCP tools (render_source/verify_consistency/edit_token/find_macros/get_pp_branches/get_string_literals/find_symbol/callers_of/callees_of/who_writes/who_reads/get_context/impact_analysis/get_module_view/indirect_targets/alias_set/trace_data_flow/cfg_of/path_sensitive_states/precise_write_set/dead_code_in/commit_db_transaction/rollback_db_transaction/insert_node_after/delete_node/add_function), IR adapter framework for 18 languages, and L1 ingest module using libclang Lexer raw_tokens + PPCallbacks simulation. Capabilities: commit-based provenance with git hash verification, Cypher-subset query language, value flow with DATA_FLOW edges, lock-held region analysis, Z3 SMT path feasibility, cross-function DATA_DEP edges, invariant extraction (precond/postcond/loop_invariants/state_machine), LLM auto-semantic enhancement with confidence-threshold auto-write, transactional updates with WAL + snapshots + fcntl file locks, cross-language FFI tracing, interactive Web UI, BUG benchmark, profile health scoring (0-100 across 7 categories), doc-code dual-source truth alignment, background daemon with inotify + Unix socket API, plus cgdb layer with dual clang+tree-sitter backend. Use when user asks about code invocation relationships, function invocation chains, invocation ordering, conditional paths, conditional compilation effects, architecture domain structure, API entry points, external endpoint classification, concurrency risks, data races, invariants, FFI boundaries, doc-code consistency, or wants to generate/visualize a persistent code graph database. Also use when the question would otherwise require multiple grep/glob/Read operations across files \u2014 Code2Database collapses this into a single query. LLMs query the graph via MCP tools or CLI commands instead of reading source files.",
+  "description": "Turn a codebase into a queryable code database. Scan once, query forever \u2014 no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, 19 cgdb semantic tables. 49 MCP tools + 171 CLI commands (20 core). Query priority: Memory then Knowledge then Graph then Source. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow.",
   "trigger": "/Code2Database",
   "languages": [
     "C",
@@ -17,21 +17,26 @@
     "Code2Database-ops"
   ],
   "tier_1_commands": [
-    "scan",
-    "auto-profile",
+    "query",
+    "describe",
+    "trace",
+    "impact",
+    "find",
+    "flow",
+    "concurrency",
+    "context",
     "build",
     "update",
-    "quick-update",
-    "explore-flow",
-    "describe-node",
-    "search",
-    "load",
-    "get-code-snippet",
-    "trace-chain",
-    "reverse-trace",
-    "key-paths",
-    "query",
-    "daemon-status"
+    "save",
+    "recall",
+    "know",
+    "serve",
+    "web-ui",
+    "tx-begin",
+    "tx-commit",
+    "daemon",
+    "export",
+    "health"
   ],
   "commands": [
     "build",
@@ -219,7 +224,7 @@
     "en",
     "zh"
   ],
-  "mcp_tools_count": 77,
+  "mcp_tools_count": 49,
   "mcp_tools_breakdown": {
     "code2database_": 30,
     "cgdb_": 19,
@@ -250,5 +255,8 @@
     "Report-multi-db db_routing/precompute_tasks (v4)",
     "Report-cross-lang cross_lang_bindings/type_mappings/ffi_call_sites/language_adapters/runtime_observations/dependencies (v4)"
   ],
-  "cgdb_schema_version": 4
+  "cgdb_schema_version": 4,
+  "query_priority_chain": "Memory (recall) -> Knowledge (know) -> Graph (query/describe/trace) -> Source (describe --code)",
+  "total_commands": 171,
+  "core_commands": 20
 }

@@ -80,7 +80,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" classify-endpoints \
 摘要中的端点分类示例：
 ```
 Endpoints:
-  Total (no invoked in project): 1,200
+  Total (no invoked in project): 88,249
   External (no source code):        422
   Classified:                       399 (94.5%)
   Unclassified (unknown_end):        23 (5.5%)

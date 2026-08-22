@@ -510,7 +510,6 @@ scripts/
 │   ├── commit_meta.py            ← Git/svn commit detection, blame, manifest enrichment
 │   ├── graph_history.py          ← graph-history, graph-diff, graph-record-version
 │   ├── audit_log.py              ← Audit log of past writes to the graph
-│   ├── changelog_update.py       ← Quick-update + change graph export/merge
 │   ├── ffi_bridge.py             ← Detect ctypes/cgo/extern "C"; build FFI_BRIDGE edges (948 lines)
 │   ├── value_flow.py             ← DATA_FLOW edge construction; param→return propagation
 │   ├── lock_coverage.py          ← Lock-held event-stream extraction with char positions

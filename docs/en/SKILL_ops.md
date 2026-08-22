@@ -1,6 +1,6 @@
 ---
 name: Code2Database-ops
-description: "Operations sub-skill for Code2Database. Activated when the user asks about safe graph editing (transactions, snapshots, WAL replay), keeping the graph up to date (daemon control, file watching, git hook install, patch-from-diff, patch-from-git, sync, merge), profile health and evolution, doc-code alignment and stale-doc marking, graph versioning, persistent memory management, exports (HTML, Obsidian, Web UI), plugins, embeddings (experimental), or the BUG benchmark. Provides hierarchical routing: 14 Tier-1 high-weight commands shown in Quick Reference, a routing table mapping question types to medium-weight command groups, and an on-demand section listing low-weight experimental commands by name only. Database write constraint: LLM MUST get user confirmation before any DB-modifying command (update-node, update-edge, patch-profile, apply-semantics, apply-invariants, auto-enhance, profile-evolve --apply, doc-mark-stale, ffi-types, tx-commit). Use when /Code2Database detects an ops question and explicitly hands off, or when the user types /Code2Database-ops. Not for: querying the graph (use parent /Code2Database); not for deep semantic analysis (use /Code2Database-analysis)."
+description: "Operations sub-skill for Code2Database. Activated when the user asks about safe graph editing (transactions, snapshots, WAL replay), keeping the graph up to date (daemon control, file watching, git hook install, patch-from-diff, patch-from-git, sync, merge), profile health and evolution, doc-code alignment and stale-doc marking, graph versioning, persistent memory management, exports (HTML, Obsidian, Web UI), plugins, embeddings (experimental), or the BUG benchmark. Provides hierarchical routing: 14 Tier-1 high-weight commands shown in Quick Reference, a routing table mapping question types to medium-weight command groups, and an on-demand section listing low-weight experimental commands by name only. Database write constraint: LLM MUST get user confirmation before any DB-modifying command (update-node, update-edge, patch-profile, apply-semantics, apply-invariants, auto-enhance, profile-evolve --apply, doc-mark-stale, ffi-types, merge-changes, tx-commit). Use when /Code2Database detects an ops question and explicitly hands off, or when the user types /Code2Database-ops. Not for: querying the graph (use parent /Code2Database); not for deep semantic analysis (use /Code2Database-analysis)."
 trigger: /Code2Database-ops
 parent_skill: Code2Database
 ---
@@ -47,6 +47,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 - `profile-evolve --apply` — Apply EXTRACTED-confidence profile suggestions; **INFERRED require confirmation**
 - `doc-mark-stale` — Mark a node's doc as stale (non-destructive but visible)
 - `ffi-types` — Update type marshalling table for an FFI edge
+- `merge-changes` — Merge change-graph JSON into the existing graph (writes nodes/edges)
 - `tx-commit` — For write transactions; commits snapshot + WAL entries to the live DB
 
 **LLM behavior rules**:

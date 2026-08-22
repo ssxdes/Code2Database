@@ -508,7 +508,6 @@ scripts/
 │   ├── commit_meta.py            ← Git/svn 提交检测、blame、manifest 富化
 │   ├── graph_history.py          ← graph-history、graph-diff、graph-record-version
 │   ├── audit_log.py              ← 过去写图的审计日志
-│   ├── changelog_update.py       ← quick-update + 变更图导出/合并
 │   ├── ffi_bridge.py             ← 检测 ctypes/cgo/extern "C"；构建 FFI_BRIDGE 边（948 行）
 │   ├── value_flow.py             ← DATA_FLOW 边构建；参数→返回值传播
 │   ├── lock_coverage.py          ← 锁持有事件流提取，带字符位置

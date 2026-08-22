@@ -96,8 +96,8 @@ tree-sitter AST 扫描器无法 100% 覆盖所有调用模式。Claude 应补充
 
 示例：
 ```c
-// 宏定义：#define DISPATCH_HANDLER(h, arg) ((h)->callback(arg))
-// 调用点：DISPATCH_HANDLER(&handler, data);
+// 宏定义：#define DISPATCH_HANDLER(h, arg) ((h)->ops->handle(arg))
+// 调用点：DISPATCH_HANDLER(ctx, payload);
 // 边：caller → handler_func, confidence=INFERRED, source=macro_expansion
 ```
 
@@ -106,11 +106,11 @@ tree-sitter AST 扫描器无法 100% 覆盖所有调用模式。Claude 应补充
 vtable/函数指针表的注册信息应与调用链追踪集成。增强规则：
 
 - 从 profile 的 `struct_op_types` 和扫描的 `struct_types` 共同构建 `_vtable_field_names`
-- 对于具有可识别字段模式（如 `ops->read`、`device->callbacks->process`）的每个 fn_ptr_call：
+- 对于具有可识别字段模式（如 `ops->read`、`file->f_op->write`）的每个 fn_ptr_call：
   - 查找 vtable 数据中所有已注册的实现
   - 添加从调用点到每个实现的 `callback_dispatch` 边
   - 置信度：`INFERRED`，来源：`vtable_resolution`
-  - Evidence：`{"kind": "vtable_dispatch", "weight": 0.75, "struct_type": "operations", "field": "read"}`
+  - Evidence：`{"kind": "vtable_dispatch", "weight": 0.75, "struct_type": "device_ops", "field": "read"}`
 - 对于回调注册：添加从回调注册调用点到所有已注册回调函数的边
 - 对于未解析的 fn_ptr 调用：添加 `callback_dispatch` 边到该 struct op 类型的所有已知实现（保守过近似）
 

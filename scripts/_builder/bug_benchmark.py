@@ -61,13 +61,26 @@ class BugCase:
     source: str = ""  # CVE id or issue link
     severity: str = ""  # "high", "medium", "low"
     hints: List[str] = field(default_factory=list)  # starting-point hints
+    # IMPROVE-OPT5: reproduction vs production environment annotations.
+    # Reproduction env: conditions under which the bug was originally observed
+    #   (e.g., KASAN enabled, syzkaller injection, madvise(MADV_SOFT_OFFLINE)).
+    # Production env: conditions under which the bug would need to trigger in
+    #   real-world deployment (e.g., no KASAN, no injection, normal load).
+    # The delta between these two determines whether "reproducible" implies
+    # "exploitable in production" — a distinction the misleading analysis
+    # missed (see KASAN_FINAL_REPORT.md §12.1).
+    reproduction_env: Dict[str, str] = field(default_factory=dict)
+    production_env: Dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> Dict:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, d: Dict) -> "BugCase":
-        return cls(**{k: d.get(k) for k in cls.__dataclass_fields__})
+        # Only pass keys actually present so default_factory kicks in for
+        # missing fields (passing None would shadow default_factory).
+        kwargs = {k: d[k] for k in cls.__dataclass_fields__ if k in d}
+        return cls(**kwargs)
 
 
 def create_benchmark_template(out_path: str):
@@ -86,6 +99,20 @@ def create_benchmark_template(out_path: str):
                 "source": "CVE-2024-example",
                 "severity": "high",
                 "hints": ["crash in worker_init", "ctx parameter"],
+                # IMPROVE-OPT5: reproduction vs production environment.
+                # Fill these in so the benchmark report can flag repro-only
+                # conditions (KASAN, syzkaller injection, madvise, etc.) and
+                # force the investigator to verify production reachability.
+                "reproduction_env": {
+                    "kernel": "debug kernel with KASAN enabled",
+                    "trigger": "syzkaller fuzzer with madvise(MADV_SOFT_OFFLINE) injection",
+                    "concurrency": "dozens of syzkaller worker threads",
+                },
+                "production_env": {
+                    "kernel": "production kernel without KASAN",
+                    "trigger": "hardware ECC errors only (rare)",
+                    "concurrency": "normal business workload",
+                },
             },
         ],
     }
@@ -117,9 +144,101 @@ class InvestigationResult:
     keywords_matched: int = 0
     functions_examined: List[str] = field(default_factory=list)
     final_answer: str = ""  # the investigator's final report
+    # IMPROVE-OPT5: environment delta assessment.
+    # env_assessment: free-form text describing the repro-vs-production gap.
+    # production_triggerable: verdict on whether the bug can fire in production.
+    #   "impossible"     — writers guarded out / unreachable in production
+    #   "narrow_window"  — reachable but timing window is extremely small
+    #   "possible"       — reachable, window non-trivial
+    #   "likely"         — reachable, window wide
+    #   "unknown"        — investigation did not establish reachability
+    env_assessment: str = ""
+    production_triggerable: str = "unknown"
 
     def to_dict(self) -> Dict:
         return asdict(self)
+
+
+# ---------------------------------------------------------------------------
+# IMPROVE-OPT5: Reproduction vs production environment delta assessment
+# ---------------------------------------------------------------------------
+# Markers that indicate a repro-only condition — i.e., the bug was observed
+# under conditions that do not exist in production. If the reproduction_env
+# contains any of these markers AND production_env does not, the bug's
+# production-triggerability is unproven and should be flagged.
+#
+# Derived from KASAN_FINAL_REPORT.md §12.1 — the misleading analysis missed
+# that KASAN + syzkaller + madvise injection are repro-only conditions.
+_REPRO_ONLY_MARKERS = (
+    "kasan",            # KASAN debug kernel — not enabled in production
+    "syzkaller",        # syzkaller fuzzer — not running in production
+    "madvise",          # madvise(MADV_SOFT_OFFLINE/MADV_HWPOISON) injection
+    "mf_inject",        # MF_INJECT flag — artificial memory failure injection
+    "kretprobe",        # kretprobe-based injection — requires kernel module
+    "manual_injection", # any manual injection technique
+    "fuzzing",          # fuzzing-only trigger
+    "debug_kernel",     # debug kernel config — not deployed in production
+    "stress_test",      # artificial stress test workload
+    "pktcdvd",          # pktcdvd — rarely used in production
+)
+
+
+def _env_has_marker(env: Dict[str, str], marker: str) -> bool:
+    """Return True if any key or value in env contains the marker (case-insensitive).
+
+    Handles negation: a marker adjacent to a negation word (without, no, not,
+    disabled, off, absent, none) is treated as absent. This avoids false
+    negatives where production_env says "production kernel without KASAN" —
+    the substring "kasan" is present but the meaning is "KASAN is absent".
+    Both prefix negation ("without KASAN") and suffix negation ("KASAN
+    disabled") are recognized.
+    """
+    marker_lower = marker.lower()
+    negations = ("without", "no ", "not ", "disabled", " off", "absent",
+                 "none", "lacks", "missing")
+    for k, v in (env or {}).items():
+        for text in (str(k), str(v)):
+            text_lower = text.lower()
+            idx = text_lower.find(marker_lower)
+            while idx != -1:
+                # Check up to 12 chars before and 12 chars after the marker.
+                prefix = text_lower[max(0, idx - 12):idx]
+                suffix = text_lower[idx + len(marker_lower):idx + len(marker_lower) + 12]
+                if not any(neg in prefix for neg in negations) and \
+                   not any(neg in suffix for neg in negations):
+                    return True
+                idx = text_lower.find(marker_lower, idx + 1)
+    return False
+
+
+def _env_delta_warning(repro_env: Dict[str, str],
+                       production_env: Dict[str, str]) -> str:
+    """Return a warning string if repro env has repro-only markers absent in production.
+
+    Returns "" if no delta detected (either env empty, or no repro-only
+    markers in repro, or all repro-only markers also present in production).
+
+    The warning text is appended to the bug report so the investigator (and
+    any reader of the report) is forced to consider whether the bug's
+    reproduction actually implies production triggerability.
+    """
+    if not repro_env:
+        return ""
+    repro_only_found = []
+    for marker in _REPRO_ONLY_MARKERS:
+        in_repro = _env_has_marker(repro_env, marker)
+        in_prod = _env_has_marker(production_env, marker)
+        if in_repro and not in_prod:
+            repro_only_found.append(marker)
+    if not repro_only_found:
+        return ""
+    return (
+        "REPRO-ONLY CONDITIONS DETECTED: "
+        + ", ".join(repro_only_found)
+        + " — reproduction success does NOT imply production triggerability. "
+        + "Investigator must verify writer reachability in production env "
+        + "(no KASAN, no injection) before concluding the bug is real."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +341,30 @@ class GraphInvestigator:
                     if kw.lower() in body.lower():
                         keywords_matched += 1
 
+        # IMPROVE-OPT5: environment delta assessment.
+        # The heuristic investigator does not actually prove production
+        # reachability — that requires path-guards / field-flow analysis.
+        # What we CAN do is flag cases where the reproduction environment
+        # has repro-only markers (KASAN, syzkaller, madvise injection) that
+        # are absent in production. This forces the report reader to treat
+        # the "found" verdict with appropriate skepticism.
+        delta_warning = _env_delta_warning(
+            case.reproduction_env, case.production_env)
+        if delta_warning:
+            env_assessment = delta_warning
+            production_triggerable = "unknown"
+        elif case.reproduction_env and case.production_env:
+            # Both envs present but no repro-only markers detected —
+            # assume reproduction generalizes to production (optimistic).
+            env_assessment = (
+                "No repro-only markers detected — reproduction conditions "
+                "appear to generalize to production. Verify writer "
+                "reachability separately.")
+            production_triggerable = "unknown"
+        else:
+            env_assessment = ""
+            production_triggerable = "unknown"
+
         return InvestigationResult(
             case_id=case.id, mode="graph",
             tool_calls=self.tool_calls, tokens_consumed=self.tokens,
@@ -229,6 +372,8 @@ class GraphInvestigator:
             root_cause_found=found, keywords_matched=keywords_matched,
             functions_examined=self.functions_examined[:20],
             final_answer="; ".join(final_answer_parts) or "(no answer)",
+            env_assessment=env_assessment,
+            production_triggerable=production_triggerable,
         )
 
 
@@ -406,6 +551,11 @@ def run_benchmark(graph_dir: str, benchmark_path: str,
             "root_cause_function": case.root_cause_function,
             "root_cause_file": case.root_cause_file,
             "root_cause_line": case.root_cause_line,
+            # IMPROVE-OPT5: carry reproduction_env / production_env into the
+            # result so generate_report can render the environment delta
+            # assessment section without re-loading the benchmark file.
+            "reproduction_env": case.reproduction_env,
+            "production_env": case.production_env,
             "graph_result": graph_result.to_dict(),
             "grep_result": grep_result.to_dict() if grep_result else None,
         })
@@ -481,6 +631,46 @@ def generate_report(results: List[Dict], summary: Dict) -> str:
         gtok = gr["tokens_consumed"] if gr else 0
         ptok = pr["tokens_consumed"] if pr else 0
         lines.append(f"| {r['case_id']} | {gfound} | {pfound} | {gcalls} | {pcalls} | {gtok} | {ptok} |")
+    lines.append("")
+
+    # IMPROVE-OPT5: Environment delta assessment section.
+    # Forces the report reader to consider whether reproduction success
+    # implies production triggerability. This is the guardrail against the
+    # misleading analysis pattern where "race window exists in repro"
+    # was wrongly extrapolated to "race window exists in production".
+    lines.append("## Environment Delta Assessment")
+    lines.append("")
+    lines.append("Reproduction vs production environment — flagged when repro-only conditions (KASAN, syzkaller, madvise injection) are absent in production.")
+    lines.append("")
+    any_delta = False
+    for r in results:
+        repro_env = r.get("reproduction_env") or {}
+        prod_env = r.get("production_env") or {}
+        if not repro_env:
+            continue
+        any_delta = True
+        delta_warning = _env_delta_warning(repro_env, prod_env)
+        gr = r.get("graph_result") or {}
+        triggerable = gr.get("production_triggerable", "unknown")
+        lines.append(f"### {r['case_id']}")
+        lines.append("")
+        lines.append("| Aspect | Reproduction Env | Production Env |")
+        lines.append("|--------|-----------------|----------------|")
+        all_keys = sorted(set(list(repro_env.keys()) + list(prod_env.keys())))
+        for k in all_keys:
+            rv = repro_env.get(k, "—")
+            pv = prod_env.get(k, "—")
+            lines.append(f"| {k} | {rv} | {pv} |")
+        lines.append("")
+        lines.append(f"- **Production triggerable**: `{triggerable}`")
+        if delta_warning:
+            lines.append(f"- **WARNING**: {delta_warning}")
+        else:
+            lines.append("- No repro-only markers detected (or envs match).")
+        lines.append("")
+    if not any_delta:
+        lines.append("_No reproduction_env provided for any case — consider filling in `reproduction_env` and `production_env` fields in the benchmark file to enable environment delta assessment._")
+        lines.append("")
     return "\n".join(lines)
 
 

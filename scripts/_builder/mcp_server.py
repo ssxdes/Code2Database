@@ -82,65 +82,61 @@ def _read_message():
     Fallback: when no Content-Length header is present (simple line-based
     clients), the first non-empty line is treated as the JSON body. This
     handles both framed and unframed inputs.
-
-    Uses stdin.buffer (binary) to correctly handle Content-Length as
-    byte count (not character count). This prevents protocol desync
-    when the JSON body contains multi-byte UTF-8 characters.
     """
-    stdin = sys.stdin.buffer
+    # Read headers until empty line. A line that doesn't look like a header
+    # (no "key: value" pattern) is treated as the body for the fallback path.
     content_length = None
     fallback_body = None
     while True:
-        line = stdin.readline()
+        line = sys.stdin.readline()
         if not line:
             return None  # EOF
         line = line.strip()
         if not line:
             break  # End of headers
-        if line.lower().startswith(b"content-length:"):
+        if line.lower().startswith("content-length:"):
             try:
-                content_length = int(line.split(b":", 1)[1].strip())
+                content_length = int(line.split(":", 1)[1].strip())
             except ValueError:
                 pass
-        elif b":" in line and not line.startswith(b"{"):
+        elif ":" in line and not line.startswith("{"):
+            # Looks like another header (e.g., "Content-Type: ...") — ignore.
             continue
         else:
+            # Doesn't look like a header — treat as the body for fallback.
             fallback_body = line
             break
 
     if content_length is not None:
-        if content_length > 10_000_000:
-            return None
-        data = stdin.read(content_length)
-        if not data or len(data) < content_length:
+        # Read exactly content_length bytes
+        data = sys.stdin.read(content_length)
+        if not data:
             return None
     elif fallback_body is not None:
+        # Fallback: the line we already read IS the JSON body.
         data = fallback_body
     else:
-        line = stdin.readline()
+        # Fallback: try reading a single JSON line (for simple clients).
+        line = sys.stdin.readline()
         if not line:
             return None
         data = line.strip()
 
     try:
-        return json.loads(data.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
+        return json.loads(data)
+    except json.JSONDecodeError:
         return None
 
 
 def _write_message(msg: dict):
     """Write a JSON-RPC message to stdout (MCP stdio transport).
 
-    Uses stdout.buffer (binary) to ensure Content-Length matches the
-    actual byte count sent, preventing protocol desync with clients
-    that count bytes (which is all of them per MCP spec).
+    Includes Content-Length header per MCP spec.
     """
-    stdout = sys.stdout.buffer
-    body_bytes = json.dumps(msg, ensure_ascii=False).encode("utf-8")
-    header = f"Content-Length: {len(body_bytes)}\r\n\r\n".encode("ascii")
-    stdout.write(header)
-    stdout.write(body_bytes)
-    stdout.flush()
+    body = json.dumps(msg, ensure_ascii=False)
+    header = f"Content-Length: {len(body.encode('utf-8'))}\r\n\r\n"
+    sys.stdout.write(header + body)
+    sys.stdout.flush()
 
 
 # ---------------------------------------------------------------------------
@@ -1064,7 +1060,11 @@ def _tool_cgdb_get_source(args: dict, graph_dir: str) -> dict:
 
 def _tool_cgdb_find_invokers(args: dict, graph_dir: str) -> list:
     """Find callers of a node (recursive CTE with cycle protection).
-    Optionally follow indirect vtable dispatch via ops_bindings."""
+
+    When include_vtable_dispatch=true, also follows indirect dispatch
+    via ops_bindings + invoke_sites tables — finds vtable callers even
+    when no pre-computed INVOKES edge exists at scan time.
+    """
     node_id = args.get("node_id")
     if node_id is None:
         return [{"error": "node_id required"}]
@@ -1074,15 +1074,19 @@ def _tool_cgdb_find_invokers(args: dict, graph_dir: str) -> list:
     depth = int(args.get("depth", 1))
     edge_types = args.get("edge_types", ["INVOKES"])
     limit = int(args.get("limit", 200))
-    include_vtable = bool(args.get("include_vtable_dispatch", False))
+    include_vtable_dispatch = bool(args.get("include_vtable_dispatch", False))
     return store.find_invokers(int(node_id), depth=depth,
                                edge_types=edge_types, limit=limit,
-                               include_vtable_dispatch=include_vtable)
+                               include_vtable_dispatch=include_vtable_dispatch)
 
 
 def _tool_cgdb_find_invoked(args: dict, graph_dir: str) -> list:
     """Find callees of a node (recursive CTE).
-    Optionally resolve vtable dispatch via ops_bindings."""
+
+    When include_vtable_dispatch=true, also resolves vtable dispatch
+    via ops_bindings — finds impl functions that may be invoked via
+    function pointer calls.
+    """
     node_id = args.get("node_id")
     if node_id is None:
         return [{"error": "node_id required"}]
@@ -1092,10 +1096,10 @@ def _tool_cgdb_find_invoked(args: dict, graph_dir: str) -> list:
     depth = int(args.get("depth", 1))
     edge_types = args.get("edge_types", ["INVOKES"])
     limit = int(args.get("limit", 500))
-    include_vtable = bool(args.get("include_vtable_dispatch", False))
+    include_vtable_dispatch = bool(args.get("include_vtable_dispatch", False))
     return store.find_invoked(int(node_id), depth=depth,
                               edge_types=edge_types, limit=limit,
-                              include_vtable_dispatch=include_vtable)
+                              include_vtable_dispatch=include_vtable_dispatch)
 
 
 def _tool_cgdb_get_struct_layout(args: dict, graph_dir: str) -> dict:
@@ -1628,7 +1632,7 @@ TOOLS = {
         "handler": _tool_cgdb_get_source,
     },
     "cgdb_find_invokers": {
-        "description": "Find callers of a node via recursive CTE with cycle protection. Set include_vtable_dispatch to also follow indirect vtable dispatch via ops_bindings.",
+        "description": "Find callers of a node via recursive CTE with cycle protection. Set include_vtable_dispatch=true to also follow indirect dispatch via ops_bindings + invoke_sites (finds vtable callers even when no pre-computed INVOKES edge exists).",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1636,14 +1640,14 @@ TOOLS = {
                 "depth": {"type": "integer", "description": "Recursive depth (default 1)"},
                 "edge_types": {"type": "array", "items": {"type": "string"}, "description": "Edge kinds to traverse (default [\"INVOKES\"])"},
                 "limit": {"type": "integer", "description": "Max results (default 200)"},
-                "include_vtable_dispatch": {"type": "boolean", "description": "Also follow indirect dispatch via ops_bindings and invoke_sites (finds vtable callers even when no pre-computed INVOKES edge exists)"},
+                "include_vtable_dispatch": {"type": "boolean", "description": "Also follow indirect dispatch via ops_bindings + invoke_sites (default false)"},
             },
             "required": ["node_id"],
         },
         "handler": _tool_cgdb_find_invokers,
     },
     "cgdb_find_invoked": {
-        "description": "Find callees of a node via recursive CTE with cycle protection. Set include_vtable_dispatch to also resolve vtable dispatch via ops_bindings.",
+        "description": "Find callees of a node via recursive CTE with cycle protection. Set include_vtable_dispatch=true to also resolve vtable dispatch via ops_bindings (finds impl functions invoked via function pointer calls).",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1651,7 +1655,7 @@ TOOLS = {
                 "depth": {"type": "integer", "description": "Recursive depth (default 1)"},
                 "edge_types": {"type": "array", "items": {"type": "string"}, "description": "Edge kinds (default [\"INVOKES\"])"},
                 "limit": {"type": "integer", "description": "Max results (default 500)"},
-                "include_vtable_dispatch": {"type": "boolean", "description": "Also resolve vtable dispatch via ops_bindings (finds impl functions that may be invoked via function pointer calls)"},
+                "include_vtable_dispatch": {"type": "boolean", "description": "Also resolve vtable dispatch via ops_bindings (default false)"},
             },
             "required": ["node_id"],
         },
@@ -1894,22 +1898,20 @@ def run_mcp_server(graph_dir: str):
             try:
                 handler = TOOLS[tool_name]["handler"]
                 result = handler(tool_args, graph_dir)
-                if isinstance(result, dict):
-                    result["_token_count"] = 0
+                # Track token consumption
                 result_json = json.dumps(result, ensure_ascii=False, indent=2)
                 tokens = estimate_tokens(result_json)
-                if isinstance(result, dict):
-                    result["_token_count"] = tokens
-                    result_json = json.dumps(result, ensure_ascii=False, indent=2)
                 mcp_stats["total_calls"] += 1
                 mcp_stats["total_output_tokens"] += tokens
                 mcp_stats["by_tool"].setdefault(tool_name, {"calls": 0, "tokens": 0})
                 mcp_stats["by_tool"][tool_name]["calls"] += 1
                 mcp_stats["by_tool"][tool_name]["tokens"] += tokens
+                if isinstance(result, dict):
+                    result["_token_count"] = tokens
                 _write_message({
                     "jsonrpc": "2.0", "id": msg_id,
                     "result": {"content": [{"type": "text",
-                                           "text": result_json}]}
+                                           "text": json.dumps(result, ensure_ascii=False, indent=2)}]}
                 })
             except Exception as e:
                 _write_message({

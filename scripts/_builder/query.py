@@ -58,18 +58,11 @@ def _is_scenario_noise_target(name: str) -> bool:
 
 
 def _describe_node_touched(args) -> frozenset:
-    """Return the set of node_ids a describe-node query depends on."""
-    try:
-        node_id = getattr(args, "node", "") or ""
-        if node_id:
-            return frozenset({node_id})
-    except Exception:
-        pass
-    return frozenset()
+    """Return the set of node_ids a describe-node query depends on.
 
-
-def _node_arg_touched(args) -> frozenset:
-    """Return the set of node_ids a node-based query depends on."""
+    Used by the query cache for node-version invalidation: when any of these
+    nodes is updated, the cached describe-node result is dropped.
+    """
     try:
         node_id = getattr(args, "node", "") or ""
         if node_id:
@@ -174,22 +167,19 @@ def _resolve_detailed_chain(G: nx.DiGraph, start_id: str, bindings: dict,
         visited.add(nid)
         nd = G.nodes[nid]
 
-        # Pre-collect all successor data in one pass
-        all_succ_data = []
         for succ in G.successors(nid):
             ed = G.get_edge_data(nid, succ) or {}
             if ed.get("relation") in ("CONTAINS", "IMPORTS"):
                 continue
-            succ_nd = G.nodes[succ]
-            succ_name = succ_nd.get("name", "")
-            if _is_scenario_noise_target(succ_name):
-                continue
-            all_succ_data.append((succ, ed, succ_nd, succ_name))
-
-        for succ, ed, succ_nd, succ_name in all_succ_data:
             cond = ed.get("call_condition", "")
             conc = ed.get("concurrency", "")
+            succ_nd = G.nodes[succ]
+            succ_name = succ_nd.get("name", "")
 
+            if _is_scenario_noise_target(succ_name):
+                continue
+
+            # Check if this branch is alive given bindings
             alive = True
             if conc == "vtable_dispatch":
                 alive = _is_vtable_dispatch_alive(ed, bindings)
@@ -206,11 +196,16 @@ def _resolve_detailed_chain(G: nx.DiGraph, start_id: str, bindings: dict,
             elif conc in ("spawn_target", "thread_spawn", "goroutine"):
                 action = "spawn"
                 is_concurrent = True
+                # Find concurrent calls after this spawn
                 spawn_order = ed.get("call_order") or 0
-                main_calls = [s2_name for (s2, e2, _, s2_name) in all_succ_data
-                              if e2.get("call_order") is not None
-                              and e2["call_order"] > spawn_order
-                              and e2.get("concurrency") not in ("spawn_target", "callback")]
+                main_calls = []
+                for s2 in G.successors(nid):
+                    ed2 = G.get_edge_data(nid, s2) or {}
+                    if ed2.get("call_order") is not None and ed2["call_order"] > spawn_order and \
+                       ed2.get("concurrency") not in ("spawn_target", "callback"):
+                        s2_name = G.nodes[s2].get("name", "")
+                        if not _is_scenario_noise_target(s2_name):
+                            main_calls.append(s2_name)
                 concurrent_windows.append({
                     "spawn_at": f"{nid}:{ed.get('call_order', '')}",
                     "thread_fn": succ_name,
@@ -443,88 +438,8 @@ def _compute_hub_info(G: nx.DiGraph, node_id: str) -> dict:
     return result
 
 
-def _build_describe_result_from_sqlite(nd, callers_raw, callees_raw, detail, context_mode, include_body, graph_dir):
-    """Build describe-node result from SQLite queries (no graph load needed)."""
-    node_id = nd.get("id", "")
-    callers = []
-    for r in callers_raw:
-        callers.append({
-            "id": r.get("id", ""),
-            "name": r.get("name", ""),
-            "location": f"{r.get('source_file', '')}:{r.get('line_number', 0) or r.get('line', 0)}",
-            "call_order": r.get("call_order"),
-            "call_condition": r.get("call_condition", ""),
-            "concurrency": r.get("concurrency", ""),
-        })
-    callees = []
-    for r in callees_raw:
-        callees.append({
-            "id": r.get("id", ""),
-            "name": r.get("name", ""),
-            "location": f"{r.get('source_file', '')}:{r.get('line_number', 0) or r.get('line', 0)}",
-            "call_order": r.get("call_order"),
-            "call_condition": r.get("call_condition", ""),
-            "concurrency": r.get("concurrency", ""),
-        })
-    all_conditions = set()
-    for c in callees:
-        if c.get("call_condition"):
-            all_conditions.add(c["call_condition"])
-    for c in callers:
-        if c.get("call_condition"):
-            all_conditions.add(c["call_condition"])
-    branches = [{"condition": c.get("call_condition", ""),
-                 "target": c.get("id", ""),
-                 "target_name": c.get("name", ""),
-                 "target_location": c.get("location", "")}
-                for c in callees if c.get("call_condition")]
-    labels = nd.get("labels", [])
-    confidence_summary = {}
-    for c in callers + callees:
-        conf = c.get("confidence", "EXTRACTED")
-        confidence_summary[conf] = confidence_summary.get(conf, 0) + 1
-    result = {
-        "id": node_id,
-        "name": nd.get("name", ""),
-        "domain": nd.get("domain", ""),
-        "source_file": nd.get("source_file", ""),
-        "line": nd.get("line", 0),
-        "labels": labels,
-        "signature": nd.get("signature", ""),
-        "semantic_desc": nd.get("semantic_desc", ""),
-        "external_desc": nd.get("external_desc", ""),
-        "api_constraints": nd.get("api_constraints", ""),
-        "callers": callers[:50],
-        "callees": callees[:50],
-        "branches": branches[:20],
-        "conditions": sorted(all_conditions)[:10],
-        "caller_count": len(callers),
-        "callee_count": len(callees),
-        "confidence_summary": confidence_summary,
-    }
-    if include_body or detail == "full":
-        result["body_text"] = nd.get("body_text", "")[:2000]
-    if context_mode:
-        source_file = nd.get("source_file", "")
-        line_num = nd.get("line", 0)
-        if source_file and line_num:
-            try:
-                with open(source_file, "r", encoding="utf-8", errors="replace") as f:
-                    lines = f.readlines()
-                start = max(0, line_num - 6)
-                end = min(len(lines), line_num + 5)
-                result["context"] = {
-                    "file": source_file,
-                    "line": line_num,
-                    "snippet": "".join(lines[start:end]),
-                }
-            except OSError:
-                pass
-    return result
-
-
 @cached_query('describe-node', ttl=600,
-              touched_nodes_fn=_node_arg_touched,
+              touched_nodes_fn=_describe_node_touched,
               capture_stdout=True)
 def cmd_describe_node(args):
     """Return ALL info about a node in one call — replaces search+neighbors+source-read."""
@@ -533,51 +448,7 @@ def cmd_describe_node(args):
     detail = getattr(args, "detail", "full")
     context_mode = getattr(args, "context", False)
     include_body = getattr(args, "include_body", False)
-
-    # Fast path: if SQLite DB exists, query node + neighbors directly
-    # instead of loading the full graph (O(V+E) → O(log V + degree))
-    db_path = os.path.join(graph_dir, "code2database.db")
-    if os.path.exists(db_path):
-        from _builder.graph_build import _load_node_from_sqlite
-        nd = _load_node_from_sqlite(db_path, node_id)
-        if not nd:
-            import sqlite3
-            conn = sqlite3.connect(db_path)
-            candidates = [r[0] for r in conn.execute(
-                "SELECT id FROM functions WHERE id LIKE ? LIMIT 5",
-                (f"%{node_id}%",)).fetchall()]
-            conn.close()
-            if candidates:
-                print(f"Node '{node_id}' not found. Similar: {candidates[:5]}", file=sys.stderr)
-            else:
-                print(f"Node '{node_id}' not found in graph.", file=sys.stderr)
-            sys.exit(1)
-        # Query callers and callees directly from SQLite
-        import sqlite3
-        _conn = sqlite3.connect(db_path)
-        _conn.row_factory = sqlite3.Row
-        _callers = []
-        for row in _conn.execute(
-            "SELECT e.invoker_id AS id, e.call_order, e.call_condition, e.concurrency, "
-            "e.confidence, f.name, f.source_file, f.line_number "
-            "FROM edges e JOIN functions f ON e.invoker_id = f.id "
-            "WHERE e.invoked_id = ? AND e.relation NOT IN ('CONTAINS', 'IMPORTS')",
-            (node_id,)):
-            _callers.append(dict(row))
-        _callees = []
-        for row in _conn.execute(
-            "SELECT e.invoked_id AS id, e.call_order, e.call_condition, e.concurrency, "
-            "e.confidence, f.name, f.source_file, f.line_number "
-            "FROM edges e JOIN functions f ON e.invoked_id = f.id "
-            "WHERE e.invoker_id = ? AND e.relation NOT IN ('CONTAINS', 'IMPORTS')",
-            (node_id,)):
-            _callees.append(dict(row))
-        _conn.close()
-        # Build result directly from SQL queries — no graph load needed
-        result = _build_describe_result_from_sqlite(nd, _callers, _callees, detail, context_mode, include_body, graph_dir)
-        result["_token_count"] = 0
-        print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
-        return
+    snippet_lines = getattr(args, "snippet", 0) or 0
 
     G = _load_full_graph(graph_dir)
 
@@ -929,6 +800,26 @@ def cmd_describe_node(args):
             result["confidence_warning"] = (
                 "Most edges are INFERRED/AMBIGUOUS — consider verifying "
                 "with source code via get-code-snippet")
+
+    # --snippet: include source code snippet around the function definition.
+    # Runs for all detail levels (brief/standard/full) so callers can get
+    # source context without a separate get-code-snippet call.
+    # Falls back to source_snippet if already extracted at scan time (D16).
+    if snippet_lines > 0:
+        existing_snippet = nd.get("source_snippet", "")
+        if existing_snippet:
+            result["source_snippet"] = existing_snippet
+        else:
+            try:
+                snippet_result = _get_code_snippet(G, node_id,
+                                                    context_lines=snippet_lines,
+                                                    graph_dir=graph_dir)
+                if "error" not in snippet_result:
+                    result["source_snippet"] = snippet_result.get("snippet", "")
+                    result["source_file"] = snippet_result.get("source_file", "")
+                    result["line"] = snippet_result.get("line", 0)
+            except Exception:
+                pass
 
     if detail == "brief":
         # Strip empty fields
@@ -1354,14 +1245,7 @@ def cmd_trace_chain(args):
                 queue.append((succ, path + [succ]))
 
     path_to_use = found_path if found_path else []
-    if to_id and not path_to_use:
-        result = {
-            "from": from_id, "to": to_id,
-            "path": [], "steps": [],
-            "error": f"Target '{to_id}' not reachable from '{from_id}'",
-        }
-        _output_result(result, getattr(args, 'json', False))
-        return
+    # When no to_id: return a BFS-ordered traversal from from_id
     bfs_parent = {}  # node → parent in BFS tree (for correct edge annotation)
     if not to_id and not path_to_use:
         # Re-traverse BFS to get ordered visit list
@@ -1433,35 +1317,6 @@ def cmd_trace_chain(args):
     _output_result(result, getattr(args, 'json', False))
 
 
-def _get_code_snippet_from_node(nd: dict, node_id: str, source_root: str = "",
-                                context_lines: int = 10, graph_dir: str = "") -> dict:
-    """Extract source code snippet from a node dict (no graph load needed)."""
-    source_file = nd.get("source_file", "")
-    line_num = nd.get("line", 0)
-    if not source_file or not line_num:
-        return {"error": "Node has no source location", "id": node_id, "name": nd.get("name", "")}
-    if source_root:
-        full_path = os.path.join(source_root, source_file)
-    else:
-        full_path = source_file
-    try:
-        with open(full_path, "r", encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
-        start = max(0, line_num - context_lines - 1)
-        end = min(len(lines), line_num + context_lines)
-        snippet = "".join(lines[start:end])
-    except OSError:
-        snippet = nd.get("body_text", "")[:2000]
-    return {
-        "id": node_id,
-        "name": nd.get("name", ""),
-        "source_file": source_file,
-        "line": line_num,
-        "snippet": snippet,
-        "context_lines": context_lines,
-    }
-
-
 def _get_code_snippet(G: nx.DiGraph, node_id: str, source_root: str = "",
                        context_lines: int = 10, graph_dir: str = "") -> dict:
     """Extract source code snippet around a node's definition.
@@ -1518,47 +1373,32 @@ def _get_code_snippet(G: nx.DiGraph, node_id: str, source_root: str = "",
 
 
 def cmd_get_code_snippet(args):
-    """Handle get-code-snippet command."""
+    """Handle get-code-snippet command.
+
+    With --persist: writes the read source code back to the node's
+    body_text field (as body_text_supplemented, non-destructive) so
+    subsequent describe-node --full can read it without re-reading source.
+    Requires user confirmation by default (DB write).
+    """
     graph_dir = args.graph
     source_root = getattr(args, "source", "")
     node_id = args.node
     persist = getattr(args, "persist", False)
     auto_yes = getattr(args, "yes", False)
+    G = _load_full_graph(graph_dir)
 
-    # SQLite fast path: query node directly instead of loading full graph
-    db_path = os.path.join(graph_dir, "code2database.db")
-    if os.path.exists(db_path):
-        import sqlite3
-        from _builder.graph_build import _load_node_from_sqlite
-        nd = _load_node_from_sqlite(db_path, node_id)
-        if not nd:
-            conn = sqlite3.connect(db_path)
-            candidates = [r[0] for r in conn.execute(
-                "SELECT id FROM functions WHERE id LIKE ? LIMIT 5",
-                (f"%{node_id}%",)).fetchall()]
-            conn.close()
-            if candidates:
-                print(f"Node '{node_id}' not found. Similar: {candidates[:5]}", file=sys.stderr)
-            else:
-                print(f"Node '{node_id}' not found in graph.", file=sys.stderr)
-            sys.exit(1)
-        result = _get_code_snippet_from_node(nd, node_id, source_root,
-                                              context_lines=getattr(args, "context", 10),
-                                              graph_dir=graph_dir)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        G = _load_full_graph(graph_dir)
-        if node_id not in G:
-            candidates = [n for n in G.nodes if node_id.lower() in n.lower()]
-            if candidates:
-                print(f"Node '{node_id}' not found. Similar: {candidates[:5]}", file=sys.stderr)
-            else:
-                print(f"Node '{node_id}' not found in graph.", file=sys.stderr)
-            sys.exit(1)
-        result = _get_code_snippet(G, node_id, source_root,
-                                    context_lines=getattr(args, "context", 10),
-                                    graph_dir=graph_dir)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+    if node_id not in G:
+        candidates = [n for n in G.nodes if node_id.lower() in n.lower()]
+        if candidates:
+            print(f"Node '{node_id}' not found. Similar: {candidates[:5]}", file=sys.stderr)
+        else:
+            print(f"Node '{node_id}' not found in graph.", file=sys.stderr)
+        sys.exit(1)
+
+    result = _get_code_snippet(G, node_id, source_root,
+                               context_lines=getattr(args, "context", 10),
+                               graph_dir=graph_dir)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
     # --persist: write the snippet back to the node's body_text field.
     # This is a DB write, so require user confirmation.
@@ -2156,14 +1996,13 @@ def cmd_param_flow(args):
               file=sys.stderr)
 
     # BFS: trace the parameter through the call chain
-    from collections import deque
     visited = set()
     flow_steps = []
     # Each queue item: (function_id, param_to_track, depth, path_so_far)
-    queue = deque([(from_id, param_name, 0, [from_id])])
+    queue = [(from_id, param_name, 0, [from_id])]
 
     while queue:
-        cur_id, cur_param, depth, path = queue.popleft()
+        cur_id, cur_param, depth, path = queue.pop(0)
         if depth >= max_depth:
             continue
         if cur_id in visited:
@@ -2238,9 +2077,6 @@ def cmd_param_flow(args):
     _output_result(result, json_mode)
 
 
-@cached_query('blast-radius', ttl=600,
-              touched_nodes_fn=_node_arg_touched,
-              capture_stdout=True)
 def cmd_blast_radius(args):
     """Handle blast-radius command — show what's affected when a function changes."""
     graph_dir = args.graph
@@ -2368,13 +2204,37 @@ def cmd_field_access(args):
     writers = []
 
     def _value_matches(assigned_value: str) -> bool:
-        """Check if the assigned_value matches the --value filter (case-insensitive prefix)."""
+        """Check if the assigned_value matches the --value filter (case-insensitive prefix).
+
+        IMPROVE-1+: Special-case NULL detection — recognize all C forms of NULL:
+          - `NULL`, `0`, `(void *)0`, `(struct foo *)0`, `((void *)0)`, `0L`, etc.
+        This is critical for null-pointer-deref analysis where the bug report says
+        "who set field to NULL" but the source uses `(struct block_device *)0`.
+        """
         if not value_filter:
             return True
         if not assigned_value:
             return False
         av = assigned_value.strip()
-        return av == value_filter or av.lower().startswith(value_filter.lower())
+        # Direct match or prefix match (existing behavior)
+        if av == value_filter or av.lower().startswith(value_filter.lower()):
+            return True
+        # NULL-form equivalence: when user asks for "NULL", match any C null form
+        vf_upper = value_filter.upper()
+        if vf_upper in ("NULL", "0", "((VOID*)0)", "((VOID *)0)"):
+            av_compact = av.replace(" ", "").upper()
+            # Strip outer parens repeatedly for compact comparison
+            while av_compact.startswith("(") and av_compact.endswith(")"):
+                av_compact = av_compact[1:-1]
+            # Forms: 0, 0L, NULL, (void*)0, (structfoo*)0, ((void*)0)
+            if av_compact == "0" or av_compact == "0L" or av_compact == "NULL":
+                return True
+            if av_compact.endswith("*0)"):
+                # e.g., (structblockdevice*)0 — pointer cast to 0
+                return True
+            if av_compact.endswith("*0L)"):
+                return True
+        return False
 
     for nid, ndata in G.nodes(data=True):
         if ndata.get("is_empty", False) or ndata.get("node_type") == "file":
@@ -2490,9 +2350,381 @@ def cmd_field_access(args):
     _output_result(result, getattr(args, 'json', False))
 
 
-@cached_query('reverse-trace', ttl=600,
-              touched_nodes_fn=_node_arg_touched,
-              capture_stdout=True)
+# IMPROVE-1+: NULL-form equivalence helpers shared by cmd_field_flow's SQL
+# retry path and NetworkX fallback. Recognize all C forms of NULL so that
+# `field-flow --value NULL` matches `(struct block_device *)0`, `((void *)0)`,
+# `0`, `0L`, etc. — critical for null-pointer-deref analysis where the bug
+# report says "who set field to NULL" but the source uses pointer-cast zero.
+
+import re as _re_null_form
+_NULL_FORM_RE = _re_null_form.compile(
+    r"^\(*\s*(?:void\s*\*|[A-Za-z_][A-Za-z0-9_ ]*\*\s*|\s*)\)*0(L?)\s*\)*$",
+    _re_null_form.IGNORECASE,
+)
+
+
+def _value_is_null_form(assigned_value: str) -> bool:
+    """Return True if assigned_value is any C form of NULL.
+
+    Recognized forms (case-insensitive, whitespace-ignored):
+      - `NULL`, `0`, `0L`
+      - `(void *)0`, `(void*)0`, `((void *)0)`, `((void*)0)`
+      - `(struct foo *)0`, `(struct foo *)0L` — any pointer-cast-to-zero
+    """
+    if not assigned_value:
+        return False
+    av = assigned_value.strip()
+    if av == "NULL":
+        return True
+    return bool(_NULL_FORM_RE.match(av))
+
+
+def _value_is_null_form_match(assigned_value: str, value_filter: str) -> bool:
+    """Return True if value_filter is a NULL-form query AND assigned_value is NULL.
+
+    A NULL-form query is one of: `NULL`, `0`, `0L`, `(void *)0` (case-insensitive).
+    When the user asks for any of these, match any C NULL form in the source.
+    """
+    if not value_filter or not assigned_value:
+        return False
+    vf = value_filter.strip()
+    if vf.upper() == "NULL" or _NULL_FORM_RE.match(vf):
+        return _value_is_null_form(assigned_value)
+    return False
+
+
+def cmd_field_flow(args):
+    """Trace field writes + their reverse call chains.
+
+    Combines `field-access` (who writes field X) with `reverse-trace`
+    (how is each writer reached from an entry point). Designed for
+    null-pointer-deref / use-after-free / race root-cause analysis:
+        field-flow --field b_bdev --value NULL
+    returns every function that sets bh->b_bdev = NULL, plus the call
+    chain from each entry point that reaches that writer.
+
+    Output schema:
+        {
+          "struct": "...", "field": "...", "value_filter": "NULL",
+          "writers": [
+            { "function": "discard_buffer", "source_file": "fs/buffer.c",
+              "line": 1558, "assigned_value": "NULL",
+              "call_chains": [
+                [ "discard_buffer", "invalidate_bh_lru", "__blkdev_put", ... ],
+                ...
+              ]
+            }, ...
+          ],
+          "summary": { "writer_count": N, "total_chains": M }
+        }
+    """
+    from collections import deque
+
+    graph_dir = args.graph
+    struct_name = getattr(args, "struct", "")
+    field_name = args.field
+    value_filter = getattr(args, "value", "") or ""
+    max_depth = getattr(args, "max_depth", 8)
+    max_paths_per_writer = getattr(args, "max_paths_per_writer", 5)
+    json_mode = getattr(args, "json", False)
+
+    # Step 1: reuse field-access SQL path to get writers
+    writers_rows = None
+    try:
+        from _builder.query_router import route_field_access, sqlite_available
+        if sqlite_available(graph_dir):
+            writers_rows = route_field_access(graph_dir, field_name, struct_name,
+                                              assigned_value=value_filter)
+            # IMPROVE-1+: NULL-form equivalence — if user passed --value NULL/0 but
+            # the SQL path returned no rows, retry with empty filter and post-filter
+            # using _value_is_null_form(). The SQL path uses exact prefix match
+            # which misses (struct foo *)0.
+            if value_filter and not writers_rows:
+                vf_upper = value_filter.upper().replace(" ", "")
+                null_query = vf_upper in ("NULL", "0", "((VOID*)0)")
+                if null_query:
+                    all_writers = route_field_access(graph_dir, field_name, struct_name,
+                                                      assigned_value="")
+                    writers_rows = [r for r in (all_writers or [])
+                                    if _value_is_null_form(r.get("assigned_value", ""))]
+    except Exception:
+        writers_rows = None
+
+    # Fall back to NetworkX traversal if SQL path unavailable
+    if writers_rows is None:
+        G_full = _load_full_graph(graph_dir)
+        writers_rows = []
+        for nid, ndata in G_full.nodes(data=True):
+            if ndata.get("is_empty", False) or ndata.get("node_type") == "file":
+                continue
+            func_name = ndata.get("name", "")
+            for fw in ndata.get("fields_written", []):
+                sc = fw.get("struct_chain", "")
+                fn = fw.get("field_name", "")
+                struct_match = (not struct_name) or (struct_name == sc) or (struct_name in sc)
+                field_match = (not field_name) or (field_name == fn)
+                if not (struct_match and field_match):
+                    continue
+                av = fw.get("assigned_value", "")
+                if value_filter:
+                    av_matches = (av and (av == value_filter or av.lower().startswith(value_filter.lower())))
+                    if not av_matches and _value_is_null_form_match(av, value_filter):
+                        av_matches = True
+                    if not av_matches:
+                        continue
+                writers_rows.append({
+                    "function": func_name,
+                    "domain": ndata.get("domain", ""),
+                    "source_file": ndata.get("source_file", ""),
+                    "line": ndata.get("line", 0),
+                    "struct_chain": sc,
+                    "field_name": fn,
+                    "access_type": "write",
+                    "assigned_value": av,
+                    "thread_model": ndata.get("thread_model", ""),
+                    "_node_id": nid,
+                })
+            for gw in ndata.get("globals_written", []):
+                gname = gw.get("name", "")
+                if field_name != gname:
+                    continue
+                writers_rows.append({
+                    "function": func_name,
+                    "domain": ndata.get("domain", ""),
+                    "source_file": ndata.get("source_file", ""),
+                    "line": ndata.get("line", 0),
+                    "struct_chain": "(global)",
+                    "field_name": gname,
+                    "access_type": "write",
+                    "thread_model": ndata.get("thread_model", ""),
+                    "_node_id": nid,
+                })
+
+    if not writers_rows:
+        result = {
+            "struct": struct_name,
+            "field": field_name,
+            "value_filter": value_filter,
+            "writers": [],
+            "summary": {"writer_count": 0, "total_chains": 0},
+            "note": "No writers found for the given field/value combination.",
+        }
+        _output_result(result, json_mode)
+        return
+
+    # Step 2: load graph once and reverse-BFS from each writer
+    G = _load_full_graph(graph_dir)
+
+    def _resolve_nid(func_name):
+        """Find node ID by function name (exact, then case-insensitive, then substring)."""
+        if func_name in G:
+            return func_name
+        for nid in G:
+            if nid.lower() == func_name.lower():
+                return nid
+        for nid in G:
+            nd = G.nodes[nid]
+            if nd.get("name", "") == func_name:
+                return nid
+        return None
+
+    def _reverse_bfs_chains(start_id, depth, max_paths):
+        """BFS backward through caller edges. Return up to max_paths chains
+        ending at an entry-point (API_entry, thread_processor) or depth limit."""
+        chains = []
+        queue = deque([(start_id, [start_id])])
+        seen_paths = set()
+        while queue and len(chains) < max_paths:
+            nid, path = queue.popleft()
+            if len(path) - 1 >= depth:
+                # Reached depth limit — record this chain
+                key = tuple(path)
+                if key not in seen_paths:
+                    seen_paths.add(key)
+                    chains.append(list(path))
+                continue
+            nd = G.nodes[nid]
+            labels = nd.get("labels", [])
+            # Entry-point origins stop the chain (they're the root cause source)
+            is_entry = ("API_entry" in labels or "thread_processor" in labels)
+            preds = list(G.predecessors(nid))
+            # Filter out non-call edges
+            call_preds = []
+            for p in preds:
+                ed = G.get_edge_data(p, nid) or {}
+                if ed.get("relation") not in ("CONTAINS", "IMPORTS"):
+                    call_preds.append(p)
+            if not call_preds or is_entry:
+                key = tuple(path)
+                if key not in seen_paths:
+                    seen_paths.add(key)
+                    chains.append(list(path))
+                continue
+            for p in call_preds:
+                if p in path:  # cycle guard
+                    continue
+                queue.append((p, [p] + path))
+        return chains[:max_paths]
+
+    # Build writer entries with call chains
+    writer_entries = []
+    total_chains = 0
+    for row in writers_rows:
+        func_name = row.get("function", "")
+        nid = row.get("_node_id") or _resolve_nid(func_name)
+        entry = {
+            "function": func_name,
+            "domain": row.get("domain", ""),
+            "source_file": row.get("source_file", ""),
+            "line": row.get("line", 0),
+            "struct_chain": row.get("struct_chain", ""),
+            "field_name": row.get("field_name", ""),
+            "assigned_value": row.get("assigned_value", ""),
+            "thread_model": row.get("thread_model", ""),
+        }
+        # IMPROVE-OPT1: Look up guard_condition from the graph node data.
+        # The SQL path doesn't include guard_condition (schema not migrated),
+        # so we look it up from the NetworkX graph's fields_written list.
+        # This is the key signal for distinguishing real bugs from false
+        # positives: a writer guarded by !sb_is_blkdev_sb() is unreachable
+        # during ext4 mount, so it cannot be a real NULL-deref suspect.
+        # IMPROVE-OPT3: Also look up object_origin — captures the source chain
+        # (e.g., "jh->bh") so the agent can compare writer vs reader object
+        # origins to detect when they operate on different objects.
+        guard_condition = ""
+        object_origin = ""
+        if nid:
+            ndata = G.nodes.get(nid, {})
+            for fw in ndata.get("fields_written", []):
+                if (fw.get("struct_chain", "") == entry["struct_chain"]
+                        and fw.get("field_name", "") == entry["field_name"]):
+                    guard_condition = fw.get("guard_condition", "")
+                    object_origin = fw.get("object_origin", "")
+                    break
+        if guard_condition:
+            entry["guard_condition"] = guard_condition
+            entry["reachable_in_scene"] = "guarded"
+        else:
+            entry["reachable_in_scene"] = "unguarded"
+        if object_origin:
+            entry["object_origin"] = object_origin
+        if nid:
+            chains = _reverse_bfs_chains(nid, max_depth, max_paths_per_writer)
+            entry["call_chains"] = chains
+            total_chains += len(chains)
+            # Surface entry-point origins for quick race-window reasoning
+            entry["entry_origins"] = list({c[0] for c in chains if c})
+        else:
+            entry["call_chains"] = []
+            entry["entry_origins"] = []
+        writer_entries.append(entry)
+
+    # Sort writers by chain count (most reachable first) then by name
+    writer_entries.sort(key=lambda w: (-len(w.get("call_chains", [])), w["function"]))
+
+    # IMPROVE-5: When --value is a NULL-form, also return vulnerable readers
+    # — functions that READ the field (potentially dereferencing NULL).
+    # This closes the loop on null-pointer-deref analysis: writers + readers
+    # together define the race window. Without this, the agent must do a
+    # separate `field-access` call and manually correlate.
+    #
+    # IMPROVE-OPT2: For each reader, compute `concurrent_writers_in_scene`
+    # and `race_window_exists`. A writer is "in scene" if reachable_in_scene
+    # == "unguarded" (no guard protects it). A writer is "concurrent" if it
+    # is in a different thread context from the reader. race_window_exists
+    # is True only if at least one writer is both concurrent AND in scene.
+    # This is the key signal from KASAN_FINAL_REPORT: all 6 writers are
+    # either guarded out or in the same thread context → no race window.
+    vulnerable_readers = []
+    if value_filter and _value_is_null_form(value_filter):
+        try:
+            from _builder.query_router import route_field_access, sqlite_available
+            from _builder.concurrency_analysis import _same_thread_context
+            reader_rows = None
+            if sqlite_available(graph_dir):
+                reader_rows = route_field_access(graph_dir, field_name, struct_name,
+                                                  assigned_value="")
+            if reader_rows is None:
+                # NetworkX fallback — read fields_read from each node
+                for nid, ndata in G.nodes(data=True):
+                    if ndata.get("is_empty", False) or ndata.get("node_type") == "file":
+                        continue
+                    func_name = ndata.get("name", "")
+                    for fr in ndata.get("fields_read", []):
+                        sc = fr.get("struct_chain", "")
+                        fn = fr.get("field_name", "")
+                        struct_match = (not struct_name) or (struct_name == sc) or (struct_name in sc)
+                        field_match = (not field_name) or (field_name == fn)
+                        if struct_match and field_match:
+                            vr_entry = {
+                                "_node_id": nid,
+                                "function": func_name,
+                                "domain": ndata.get("domain", ""),
+                                "source_file": ndata.get("source_file", ""),
+                                "line": ndata.get("line", 0),
+                                "struct_chain": sc,
+                                "field_name": fn,
+                                "thread_model": ndata.get("thread_model", ""),
+                            }
+                            # IMPROVE-OPT3: Capture object_origin for readers
+                            # so agent can compare writer's object_origin
+                            # vs reader's object_origin to detect different
+                            # objects (e.g., bh from bdev->bd_inode->i_mapping
+                            # vs ext4_inode->i_mapping).
+                            oo = fr.get("object_origin", "")
+                            if oo:
+                                vr_entry["object_origin"] = oo
+                            vulnerable_readers.append(vr_entry)
+            else:
+                for r in reader_rows:
+                    if r.get("access_type") == "read":
+                        # Look up node_id for concurrency check
+                        r_nid = _resolve_nid(r.get("function", ""))
+                        r["_node_id"] = r_nid
+                        vulnerable_readers.append(r)
+        except Exception:
+            pass
+
+        # IMPROVE-OPT2: For each reader, find concurrent writers in scene.
+        # A writer is "concurrent" if in a different thread context.
+        # A writer is "in scene" if reachable_in_scene == "unguarded".
+        # race_window_exists = any writer is both concurrent AND in scene.
+        for vr in vulnerable_readers:
+            vr_nid = vr.pop("_node_id", None)
+            vr_ndata = G.nodes.get(vr_nid, {}) if vr_nid else {}
+            concurrent_writers = []
+            for w in writer_entries:
+                if w.get("reachable_in_scene") != "unguarded":
+                    continue  # guarded out → not in scene
+                w_nid = _resolve_nid(w.get("function", ""))
+                if not w_nid:
+                    continue
+                w_ndata = G.nodes.get(w_nid, {})
+                if not _same_thread_context(vr_ndata, w_ndata):
+                    concurrent_writers.append({
+                        "function": w.get("function", ""),
+                        "assigned_value": w.get("assigned_value", ""),
+                        "thread_model": w.get("thread_model", ""),
+                    })
+            vr["concurrent_writers_in_scene"] = concurrent_writers
+            vr["race_window_exists"] = len(concurrent_writers) > 0
+
+    result = {
+        "struct": struct_name,
+        "field": field_name,
+        "value_filter": value_filter,
+        "writers": writer_entries,
+        "summary": {
+            "writer_count": len(writer_entries),
+            "total_chains": total_chains,
+        },
+    }
+    if vulnerable_readers:
+        result["vulnerable_readers"] = vulnerable_readers
+        result["summary"]["vulnerable_reader_count"] = len(vulnerable_readers)
+    _output_result(result, json_mode)
+
+
 def cmd_reverse_trace(args):
     """Reverse trace from a crash point: BFS backward through callers,
     annotating each path with condition and concurrency info.
@@ -2504,7 +2736,11 @@ def cmd_reverse_trace(args):
     from collections import deque
 
     graph_dir = args.graph
-    crash_point = args.crash_point
+    # Accept either --crash-point or --from (unified CLI convention)
+    crash_point = getattr(args, 'crash_point', None) or getattr(args, 'from_node', None)
+    if not crash_point:
+        print("Error: --crash-point (or --from) is required", file=sys.stderr)
+        sys.exit(1)
     max_depth = getattr(args, 'max_depth', 10)
     max_paths = getattr(args, 'max_paths', 20)
     macros_str = getattr(args, 'macros', '')
@@ -2566,26 +2802,16 @@ def cmd_reverse_trace(args):
     # branch into all predecessors to collect every distinct path.
     # A path terminates when a node has no recorded reverse_edges (entry point).
     all_paths = []
-    _path_count = [0]
-    _max_paths = max_paths if 'max_paths' in dir() else 20
 
     def _collect_paths(node_id, current_path):
-        """Recursively collect paths from node_id back to entry points.
-
-        Includes early termination: stops collecting once _max_paths
-        is reached, preventing path explosion in high-fan-in graphs.
-        """
-        if _path_count[0] >= _max_paths:
-            return
+        """Recursively collect paths from node_id back to entry points."""
         preds = reverse_edges.get(node_id, [])
         if not preds:
+            # This is an entry point (no callers in reverse BFS range)
             if current_path:
                 all_paths.append(list(reversed(current_path)))
-                _path_count[0] += 1
             return
         for pred_id, ed in preds:
-            if _path_count[0] >= _max_paths:
-                return
             if pred_id not in visited and pred_id != crash_id:
                 continue
             caller_name = G.nodes[pred_id].get("name", pred_id)
@@ -2602,6 +2828,7 @@ def cmd_reverse_trace(args):
                 "invoker_id": pred_id,
                 "invoked_id": node_id,
             }
+            # Avoid cycles in path
             invoker_ids_in_path = {s["invoker_id"] for s in current_path}
             if pred_id in invoker_ids_in_path:
                 continue

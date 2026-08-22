@@ -919,6 +919,13 @@ def cmd_concurrency_analyze(args):
     chain1_name = getattr(args, "chain1", None)
     chain2_name = getattr(args, "chain2", None)
     func_name = getattr(args, "func", None)
+    # Accept --from as alias for --func/--chain1; --to as alias for --chain2
+    from_node = getattr(args, "from_node", None)
+    to_node = getattr(args, "to_node", None)
+    if from_node and not func_name and not chain1_name:
+        func_name = from_node
+    if to_node and not chain2_name:
+        chain2_name = to_node
 
     # Load profile from graph dir (persisted by build) or --profile arg.
     # Profile provides project-specific lock APIs for accurate concurrency

@@ -52,30 +52,58 @@ def add_foreign_stub(graph_dir: str, stub_c2d_path: str,
         "stub_c2d_path": stub_c2d_path,
         "project_name": project_name,
         "mode": "stub",
+        "added": True,
         "resolved_count": 0,
     }
     foreign_db = _foreign_db_path(stub_c2d_path)
     if not os.path.exists(foreign_db):
         summary["error"] = f"stub db not found: {foreign_db}"
         return summary
+    # Open B's db. Use _connect (which goes through _kb_connect with
+    # WAL mode) to ensure all tables exist. Then checkpoint WAL before
+    # ATTACH to avoid "database stub_db is locked" from WAL recovery.
     conn = _connect(graph_dir)
     try:
+        # Force WAL checkpoint to release any pending locks before ATTACH
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error:
+            pass
+        conn.commit()
+        # ATTACH first, then query signature through the alias — avoids
+        # WAL lock conflict from _get_db_signature opening a separate
+        # connection that hasn't released its lock before ATTACH.
+        conn.execute(
+            f"ATTACH DATABASE 'file:{foreign_db}?mode=ro' AS stub_db"
+        )
+        # Query stub db signature through the attached alias
+        try:
+            sig_row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM stub_db.functions"
+            ).fetchone()
+            functions_count = sig_row["cnt"] if sig_row else 0
+        except sqlite3.Error:
+            functions_count = 0
+        import os as _os
+        try:
+            fstat = _os.stat(foreign_db)
+            mtime_str = str(fstat.st_mtime)
+            size_val = fstat.st_size
+        except OSError:
+            mtime_str = ""
+            size_val = 0
         # Insert into watched_c2ds as a stub
-        sig = _get_db_signature(foreign_db)
         conn.execute(
             "INSERT OR REPLACE INTO watched_c2ds "
             "(c2d_path, project_name, db_mtime_at_sync, db_size_at_sync, "
             "functions_count_at_sync, last_synced_at, sync_status) "
             "VALUES (?, ?, ?, ?, ?, ?, 'stub')",
-            (stub_c2d_path, project_name, sig.get("mtime", ""),
-             sig.get("size", 0), sig.get("functions_count", 0),
+            (stub_c2d_path, project_name, mtime_str,
+             size_val, functions_count,
              datetime.now().isoformat())
         )
-        # ATTACH stub db
-        conn.execute(
-            f"ATTACH DATABASE 'file:{foreign_db}?mode=ro' AS stub_db"
-        )
-        # Find B's unresolved calls + auto-resolve against stub
+        # stub_db already ATTACHed above (before signature query to
+        # avoid WAL lock conflict). Find B's unresolved calls + auto-resolve.
         unresolved = conn.execute(
             "SELECT e.invoker_id, e.invoked_id, e.call_order, "
             "e.call_condition "
@@ -94,7 +122,8 @@ def add_foreign_stub(graph_dir: str, stub_c2d_path: str,
             if not name_guess:
                 continue
             # Match against stub's functions (exact name)
-            row = _resolve_by_exact_name(conn, name_guess, project_name)
+            row = _resolve_by_exact_name(conn, name_guess, project_name,
+                                         table_prefix="stub_db.")
             if row:
                 conn.execute(
                     "INSERT OR REPLACE INTO foreign_refs "
@@ -185,7 +214,8 @@ def auto_link_ffi_to_foreign(graph_dir: str, verbose: bool = True) -> Dict[str, 
                                      invoked_name)
                 if not name_guess:
                     continue
-                row = _resolve_by_exact_name(conn, name_guess, project_name)
+                row = _resolve_by_exact_name(conn, name_guess, project_name,
+                                             table_prefix="ffi_foreign.")
                 if row:
                     conn.execute(
                         "INSERT OR REPLACE INTO foreign_refs "
@@ -418,6 +448,9 @@ def import_foreign_knowledge(graph_dir: str, foreign_c2d_path: str,
             continue
         dst_name = f"foreign_{safe_project}_{fname}"
         dst = os.path.join(local_knowledge_dir, dst_name)
+        # Skip if destination already exists (idempotent re-import)
+        if os.path.exists(dst):
+            continue
         try:
             shutil.copy2(src, dst)
             copied += 1

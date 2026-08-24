@@ -366,6 +366,44 @@ def cmd_coverage_cross_c2d(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def cmd_c2d_add_foreign_stub(args):
+    """Phase 3: register vendor stub C2D."""
+    from _builder.c2d_phase3 import add_foreign_stub
+    summary = add_foreign_stub(
+        graph_dir=args.graph,
+        stub_c2d_path=args.stub_c2d,
+        project_name=getattr(args, "project_name", "") or "",
+        verbose=True,
+    )
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def cmd_ffi_auto_link(args):
+    """Phase 3: auto-link FFI bindings to foreign C2Ds."""
+    from _builder.c2d_phase3 import auto_link_ffi_to_foreign
+    summary = auto_link_ffi_to_foreign(args.graph, verbose=True)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def cmd_scan_rpc(args):
+    """Phase 3: scan source for RPC client calls."""
+    from _builder.c2d_phase3 import scan_rpc_edges
+    summary = scan_rpc_edges(args.graph, verbose=True)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def cmd_import_foreign_knowledge(args):
+    """Phase 3: copy foreign knowledge/*.md into local."""
+    from _builder.c2d_phase3 import import_foreign_knowledge
+    summary = import_foreign_knowledge(
+        graph_dir=args.graph,
+        foreign_c2d_path=args.foreign_c2d,
+        project_name=getattr(args, "project_name", "") or "",
+        verbose=True,
+    )
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
 def cmd_install_hook(args):
     """Install git post-commit hook for auto quick-update after commits."""
     import shutil
@@ -980,6 +1018,27 @@ def main():
                             help="Compute which functions in target_c2d are called by test_c2d")
     p_ccc2.add_argument("--test-c2d", required=True, help="Test code C2D directory")
     p_ccc2.add_argument("--target-c2d", required=True, help="Target (tested) C2D directory")
+
+    # Phase 3 commands
+    p_afs = sub.add_parser("c2d-add-foreign-stub",
+                           help="Register a vendor SDK stub C2D (signatures only)")
+    p_afs.add_argument("--graph", required=True, help="Local C2D directory")
+    p_afs.add_argument("--stub-c2d", required=True, help="Stub C2D directory")
+    p_afs.add_argument("--project-name", default="", help="Stub project name (e.g., 'glibc')")
+
+    p_fal = sub.add_parser("ffi-auto-link",
+                           help="Auto-link FFI bindings to watched foreign C2Ds")
+    p_fal.add_argument("--graph", required=True, help="Local C2D directory")
+
+    p_sre = sub.add_parser("scan-rpc",
+                           help="Scan source for RPC client calls (HTTP/gRPC) + create stub edges")
+    p_sre.add_argument("--graph", required=True, help="Local C2D directory")
+
+    p_ifk = sub.add_parser("import-foreign-knowledge",
+                           help="Copy foreign C2D's knowledge/*.md into local knowledge/")
+    p_ifk.add_argument("--graph", required=True, help="Local C2D directory")
+    p_ifk.add_argument("--foreign-c2d", required=True, help="Foreign C2D directory")
+    p_ifk.add_argument("--project-name", default="", help="Foreign project name")
 
     # patch-from-diff
     p_pdiff = sub.add_parser("patch-from-diff", help="Patch graph from unified diff text")
@@ -2102,6 +2161,10 @@ def main():
         "composite-query": cmd_composite_query,
         "c2d-check-compat": cmd_c2d_check_compat,
         "coverage-cross-c2d": cmd_coverage_cross_c2d,
+        "c2d-add-foreign-stub": cmd_c2d_add_foreign_stub,
+        "ffi-auto-link": cmd_ffi_auto_link,
+        "scan-rpc": cmd_scan_rpc,
+        "import-foreign-knowledge": cmd_import_foreign_knowledge,
         "patch-from-diff": cmd_patch_from_diff,
         "patch-from-git": cmd_patch_from_git,
         "light-scan": cmd_light_scan,

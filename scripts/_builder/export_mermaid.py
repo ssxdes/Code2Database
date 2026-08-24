@@ -273,6 +273,80 @@ def _bfs_longest_path(start: str, adj: Dict, max_depth: int) -> List[str]:
     return best_path
 
 
+def export_mermaid_multi(graph_dir: str, output: str = None) -> str:
+    """Multi-project dependency graph.
+
+    Renders project-level boxes (one per top-level domain prefix) with
+    edge counts between them. Used to visualize A -> B -> C dependency
+    chain at the project granularity.
+    """
+    import sqlite3
+    db_path = os.path.join(graph_dir, "code2database.db")
+    if not os.path.exists(db_path):
+        return f"%% No db found at {db_path}"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    # Collect project-level stats + cross-project edges
+    # Project = first segment of domain (e.g., 'A' from 'A.module')
+    projects: Dict[str, Dict[str, Any]] = {}
+    try:
+        rows = conn.execute(
+            "SELECT domain, COUNT(*) AS cnt FROM functions "
+            "WHERE domain IS NOT NULL GROUP BY domain"
+        ).fetchall()
+        for r in rows:
+            domain = r["domain"]
+            project = domain.split(".")[0] if "." in domain else domain
+            if project not in projects:
+                projects[project] = {"functions": 0, "domains": set()}
+            projects[project]["functions"] += r["cnt"]
+            projects[project]["domains"].add(domain)
+    except sqlite3.Error:
+        pass
+    # Cross-project edges
+    cross_edges: Dict[str, Dict[str, int]] = {}
+    try:
+        rows = conn.execute(
+            "SELECT f_invoker.domain AS caller_domain, "
+            "       f_invoked.domain AS callee_domain, "
+            "       COUNT(*) AS edge_count "
+            "FROM edges e "
+            "JOIN functions f_invoker ON e.invoker_id = f_invoker.id "
+            "JOIN functions f_invoked ON e.invoked_id = f_invoked.id "
+            "WHERE f_invoker.domain IS NOT NULL "
+            "  AND f_invoked.domain IS NOT NULL "
+            "GROUP BY f_invoker.domain, f_invoked.domain"
+        ).fetchall()
+        for r in rows:
+            caller_proj = r["caller_domain"].split(".")[0] if "." in r["caller_domain"] else r["caller_domain"]
+            callee_proj = r["callee_domain"].split(".")[0] if "." in r["callee_domain"] else r["callee_domain"]
+            if caller_proj == callee_proj:
+                continue  # skip intra-project
+            if caller_proj not in cross_edges:
+                cross_edges[caller_proj] = {}
+            cross_edges[caller_proj][callee_proj] = (
+                cross_edges[caller_proj].get(callee_proj, 0) + r["edge_count"]
+            )
+    except sqlite3.Error:
+        pass
+    conn.close()
+    # Build Mermaid graph
+    lines = ["graph TD"]
+    # Project nodes
+    for proj, stats in sorted(projects.items()):
+        lines.append(
+            f'    {proj}["{proj} ({stats["functions"]} funcs)"]'
+        )
+    # Cross-project edges
+    for caller_proj, callees in sorted(cross_edges.items()):
+        for callee_proj, count in sorted(callees.items(), key=lambda x: -x[1]):
+            lines.append(f'    {caller_proj} -->|{count} calls| {callee_proj}')
+    md = "\n".join(lines) + "\n"
+    if output:
+        Path(output).write_text(md, encoding="utf-8")
+    return md
+
+
 def cmd_export_mermaid(args):
     """CLI handler for `code2database_builder.py export-mermaid`."""
     graph_dir = args.graph
@@ -283,6 +357,15 @@ def cmd_export_mermaid(args):
     depth = getattr(args, "depth", 5)
     top_n = getattr(args, "top", 10)
     output = getattr(args, "output", None)
+    multi = getattr(args, "multi", False)
+
+    if multi:
+        md = export_mermaid_multi(graph_dir, output)
+        if not output:
+            print(md)
+        else:
+            print(f"Multi-project Mermaid diagram written to: {output}")
+        return 0
 
     md = export_mermaid(graph_dir, mode, node, from_node, to_node,
                        depth, top_n, output)

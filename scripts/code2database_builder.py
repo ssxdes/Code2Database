@@ -328,6 +328,44 @@ def cmd_c2d_remove_foreign(args):
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
+def cmd_composite_query(args):
+    """Phase 2: cross-C2D query via ATTACH."""
+    from _builder.c2d_phase2 import composite_query
+    foreign_c2ds = []
+    if args.foreign_c2d:
+        foreign_c2ds = [s.strip() for s in args.foreign_c2d.split(",")
+                        if s.strip()]
+    result = composite_query(
+        graph_dir=args.graph,
+        query=args.query,
+        foreign_c2ds=foreign_c2ds,
+        top_n=args.top,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def cmd_c2d_check_compat(args):
+    """Phase 2: check B's foreign_refs against new A version."""
+    from _builder.c2d_phase2 import check_compat
+    result = check_compat(
+        graph_dir=args.graph,
+        against_c2d=args.against_c2d,
+        verbose=True,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def cmd_coverage_cross_c2d(args):
+    """Phase 2: test coverage across C2Ds."""
+    from _builder.c2d_phase2 import coverage_cross_c2d
+    result = coverage_cross_c2d(
+        test_c2d=args.test_c2d,
+        target_c2d=args.target_c2d,
+        verbose=True,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def cmd_install_hook(args):
     """Install git post-commit hook for auto quick-update after commits."""
     import shutil
@@ -919,6 +957,29 @@ def main():
     p_crf.add_argument("--graph", required=True, help="Local C2D directory")
     p_crf.add_argument("--foreign-c2d", required=True,
                        help="Foreign C2D path to remove")
+
+    # composite-query (Phase 2: cross-C2D JOIN via ATTACH)
+    p_cq = sub.add_parser("composite-query",
+                          help="Query across local + foreign C2Ds via SQLite ATTACH")
+    p_cq.add_argument("--graph", required=True, help="Local C2D directory")
+    p_cq.add_argument("--query", required=True,
+                      help="Query: 'CALLERS_OF name' / 'CALLEES_OF name' / free-text")
+    p_cq.add_argument("--foreign-c2d", default="",
+                      help="Comma-separated foreign C2D paths to attach")
+    p_cq.add_argument("--top", type=int, default=50)
+
+    # c2d-check-compat (Phase 2: verify B's foreign_refs against A_v2)
+    p_ccc = sub.add_parser("c2d-check-compat",
+                           help="Check if B's foreign_refs still valid against new A version")
+    p_ccc.add_argument("--graph", required=True, help="Local (B) C2D directory")
+    p_ccc.add_argument("--against-c2d", required=True,
+                       help="New version of foreign (A) C2D to check against")
+
+    # coverage-cross-c2d (Phase 2: test coverage across C2Ds)
+    p_ccc2 = sub.add_parser("coverage-cross-c2d",
+                            help="Compute which functions in target_c2d are called by test_c2d")
+    p_ccc2.add_argument("--test-c2d", required=True, help="Test code C2D directory")
+    p_ccc2.add_argument("--target-c2d", required=True, help="Target (tested) C2D directory")
 
     # patch-from-diff
     p_pdiff = sub.add_parser("patch-from-diff", help="Patch graph from unified diff text")
@@ -1863,6 +1924,9 @@ def main():
     p_em.add_argument("--depth", type=int, default=5)
     p_em.add_argument("--top", type=int, default=10, help="Top N paths (paths mode)")
     p_em.add_argument("--output", default=None, help="Output file path")
+    p_em.add_argument("--multi", action="store_true",
+                      help="Multi-project mode: render A -> B -> C dependency graph "
+                           "with project-level nodes (boxes) and edge counts")
 
     # --- Report-layer CLI commands (13 new) ---
     p_rs = sub.add_parser("render-source", help="Render source from DB tokens")
@@ -2035,6 +2099,9 @@ def main():
         "c2d-sync-foreign": cmd_c2d_sync_foreign,
         "c2d-list-foreign": cmd_c2d_list_foreign,
         "c2d-remove-foreign": cmd_c2d_remove_foreign,
+        "composite-query": cmd_composite_query,
+        "c2d-check-compat": cmd_c2d_check_compat,
+        "coverage-cross-c2d": cmd_coverage_cross_c2d,
         "patch-from-diff": cmd_patch_from_diff,
         "patch-from-git": cmd_patch_from_git,
         "light-scan": cmd_light_scan,

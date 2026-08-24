@@ -853,3 +853,37 @@ def unpin_foreign_ref(graph_dir: str, ref_id: int,
     finally:
         conn.close()
     return summary
+
+
+# ---------------------------------------------------------------------------
+# A3: ATTACH/DETACH context manager — eliminates try/ATTACH/DETACH/except
+# boilerplate across c2d_foreign, c2d_phase2, c2d_phase3, kb_index.
+# Existing code is NOT refactored (to avoid introducing bugs); new code
+# should use this context manager instead of manual ATTACH/DETACH.
+# ---------------------------------------------------------------------------
+
+from contextlib import contextmanager
+
+@contextmanager
+def with_foreign_attached(conn: sqlite3.Connection, foreign_db_path: str,
+                            alias: str = "foreign_db"):
+    """Context manager for safe ATTACH/DETACH of a foreign C2D db.
+
+    Attaches the foreign db read-only, yields the connection, and
+    guarantees DETACH in finally (even on exception). Prevents
+    resource leaks from missed DETACH calls.
+
+    Usage:
+        with with_foreign_attached(conn, fdb_path, "a_db") as c:
+            rows = c.execute("SELECT * FROM a_db.functions").fetchall()
+    """
+    conn.execute(
+        f"ATTACH DATABASE 'file:{foreign_db_path}?mode=ro' AS {alias}"
+    )
+    try:
+        yield conn
+    finally:
+        try:
+            conn.execute(f"DETACH DATABASE {alias}")
+        except sqlite3.Error:
+            pass

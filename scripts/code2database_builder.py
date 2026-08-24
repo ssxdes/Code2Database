@@ -527,6 +527,13 @@ def main():
                               "N=N threads). Speeds up per-node extraction "
                               "loops (state_access, auto-enhance). Auto-capped "
                               "on very large graphs to bound memory.")
+    p_build.add_argument("--max-workers", type=int, default=0,
+                         help="Override the hard cap on parallel workers "
+                              "(default: 16, or C2D_MAX_WORKERS env var). "
+                              "On high-core machines (64+ cores, 250GB+ RAM), "
+                              "set this to your core count for maximum "
+                              "throughput. Only large graphs (>200K nodes) "
+                              "are further capped to 4/6 to bound memory.")
 
     # load
     p_load = sub.add_parser("load", help="Load and summarize the invocation graph")

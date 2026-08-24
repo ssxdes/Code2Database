@@ -14,13 +14,20 @@ supported:
 
 The choice is governed by a single ``jobs`` integer:
 
-* ``jobs == 0`` — auto, capped at ``min(cpu_count, 8)``
+* ``jobs == 0`` — auto, capped at ``min(cpu_count, max_workers_cap)``
 * ``jobs == 1`` — sequential (no executor overhead)
 * ``jobs >= 2`` — explicit parallelism
 
 For very large graphs (>= ``LARGE_GRAPH_NODES``), the helper auto-caps worker
 count to avoid memory blow-up from duplicated per-worker state — the caller
 still benefits from parallelism but the cap prevents thrashing.
+
+**Configuration**: the hard cap can be overridden via:
+  1. Environment variable ``C2D_MAX_WORKERS`` (highest priority)
+  2. CLI flag ``--max-workers`` (if the caller passes it)
+  3. Default: ``min(cpu_count, 16)`` — was hardcoded 8, but modern machines
+     with 64+ cores and 250GB+ RAM benefit from higher parallelism,
+     especially for GIL-releasing workloads (tree-sitter, regex, zlib).
 """
 
 from __future__ import annotations
@@ -34,28 +41,51 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 # their nodes auto-cap workers to avoid per-worker memory duplication.
 LARGE_GRAPH_NODES = 100_000
 
-# Hard ceiling on worker count. Past 8 workers, Python's GIL contention
-# and per-worker memory overhead tend to outweigh throughput gains for
-# the regex/AST workloads this module serves.
-MAX_WORKERS_HARD_CAP = 8
+# Default hard ceiling on worker count. Was 8 (too low for modern hardware).
+# Now defaults to 16 — tree-sitter/regex/zlib release the GIL, so more
+# threads = real speedup on multi-core boxes with adequate RAM.
+# Override via C2D_MAX_WORKERS env var or --max-workers CLI flag.
+DEFAULT_MAX_WORKERS = 16
 
 
-def resolve_jobs(jobs: int) -> int:
+def _get_max_workers_cap(cli_override: int = 0) -> int:
+    """Resolve the effective worker cap.
+
+    Priority: CLI --max-workers > C2D_MAX_WORKERS env > DEFAULT_MAX_WORKERS.
+    """
+    # CLI override (highest priority)
+    if cli_override and cli_override > 0:
+        return cli_override
+    # Environment variable
+    env = os.environ.get("C2D_MAX_WORKERS", "")
+    if env:
+        try:
+            return max(1, int(env))
+        except ValueError:
+            pass
+    # Default
+    return DEFAULT_MAX_WORKERS
+
+
+def resolve_jobs(jobs: int, max_workers_cap: int = 0) -> int:
     """Normalize a ``--jobs`` style argument into a concrete worker count.
 
-    ``0`` (auto) → ``min(cpu_count, MAX_WORKERS_HARD_CAP)``.
+    ``0`` (auto) → ``min(cpu_count, max_workers_cap)``.
     ``1`` → sequential (returned as 1; callers should skip executor setup).
     Negative values are clamped to 1.
+
+    ``max_workers_cap``: override the hard cap (0 = use env/default).
     """
+    cap = _get_max_workers_cap(max_workers_cap)
     if jobs is None or jobs <= 0:
         try:
             cpu = multiprocessing.cpu_count()
         except (NotImplementedError, OSError):
             cpu = 4
-        return max(2, min(cpu, MAX_WORKERS_HARD_CAP))
+        return max(2, min(cpu, cap))
     if jobs == 1:
         return 1
-    return min(jobs, MAX_WORKERS_HARD_CAP)
+    return min(jobs, cap)
 
 
 def cap_for_graph(jobs: int, n_nodes: int) -> int:
@@ -64,6 +94,10 @@ def cap_for_graph(jobs: int, n_nodes: int) -> int:
     On 700K+ node graphs, each thread's per-iteration state (regex match
     objects, dict copies) can balloon memory. We keep the speedup but cap
     the worker count so memory pressure stays bounded.
+
+    The caps here are LOWER bounds — they never reduce below 2, and they
+    only apply to graphs above LARGE_GRAPH_NODES. For smaller graphs, the
+    full requested jobs count is used (bounded by resolve_jobs).
     """
     if n_nodes >= 500_000:
         return max(2, min(jobs, 4))

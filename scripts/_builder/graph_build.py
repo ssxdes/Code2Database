@@ -771,7 +771,8 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
 
 
 def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
-                              jobs: int = 0) -> None:
+                              jobs: int = 0,
+                              max_workers: int = 0) -> None:
     """Extract shared state access info for all non-empty nodes in the graph.
 
     Sets node attributes: globals_read, globals_written, fields_read, fields_written.
@@ -842,7 +843,7 @@ def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
     # Decide sequential vs parallel
     try:
         from _builder.parallel import resolve_jobs, cap_for_graph
-        workers = cap_for_graph(resolve_jobs(jobs), len(candidates))
+        workers = cap_for_graph(resolve_jobs(jobs, max_workers_cap=max_workers), len(candidates))
     except ImportError:
         workers = 1
 
@@ -6883,7 +6884,8 @@ def cmd_build(args):
 
     # Shared state access extraction
     tracker.begin("extract_state_access")
-    _extract_state_access_all(G, data, jobs=getattr(args, 'jobs', 0) or 0)
+    _extract_state_access_all(G, data, jobs=getattr(args, 'jobs', 0) or 0,
+                              max_workers=getattr(args, 'max_workers', 0) or 0)
     state_count = sum(1 for _, nd in G.nodes(data=True)
                       if nd.get("globals_read") or nd.get("globals_written")
                       or nd.get("fields_read") or nd.get("fields_written"))

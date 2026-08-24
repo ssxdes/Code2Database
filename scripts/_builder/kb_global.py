@@ -161,7 +161,20 @@ def global_search(query: str, top_n: int = 10, kinds: Optional[List[str]] = None
 
 
 def global_share(output_path: str) -> str:
-    """Export the global KB to a portable JSON file for sharing."""
+    """Export the global KB to a portable JSON file for sharing.
+
+    S1: rejects paths containing '..' (path traversal) and requires
+    either an absolute path or a path under the current working directory.
+    """
+    # S1: path traversal check
+    if ".." in output_path:
+        print(f"[kb-global-share] rejecting path with '..': {output_path}",
+              file=sys.stderr)
+        return ""
+    if not os.path.isabs(output_path):
+        output_path = os.path.join(os.getcwd(), output_path)
+    # Ensure parent dir exists
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     conn = _global_kb_connect()
     try:
         rows = conn.execute(
@@ -205,6 +218,7 @@ def global_import(input_path: str) -> int:
     """Import a global KB JSON file (e.g., shared by a teammate).
 
     Defensive against JSON bombing: rejects files > 50MB.
+    S2: also guards against deeply nested JSON (RecursionError).
     """
     # Size guard against JSON bombing (deeply nested or huge files)
     try:
@@ -217,7 +231,13 @@ def global_import(input_path: str) -> int:
     except OSError:
         return 0
     try:
+        # S2: guard against deeply nested JSON (stack overflow)
         data = json.loads(Path(input_path).read_text(encoding="utf-8"))
+    except RecursionError:
+        print(f"[kb-global-import] rejecting {input_path}: "
+              f"JSON nesting too deep (possible DoS)",
+              file=sys.stderr)
+        return 0
     except (OSError, json.JSONDecodeError) as e:
         print(f"[kb-global-import] failed to parse {input_path}: {e}",
               file=sys.stderr)

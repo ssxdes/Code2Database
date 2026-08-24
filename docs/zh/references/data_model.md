@@ -342,6 +342,22 @@ CREATE INDEX idx_field_struct ON field_access(struct_name);
 位于 `~/.code2database_global_kb/global.db` 的全局 KB 有独立的
 `kb_global` + `kb_global_fts` 表对，用于跨项目知识（Phase 8）。
 
+### 跨 C2D 同步表（Schema v13）
+
+| 表 | 用途 | Phase |
+|---|---|---|
+| `foreign_refs` | B 的未解析调用 + 缓存的 A 端元数据（foreign_node_id, name, domain, source_file, signature, status） | 1 |
+| `watched_c2ds` | 监听的外部 C2D 及其 db mtime/size/count（变更检测） | 1 |
+
+`foreign_refs` 表存储 B 的跨 C2D 引用：每行是从 B 的 `local_node_id`
+到 A 的 `foreign_node_id` 的边（从 A 的 `functions` 表缓存）。状态转换：
+`unresolved` → `resolved` → `stale`（A 变了）→ `deleted`（A 删了函数）
+或 → `orphaned`（用户运行了 `c2d-remove-foreign`）。
+
+`watched_c2ds` 表追踪每个注册的外部 C2D 的 db mtime/size/functions_count
+用于变更检测。守护进程每 60s 轮询；若 mtime 变化，自动触发
+`c2d-sync-foreign`。
+
 ### 遗留 ↔ cgdb 同步
 
 `cgdb_sync.sync_legacy_and_cgdb()` 保持 `functions`/`edges`（遗留）与 `cgdb_nodes`/`cgdb_edges`（cgdb）同步。遗留表回答"谁调用谁"；cgdb 表回答强类型语义问题。两者共存于同一个 SQLite 数据库。

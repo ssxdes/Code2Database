@@ -5,6 +5,38 @@ All notable changes to Code2Database will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-08-25
+
+**Major feature release**: multi-project aggregate build + cross-C2D live sync.
+
+### Multi-project support (Phase 1-3)
+- `build-multi` command: manifest-driven joint C2D from A→B→C interdependent projects. Forces project-name domain prefix (A_init vs B_init never collide). Aggregates include paths, merges compile_commands.json. Reuse mode imports from existing C2D via ATTACH.
+- `c2d-add-foreign` / `c2d-sync-foreign` / `c2d-list-foreign` / `c2d-remove-foreign`: cross-C2D reference tracking via foreign_refs + watched_c2ds tables. SQLite ATTACH for read-only cross-db queries.
+- `composite-query`: cross-C2D JOIN (CALLERS_OF / CALLEES_OF across local + foreign dbs).
+- `c2d-check-compat`: verify B's foreign_refs against new A version (broken/signature-changed/ok).
+- `coverage-cross-c2d`: test coverage analysis across C2Ds (which A functions are called by test_A).
+- `export-mermaid --multi`: project-level dependency graph visualization.
+- `c2d-add-foreign-stub`: vendor SDK signature-only stub C2D (glibc/kernel/DPDK).
+- `ffi-auto-link`: auto-link FFI bindings to watched foreign C2Ds.
+- `scan-rpc`: scan source for HTTP/gRPC calls, create rpc_endpoint stub nodes + edges.
+- `import-foreign-knowledge`: copy foreign C2D's knowledge/*.md into local with project prefix.
+
+### Deep audit fixes (P0)
+- `describe-node` transparent foreign_ref fallback (F1): returns foreign callee metadata via ATTACH.
+- `kb-query` ATTACH foreign dbs (F2): searches A's knowledge when B's local KB is thin.
+- `kb-cluster` uses Jaccard token-set similarity (C1 fix): BM25 was relevance ranking, not similarity.
+- Daemon watches foreign db mtimes (F9): auto-syncs foreign_refs when A updates.
+- `c2d-add-foreign` signature disambiguation (C2): handles C++ overloads by matching signature.
+- MCP tools: 3 new (code2database_foreign_refs, code2database_sync_foreign, code2database_composite_query). Total 53.
+- Security: kb-global-share path traversal check (S1), kb-global-import JSON nesting guard (S2), c2d-add-foreign SQLite validity check (S4).
+- Daemon foreign sync throttle (P3): min 60s between runs.
+
+### Stats
+- 4 new modules: build_multi.py, c2d_foreign.py, c2d_phase2.py, c2d_phase3.py.
+- 12 new CLI commands. Total 196.
+- 3 new MCP tools. Total 53.
+- SCHEMA v13: foreign_refs + watched_c2ds tables.
+
 ## [1.2.0] - 2026-08-25
 
 **Major feature release**: unified knowledge base (kb-*) with FTS5+BM25 across
@@ -101,8 +133,8 @@ memory + knowledge + global stores. 13 new kb-* CLI commands, 1 new MCP tool,
   `knowledge-query` (so SKILL.md Quick Reference commands work as documented).
 
 ### Doc sync
-- 16 `.md` / `.json` files updated for new counts (50 MCP tools /
-  31 code2database_* / 184 CLI commands / 24 core).
+- 16 `.md` / `.json` files updated for new counts (53 MCP tools /
+  34 code2database_* / 196 CLI commands / 27 core).
 - `docs/en/references/memory_knowledge.md` and `docs/zh/references/memory_knowledge.md`
   rewritten to match actual code schema (removed fictional `mem_xxx` /
   `topic` / `fact` / `source` / `confidence` / `related_functions` /
@@ -293,7 +325,7 @@ First public release. Code2Database scans C/C++/Go/Python/Java/Rust/ASM codebase
 - **Dual extraction backend**: `auto` (default — uses clang when libclang is installed, falls back to tree-sitter), `clang` (force clang, enables cgdb semantic layer; libclang 17+), `tree-sitter` (force tree-sitter, no libclang dep). Selected via `--extraction-backend` flag at scan time. **libclang is recommended, NOT required** — tree-sitter-only mode is fully functional for every supported language.
 - **cgdb semantic tables** populated when clang backend is enabled: L1 AST nodes, L2 types, L3.5 config predicates (`#ifdef CONFIG_*`), L4 CFG (basic blocks + edges), L5 data flow (def-use chains), L6 alias (stub), L7 ops_bindings (typed vtable dispatch via FieldDecl → FunctionDecl) + invoke_sites, L8 sync_primitives + happens_before, L10 provenance + time-travel versions.
 - **122 CLI commands** organized into 3 sub-skills: `/Code2Database` (core, 15 Tier-1 high-weight commands), `/Code2Database-analysis` (deep semantic analysis, 13 Tier-1 + 19 `cgdb_*` MCP tools), `/Code2Database-ops` (graph editing + ops, 14 Tier-1).
-- **50 MCP tools** (31 `code2database_*` + 19 `cgdb_*`) exposed over stdio transport via `serve` command.
+- **53 MCP tools** (34 `code2database_*` + 19 `cgdb_*`) exposed over stdio transport via `serve` command.
 - **Multi-language scanning** for C, C++, Go, Python, Java, Rust, ASM (regex-based for NASM x86_64 / kernel GNU as / ARM bl/blr).
 
 ### Analysis & Reasoning
@@ -328,7 +360,7 @@ First public release. Code2Database scans C/C++/Go/Python/Java/Rust/ASM codebase
 
 ### Distribution
 
-- **3-sub-skill split**: `Code2Database` (core, always loaded), `Code2Database-analysis` (on-demand deep analysis), `Code2Database-ops` (on-demand ops). Each sub-skill has its own `SKILL.md` exposing only the commands relevant to its layer. The CLI (`scripts/code2database_builder.py`) is shared — all 184 commands are accessible regardless of which sub-skill is active.
+- **3-sub-skill split**: `Code2Database` (core, always loaded), `Code2Database-analysis` (on-demand deep analysis), `Code2Database-ops` (on-demand ops). Each sub-skill has its own `SKILL.md` exposing only the commands relevant to its layer. The CLI (`scripts/code2database_builder.py`) is shared — all 196 commands are accessible regardless of which sub-skill is active.
 - **Bilingual documentation**: English (`docs/en/`) and Chinese (`docs/zh/`).
 - **One-click installer** (`install.sh`) with Claude Code and Codex CLI support.
 - **Partial language install**: `scripts/setup.sh --languages c,go` (or `C2D_LANGUAGES` env var) — engineers focused on a single language can install only the tree-sitter grammars they need.

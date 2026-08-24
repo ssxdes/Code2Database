@@ -647,7 +647,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" serve \
   --graph code2db-out/
 ```
 
-暴露 **50 个 MCP 工具**（31 个 `code2database_*` + 19 个 `cgdb_*`）：
+暴露 **53 个 MCP 工具**（31 个 `code2database_*` + 19 个 `cgdb_*`）：
 
 **31 个 `code2database_*` 工具**（始终可用）：
 - code2database_load, code2database_search, code2database_describe, code2database_explore, code2database_trace, code2database_impact, code2database_key_paths, code2database_concurrency, code2database_data_lifecycle, code2database_domain, code2database_knowledge_query, code2database_memory_search, code2database_semantic_status, code2database_get_code_snippet, code2database_blast_radius, code2database_extract_signals, code2database_value_flow, code2database_param_flow, code2database_field_access, code2database_lock_coverage, code2database_path_feasible, code2database_data_dep, code2database_find_invariants, code2database_apply_invariants, code2database_ffi_trace, code2database_doc_code_check, code2database_profile_health, code2database_daemon_status, code2database_blame_node, code2database_query

@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, and 19 cgdb semantic tables. 50 MCP tools + 184 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
+description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, and 19 cgdb semantic tables. 53 MCP tools + 196 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
 trigger: /Code2Database
 ---
 
@@ -43,7 +43,7 @@ python3 scripts/code2database_builder.py kb-rebuild-index --graph code2db-out/
 python3 scripts/code2database_builder.py describe --graph code2db-out/ --node bdev_start
 python3 scripts/code2database_builder.py kb-query --graph code2db-out/ --query "bdev register"
 python3 scripts/code2database_builder.py trace --graph code2db-out/ --from bdev_start --to spdk_app_start
-python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP server (50 tools)
+python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP server (53 tools)
 ```
 
 ## Core Commands (24)
@@ -69,13 +69,13 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP serve
 | `kb-known-unknowns` | List unanswered queries (feedback loop) | Memory+Knowledge |
 | `kb-audit` | Knowledge audit (citations, staleness, confidence) | Memory+Knowledge |
 | `kb-forget` | Immediately delete a memory/knowledge item | Memory+Knowledge |
-| `serve` | Start MCP server (50 tools) | All |
+| `serve` | Start MCP server (53 tools) | All |
 | `web-ui` | Interactive browser (cytoscape.js) | All |
 | `tx-begin` | Start a transaction | Ops |
 | `daemon` | Background auto-sync | Ops |
 | `health` | Graph freshness + profile health | — |
 
-All 184 CLI commands remain accessible; the 24 above cover ~95% of agent workflows.
+All 196 CLI commands remain accessible; the 24 above cover ~95% of agent workflows.
 
 ## Supported Languages
 
@@ -93,7 +93,7 @@ C/C++ | Go | Python | Java | Rust | ASM (6 + ASM, C/C++ share scanner)
 python3 scripts/code2database_builder.py serve --graph code2db-out/
 ```
 
-50 tools: 31 `code2database_*` (incl. new `code2database_kb_query` for unified memory+knowledge search) + 19 `cgdb_*` (clang semantic layer).
+53 tools: 34 `code2database_*` (incl. new `code2database_kb_query` for unified memory+knowledge search) + 19 `cgdb_*` (clang semantic layer).
 
 ## Constraints
 

@@ -679,6 +679,10 @@ class Daemon:
         last_breaker_trip = 0.0
         while not self._stop:
             now = time.time()
+            # F9: periodically check watched foreign C2D db mtimes
+            if now - getattr(self, '_last_foreign_check', 0) > 60.0:
+                self._last_foreign_check = now
+                self._check_watched_foreign_c2ds()
             with self._pending_lock:
                 pending_count = len(self._pending)
             if pending_count == 0:
@@ -1222,7 +1226,16 @@ class Daemon:
         Phase 1 cross-C2D sync integration. Iterates over watched_c2ds
         and calls sync_foreign for each. Best-effort: errors are logged
         but don't fail the daemon sync.
+
+        P2 throttle: min 60s between runs to avoid hammering foreign
+        dbs when B updates frequently.
         """
+        # Throttle: don't re-sync foreign refs more than once per 60s
+        now = time.time()
+        if hasattr(self, '_last_foreign_sync_ts'):
+            if now - self._last_foreign_sync_ts < 60.0:
+                return  # throttled
+        self._last_foreign_sync_ts = now
         try:
             from _builder.c2d_foreign import sync_foreign
             summary = sync_foreign(self.graph_dir, verbose=False)
@@ -1237,6 +1250,47 @@ class Daemon:
                     )
         except Exception as exc:
             self._log(f"foreign refs sync after local update skipped: {exc}")
+
+    def _check_watched_foreign_c2ds(self):
+        """F9: periodically check watched foreign C2D db mtimes.
+
+        If a foreign C2D (A) has been updated (mtime changed), trigger
+        sync_foreign to re-resolve B's foreign_refs. Called from the
+        main loop every ~60 seconds (polling-based, cross-platform).
+        """
+        try:
+            import sqlite3
+            db_path = os.path.join(self.graph_dir, "code2database.db")
+            if not os.path.exists(db_path):
+                return
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            try:
+                watched = conn.execute(
+                    "SELECT c2d_path, db_mtime_at_sync FROM watched_c2ds "
+                    "WHERE sync_status IN ('ok', 'stub')"
+                ).fetchall()
+            except sqlite3.OperationalError:
+                conn.close()
+                return  # watched_c2ds table doesn't exist
+            needs_sync = False
+            for w in watched:
+                fdb_path = os.path.join(w["c2d_path"], "code2database.db")
+                if not os.path.exists(fdb_path):
+                    continue
+                try:
+                    current_mtime = str(os.path.getmtime(fdb_path))
+                except OSError:
+                    continue
+                if current_mtime != w["db_mtime_at_sync"]:
+                    needs_sync = True
+                    self._log(f"foreign c2d changed: {w['c2d_path']}")
+                    break
+            conn.close()
+            if needs_sync:
+                self._sync_foreign_refs_after_local_update()
+        except Exception as exc:
+            self._log(f"watched foreign c2d check failed: {exc}")
 
     def _rebuild_output_files(self):
         """Rebuild affected output files (CODE2DATABASE_SUMMARY.md, etc.)."""

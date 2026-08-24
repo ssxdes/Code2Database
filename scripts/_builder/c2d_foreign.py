@@ -151,36 +151,58 @@ def _resolve_by_exact_id(foreign_conn: sqlite3.Connection,
 
 def _resolve_by_exact_name(foreign_conn: sqlite3.Connection,
                             invoked_name: str,
-                            project_name: str = "") -> Optional[sqlite3.Row]:
+                            project_name: str = "",
+                            invoked_signature: str = "",
+                            table_prefix: str = "") -> Optional[sqlite3.Row]:
     """Strategy 2: invoked_name matches a function in foreign db.
 
     If project_name is given, the function's id should start with
     `<project_name>_` (because build-multi prefixed it).
+
+    C2 fix: if invoked_signature is provided, use it to disambiguate
+    C++ overloads (same name, different signature). Returns the best
+    match: exact signature first, then any name match.
+
+    table_prefix: if querying an ATTACHed db, pass e.g. 'foreign_db.'
+    so the FROM clause becomes 'foreign_db.functions'.
     """
     if not invoked_name:
         return None
+    tbl = f"{table_prefix}functions" if table_prefix else "functions"
+    candidates: List[sqlite3.Row] = []
     # Try with project prefix first (more specific)
     if project_name:
         prefixed = f"{project_name}_{invoked_name.lower()}"
         try:
             row = foreign_conn.execute(
-                "SELECT id, name, domain, source_file, line_number, signature "
-                "FROM functions WHERE id = ? LIMIT 1",
+                f"SELECT id, name, domain, source_file, line_number, signature "
+                f"FROM {tbl} WHERE id = ? LIMIT 1",
                 (prefixed,)
             ).fetchone()
             if row:
-                return row
+                candidates.append(row)
         except sqlite3.Error:
             pass
     # Fall back to name match (without project prefix)
-    try:
-        return foreign_conn.execute(
-            "SELECT id, name, domain, source_file, line_number, signature "
-            "FROM functions WHERE name = ? LIMIT 1",
-            (invoked_name,)
-        ).fetchone()
-    except sqlite3.Error:
+    if not candidates:
+        try:
+            rows = foreign_conn.execute(
+                f"SELECT id, name, domain, source_file, line_number, signature "
+                f"FROM {tbl} WHERE name = ? LIMIT 10",
+                (invoked_name,)
+            ).fetchall()
+            candidates.extend(rows)
+        except sqlite3.Error:
+            pass
+    if not candidates:
         return None
+    # C2: if signature provided, pick the exact match
+    if invoked_signature and len(candidates) > 1:
+        for c in candidates:
+            if c["signature"] and invoked_signature in c["signature"]:
+                return c
+    # Return first candidate (best-effort)
+    return candidates[0]
 
 
 def _resolve_by_suffix(foreign_conn: sqlite3.Connection,
@@ -215,6 +237,13 @@ def add_foreign(graph_dir: str, foreign_c2d_path: str,
     foreign_db = _foreign_db_path(foreign_c2d_path)
     if not os.path.exists(foreign_db):
         return {"error": f"foreign c2d db not found: {foreign_db}"}
+    # S4: verify it's a valid SQLite db (not /etc/passwd via symlink)
+    try:
+        test_conn = sqlite3.connect(f"file:{foreign_db}?mode=ro", uri=True)
+        test_conn.execute("SELECT 1 FROM sqlite_master LIMIT 1")
+        test_conn.close()
+    except sqlite3.Error:
+        return {"error": f"foreign db is not a valid SQLite database: {foreign_db}"}
     conn = _connect(graph_dir)
     summary: Dict[str, Any] = {
         "foreign_c2d_path": foreign_c2d_path,
@@ -269,9 +298,10 @@ def add_foreign(graph_dir: str, foreign_c2d_path: str,
             # Try strategies in order
             resolved_row = None
             strategy = None
-            # Strategy 2: exact name (with project prefix)
+            # Strategy 2: exact name (with project prefix) — query foreign db
             resolved_row = _resolve_by_exact_name(
-                conn, invoked_name_guess, project_name)
+                conn, invoked_name_guess, project_name,
+                table_prefix="foreign_db.")
             if resolved_row:
                 strategy = "exact_name"
             else:
@@ -430,7 +460,8 @@ def sync_foreign(graph_dir: str, foreign_c2d_path: str = "",
                     else:
                         # Gone — try re-resolve by name
                         new_row = _resolve_by_exact_name(
-                            conn, r["invoked_name"], project_name)
+                            conn, r["invoked_name"], project_name,
+                            table_prefix="foreign_db.")
                         if new_row:
                             conn.execute(
                                 "UPDATE foreign_refs SET "
@@ -464,7 +495,8 @@ def sync_foreign(graph_dir: str, foreign_c2d_path: str = "",
             ).fetchall()
             for r in unresolved:
                 new_row = _resolve_by_exact_name(
-                    conn, r["invoked_name"], project_name)
+                    conn, r["invoked_name"], project_name,
+                    table_prefix="foreign_db.")
                 if new_row:
                     conn.execute(
                         "UPDATE foreign_refs SET "

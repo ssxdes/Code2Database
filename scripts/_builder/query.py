@@ -438,6 +438,51 @@ def _compute_hub_info(G: nx.DiGraph, node_id: str) -> dict:
     return result
 
 
+def _fetch_foreign_refs_for_node(graph_dir: str, node_id: str) -> list:
+    """F1: fetch foreign_ref metadata for a node's cross-C2D callees.
+
+    If the node has edges to foreign_ref stubs (entries in the
+    foreign_refs table), ATTACH the foreign C2D db and fetch the
+    callee's metadata (name, source_file, signature). Returns a list
+    of dicts with foreign callee info, transparent to the LLM.
+    """
+    import sqlite3 as _sqlite3
+    db_path = os.path.join(graph_dir, "code2database.db")
+    if not os.path.exists(db_path):
+        return []
+    conn = _sqlite3.connect(db_path)
+    conn.row_factory = _sqlite3.Row
+    refs = []
+    try:
+        # Check if foreign_refs table exists
+        try:
+            rows = conn.execute(
+                "SELECT foreign_c2d_path, foreign_node_id, foreign_name, "
+                "foreign_domain, foreign_source_file, foreign_signature, "
+                "status, resolution_strategy "
+                "FROM foreign_refs WHERE local_node_id = ? "
+                "AND status IN ('resolved', 'stale')",
+                (node_id,)
+            ).fetchall()
+        except _sqlite3.OperationalError:
+            return []  # foreign_refs table doesn't exist
+        for r in rows:
+            entry = {
+                "foreign_c2d_path": r["foreign_c2d_path"],
+                "foreign_node_id": r["foreign_node_id"],
+                "foreign_name": r["foreign_name"],
+                "foreign_domain": r["foreign_domain"],
+                "foreign_source_file": r["foreign_source_file"],
+                "foreign_signature": r["foreign_signature"],
+                "status": r["status"],
+                "resolution_strategy": r["resolution_strategy"],
+            }
+            refs.append(entry)
+    finally:
+        conn.close()
+    return refs
+
+
 @cached_query('describe-node', ttl=600,
               touched_nodes_fn=_describe_node_touched,
               capture_stdout=True)
@@ -748,6 +793,16 @@ def cmd_describe_node(args):
                                       if h.get("source_kind") == "memory"]
             result["knowledge_refs"] = [h for h in kb_hits
                                         if h.get("source_kind") == "knowledge"]
+    except Exception:
+        pass
+
+    # F1: transparent foreign_ref fallback. If this node (or any of its
+    # callees) appears in the foreign_refs table, ATTACH the foreign C2D
+    # and fetch the foreign node's metadata (name, source_file, signature,
+    # body_text). This lets describe-node work seamlessly across C2Ds —
+    # the LLM sees one unified view without knowing the data is split.
+    try:
+        result["foreign_refs"] = _fetch_foreign_refs_for_node(graph_dir, node_id)
     except Exception:
         pass
 

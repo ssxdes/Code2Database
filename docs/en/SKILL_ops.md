@@ -1,6 +1,6 @@
 ---
 name: Code2Database-ops
-description: "Operations sub-skill for Code2Database. Activated when the user asks about safe graph editing (transactions, snapshots, WAL replay), keeping the graph up to date (daemon control, file watching, git hook install, patch-from-diff, patch-from-git, sync, merge), profile health and evolution, doc-code alignment and stale-doc marking, graph versioning, persistent memory management, exports (HTML, Obsidian, Web UI), plugins, embeddings (experimental), or the BUG benchmark. Provides hierarchical routing: 22 Tier-1 high-weight commands shown in Quick Reference, a routing table mapping question types to medium-weight command groups, and an on-demand section listing low-weight experimental commands by name only. Database write constraint: LLM MUST get user confirmation before any DB-modifying command (update-node, update-edge, patch-profile, apply-semantics, apply-invariants, auto-enhance, profile-evolve --apply, doc-mark-stale, ffi-types, merge-changes, tx-commit). Use when /Code2Database detects an ops question and explicitly hands off, or when the user types /Code2Database-ops. Not for: querying the graph (use parent /Code2Database); not for deep semantic analysis (use /Code2Database-analysis)."
+description: "Operations sub-skill for Code2Database. Activated when the user asks about safe graph editing (transactions, snapshots, WAL replay), keeping the graph up to date (daemon control, file watching, git hook install, patch-from-diff, patch-from-git, sync, merge), profile health and evolution, doc-code alignment and stale-doc marking, graph versioning, persistent memory management, exports (HTML, Obsidian, Web UI), plugins, embeddings (experimental), or the BUG benchmark. Provides hierarchical routing: 30 Tier-1 high-weight commands shown in Quick Reference, a routing table mapping question types to medium-weight command groups, and an on-demand section listing low-weight experimental commands by name only. Database write constraint: LLM MUST get user confirmation before any DB-modifying command (update-node, update-edge, patch-profile, apply-semantics, apply-invariants, auto-enhance, profile-evolve --apply, doc-mark-stale, ffi-types, merge-changes, tx-commit). Use when /Code2Database detects an ops question and explicitly hands off, or when the user types /Code2Database-ops. Not for: querying the graph (use parent /Code2Database); not for deep semantic analysis (use /Code2Database-analysis)."
 trigger: /Code2Database-ops
 parent_skill: Code2Database
 ---
@@ -91,7 +91,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 | `doc-mark-stale` | Mark a node's doc as stale (**requires user confirmation**) |
 | `update-node` | LLM-driven incremental node attribute supplement (**requires user confirmation**, non-destructive) |
 | `update-edge` | LLM-driven incremental edge attribute supplement (**requires user confirmation**, non-destructive) |
-| `serve` | MCP server mode (stdio, 50 tools: 31 code2database_* + 19 cgdb_*) |
+| `serve` | MCP server mode (stdio, 53 tools: 34 code2database_* + 19 cgdb_*) |
 | `kb-rebuild-index` | Rebuild unified FTS5 index from memory/ + knowledge/ (run after build/update) |
 | `kb-cluster` | Cluster similar kb items + link principle refs |
 | `kb-audit` | KB audit: counts by kind / stale / low-confidence / citations |
@@ -141,7 +141,7 @@ When you detect a question about **simple browsing, scanning, building, or gener
 - **Doc-code alignment**: `describe-node` (parent skill) surfaces `doc_code_mismatches` — if non-empty, `semantic_desc` may be unreliable; consult `body_text` and consider `doc-mark-stale` until docs are re-extracted
 - **Profile evolution**: `profile-evolve --apply` only applies EXTRACTED-confidence suggestions; INFERRED **require user confirmation**. Run `profile-bind-version` after evolution to bind to git/svn HEAD
 - **Memory management**: `manage-memory --action add/correct/reshape/promote/refine` requires user confirmation; `save-memory` requires user confirmation
-- **MCP server**: `serve` exposes 50 tools (31 `code2database_*` + 19 `cgdb_*`); all accessible regardless of sub-skill activation
+- **MCP server**: `serve` exposes 53 tools (34 `code2database_*` + 19 `cgdb_*`); all accessible regardless of sub-skill activation
 - **Do not pre-load** `references/ops_commands.md` — read on demand only when you need detailed syntax for a specific command
 - **Daemon logs** at `~/.code2database/daemon-<project>.log`; daemon state at `<graph_dir>/.daemon_status.json`
 

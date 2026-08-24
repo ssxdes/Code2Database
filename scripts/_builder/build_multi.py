@@ -138,11 +138,11 @@ def _prefix_domain_with_project(data: Dict[str, Any], project_name: str) -> int:
             continue
         old_id = fn.get("id", "")
         old_domain = fn.get("domain", "root")
-        # Force prefix
-        if old_domain == "root" or not old_domain:
-            new_domain = project_name
-        elif old_domain.startswith(prefix):
+        # Force prefix — avoid double-prefixing if already starts with project_name
+        if old_domain == project_name or old_domain.startswith(prefix):
             new_domain = old_domain  # already prefixed
+        elif old_domain == "root" or not old_domain:
+            new_domain = project_name
         else:
             new_domain = prefix + old_domain
         fn["domain"] = new_domain

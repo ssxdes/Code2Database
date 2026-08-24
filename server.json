@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "Code2Database",
   "title": "Code2Database",
-  "description": "Multi-language code graph generator for C/C++/Go/Python/Java/Rust/ASM — dual clang + tree-sitter extraction backend, invocation ordering, conditional paths, #ifdef tracking, concurrency analysis, data race detection, field-level access tracking, LLM context packs, cgdb (code graph database) layer with 19 cgdb_* MCP tools, and 50-tool MCP server mode (31 code2database_* + 19 cgdb_*).",
+  "description": "Multi-language code graph generator for C/C++/Go/Python/Java/Rust/ASM — dual clang + tree-sitter extraction backend, invocation ordering, conditional paths, #ifdef tracking, concurrency analysis, data race detection, field-level access tracking, LLM context packs, cgdb (code graph database) layer with 19 cgdb_* MCP tools, and 53-tool MCP server mode (34 code2database_* + 19 cgdb_*).",
   "repository": {
     "url": "https://github.com/your-org/code2database",
     "source": "github"

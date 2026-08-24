@@ -56,7 +56,7 @@ The skill ships as 3 sub-skills (`/Code2Database` core, `/Code2Database-analysis
 - **Analysis (13 Tier-1 + 19 cgdb_* MCP tools)** — loaded on demand. Concurrency, data flow, invariants, FFI, path feasibility, provenance, cgdb tables.
 - **Ops (14 Tier-1 commands)** — loaded on demand. Transactions, daemon, profile health, doc-code alignment, exports, plugins, memory, embeddings.
 
-All 184 CLI commands are accessible via the shared `scripts/code2database_builder.py` regardless of which sub-skill is active. The split is purely about LLM context economy: a 4K-token core skill is always useful; a 20K-token analysis skill should only be loaded when the user asks about races or invariants.
+All 196 CLI commands are accessible via the shared `scripts/code2database_builder.py` regardless of which sub-skill is active. The split is purely about LLM context economy: a 4K-token core skill is always useful; a 20K-token analysis skill should only be loaded when the user asks about races or invariants.
 
 ### Why micro → lite → local Query Mode
 
@@ -529,12 +529,16 @@ scripts/
 │   ├── semantic_edges.py         ← who-allocates, who-frees, unbalanced-alloc-free, who-locks,
 │   │                                add-semantic-edges
 │   ├── logging_utils.py          ← Structured logging (configure_logging, get_logger)
-│   ├── mcp_server.py             ← MCP server (stdio transport, 50 tools: 31 code2database_* + 19 cgdb_*)
+│   ├── mcp_server.py             ← MCP server (stdio transport, 53 tools: 34 code2database_* + 19 cgdb_*)
 │   ├── kb_index.py               ← Unified KB FTS5+BM25 index (kb_paragraphs table, cross memory+knowledge query)
 │   ├── kb_cluster.py             ← KB clustering (union-find on FTS5 similarity, scope_id/canonical_id/principle_ref)
 │   ├── kb_global.py              ← Cross-project global KB (~/.code2database_global_kb/global.db, reusable knowledge)
 │   ├── kb_audit.py               ← KB audit (counts by kind, stale, low-confidence, citations, audit_log integration)
-│   ├── kb_conflict.py            ← KB conflict detection (within-cluster contradiction pairs) + rollback + forget
+│   ├── kb_conflict.py
+│   ├── build_multi.py             ← Multi-project aggregate build (manifest-driven, project-name domain prefix)
+│   ├── c2d_foreign.py             ← Cross-C2D foreign_refs + watched_c2ds (add/sync/list/remove)
+│   ├── c2d_phase2.py              ← Composite query + check-compat + coverage-cross-c2d
+│   ├── c2d_phase3.py              ← Vendor stub + FFI auto-link + RPC scan + cross-team knowledge            ← KB conflict detection (within-cluster contradiction pairs) + rollback + forget
 │   ├── validate.py               ← Graph validation
 │   └── utils.py                  ← Shared builder utilities (_normalize_id, _resolve_invoked_id,
 │                                    _find_node_id, _parse_bindings, _load_globals,
@@ -632,7 +636,7 @@ ASM (.s .S .asm) uses regex-based scanning — no tree-sitter grammar needed.
 
 | Component | Purpose |
 |-----------|---------|
-| **MCP (Model Context Protocol) stdio transport** | `serve` command exposes 50 tools (31 `code2database_*` + 19 `cgdb_*`) over JSON-RPC with Content-Length framing |
+| **MCP (Model Context Protocol) stdio transport** | `serve` command exposes 53 tools (34 `code2database_*` + 19 `cgdb_*`) over JSON-RPC with Content-Length framing |
 | **Tiered context packs** | micro (~200 tokens) → lite (~500) → standard (~1500) → full — minimizes LLM token cost |
 | **Lazy module imports** | `_builder/__init__.py` delays module load until first access, reducing startup time |
 
@@ -784,9 +788,9 @@ Circuit breaker: if events/minute > 1000 (configurable via `daemon.circuit_break
 
 ### MCP Server
 
-`serve` exposes 50 tools over stdio JSON-RPC with Content-Length framing:
+`serve` exposes 53 tools over stdio JSON-RPC with Content-Length framing:
 
-- 31 `code2database_*` tools (load, search, describe, explore, trace, impact, key_paths, concurrency, data_lifecycle, domain, knowledge_query, memory_search, semantic_status, etc.)
+- 34 `code2database_*` tools (load, search, describe, explore, trace, impact, key_paths, concurrency, data_lifecycle, domain, knowledge_query, memory_search, semantic_status, etc.)
 - 19 `cgdb_*` tools (cgdb_search_symbols, cgdb_find_invokers, cgdb_find_invoked, cgdb_get_definition, cgdb_get_function_body, cgdb_get_struct_layout, cgdb_find_type_definition, cgdb_find_ops_impls, cgdb_find_cfg_paths, cgdb_find_data_flow, cgdb_find_aliases, cgdb_find_lock_held_calls, cgdb_check_race_condition, cgdb_find_configs_for, cgdb_find_nodes_under_config, cgdb_index_status, cgdb_time_travel_query, cgdb_list_versions)
 
 The MCP server is accessible regardless of sub-skill activation; sub-skills are purely an LLM-context economy mechanism.
@@ -829,7 +833,7 @@ Code2Database's current capabilities, organized by category:
 
 ### Query & Analysis
 - 146 CLI subcommands (3 sub-skills: core 15, analysis 13, ops 14 Tier-1)
-- 50 MCP tools (31 code2database_* + 19 cgdb_*)
+- 53 MCP tools (34 code2database_* + 19 cgdb_*)
 - Cypher-subset query language (MATCH/WHERE/RETURN)
 - Z3 SMT path feasibility (heuristic fallback)
 - Tiered context packs (micro/lite/standard/full)

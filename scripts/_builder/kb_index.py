@@ -659,6 +659,89 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
         if log_query:
             top_score = results[0]["score"] if results else 0.0
             _record_query_log(conn, query, len(results), top_score)
+        # F2: if local results are thin, also search foreign C2Ds'
+        # kb_paragraphs (via watched_c2ds + ATTACH). This lets B's
+        # kb-query see A's knowledge.md content when local KB is thin.
+        if len(results) < top_n:
+            try:
+                foreign_hits = _query_foreign_kb(conn, query, top_n - len(results),
+                                                  min_weight, max_tokens)
+                results.extend(foreign_hits)
+            except Exception:
+                pass  # best-effort; foreign queries must not fail local
         return results
     finally:
         conn.close()
+
+
+def _query_foreign_kb(conn: sqlite3.Connection, query: str, top_n: int,
+                      min_weight: float, max_tokens: int) -> List[Dict[str, Any]]:
+    """F2: search kb_paragraphs in all watched foreign C2Ds.
+
+    ATTACHes each foreign db read-only and queries its kb_paragraphs_fts.
+    Returns results tagged with source_db so consumers know which C2D
+    each hit came from.
+    """
+    match_expr = _fts5_escape(query)
+    foreign_results: List[Dict[str, Any]] = []
+    try:
+        watched = conn.execute(
+            "SELECT c2d_path, project_name FROM watched_c2ds "
+            "WHERE sync_status IN ('ok', 'stub')"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []  # watched_c2ds table doesn't exist
+    for w in watched:
+        c2d_path = w["c2d_path"]
+        project_name = w["project_name"] or ""
+        fdb_path = os.path.join(c2d_path, "code2database.db")
+        if not os.path.exists(fdb_path):
+            continue
+        alias = f"fkb_{abs(hash(c2d_path)) % 100000}"
+        try:
+            conn.execute(
+                f"ATTACH DATABASE 'file:{fdb_path}?mode=ro' AS {alias}"
+            )
+            rows = conn.execute(
+                f"SELECT p.id, p.source_kind, p.source_file, p.title, "
+                f"p.body, p.tags, p.weight, p.kind, "
+                f"-bm25({alias}.kb_paragraphs_fts) AS score "
+                f"FROM {alias}.kb_paragraphs_fts "
+                f"JOIN {alias}.kb_paragraphs p ON p.id = {alias}.kb_paragraphs_fts.rowid "
+                f"WHERE {alias}.kb_paragraphs_fts MATCH ? "
+                f"AND p.weight >= ? "
+                f"ORDER BY score DESC LIMIT ?",
+                (match_expr, min_weight, top_n)
+            ).fetchall()
+            max_chars = max_tokens * 4
+            for r in rows:
+                body = r["body"] or ""
+                if len(body) > max_chars:
+                    body = body[:max_chars] + "\n... (truncated)"
+                tags = r["tags"]
+                if tags:
+                    try:
+                        tags = json.loads(tags)
+                    except (json.JSONDecodeError, TypeError):
+                        tags = []
+                foreign_results.append({
+                    "id": r["id"],
+                    "source_kind": r["source_kind"],
+                    "source_file": r["source_file"],
+                    "title": r["title"] or "",
+                    "body": body,
+                    "tags": tags or [],
+                    "weight": round(r["weight"], 4),
+                    "kind": r["kind"],
+                    "score": round(r["score"], 4),
+                    "source_db": c2d_path,
+                    "foreign_project": project_name,
+                })
+            conn.execute(f"DETACH DATABASE {alias}")
+        except sqlite3.Error:
+            try:
+                conn.execute(f"DETACH DATABASE {alias}")
+            except sqlite3.Error:
+                pass
+            continue
+    return foreign_results

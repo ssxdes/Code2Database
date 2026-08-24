@@ -352,6 +352,24 @@ Each predicate carries a `status` field:
 The global KB at `~/.code2database_global_kb/global.db` has a separate
 `kb_global` + `kb_global_fts` pair for cross-project knowledge (Phase 8).
 
+### Cross-C2D Sync Tables (Schema v13)
+
+| Table | Purpose | Phase |
+|---|---|---|
+| `foreign_refs` | B's unresolved calls + cached A-side metadata (foreign_node_id, name, domain, source_file, signature, status) | 1 |
+| `watched_c2ds` | Monitored foreign C2Ds with db mtime/size/count for change detection | 1 |
+
+The `foreign_refs` table stores B's cross-C2D references: each row is
+an edge from B's `local_node_id` to A's `foreign_node_id` (cached from
+A's `functions` table). Status transitions: `unresolved` → `resolved`
+→ `stale` (A changed) → `deleted` (A removed function) or →
+`orphaned` (user ran `c2d-remove-foreign`).
+
+The `watched_c2ds` table tracks each registered foreign C2D's db
+mtime/size/functions_count for change detection. The daemon polls
+these every 60s; if mtime changes, `c2d-sync-foreign` is triggered
+automatically.
+
 ### Legacy ↔ cgdb Sync
 
 `cgdb_sync.sync_legacy_and_cgdb()` keeps `functions`/`edges` (legacy) and `cgdb_nodes`/`cgdb_edges` (cgdb) synchronized. Legacy tables answer "who calls whom"; cgdb tables answer typed semantic questions. Both coexist in the same SQLite database.

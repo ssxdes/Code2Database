@@ -56,7 +56,7 @@ skill 以 3 个子 skill 形式发布（`/Code2Database` 核心、`/Code2Databas
 - **分析（13 个 Tier-1 + 19 个 cgdb_* MCP 工具）**——按需加载。并发、数据流、不变量、FFI、路径可行性、来源、cgdb 表。
 - **运维（14 个 Tier-1 命令）**——按需加载。事务、守护进程、profile 健康、文档-代码对齐、导出、插件、记忆、嵌入。
 
-全部 184 个 CLI 命令都通过共享的 `scripts/code2database_builder.py` 可访问，无论哪个子 skill 激活。这个拆分纯粹是为了 LLM 上下文经济：4K-token 的核心 skill 总是有用；20K-token 的分析 skill 只应在用户问及竞争或不变量时加载。
+全部 196 个 CLI 命令都通过共享的 `scripts/code2database_builder.py` 可访问，无论哪个子 skill 激活。这个拆分纯粹是为了 LLM 上下文经济：4K-token 的核心 skill 总是有用；20K-token 的分析 skill 只应在用户问及竞争或不变量时加载。
 
 ### 为什么是 micro → lite → local 查询模式
 
@@ -527,12 +527,16 @@ scripts/
 │   ├── semantic_edges.py         ← who-allocates、who-frees、unbalanced-alloc-free、who-locks、
 │   │                                add-semantic-edges
 │   ├── logging_utils.py          ← 结构化日志（configure_logging、get_logger）
-│   ├── mcp_server.py             ← MCP 服务器（stdio 传输，50 个工具：31 code2database_* + 19 cgdb_*）
+│   ├── mcp_server.py             ← MCP 服务器（stdio 传输，53 个工具：34 code2database_* + 19 cgdb_*）
 │   ├── kb_index.py               ← 统一 KB FTS5+BM25 索引（kb_paragraphs 表，跨 memory+knowledge 查询）
 │   ├── kb_cluster.py             ← KB 聚类（union-find on FTS5 similarity，scope_id/canonical_id/principle_ref）
 │   ├── kb_global.py              ← 跨项目全局 KB（~/.code2database_global_kb/global.db，跨项目复用知识）
 │   ├── kb_audit.py               ← KB 审计（counts by kind、stale、low-confidence、citations、audit_log 接入）
-│   ├── kb_conflict.py            ← KB 冲突检测（同 cluster 内矛盾词对）+ rollback + forget
+│   ├── kb_conflict.py
+│   ├── build_multi.py             ← Multi-project aggregate build (manifest-driven, project-name domain prefix)
+│   ├── c2d_foreign.py             ← Cross-C2D foreign_refs + watched_c2ds (add/sync/list/remove)
+│   ├── c2d_phase2.py              ← Composite query + check-compat + coverage-cross-c2d
+│   ├── c2d_phase3.py              ← Vendor stub + FFI auto-link + RPC scan + cross-team knowledge            ← KB 冲突检测（同 cluster 内矛盾词对）+ rollback + forget
 │   ├── validate.py               ← 图校验
 │   └── utils.py                  ← 共享构建器工具（_normalize_id、_resolve_invoked_id、
 │                                    _find_node_id、_parse_bindings、_load_globals、
@@ -630,7 +634,7 @@ ASM（.s .S .asm）用正则扫描——无需 tree-sitter 语法。
 
 | 组件 | 用途 |
 |------|------|
-| **MCP（Model Context Protocol）stdio 传输** | `serve` 命令通过 JSON-RPC 暴露 50 个工具（31 个 `code2database_*` + 19 个 `cgdb_*`），带 Content-Length 帧 |
+| **MCP（Model Context Protocol）stdio 传输** | `serve` 命令通过 JSON-RPC 暴露 53 个工具（31 个 `code2database_*` + 19 个 `cgdb_*`），带 Content-Length 帧 |
 | **分层上下文包** | micro（~200 token） → lite（~500） → standard（~1500） → full——最小化 LLM token 成本 |
 | **懒加载模块导入** | `_builder/__init__.py` 延迟模块加载到首次访问，降低启动时间 |
 
@@ -782,7 +786,7 @@ inotify 等待 → debounce 500ms → 批窗口 1000ms → transaction() {
 
 ### MCP 服务器
 
-`serve` 通过 stdio JSON-RPC 暴露 50 个工具，带 Content-Length 帧：
+`serve` 通过 stdio JSON-RPC 暴露 53 个工具，带 Content-Length 帧：
 
 - 31 个 `code2database_*` 工具（load、search、describe、explore、trace、impact、key_paths、concurrency、data_lifecycle、domain、knowledge_query、memory_search、semantic_status 等）
 - 19 个 `cgdb_*` 工具（cgdb_search_symbols、cgdb_find_invokers、cgdb_find_invoked、cgdb_get_definition、cgdb_get_function_body、cgdb_get_struct_layout、cgdb_find_type_definition、cgdb_find_ops_impls、cgdb_find_cfg_paths、cgdb_find_data_flow、cgdb_find_aliases、cgdb_find_lock_held_calls、cgdb_check_race_condition、cgdb_find_configs_for、cgdb_find_nodes_under_config、cgdb_index_status、cgdb_time_travel_query、cgdb_list_versions）
@@ -827,7 +831,7 @@ Code2Database 当前能力，按类别组织：
 
 ### 查询与分析
 - 146 个 CLI 子命令（3 个子 skill：核心 15、分析 13、运维 14 个 Tier-1）
-- 50 个 MCP 工具（31 code2database_* + 19 cgdb_*）
+- 53 个 MCP 工具（34 code2database_* + 19 cgdb_*）
 - Cypher 子集查询语言（MATCH/WHERE/RETURN）
 - Z3 SMT 路径可行性（启发式回退）
 - 分层上下文包（micro/lite/standard/full）

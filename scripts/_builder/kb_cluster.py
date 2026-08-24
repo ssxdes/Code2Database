@@ -17,14 +17,14 @@ import sys
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from _builder.kb_index import _kb_connect, _fts5_escape
+from _builder.kb_index import _kb_connect, _fts5_escape, _split_markdown_paragraphs
+import re as _re
 
 
-# Threshold for "two items are similar enough to cluster".
-# FTS5 BM25 is negative (lower = better); we negate so higher = better.
-# 0.5 is a loose threshold — broad clustering is fine, see_also lists
-# can be long; the LLM can filter further.
-CLUSTER_SIMILARITY_THRESHOLD = 0.5
+# Threshold for Jaccard similarity — two items with Jaccard >= this
+# are considered "the same cluster". 0.3 is moderate (catches
+# rephrased versions of the same question); 0.5 is strict.
+CLUSTER_SIMILARITY_THRESHOLD = 0.3
 
 
 class _UnionFind:
@@ -51,9 +51,32 @@ class _UnionFind:
             self._parent[ra] = rb
 
 
+def _tokenize_for_jaccard(text: str) -> set:
+    """Tokenize text for Jaccard similarity (lowercased alphanumeric)."""
+    return set(_re.findall(r'[a-z0-9_]+', (text or "").lower()))
+
+
+def _jaccard(a: set, b: set) -> float:
+    """Jaccard similarity = |A∩B| / |A∪B|."""
+    if not a or not b:
+        return 0.0
+    inter = len(a & b)
+    union = len(a | b)
+    return inter / union if union else 0.0
+
+
 def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
                verbose: bool = True) -> dict:
-    """Cluster kb_paragraphs by FTS5 similarity.
+    """Cluster kb_paragraphs by Jaccard token-set similarity.
+
+    C1 fix: previously used FTS5 BM25 score as similarity metric, but
+    BM25 is a relevance ranking, not a similarity measure. Two docs with
+    high BM25 just share tokens — they're not necessarily "the same
+    question". Jaccard on token sets is the correct similarity metric.
+
+    Performance: uses FTS5 to get top-K candidates per item (K=20),
+    then computes Jaccard on those candidates only. This avoids O(N²)
+    pairwise comparisons while still catching the most similar pairs.
 
     Returns summary dict with cluster_count, items_clustered,
     principle_refs_linked.
@@ -72,27 +95,39 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
         if not rows:
             return {"clustered": True, "cluster_count": 0, "items_clustered": 0,
                     "principle_refs_linked": 0}
-        # For each item, find similar items via FTS5
         uf = _UnionFind()
         items = [(r["id"], r["title"] or "", r["body"] or "",
                   r["tags"] or "", float(r["weight"]),
                   float(r["confidence"]), r["kind"]) for r in rows]
+        # Precompute token sets for all items
+        token_sets: Dict[int, set] = {}
+        for iid, title, body, tags, *_ in items:
+            token_sets[iid] = _tokenize_for_jaccard(title + " " + body)
+        # For each item, find similar items via FTS5 (candidates only),
+        # then verify with Jaccard
         for i, (iid, title, body, tags, weight, conf, kind) in enumerate(items):
-            # Use title + body as the query (truncated to keep FTS5 fast)
+            ts = token_sets.get(iid, set())
+            if not ts:
+                continue
             query_text = (title + " " + body)[:500]
             if not query_text.strip():
                 continue
             try:
                 match_expr = _fts5_escape(query_text)
-                sim_rows = conn.execute(
-                    "SELECT id, -bm25(kb_paragraphs_fts) AS score "
-                    "FROM kb_paragraphs_fts WHERE kb_paragraphs_fts MATCH ? "
-                    "AND id != ? ORDER BY score DESC LIMIT 10",
+                # Get top-20 FTS5 candidates (sampling for performance)
+                cand_rows = conn.execute(
+                    "SELECT id FROM kb_paragraphs_fts "
+                    "WHERE kb_paragraphs_fts MATCH ? AND id != ? "
+                    "ORDER BY bm25(kb_paragraphs_fts) LIMIT 20",
                     (match_expr, iid)
                 ).fetchall()
-                for sr in sim_rows:
-                    if sr["score"] >= threshold:
-                        uf.union(iid, sr["id"])
+                for cr in cand_rows:
+                    cand_id = cr["id"]
+                    cand_ts = token_sets.get(cand_id, set())
+                    # C1: use Jaccard (correct similarity metric)
+                    sim = _jaccard(ts, cand_ts)
+                    if sim >= threshold:
+                        uf.union(iid, cand_id)
             except sqlite3.Error:
                 continue
         # Assign scope_id = root of each item's union-find tree

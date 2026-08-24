@@ -641,6 +641,61 @@ def _tool_semantic_status(args: dict, graph_dir: str) -> dict:
     return get_semantic_update_status(graph_dir)
 
 
+def _tool_foreign_refs(args: dict, graph_dir: str) -> dict:
+    """F3: list cross-C2D foreign refs for a node."""
+    import sqlite3
+    node_id = args.get("node", "")
+    if not node_id:
+        return {"error": "node is required"}
+    db_path = os.path.join(graph_dir, "code2database.db")
+    if not os.path.exists(db_path):
+        return {"error": "no db", "foreign_refs": []}
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT foreign_c2d_path, foreign_node_id, foreign_name, "
+            "foreign_domain, foreign_source_file, foreign_signature, "
+            "status, resolution_strategy, last_resolved_at "
+            "FROM foreign_refs WHERE local_node_id = ?",
+            (node_id,)
+        ).fetchall()
+        return {
+            "node": node_id,
+            "foreign_refs_count": len(rows),
+            "foreign_refs": [dict(r) for r in rows],
+        }
+    except sqlite3.OperationalError:
+        return {"node": node_id, "foreign_refs_count": 0, "foreign_refs": []}
+    finally:
+        conn.close()
+
+
+def _tool_sync_foreign(args: dict, graph_dir: str) -> dict:
+    """F3: trigger sync of foreign_refs."""
+    from _builder.c2d_foreign import sync_foreign
+    return sync_foreign(
+        graph_dir,
+        foreign_c2d_path=args.get("foreign_c2d", "") or "",
+        verbose=False,
+    )
+
+
+def _tool_composite_query(args: dict, graph_dir: str) -> dict:
+    """F3: cross-C2D query via ATTACH."""
+    from _builder.c2d_phase2 import composite_query
+    foreign_c2ds = []
+    fc = args.get("foreign_c2ds", "")
+    if fc:
+        foreign_c2ds = [s.strip() for s in fc.split(",") if s.strip()]
+    return composite_query(
+        graph_dir=graph_dir,
+        query=args.get("query", ""),
+        foreign_c2ds=foreign_c2ds,
+        top_n=int(args.get("top", 50)),
+    )
+
+
 def _tool_get_code_snippet(args: dict, graph_dir: str) -> dict:
     """Get source code snippet for a node."""
     from _builder.graph_build import _load_full_graph
@@ -1469,6 +1524,41 @@ TOOLS = {
             "required": ["query"],
         },
         "handler": _tool_kb_query,
+    },
+    "code2database_foreign_refs": {
+        "description": "List cross-C2D foreign references for a node. Shows which functions in external C2Ds (project A) are called by this node (project B). Returns foreign_node_id, name, domain, source_file, signature, status.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "node": {"type": "string", "description": "Local node ID to check foreign refs for"},
+            },
+            "required": ["node"],
+        },
+        "handler": _tool_foreign_refs,
+    },
+    "code2database_sync_foreign": {
+        "description": "Trigger sync of foreign_refs with updated foreign C2Ds. Detects when external C2D (A) has changed (mtime/size/count diff) and re-resolves B's foreign_refs. Returns sync summary with newly_resolved/deleted/stale counts.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "foreign_c2d": {"type": "string", "description": "Specific foreign C2D path to sync (default: all watched)"},
+            },
+            "required": [],
+        },
+        "handler": _tool_sync_foreign,
+    },
+    "code2database_composite_query": {
+        "description": "Cross-C2D query via SQLite ATTACH. Finds callers/callees across local + foreign C2Ds. Supports 'CALLERS_OF name' and 'CALLEES_OF name' query language. Returns results tagged with source_db.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "CALLERS_OF <name> or CALLEES_OF <name> or free-text"},
+                "foreign_c2ds": {"type": "string", "description": "Comma-separated foreign C2D paths to attach"},
+                "top": {"type": "integer", "description": "Max results (default 50)"},
+            },
+            "required": ["query"],
+        },
+        "handler": _tool_composite_query,
     },
     "code2database_semantic_status": {
         "description": "Check if semantic update is recommended based on stale node accumulation.",

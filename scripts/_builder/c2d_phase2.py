@@ -211,12 +211,13 @@ def check_compat(graph_dir: str, against_c2d: str,
     }
     try:
         conn.execute(f"ATTACH DATABASE 'file:{foreign_db}?mode=ro' AS new_a")
-        # Get all resolved foreign_refs pointing to this c2d
+        # Get all resolved foreign_refs (don't filter by foreign_c2d_path
+        # because the user may be checking against a different A version
+        # at a different path)
         refs = conn.execute(
             "SELECT id, foreign_node_id, foreign_name, foreign_signature, "
             "invoked_name FROM foreign_refs "
-            "WHERE foreign_c2d_path = ? AND status = 'resolved'",
-            (against_c2d,)
+            "WHERE status = 'resolved'"
         ).fetchall()
         for r in refs:
             summary["total_checked"] += 1
@@ -268,7 +269,7 @@ def check_compat(graph_dir: str, against_c2d: str,
         conn.close()
     summary["compatibility"] = (
         "ok" if summary["broken_edges"] == 0 and summary["signature_changed"] == 0
-        else "broken" if summary["ok_edges"] == 0
+        else "broken" if summary["broken_edges"] > 0 and summary["ok_edges"] == 0
         else "partial"
     )
     return summary

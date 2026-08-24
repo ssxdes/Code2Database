@@ -26,7 +26,7 @@ Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/
 - MSVC `__asm {}` block support and ERROR node fallback
 - Static fn-ptr dispatch array resolution (dispatch_op)
 - LLM context packs (micro/lite/standard/full tiers)
-- MCP server mode for real-time agent queries (50 tools: 31 `code2database_*` + 19 `cgdb_*`)
+- MCP server mode for real-time agent queries (53 tools: 34 `code2database_*` + 19 `cgdb_*`)
 
 Capabilities:
 - **Dual extraction backend** — `auto` (default, uses clang when libclang is installed, falls back to tree-sitter), `clang` (force clang, enables cgdb layer; libclang 17+), `tree-sitter` (force tree-sitter, no libclang dep). Selected via `--extraction-backend` flag at scan time. **libclang is recommended, NOT required** — tree-sitter-only mode is fully functional.
@@ -49,7 +49,7 @@ Capabilities:
 
 ## Skill Structure (3 sub-skills)
 
-The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 184 commands) is shared — all commands are accessible regardless of sub-skill activation.
+The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 196 commands) is shared — all commands are accessible regardless of sub-skill activation.
 
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|

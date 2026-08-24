@@ -41,9 +41,13 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 # their nodes auto-cap workers to avoid per-worker memory duplication.
 LARGE_GRAPH_NODES = 100_000
 
-# Default hard ceiling on worker count. Was 8 (too low for modern hardware).
-# Now defaults to 16 — tree-sitter/regex/zlib release the GIL, so more
-# threads = real speedup on multi-core boxes with adequate RAM.
+# Default hard ceiling on worker count. Was 8 (too low for modern hardware),
+# changed to 16 in the previous fix — but 16 causes oversubscription on
+# machines with fewer than 16 cores (4-core box + -j 48 → 16 threads = 4x
+# oversubscription → OS scheduling overhead + memory waste).
+#
+# Now: the effective default is min(cpu_count, 16) — never more than the
+# machine's core count, but at most 16 for safety on high-core boxes.
 # Override via C2D_MAX_WORKERS env var or --max-workers CLI flag.
 DEFAULT_MAX_WORKERS = 16
 
@@ -51,9 +55,17 @@ DEFAULT_MAX_WORKERS = 16
 def _get_max_workers_cap(cli_override: int = 0) -> int:
     """Resolve the effective worker cap.
 
-    Priority: CLI --max-workers > C2D_MAX_WORKERS env > DEFAULT_MAX_WORKERS.
+    Priority: CLI --max-workers > C2D_MAX_WORKERS env > min(cpu_count, 16).
+
+    The default is min(cpu_count, 16) — this prevents oversubscription on
+    low-core machines (4-core box won't get 16 threads) while still capping
+    at 16 on high-core machines (128-core box won't get 128 threads unless
+    the user explicitly overrides).
+
+    Use --max-workers N or C2D_MAX_WORKERS=N to override (e.g., 48 on a
+    64-core, 250GB RAM box for maximum throughput).
     """
-    # CLI override (highest priority)
+    # CLI override (highest priority — user explicitly chose)
     if cli_override and cli_override > 0:
         return cli_override
     # Environment variable
@@ -63,8 +75,12 @@ def _get_max_workers_cap(cli_override: int = 0) -> int:
             return max(1, int(env))
         except ValueError:
             pass
-    # Default
-    return DEFAULT_MAX_WORKERS
+    # Default: min(cpu_count, 16) — never oversubscribe by default
+    try:
+        cpu = multiprocessing.cpu_count()
+    except (NotImplementedError, OSError):
+        cpu = 4
+    return max(2, min(cpu, DEFAULT_MAX_WORKERS))
 
 
 def resolve_jobs(jobs: int, max_workers_cap: int = 0) -> int:

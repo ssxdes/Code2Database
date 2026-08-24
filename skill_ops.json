@@ -1,7 +1,7 @@
 {
   "name": "Code2Database-ops",
   "version": "1.0.0",
-  "description": "Graph editing + operations for Code2Database. Activated when the user asks about transactions, daemon control, profile health, doc-code alignment, exports, or memory management. All 196 commands remain accessible from the parent skill.",
+  "description": "Graph editing + operations for Code2Database. Activated when the user asks about transactions, daemon control, profile health, doc-code alignment, exports, or memory management. All 200 commands remain accessible from the parent skill.",
   "trigger": "/Code2Database-ops",
   "parent_skill": "Code2Database",
   "languages": [

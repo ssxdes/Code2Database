@@ -75,7 +75,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP 服�
 | `daemon` | 后台自动同步 | Ops |
 | `health` | 图谱新鲜度 + profile 健康 | — |
 
-全部 196 个 CLI 命令仍可访问；上述 24 个覆盖 ~95% 的 agent 工作流。
+全部 200 个 CLI 命令仍可访问；上述 24 个覆盖 ~95% 的 agent 工作流。
 
 ## 支持语言
 

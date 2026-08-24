@@ -134,7 +134,7 @@ memory + knowledge + global stores. 13 new kb-* CLI commands, 1 new MCP tool,
 
 ### Doc sync
 - 16 `.md` / `.json` files updated for new counts (53 MCP tools /
-  34 code2database_* / 196 CLI commands / 27 core).
+  34 code2database_* / 200 CLI commands / 27 core).
 - `docs/en/references/memory_knowledge.md` and `docs/zh/references/memory_knowledge.md`
   rewritten to match actual code schema (removed fictional `mem_xxx` /
   `topic` / `fact` / `source` / `confidence` / `related_functions` /
@@ -360,7 +360,7 @@ First public release. Code2Database scans C/C++/Go/Python/Java/Rust/ASM codebase
 
 ### Distribution
 
-- **3-sub-skill split**: `Code2Database` (core, always loaded), `Code2Database-analysis` (on-demand deep analysis), `Code2Database-ops` (on-demand ops). Each sub-skill has its own `SKILL.md` exposing only the commands relevant to its layer. The CLI (`scripts/code2database_builder.py`) is shared — all 196 commands are accessible regardless of which sub-skill is active.
+- **3-sub-skill split**: `Code2Database` (core, always loaded), `Code2Database-analysis` (on-demand deep analysis), `Code2Database-ops` (on-demand ops). Each sub-skill has its own `SKILL.md` exposing only the commands relevant to its layer. The CLI (`scripts/code2database_builder.py`) is shared — all 200 commands are accessible regardless of which sub-skill is active.
 - **Bilingual documentation**: English (`docs/en/`) and Chinese (`docs/zh/`).
 - **One-click installer** (`install.sh`) with Claude Code and Codex CLI support.
 - **Partial language install**: `scripts/setup.sh --languages c,go` (or `C2D_LANGUAGES` env var) — engineers focused on a single language can install only the tree-sitter grammars they need.

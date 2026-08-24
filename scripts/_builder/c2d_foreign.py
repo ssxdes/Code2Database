@@ -689,3 +689,167 @@ def cmd_c2d_remove_foreign(args):
     """CLI handler for c2d-remove-foreign."""
     summary = remove_foreign(args.graph, args.foreign_c2d)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+# ---------------------------------------------------------------------------
+# F5: c2d-resolve-foreign — manual re-resolve by name
+# ---------------------------------------------------------------------------
+
+def resolve_foreign_by_name(graph_dir: str, foreign_c2d_path: str = "",
+                              verbose: bool = True) -> Dict[str, Any]:
+    """F5: manually re-resolve unresolved/deleted/stale foreign_refs by name.
+
+    Unlike sync_foreign (which only re-resolves when A's mtime changed),
+    this command forces re-resolution regardless of A's state. Useful
+    when A renamed a function and B's refs are stale.
+    """
+    conn = _connect(graph_dir)
+    summary: Dict[str, Any] = {
+        "re_resolved": 0,
+        "still_unresolved": 0,
+        "total_checked": 0,
+    }
+    try:
+        # Get watched c2ds
+        if foreign_c2d_path:
+            watched = conn.execute(
+                "SELECT * FROM watched_c2ds WHERE c2d_path = ?",
+                (foreign_c2d_path,)
+            ).fetchall()
+        else:
+            watched = conn.execute("SELECT * FROM watched_c2ds").fetchall()
+        for w in watched:
+            c2d_path = w["c2d_path"]
+            project_name = w["project_name"] or ""
+            fdb = _foreign_db_path(c2d_path)
+            if not os.path.exists(fdb):
+                continue
+            try:
+                conn.execute(f"ATTACH DATABASE 'file:{fdb}?mode=ro' AS resolve_db")
+            except sqlite3.Error:
+                continue
+            # Get all non-resolved refs for this c2d
+            refs = conn.execute(
+                "SELECT id, invoked_name, invoked_signature "
+                "FROM foreign_refs WHERE foreign_c2d_path = ? "
+                "AND status IN ('unresolved', 'deleted', 'stale')",
+                (c2d_path,)
+            ).fetchall()
+            for r in refs:
+                summary["total_checked"] += 1
+                row = _resolve_by_exact_name(
+                    conn, r["invoked_name"], project_name,
+                    invoked_signature=r["invoked_signature"] or "",
+                    table_prefix="resolve_db.")
+                if row:
+                    conn.execute(
+                        "UPDATE foreign_refs SET "
+                        "foreign_node_id = ?, foreign_name = ?, "
+                        "foreign_domain = ?, foreign_source_file = ?, "
+                        "foreign_signature = ?, status = 'resolved', "
+                        "resolution_strategy = 'manual_resolve', "
+                        "last_resolved_at = ? WHERE id = ?",
+                        (row["id"], row["name"], row["domain"],
+                         row["source_file"], row["signature"],
+                         datetime.now().isoformat(), r["id"])
+                    )
+                    summary["re_resolved"] += 1
+                else:
+                    summary["still_unresolved"] += 1
+            try:
+                conn.execute("DETACH DATABASE resolve_db")
+            except sqlite3.Error:
+                pass
+        conn.commit()
+    finally:
+        conn.close()
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# F7: c2d-prune-foreign — cleanup old foreign_refs
+# ---------------------------------------------------------------------------
+
+def prune_foreign(graph_dir: str, max_age_days: int = 30,
+                   prune_statuses: str = "deleted,orphaned",
+                   verbose: bool = True) -> Dict[str, Any]:
+    """F7: remove old foreign_refs that are no longer useful.
+
+    Removes refs with status in prune_statuses that are older than
+    max_age_days. Keeps resolved/stale/unresolved refs (still active).
+    """
+    conn = _connect(graph_dir)
+    summary: Dict[str, Any] = {
+        "pruned": 0,
+        "max_age_days": max_age_days,
+    }
+    try:
+        statuses = [s.strip() for s in prune_statuses.split(",") if s.strip()]
+        if not statuses:
+            return summary
+        placeholders = ",".join("?" for _ in statuses)
+        # Delete old refs with specified statuses
+        cutoff = datetime.now().isoformat()  # approximate — no age calc in SQL
+        # SQLite doesn't have good date arithmetic; use Python
+        from datetime import timedelta
+        cutoff_dt = datetime.now() - timedelta(days=max_age_days)
+        cutoff_str = cutoff_dt.isoformat()
+        cur = conn.execute(
+            f"DELETE FROM foreign_refs WHERE status IN ({placeholders}) "
+            f"AND (last_resolved_at IS NULL OR last_resolved_at < ?)",
+            statuses + [cutoff_str]
+        )
+        summary["pruned"] = cur.rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# F8: foreign_ref pinning — lock to specific A version
+# ---------------------------------------------------------------------------
+
+def pin_foreign_ref(graph_dir: str, ref_id: int,
+                     verbose: bool = True) -> Dict[str, Any]:
+    """F8: pin a foreign_ref so it won't auto-update when A changes.
+
+    Pinned refs keep their current foreign_node_id even if A renames
+    or deletes the function. Useful for stable API contracts.
+    """
+    conn = _connect(graph_dir)
+    summary: Dict[str, Any] = {"ref_id": ref_id, "pinned": False}
+    try:
+        cur = conn.execute(
+            "UPDATE foreign_refs SET resolution_strategy = 'pinned' "
+            "WHERE id = ? AND status = 'resolved'",
+            (ref_id,)
+        )
+        if cur.rowcount > 0:
+            summary["pinned"] = True
+            conn.commit()
+        else:
+            summary["error"] = f"ref {ref_id} not found or not resolved"
+    finally:
+        conn.close()
+    return summary
+
+
+def unpin_foreign_ref(graph_dir: str, ref_id: int,
+                       verbose: bool = True) -> Dict[str, Any]:
+    """F8: unpin a pinned foreign_ref so it auto-updates again.
+    """
+    conn = _connect(graph_dir)
+    summary: Dict[str, Any] = {"ref_id": ref_id, "unpinned": False}
+    try:
+        cur = conn.execute(
+            "UPDATE foreign_refs SET resolution_strategy = 'exact_name' "
+            "WHERE id = ? AND resolution_strategy = 'pinned'",
+            (ref_id,)
+        )
+        if cur.rowcount > 0:
+            summary["unpinned"] = True
+            conn.commit()
+    finally:
+        conn.close()
+    return summary

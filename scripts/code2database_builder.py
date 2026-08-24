@@ -328,6 +328,43 @@ def cmd_c2d_remove_foreign(args):
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
+def cmd_c2d_resolve_foreign(args):
+    """F5: force re-resolve stale foreign_refs by name."""
+    from _builder.c2d_foreign import resolve_foreign_by_name
+    summary = resolve_foreign_by_name(
+        args.graph,
+        foreign_c2d_path=getattr(args, "foreign_c2d", "") or "",
+        verbose=True,
+    )
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def cmd_c2d_prune_foreign(args):
+    """F7: prune old deleted/orphaned foreign_refs."""
+    from _builder.c2d_foreign import prune_foreign
+    summary = prune_foreign(
+        args.graph,
+        max_age_days=args.max_age_days,
+        prune_statuses=args.prune_statuses,
+        verbose=True,
+    )
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def cmd_c2d_pin_foreign(args):
+    """F8: pin a foreign_ref."""
+    from _builder.c2d_foreign import pin_foreign_ref
+    summary = pin_foreign_ref(args.graph, args.ref_id, verbose=True)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def cmd_c2d_unpin_foreign(args):
+    """F8: unpin a foreign_ref."""
+    from _builder.c2d_foreign import unpin_foreign_ref
+    summary = unpin_foreign_ref(args.graph, args.ref_id, verbose=True)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
 def cmd_composite_query(args):
     """Phase 2: cross-C2D query via ATTACH."""
     from _builder.c2d_phase2 import composite_query
@@ -1002,6 +1039,33 @@ def main():
     p_crf.add_argument("--graph", required=True, help="Local C2D directory")
     p_crf.add_argument("--foreign-c2d", required=True,
                        help="Foreign C2D path to remove")
+
+    # F5: c2d-resolve-foreign (manual re-resolve by name)
+    p_crf5 = sub.add_parser("c2d-resolve-foreign",
+                             help="Force re-resolve stale/deleted foreign_refs by name")
+    p_crf5.add_argument("--graph", required=True, help="Local C2D directory")
+    p_crf5.add_argument("--foreign-c2d", default="",
+                        help="Specific foreign C2D (default: all watched)")
+
+    # F7: c2d-prune-foreign (cleanup old foreign_refs)
+    p_crf7 = sub.add_parser("c2d-prune-foreign",
+                             help="Remove old deleted/orphaned foreign_refs")
+    p_crf7.add_argument("--graph", required=True, help="Local C2D directory")
+    p_crf7.add_argument("--max-age-days", type=int, default=30,
+                        help="Max age in days (default 30)")
+    p_crf7.add_argument("--prune-statuses", default="deleted,orphaned",
+                        help="Comma-separated statuses to prune")
+
+    # F8: c2d-pin-foreign / c2d-unpin-foreign
+    p_crf8 = sub.add_parser("c2d-pin-foreign",
+                             help="Pin a foreign_ref so it won't auto-update")
+    p_crf8.add_argument("--graph", required=True, help="Local C2D directory")
+    p_crf8.add_argument("--ref-id", required=True, type=int, help="foreign_refs.id")
+
+    p_crf8u = sub.add_parser("c2d-unpin-foreign",
+                              help="Unpin a pinned foreign_ref")
+    p_crf8u.add_argument("--graph", required=True, help="Local C2D directory")
+    p_crf8u.add_argument("--ref-id", required=True, type=int, help="foreign_refs.id")
 
     # composite-query (Phase 2: cross-C2D JOIN via ATTACH)
     p_cq = sub.add_parser("composite-query",
@@ -2165,6 +2229,10 @@ def main():
         "c2d-sync-foreign": cmd_c2d_sync_foreign,
         "c2d-list-foreign": cmd_c2d_list_foreign,
         "c2d-remove-foreign": cmd_c2d_remove_foreign,
+        "c2d-resolve-foreign": cmd_c2d_resolve_foreign,
+        "c2d-prune-foreign": cmd_c2d_prune_foreign,
+        "c2d-pin-foreign": cmd_c2d_pin_foreign,
+        "c2d-unpin-foreign": cmd_c2d_unpin_foreign,
         "composite-query": cmd_composite_query,
         "c2d-check-compat": cmd_c2d_check_compat,
         "coverage-cross-c2d": cmd_coverage_cross_c2d,

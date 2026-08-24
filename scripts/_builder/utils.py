@@ -9,6 +9,39 @@ from collections import defaultdict
 import networkx as nx
 
 
+def _ensure_mutable_graph(G, command_name: str = "this command"):
+    """Detect LazySQLiteGraph (read-only SQLite view) early and exit with
+    a clear, actionable error.
+
+    Used by commands that mutate the graph (nx.compose, G.nodes[nid][...] = ...).
+    When the project is large (>=50K functions), _load_full_graph returns
+    LazySQLiteGraph, which has no `.graph` attribute (breaks nx.compose)
+    and rejects item assignment (breaks per-node writes). Without this
+    check the user sees a cryptic AttributeError deep in networkx.
+
+    Call this immediately after _load_full_graph in any command path that
+    uses nx.compose or mutates node attrs.
+    """
+    if type(G).__name__ != "LazySQLiteGraph":
+        return
+    print(
+        f"Error: '{command_name}' is not supported on SQLite-backed large "
+        f"graphs\n"
+        f"  Loaded graph: {G.number_of_nodes()} nodes via LazySQLiteGraph "
+        f"(db: {getattr(G, '_db_path', '?')})\n"
+        "  Reason: this command uses in-memory nx.compose + per-node writes,\n"
+        "          but LazySQLiteGraph is a read-only SQLite view with no\n"
+        "          .graph attribute and rejects item assignment.\n"
+        "Alternatives:\n"
+        "  1. Run 'daemon-start' for real-time incremental sync (cgdb\n"
+        "     incremental path, designed for SQLite-backed large graphs).\n"
+        "  2. Run 'build' for a full rebuild from scratch.\n"
+        "  3. Force eager load by removing the code2database.db file first\n"
+        "     (NOTE: may OOM for >100K-function projects).",
+        file=sys.stderr)
+    sys.exit(2)
+
+
 def _streaming_json_lookup(json_path: str, key: str, max_size_mb: int = 200):
     """Look up a single key in a large JSON object file via streaming parse.
 

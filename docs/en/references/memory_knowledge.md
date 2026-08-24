@@ -33,24 +33,40 @@ extracted from docs + graph analysis.
 ```
 <graph_outdir>/
   memory/
-    index.json              ← metadata: id → entry pointer, tags, last_access
-    entries/
-      <id>.json             ← full Q&A entry
+    index.json              ← metadata: id → entry pointer, tags, status, root_id
+    L0_index.json           ← hot memory (weight > 0.7)
+    L1_index.json           ← warm memory (0.3 < weight <= 0.7)
+    L2_index.json           ← cold memory (weight <= 0.3)
+    root/
+      root_<id>.json        ← canonical merged entry (one per Q&A cluster)
+    leaf/
+      mem_<id>.json          ← individual Q&A entry (may be merged into a root)
+    experience/
+      experience_<id>.json   ← archived entries (weight decayed or graph changed)
+      index.json            ← experience index
+  .scratch/                 ← session-scoped temporary memory (TTL'd)
 ```
 
 ### Entry schema
 
 ```json
 {
-  "id": "mem_1709312345_abc123",
+  "id": 5,
   "question": "How does the bdev layer register a new io_device?",
   "answer": "bdev_register() calls io_device_register() after ...",
   "tags": ["bdev", "io_device", "registration"],
-  "created": "2026-07-15T10:23:45Z",
-  "last_accessed": "2026-07-29T14:00:00Z",
+  "chains": [],
+  "node_ids": ["bdev_register", "io_device_register"],
+  "status": "trusted",
+  "weight": 1.23,
+  "root_id": 5,
+  "merged_count": 2,
   "access_count": 3,
-  "source": "conversation",
-  "domain": "bdev"
+  "knowledge_refs": ["principles.md"],
+  "versions": [{"answer": "...", "version": 1, "merged_from": 7}],
+  "created": "2026-07-15T10:23:45",
+  "last_accessed": "2026-07-29T14:00:00",
+  "validated_at": "2026-07-29T14:00:00"
 }
 ```
 
@@ -58,25 +74,31 @@ extracted from docs + graph analysis.
 
 | Command | Action |
 |---------|--------|
-| `save-memory --question Q --answer A --tags t1,t2` | Save a new entry |
-| `search-memory --query "bdev register"` | Full-text search across Q+A+tags |
-| `manage-memory --action list` | List all entries with metadata |
-| `manage-memory --action delete --id <id>` | Delete an entry |
-| `manage-memory --action decay --threshold-days 30` | Remove entries not accessed in 30 days |
-| `memory-health` | Report entry count, oldest entry, decay candidates |
+| `save-memory --question Q --answer A --tags t1,t2` | Save a new entry (auto-merges to root if similar) |
+| `search-memory --query "bdev register"` | Search memory by Jaccard token similarity |
+| `manage-memory --action add/correct/reshape/promote/refine` | Write persistent memory (script-based ops) |
+| `manage-memory --action decay` | Run weight decay + archive low-weight entries to experience |
+| `manage-memory --action consolidate` | One-pass: decay + rebuild indexes + archive |
+| `validate-memory` | Check entries against current graph; mark stale → experience |
+| `memory-health` | Report entry count, layer counts, oldest entry, scratch sessions |
 
 ### Decay logic
 
-An entry is a decay candidate when `now - last_accessed > threshold_days`.
-The decay command deletes decay candidates but never touches entries
-with `access_count >= 5` (frequently-revisited entries are preserved
-regardless of age). Default threshold is 30 days; override with
-`--threshold-days`.
+Entry weight = `recency × importance × access`, capped at 10.0:
+- `recency = exp(-0.05 × days)` — ~14 days to 50% weight
+- `importance = 1 + 0.10 × merged_count + 0.05 × (answer_length / 1000)`
+- `access = 1 + 0.10 × access_count`
+
+When `weight < 0.1`, the entry is archived to `experience/` with
+`status="experience"`. The `decay` action recomputes weights and
+archives; the `consolidate` action runs decay + rebuilds all indexes
+in one pass. There is no `--threshold-days` parameter — decay is
+continuous via the `DECAY_LAMBDA` constant in `memory_manager.py`.
 
 ### Concurrency
 
 All writes go through `_atomic_write_locked()`:
-1. Write to `entries/<id>.json.tmp.<pid>`
+1. Write to `<file>.tmp.<pid>`
 2. `os.replace()` to the final path (atomic on POSIX)
 3. Exclusive `fcntl.flock(LOCK_EX)` during the rename
 
@@ -92,22 +114,31 @@ protection.
 ```
 <graph_outdir>/
   knowledge/
-    index.json              ← topic → knowledge file pointer
-    topics/
-      <topic>.json          ← list of facts for one topic
+    index.json              ← files + topics index (rebuilt on extract-knowledge)
+    _meta.json              ← per-file source provenance (auto/manual/llm_generated)
+    _memory_links.json      ← bidirectional links to memory entries
+    architecture.md         ← graph-inferred architecture overview
+    principles.md           ← LLM-curated protocol/contract principles
+    glossary.md             ← terminology (auto-extracted from labels)
+    constraints.md          ← API constraints, configuration rules
+    patterns.md             ← Code patterns
+    build_rules.md          ← Build-system rules
+    detail_*.md             ← Auto-extracted source patterns (macros, structs, etc.)
+    custom_*.md             ← User/LLM-defined topics
 ```
 
-### Fact schema
+### Knowledge file schema
+
+Knowledge is stored as **Markdown files** (not structured JSON). Each
+file is a topic; each `##` heading in a file is a sub-topic. The
+`index.json` lists files with their headings:
 
 ```json
 {
-  "topic": "error_handling",
-  "fact": "All bdev functions use SPDK_ERRLOG before returning negative errno",
-  "source": "docs/bdev.md:42",
-  "confidence": 0.9,
-  "related_functions": ["bdev_register", "bdev_open"],
-  "extracted_at": "2026-07-15T10:00:00Z",
-  "graph_version": "v1.2.0"
+  "files": [
+    {"name": "principles.md", "size": 4523, "headings": ["Protocol Standards", "API Contracts"]}
+  ],
+  "topics": ["Protocol Standards", "API Contracts"]
 }
 ```
 
@@ -115,32 +146,36 @@ protection.
 
 | Command | Action |
 |---------|--------|
-| `extract-knowledge --source docs/ --graph <outdir>` | Extract facts from docs + graph |
-| `apply-knowledge --topic error_handling` | Apply a topic's facts to enrich the graph |
-| `knowledge-query --topic error_handling` | List all facts for a topic |
-| `knowledge-validate` | Check facts for stale references, low confidence, missing fields |
+| `extract-knowledge --source docs/ --graph <outdir>` | Extract knowledge template (graph-inferred + doc headings) |
+| `apply-knowledge --graph <outdir>` | Apply LLM-filled `.code2database_knowledge_input.json` back to knowledge/ |
+| `knowledge-query --topic "error_handling"` | Search knowledge by topic (substring match across .md files) |
+| `knowledge-validate` | Check for stale domains, signatures-only files, template-only files |
 
 ### Validation checks
 
 `knowledge-validate` reports:
-- Facts with `confidence < 0.5` (worth re-extracting)
-- Facts whose `related_functions` no longer exist in the current graph
-- Facts missing required fields (topic, fact, source)
-- Topics with only one fact (thin coverage)
+- Knowledge files referencing domains that no longer exist in the graph (stale)
+- Knowledge files containing only function signatures (no actual knowledge)
+- Knowledge files containing only template comments (`FILL IN`, `LLM_FILL`)
+- Doc-code alignment mismatches (semantic_desc vs body_text/signature)
 
 ## Integration with queries
 
-The query priority chain is:
+The query priority chain is **aspirational** — `cmd_query` currently
+queries only the graph + cgdb tables. To consult memory/knowledge, the
+agent must explicitly call `search-memory` / `knowledge-query` (or
+their MCP equivalents `code2database_memory_search` /
+`code2database_knowledge_query`). Future `kb-query` (planned) will
+unify the three stores into one FTS5-indexed query surface.
 
 ```
 context_pack_micro → context_pack_lite → explore-flow
-  → knowledge_pack_lite → memory_pack_lite → describe-node
+  → (manual) knowledge-query → (manual) search-memory → describe-node
 ```
 
-`knowledge_pack_lite` and `memory_pack_lite` are consulted when the
-graph-only packs don't answer the question. The packs are assembled by
-querying the memory/knowledge indexes for entries whose tags or topics
-overlap the query terms.
+`memory_pack_lite.json` and `knowledge_pack_lite.json` are generated
+by `manage-memory --action pack` and `extract-knowledge` respectively;
+they sit alongside `context_pack_lite.json` for the agent to consult.
 
 ## Programmatic access
 
@@ -148,12 +183,12 @@ overlap the query terms.
 from _builder.memory_manager import MemoryManager
 from _builder.knowledge_manager import KnowledgeManager
 
-mem = MemoryManager(outdir="/path/to/code2db-out")
-mem.save("question", "answer", tags=["bdev"])
-results = mem.search("bdev register")
+mem = MemoryManager(graph_dir="/path/to/code2db-out")
+mem.add(question="...", answer="...", tags=["bdev"], node_ids=["bdev_register"])
+results = mem.query("bdev register")
 
-know = KnowledgeManager(outdir="/path/to/code2db-out")
-know.query_topic("error_handling")
+know = KnowledgeManager(graph_dir="/path/to/code2db-out")
+know.query_knowledge("error_handling", max_tokens=500)
 ```
 
 Both managers auto-create their directory structure on first use.

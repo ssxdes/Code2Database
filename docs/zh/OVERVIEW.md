@@ -527,7 +527,7 @@ scripts/
 │   ├── semantic_edges.py         ← who-allocates、who-frees、unbalanced-alloc-free、who-locks、
 │   │                                add-semantic-edges
 │   ├── logging_utils.py          ← 结构化日志（configure_logging、get_logger）
-│   ├── mcp_server.py             ← MCP 服务器（stdio 传输，49 个工具：30 code2database_* + 19 cgdb_*）
+│   ├── mcp_server.py             ← MCP 服务器（stdio 传输，50 个工具：31 code2database_* + 19 cgdb_*）
 │   ├── validate.py               ← 图校验
 │   └── utils.py                  ← 共享构建器工具（_normalize_id、_resolve_invoked_id、
 │                                    _find_node_id、_parse_bindings、_load_globals 等）
@@ -821,7 +821,7 @@ Code2Database 当前能力，按类别组织：
 
 ### 查询与分析
 - 146 个 CLI 子命令（3 个子 skill：核心 15、分析 13、运维 14 个 Tier-1）
-- 49 个 MCP 工具（30 code2database_* + 19 cgdb_*）
+- 50 个 MCP 工具（31 code2database_* + 19 cgdb_*）
 - Cypher 子集查询语言（MATCH/WHERE/RETURN）
 - Z3 SMT 路径可行性（启发式回退）
 - 分层上下文包（micro/lite/standard/full）

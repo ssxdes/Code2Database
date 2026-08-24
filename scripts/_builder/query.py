@@ -729,6 +729,28 @@ def cmd_describe_node(args):
     if not nd.get("preproc_alive", True):
         result["preproc_alive"] = False
 
+    # Phase 3: surface related memory/knowledge entries so the LLM
+    # knows what we already know about this node. Uses the unified
+    # kb_paragraphs FTS5 index; falls back silently if no DB.
+    try:
+        from _builder.kb_index import query_kb
+        # Use node name + signature as the query — broad recall,
+        # LLM can filter further.
+        node_name = nd.get("name", node_id)
+        node_query = node_name
+        sig = nd.get("signature", "")
+        if sig:
+            node_query += " " + sig
+        kb_hits = query_kb(graph_dir, node_query, top_n=3,
+                           log_query=False, max_tokens=1000)
+        if kb_hits:
+            result["memory_refs"] = [h for h in kb_hits
+                                      if h.get("source_kind") == "memory"]
+            result["knowledge_refs"] = [h for h in kb_hits
+                                        if h.get("source_kind") == "knowledge"]
+    except Exception:
+        pass
+
     if nd.get("is_empty", False):
         result["condition"] = nd.get("condition", "")
         print(json.dumps(result, ensure_ascii=False, indent=2))

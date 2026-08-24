@@ -546,18 +546,93 @@ def _tool_domain(args: dict, graph_dir: str) -> dict:
 
 
 def _tool_knowledge_query(args: dict, graph_dir: str) -> dict:
-    """Query knowledge by topic."""
+    """Query knowledge by topic.
+
+    Prefers the unified FTS5+BM25 path (kb_paragraphs) when the
+    project has code2database.db; falls back to the legacy substring
+    search via KnowledgeManager otherwise.
+    """
+    try:
+        from _builder.kb_index import query_kb
+        results = query_kb(
+            graph_dir=graph_dir,
+            query=args.get("topic", ""),
+            top_n=10,
+            kinds=["principle", "fact", "pattern", "glossary"],
+            min_weight=0.0,
+            max_tokens=int(args.get("max_tokens", 500)),
+        )
+        if results:
+            return {
+                "topic": args.get("topic", ""),
+                "matches": results,
+                "engine": "fts5_bm25",
+            }
+        # No FTS5 hits — fall through to legacy
+    except Exception:
+        pass
     from _builder.knowledge_manager import KnowledgeManager
     km = KnowledgeManager(graph_dir)
     result = km.query_knowledge(args.get("topic", ""), max_tokens=args.get("max_tokens", 500))
-    return {"topic": args.get("topic", ""), "result": result}
+    return {"topic": args.get("topic", ""), "result": result, "engine": "substring_fallback"}
 
 
 def _tool_memory_search(args: dict, graph_dir: str) -> list:
-    """Search memory for similar questions."""
+    """Search memory for similar questions.
+
+    Prefers the unified FTS5+BM25 path (kb_paragraphs) when the
+    project has code2database.db; falls back to the legacy Jaccard
+    search via MemoryManager otherwise.
+    """
+    try:
+        from _builder.kb_index import query_kb
+        results = query_kb(
+            graph_dir=graph_dir,
+            query=args.get("query", ""),
+            top_n=int(args.get("top", 5)),
+            kinds=["memory_qa", "memory_experience"],
+            min_weight=0.0,  # no weight filter; let BM25 rank
+            max_tokens=4000,
+        )
+        if results:
+            return results
+        # Fall through to legacy
+    except Exception:
+        pass
     from _builder.memory_manager import MemoryManager
     mm = MemoryManager(graph_dir)
     return mm.query(args.get("query", ""), top_n=args.get("top", 5))
+
+
+def _tool_kb_query(args: dict, graph_dir: str) -> dict:
+    """Unified FTS5+BM25 query across memory + knowledge.
+
+    Phase 3 of the KB unification. Replaces the need to call
+    code2database_memory_search AND code2database_knowledge_query
+    separately — this single tool searches both stores via the
+    shared kb_paragraphs_fts index.
+    """
+    from _builder.kb_index import query_kb
+    query = args.get("query", "")
+    if not query:
+        return {"error": "query is required"}
+    kinds_str = args.get("kinds", "")
+    kinds = [k.strip() for k in kinds_str.split(",") if k.strip()] if kinds_str else None
+    results = query_kb(
+        graph_dir=graph_dir,
+        query=query,
+        top_n=int(args.get("top", 10)),
+        kinds=kinds,
+        min_weight=float(args.get("min_weight", 0.0)),
+        max_tokens=int(args.get("max_tokens", 4000)),
+    )
+    return {
+        "query": query,
+        "kinds": kinds,
+        "total": len(results),
+        "results": results,
+        "engine": "fts5_bm25",
+    }
 
 
 def _tool_semantic_status(args: dict, graph_dir: str) -> dict:
@@ -1379,6 +1454,21 @@ TOOLS = {
             "required": ["query"],
         },
         "handler": _tool_memory_search,
+    },
+    "code2database_kb_query": {
+        "description": "Unified FTS5+BM25 query across memory + knowledge. Searches both stores via the shared kb_paragraphs_fts index. Returns ranked results with source kind (memory_qa / knowledge_principle / etc.), score, and body.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Free-form text query (tokenized and AND-joined for FTS5 MATCH)"},
+                "top": {"type": "integer", "description": "Max results (default 10)"},
+                "kinds": {"type": "string", "description": "Comma-separated kind filter (e.g. 'memory_qa,knowledge_principle')"},
+                "min_weight": {"type": "number", "description": "Skip rows with weight below this (default 0.0 = no filter)"},
+                "max_tokens": {"type": "integer", "description": "Approximate char cap on returned bodies (default 4000)"},
+            },
+            "required": ["query"],
+        },
+        "handler": _tool_kb_query,
     },
     "code2database_semantic_status": {
         "description": "Check if semantic update is recommended based on stale node accumulation.",

@@ -180,27 +180,40 @@ def _load_edges(graph_dir: str) -> List[dict]:
 
 
 def _load_knowledge_index(graph_dir: str) -> List[dict]:
-    """Load knowledge index entries."""
-    path = os.path.join(graph_dir, ".code2database_knowledge", "index.json")
+    """Load knowledge index entries from the canonical knowledge/ directory."""
+    path = os.path.join(graph_dir, "knowledge", "index.json")
     if not os.path.exists(path):
         return []
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return data.get("entries", [])
+        if not isinstance(data, dict):
+            return []
+        # Knowledge index schema: {"files": [...], "topics": [...]}
+        # Return file entries (each has name, size, headings)
+        files = data.get("files", [])
+        if not isinstance(files, list):
+            return []
+        return [f for f in files if isinstance(f, dict)]
     except (OSError, json.JSONDecodeError):
         return []
 
 
 def _load_memory_index(graph_dir: str) -> List[dict]:
-    """Load memory index entries."""
-    path = os.path.join(graph_dir, ".code2database_memory", "index.json")
+    """Load memory index entries from the canonical memory/ directory."""
+    path = os.path.join(graph_dir, "memory", "index.json")
     if not os.path.exists(path):
         return []
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return data.get("entries", [])
+        if not isinstance(data, dict):
+            return []
+        entries = data.get("entries", [])
+        if not isinstance(entries, list):
+            return []
+        # Defensive: filter non-dict entries (mirrors _sanitize_memory_index)
+        return [e for e in entries if isinstance(e, dict)]
     except (OSError, json.JSONDecodeError):
         return []
 

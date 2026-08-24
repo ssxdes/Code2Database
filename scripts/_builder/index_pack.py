@@ -919,6 +919,35 @@ def _build_context_pack(G: nx.DiGraph, outdir: str, source_root: str = "",
     # Generate human-readable Markdown micro pack
     _write_context_pack_micro_md(outdir, micro_pack)
 
+    # Phase 3: merge memory + knowledge packs into context_pack so the
+    # agent gets all three layers in one shot. Previously these were
+    # generated as separate .memory_pack_lite.json and
+    # .knowledge_pack_lite.json files that the agent had to fetch
+    # independently. Now they're embedded as `memory_summary` and
+    # `knowledge_summary` keys in the main context_pack.
+    try:
+        mem_pack_path = os.path.join(outdir, ".memory_pack_lite.json")
+        if os.path.exists(mem_pack_path):
+            mem_data = json.loads(Path(mem_pack_path).read_text(encoding="utf-8"))
+            pack["memory_summary"] = {
+                "top_questions": mem_data.get("top_questions", [])[:5],
+                "hot_memories": mem_data.get("hot_memories", [])[:5],
+            }
+    except Exception:
+        pass
+    try:
+        know_pack_path = os.path.join(outdir, ".knowledge_pack_lite.json")
+        if os.path.exists(know_pack_path):
+            know_data = json.loads(Path(know_pack_path).read_text(encoding="utf-8"))
+            pack["knowledge_summary"] = {
+                "files": know_data.get("files", [])[:10],
+                "topics": know_data.get("topics", [])[:20],
+                "architecture_summary": (know_data.get("architecture_summary", "")
+                                         or "")[:500],
+            }
+    except Exception:
+        pass
+
     # Generate REVIEW_CHECKLIST.md
     _write_review_checklist(outdir, G)
 

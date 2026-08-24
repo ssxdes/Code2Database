@@ -86,7 +86,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 | `doc-mark-stale` | Mark a node's doc as stale (**requires user confirmation**) |
 | `update-node` | LLM-driven incremental node attribute supplement (**requires user confirmation**, non-destructive) |
 | `update-edge` | LLM-driven incremental edge attribute supplement (**requires user confirmation**, non-destructive) |
-| `serve` | MCP server mode (stdio, 49 tools: 30 code2database_* + 19 cgdb_*) |
+| `serve` | MCP server mode (stdio, 50 tools: 31 code2database_* + 19 cgdb_*) |
 
 ## Routing Table — Medium-weight Commands by Question Type
 
@@ -128,7 +128,7 @@ When you detect a question about **simple browsing, scanning, building, or gener
 - **Doc-code alignment**: `describe-node` (parent skill) surfaces `doc_code_mismatches` — if non-empty, `semantic_desc` may be unreliable; consult `body_text` and consider `doc-mark-stale` until docs are re-extracted
 - **Profile evolution**: `profile-evolve --apply` only applies EXTRACTED-confidence suggestions; INFERRED **require user confirmation**. Run `profile-bind-version` after evolution to bind to git/svn HEAD
 - **Memory management**: `manage-memory --action add/correct/reshape/promote/refine` requires user confirmation; `save-memory` requires user confirmation
-- **MCP server**: `serve` exposes 49 tools (30 `code2database_*` + 19 `cgdb_*`); all accessible regardless of sub-skill activation
+- **MCP server**: `serve` exposes 50 tools (31 `code2database_*` + 19 `cgdb_*`); all accessible regardless of sub-skill activation
 - **Do not pre-load** `references/ops_commands.md` — read on demand only when you need detailed syntax for a specific command
 - **Daemon logs** at `~/.code2database/daemon-<project>.log`; daemon state at `<graph_dir>/.daemon_status.json`
 

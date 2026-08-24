@@ -218,6 +218,11 @@ def cmd_merge(args):
 
     # Load existing graph
     G = _load_full_graph(graph_dir)
+    # LazySQLiteGraph (read-only SQLite view for large projects) is
+    # incompatible with nx.compose below. Detect early and exit with a
+    # clear error directing users to daemon-start / build.
+    from _builder.utils import _ensure_mutable_graph
+    _ensure_mutable_graph(G, "merge")
 
     # Load new extraction
     new_data = json.loads(Path(extraction_path).read_text(encoding="utf-8"))
@@ -416,6 +421,12 @@ def cmd_sync(args):
     local_G = _load_full_graph(graph_dir)
     print("Loading git-tracked graph...")
     git_G = _load_full_graph(git_graph_dir)
+    # Both graphs must be in-memory nx.DiGraph for nx.compose below.
+    # LazySQLiteGraph (read-only SQLite view for >=50K-function projects)
+    # will crash at nx.compose with AttributeError on .graph.
+    from _builder.utils import _ensure_mutable_graph
+    _ensure_mutable_graph(local_G, "sync (local graph)")
+    _ensure_mutable_graph(git_G, "sync (git-tracked graph)")
 
     local_nodes = set(local_G.nodes())
     git_nodes = set(git_G.nodes())

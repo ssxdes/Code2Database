@@ -7,8 +7,8 @@
 **一次扫描 · 持久图谱 · 精准查询 · 更少工具调用 · 更快回答**
 
 [![语言](https://img.shields.io/badge/语言-7%20%2B%20ASM-orange)](#语言支持)
-[![MCP工具](https://img.shields.io/badge/MCP工具-49-blueviolet)](#mcp-服务器)
-[![查询命令](https://img.shields.io/badge/查询命令-171-success)](#命令参考)
+[![MCP工具](https://img.shields.io/badge/MCP工具-50-blueviolet)](#mcp-服务器)
+[![查询命令](https://img.shields.io/badge/查询命令-184-success)](#命令参考)
 [![许可证: MIT](https://img.shields.io/badge/许可证-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](#安装)
 [![tree-sitter](https://img.shields.io/badge/tree--itter-AST-green?logo=tree-sitter&logoColor=white)](#工作原理)
@@ -215,7 +215,7 @@ bash scripts/setup.sh --languages c,go
 | **边置信度** | EXTRACTED(1.0) / INFERRED(0.7-0.95) / AMBIGUOUS(0.1-0.3) + 来源审计 |
 | **一键探索** | `explore-flow` — 单次查询获取相关节点、路径和条件 |
 | **增量更新** | `quick-update` 无需 LLM；`light-scan`/`patch-from-git` 零 token 更新 |
-| **MCP 服务器** | `serve` — 通过 stdio 暴露 49 个查询工具（30 code2database_* + 19 cgdb_*）供 LLM 代理使用 |
+| **MCP 服务器** | `serve` — 通过 stdio 暴露 50 个查询工具（31 code2database_* + 19 cgdb_*）供 LLM 代理使用 |
 | **知识管理** | `extract-knowledge`/`knowledge-query` — 原则性不变知识存储 |
 | **记忆系统** | `save-memory`/`search-memory`/`manage-memory` — 持久 Q&A 记忆 + 衰减 |
 | **影响半径** | `blast-radius` — 变更影响的函数/API/测试 |
@@ -305,7 +305,7 @@ bash scripts/setup.sh --languages c,go
 |------|------------|
 | **语言** | 7 种 — C/C++、Go、Python、Java、Rust、ASM（Python + tree-sitter + ASM 正则）|
 | **存储** | JSON 输出 + 大图可选 SQLite 后端 |
-| **MCP 服务器** | stdio 传输，**49 个查询工具**（30 code2database_* + 19 cgdb_*）供 LLM 代理使用 |
+| **MCP 服务器** | stdio 传输，**50 个查询工具**（31 code2database_* + 19 cgdb_*）供 LLM 代理使用 |
 | **CLI 命令** | **122 命令** 分为 3 个子技能（`/Code2Database` 核心、`/Code2Database-analysis`、`/Code2Database-ops`）— Build、Query、Trace、Concurrency、Knowledge、Memory、Provenance、Cypher、Data Flow、Lock Analysis、Path Feasibility、Invariants、Auto-Enhance、Transactions、FFI、Web UI、Benchmark、Profile Health、Doc-Code、Daemon、cgdb（clang 后端） |
 | **调用条件解析** | `if`/`switch`/`#ifdef` 分支 + 空节点聚合 |
 | **条件编译（`#ifdef`）** | 图谱知道哪些调用只在哪些 `CONFIG_*` 标志下存在 |
@@ -493,7 +493,7 @@ bash scripts/setup.sh --languages c,go
 
 | 命令 | 说明 |
 |------|------|
-| `serve` | 启动 MCP 服务器（stdio 传输，49 工具：30 code2database_* + 19 cgdb_*） |
+| `serve` | 启动 MCP 服务器（stdio 传输，50 工具：31 code2database_* + 19 cgdb_*） |
 
 所有查询命令支持 `--json` 结构化输出和 `--max-tokens` 预算控制。
 

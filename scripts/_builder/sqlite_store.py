@@ -34,7 +34,7 @@ from _builder.cgdb_schema import apply_cgdb_schema
 class SQLiteStore:
     """SQLite-based storage for invocation graph data."""
 
-    SCHEMA_VERSION = 8
+    SCHEMA_VERSION = 12
 
     def __init__(self, db_path: str):
         self.db_path = db_path
@@ -129,6 +129,184 @@ class SQLiteStore:
                             "CREATE INDEX IF NOT EXISTS idx_edges_vtable_module "
                             "ON edges(vtable_bound_module) WHERE vtable_bound_module IS NOT NULL"
                         )
+                    except sqlite3.OperationalError:
+                        pass
+                # Schema v9: add kb_paragraphs table + FTS5 index for
+                # unified knowledge-base search across memory entries
+                # and knowledge .md paragraphs. Replaces the per-store
+                # Jaccard-token and substring searches with a single
+                # FTS5 + BM25 query surface. The kb_paragraphs table
+                # is a derived index — rebuildable via kb-rebuild-index
+                # from the canonical filesystem sources (memory/*.json
+                # and knowledge/*.md). Phase 1 of the KB unification.
+                if int(row[0]) < 9:
+                    try:
+                        self._conn.executescript("""
+                            CREATE TABLE IF NOT EXISTS kb_paragraphs (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                source_kind TEXT NOT NULL,
+                                source_file TEXT NOT NULL,
+                                para_index INTEGER NOT NULL,
+                                title TEXT,
+                                body TEXT NOT NULL,
+                                tags TEXT,
+                                node_ids TEXT,
+                                weight REAL NOT NULL DEFAULT 1.0,
+                                confidence REAL NOT NULL DEFAULT 1.0,
+                                kind TEXT NOT NULL,
+                                graph_version TEXT,
+                                created_at TEXT NOT NULL,
+                                accessed_at TEXT,
+                                access_count INTEGER DEFAULT 0
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_kind
+                                ON kb_paragraphs(kind);
+                            CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_source
+                                ON kb_paragraphs(source_kind, source_file);
+                            CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_weight
+                                ON kb_paragraphs(weight DESC);
+                            CREATE VIRTUAL TABLE IF NOT EXISTS kb_paragraphs_fts USING fts5(
+                                title, body, tags,
+                                content='kb_paragraphs',
+                                content_rowid='id',
+                                tokenize='porter unicode61'
+                            );
+                            CREATE TRIGGER IF NOT EXISTS kb_paragraphs_ai AFTER INSERT ON kb_paragraphs BEGIN
+                                INSERT INTO kb_paragraphs_fts(rowid, title, body, tags)
+                                VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
+                            END;
+                            CREATE TRIGGER IF NOT EXISTS kb_paragraphs_ad AFTER DELETE ON kb_paragraphs BEGIN
+                                INSERT INTO kb_paragraphs_fts(kb_paragraphs_fts, rowid, title, body, tags)
+                                VALUES ('delete', old.id, old.title, old.body, COALESCE(old.tags, ''));
+                            END;
+                            CREATE TRIGGER IF NOT EXISTS kb_paragraphs_au AFTER UPDATE ON kb_paragraphs BEGIN
+                                INSERT INTO kb_paragraphs_fts(kb_paragraphs_fts, rowid, title, body, tags)
+                                VALUES ('delete', old.id, old.title, old.body, COALESCE(old.tags, ''));
+                                INSERT INTO kb_paragraphs_fts(rowid, title, body, tags)
+                                VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
+                            END;
+                        """)
+                    except sqlite3.OperationalError:
+                        pass
+                # Schema v10: Phase 4 — clustering columns on kb_paragraphs.
+                # scope_id groups similar items (FTS5 BM25 > threshold);
+                # canonical_id points to the representative item of the
+                # cluster (highest weight × confidence); principle_ref
+                # links a memory_qa to the knowledge_principle it
+                # instantiates. All nullable for backward compat.
+                if int(row[0]) < 10:
+                    self._add_column_if_missing(
+                        "kb_paragraphs", "scope_id", "INTEGER"
+                    )
+                    self._add_column_if_missing(
+                        "kb_paragraphs", "canonical_id", "INTEGER"
+                    )
+                    self._add_column_if_missing(
+                        "kb_paragraphs", "principle_ref", "INTEGER"
+                    )
+                    try:
+                        self._conn.execute(
+                            "CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_scope "
+                            "ON kb_paragraphs(scope_id) WHERE scope_id IS NOT NULL"
+                        )
+                        self._conn.execute(
+                            "CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_canonical "
+                            "ON kb_paragraphs(canonical_id) WHERE canonical_id IS NOT NULL"
+                        )
+                        self._conn.execute(
+                            "CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_principle_ref "
+                            "ON kb_paragraphs(principle_ref) WHERE principle_ref IS NOT NULL"
+                        )
+                    except sqlite3.OperationalError:
+                        pass
+                # Schema v11: Phase 5 — embedding column for semantic
+                # search (optional). 384-dim float32 = 1536 bytes per
+                # row. NULL when no embedding generated (lazy / optional
+                # dependency: sentence-transformers).
+                if int(row[0]) < 11:
+                    self._add_column_if_missing(
+                        "kb_paragraphs", "embedding", "BLOB"
+                    )
+                # Schema v12: Phase 6 — kb_items unified fact-level table.
+                # Supersedes kb_paragraphs in the long term; for now
+                # kb_paragraphs stays as the operational table and
+                # kb_items is the fact-level migration target. Includes
+                # versions[] (JSON), confidence, decay_class,
+                # provenance_commit. Migration command `kb-migrate` will
+                # populate kb_items from kb_paragraphs + filesystem.
+                if int(row[0]) < 12:
+                    try:
+                        self._conn.executescript("""
+                            CREATE TABLE IF NOT EXISTS kb_items (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                kind TEXT NOT NULL,
+                                scope_id INTEGER,
+                                canonical_id INTEGER,
+                                principle_ref INTEGER,
+                                title TEXT,
+                                body TEXT NOT NULL,
+                                tags TEXT,
+                                node_ids TEXT,
+                                source_refs TEXT,
+                                weight REAL NOT NULL DEFAULT 1.0,
+                                confidence REAL NOT NULL DEFAULT 1.0,
+                                decay_class TEXT NOT NULL DEFAULT 'soft',
+                                graph_version TEXT,
+                                embedding BLOB,
+                                versions_json TEXT,
+                                created_at TEXT NOT NULL,
+                                accessed_at TEXT,
+                                access_count INTEGER DEFAULT 0,
+                                provenance_commit TEXT,
+                                provenance_operator TEXT,
+                                FOREIGN KEY (scope_id) REFERENCES kb_items(id),
+                                FOREIGN KEY (canonical_id) REFERENCES kb_items(id),
+                                FOREIGN KEY (principle_ref) REFERENCES kb_items(id)
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_kb_items_kind
+                                ON kb_items(kind);
+                            CREATE INDEX IF NOT EXISTS idx_kb_items_scope
+                                ON kb_items(scope_id) WHERE scope_id IS NOT NULL;
+                            CREATE INDEX IF NOT EXISTS idx_kb_items_canonical
+                                ON kb_items(canonical_id) WHERE canonical_id IS NOT NULL;
+                            CREATE INDEX IF NOT EXISTS idx_kb_items_weight
+                                ON kb_items(weight DESC);
+                            CREATE VIRTUAL TABLE IF NOT EXISTS kb_items_fts USING fts5(
+                                title, body, tags,
+                                content='kb_items',
+                                content_rowid='id',
+                                tokenize='porter unicode61'
+                            );
+                            CREATE TRIGGER IF NOT EXISTS kb_items_ai AFTER INSERT ON kb_items BEGIN
+                                INSERT INTO kb_items_fts(rowid, title, body, tags)
+                                VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
+                            END;
+                            CREATE TRIGGER IF NOT EXISTS kb_items_ad AFTER DELETE ON kb_items BEGIN
+                                INSERT INTO kb_items_fts(kb_items_fts, rowid, title, body, tags)
+                                VALUES ('delete', old.id, old.title, old.body, COALESCE(old.tags, ''));
+                            END;
+                            CREATE TRIGGER IF NOT EXISTS kb_items_au AFTER UPDATE ON kb_items BEGIN
+                                INSERT INTO kb_items_fts(kb_items_fts, rowid, title, body, tags)
+                                VALUES ('delete', old.id, old.title, old.body, COALESCE(old.tags, ''));
+                                INSERT INTO kb_items_fts(rowid, title, body, tags)
+                                VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
+                            END;
+                            -- Phase 9: query log for feedback loop
+                            -- (records every kb-query call so kb-known-unknowns
+                            -- can aggregate unmatched queries).
+                            CREATE TABLE IF NOT EXISTS kb_query_log (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                query TEXT NOT NULL,
+                                matched INTEGER NOT NULL,  -- 1 if results returned, 0 if not
+                                match_count INTEGER DEFAULT 0,
+                                top_score REAL,
+                                queried_at TEXT NOT NULL
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_kb_query_log_matched
+                                ON kb_query_log(matched, queried_at);
+                            CREATE INDEX IF NOT EXISTS idx_kb_query_log_query
+                                ON kb_query_log(query);
+                        """)
                     except sqlite3.OperationalError:
                         pass
                 self._conn.commit()
@@ -329,6 +507,136 @@ class SQLiteStore:
             CREATE INDEX IF NOT EXISTS idx_audit_log_command ON audit_log(command);
             CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);
             CREATE INDEX IF NOT EXISTS idx_audit_log_tx ON audit_log(tx_id);
+
+            -- Knowledge-base paragraphs (Phase 1: unified FTS5 search).
+            -- Derived index from memory/*.json + knowledge/*.md; rebuildable
+            -- via kb-rebuild-index. Phase 4 will add scope_id/canonical_id/
+            -- principle_ref columns; Phase 5 will add embedding BLOB.
+            CREATE TABLE IF NOT EXISTS kb_paragraphs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_kind TEXT NOT NULL,
+                source_file TEXT NOT NULL,
+                para_index INTEGER NOT NULL,
+                title TEXT,
+                body TEXT NOT NULL,
+                tags TEXT,
+                node_ids TEXT,
+                weight REAL NOT NULL DEFAULT 1.0,
+                confidence REAL NOT NULL DEFAULT 1.0,
+                kind TEXT NOT NULL,
+                graph_version TEXT,
+                created_at TEXT NOT NULL,
+                accessed_at TEXT,
+                access_count INTEGER DEFAULT 0,
+                scope_id INTEGER,
+                canonical_id INTEGER,
+                principle_ref INTEGER,
+                embedding BLOB
+            );
+            CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_kind
+                ON kb_paragraphs(kind);
+            CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_source
+                ON kb_paragraphs(source_kind, source_file);
+            CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_weight
+                ON kb_paragraphs(weight DESC);
+            CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_scope
+                ON kb_paragraphs(scope_id) WHERE scope_id IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_canonical
+                ON kb_paragraphs(canonical_id) WHERE canonical_id IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_principle_ref
+                ON kb_paragraphs(principle_ref) WHERE principle_ref IS NOT NULL;
+            CREATE VIRTUAL TABLE IF NOT EXISTS kb_paragraphs_fts USING fts5(
+                title, body, tags,
+                content='kb_paragraphs',
+                content_rowid='id',
+                tokenize='porter unicode61'
+            );
+            CREATE TRIGGER IF NOT EXISTS kb_paragraphs_ai AFTER INSERT ON kb_paragraphs BEGIN
+                INSERT INTO kb_paragraphs_fts(rowid, title, body, tags)
+                VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
+            END;
+            CREATE TRIGGER IF NOT EXISTS kb_paragraphs_ad AFTER DELETE ON kb_paragraphs BEGIN
+                INSERT INTO kb_paragraphs_fts(kb_paragraphs_fts, rowid, title, body, tags)
+                VALUES ('delete', old.id, old.title, old.body, COALESCE(old.tags, ''));
+            END;
+            CREATE TRIGGER IF NOT EXISTS kb_paragraphs_au AFTER UPDATE ON kb_paragraphs BEGIN
+                INSERT INTO kb_paragraphs_fts(kb_paragraphs_fts, rowid, title, body, tags)
+                VALUES ('delete', old.id, old.title, old.body, COALESCE(old.tags, ''));
+                INSERT INTO kb_paragraphs_fts(rowid, title, body, tags)
+                VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
+            END;
+
+            -- Phase 6: kb_items — unified fact-level table with
+            -- versions, provenance, decay_class. Long-term successor
+            -- to kb_paragraphs; both coexist during migration.
+            CREATE TABLE IF NOT EXISTS kb_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                scope_id INTEGER,
+                canonical_id INTEGER,
+                principle_ref INTEGER,
+                title TEXT,
+                body TEXT NOT NULL,
+                tags TEXT,
+                node_ids TEXT,
+                source_refs TEXT,
+                weight REAL NOT NULL DEFAULT 1.0,
+                confidence REAL NOT NULL DEFAULT 1.0,
+                decay_class TEXT NOT NULL DEFAULT 'soft',
+                graph_version TEXT,
+                embedding BLOB,
+                versions_json TEXT,
+                created_at TEXT NOT NULL,
+                accessed_at TEXT,
+                access_count INTEGER DEFAULT 0,
+                provenance_commit TEXT,
+                provenance_operator TEXT,
+                FOREIGN KEY (scope_id) REFERENCES kb_items(id),
+                FOREIGN KEY (canonical_id) REFERENCES kb_items(id),
+                FOREIGN KEY (principle_ref) REFERENCES kb_items(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_kb_items_kind
+                ON kb_items(kind);
+            CREATE INDEX IF NOT EXISTS idx_kb_items_scope
+                ON kb_items(scope_id) WHERE scope_id IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_kb_items_canonical
+                ON kb_items(canonical_id) WHERE canonical_id IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_kb_items_weight
+                ON kb_items(weight DESC);
+            CREATE VIRTUAL TABLE IF NOT EXISTS kb_items_fts USING fts5(
+                title, body, tags,
+                content='kb_items',
+                content_rowid='id',
+                tokenize='porter unicode61'
+            );
+            CREATE TRIGGER IF NOT EXISTS kb_items_ai AFTER INSERT ON kb_items BEGIN
+                INSERT INTO kb_items_fts(rowid, title, body, tags)
+                VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
+            END;
+            CREATE TRIGGER IF NOT EXISTS kb_items_ad AFTER DELETE ON kb_items BEGIN
+                INSERT INTO kb_items_fts(kb_items_fts, rowid, title, body, tags)
+                VALUES ('delete', old.id, old.title, old.body, COALESCE(old.tags, ''));
+            END;
+            CREATE TRIGGER IF NOT EXISTS kb_items_au AFTER UPDATE ON kb_items BEGIN
+                INSERT INTO kb_items_fts(kb_items_fts, rowid, title, body, tags)
+                VALUES ('delete', old.id, old.title, old.body, COALESCE(old.tags, ''));
+                INSERT INTO kb_items_fts(rowid, title, body, tags)
+                VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
+            END;
+
+            -- Phase 9: query log for feedback loop & known-unknowns.
+            CREATE TABLE IF NOT EXISTS kb_query_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query TEXT NOT NULL,
+                matched INTEGER NOT NULL,
+                match_count INTEGER DEFAULT 0,
+                top_score REAL,
+                queried_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_kb_query_log_matched
+                ON kb_query_log(matched, queried_at);
+            CREATE INDEX IF NOT EXISTS idx_kb_query_log_query
+                ON kb_query_log(query);
         """)
         self._conn.execute(
             "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",

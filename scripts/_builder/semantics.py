@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from collections import defaultdict
 import networkx as nx
-from _builder.utils import _output_result, _print_structured, _find_node_id, _parse_bindings, _load_globals, _is_condition_alive
+from _builder.utils import _output_result, _print_structured, _find_node_id, _parse_bindings, _load_globals, _is_condition_alive, _ensure_mutable_graph
 from _builder.graph_build import _load_full_graph, split_by_domain
 
 
@@ -21,6 +21,9 @@ def cmd_apply_semantics(args):
         sys.exit(1)
 
     G = _load_full_graph(graph_dir)
+    # Apply-semantics mutates node attrs (G.nodes[nid]["semantic_desc"] = ...);
+    # LazySQLiteGraph is read-only and will crash on assignment. Detect early.
+    _ensure_mutable_graph(G, "apply-semantics")
     sem_data = json.loads(Path(sem_path).read_text(encoding="utf-8"))
     nodes = sem_data.get("nodes_to_describe", [])
 

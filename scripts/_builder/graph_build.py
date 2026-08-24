@@ -6522,17 +6522,62 @@ def cmd_build(args):
             scanner_script = os.path.join(os.path.dirname(__file__), "code2database_scanner.py")
             if not os.path.exists(scanner_script):
                 scanner_script = os.path.join(os.path.dirname(__file__), "..", "code2database_scanner.py")
+            # Build macros_str from macro_bindings. When the macro set is
+            # large (kernel-scale: thousands of CONFIG_*), the joined string
+            # can exceed Linux ARG_MAX (~128KB) and crash subprocess.run.
+            # Threshold: if joined length > 8KB, write to a tempfile and use
+            # --macros-from instead.
             macros_str = " ".join(f"-D{k}={v}" if v else f"-D{k}" for k, v in macro_bindings.items())
+            macros_from_path = None
+            macros_from_fd = None
+            scan_cmd_macros = []
+            if len(macros_str) > 8192:
+                import tempfile
+                macros_from_fd, macros_from_path = tempfile.mkstemp(
+                    prefix="code2db_macros_", suffix=".txt")
+                try:
+                    with os.fdopen(macros_from_fd, "w", encoding="utf-8") as f:
+                        for k, v in macro_bindings.items():
+                            if v:
+                                f.write(f"{k}={v}\n")
+                            else:
+                                f.write(f"{k}\n")
+                    macros_from_fd = -1  # ownership transferred to file
+                    scan_cmd_macros = ["--macros-from", macros_from_path]
+                except OSError:
+                    # Fallback to inline --macros (risky but better than nothing)
+                    if macros_from_path and os.path.exists(macros_from_path):
+                        try:
+                            os.remove(macros_from_path)
+                        except OSError:
+                            pass
+                    macros_from_path = None
+                    scan_cmd_macros = ["--macros", macros_str]
+            else:
+                scan_cmd_macros = ["--macros", macros_str]
             re_scan = os.path.join(outdir, ".code2database_rescan.json")
             os.makedirs(outdir, exist_ok=True)
-            scan_result = subprocess.run(
-                [sys.executable, scanner_script, "scan",
-                 "--source", source_root, "--output", re_scan,
-                 "--macros", macros_str,
-                 "--no-interactive"],
-                capture_output=True, text=True,
-                stdin=subprocess.DEVNULL
-            )
+            try:
+                scan_result = subprocess.run(
+                    [sys.executable, scanner_script, "scan",
+                     "--source", source_root, "--output", re_scan]
+                    + scan_cmd_macros
+                    + ["--no-interactive"],
+                    capture_output=True, text=True,
+                    stdin=subprocess.DEVNULL
+                )
+            finally:
+                # Cleanup tempfile
+                if macros_from_path and os.path.exists(macros_from_path):
+                    try:
+                        os.remove(macros_from_path)
+                    except OSError:
+                        pass
+                if macros_from_fd and macros_from_fd != -1:
+                    try:
+                        os.close(macros_from_fd)
+                    except OSError:
+                        pass
             if scan_result.returncode == 0:
                 data = json.loads(Path(re_scan).read_text(encoding="utf-8"))
                 print("Re-scanned with macro bindings")

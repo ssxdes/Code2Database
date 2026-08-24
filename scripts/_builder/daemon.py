@@ -1047,6 +1047,9 @@ class Daemon:
                     sync.mark_clean(expanded_files, str(db_path))
             except Exception:
                 pass  # best-effort
+            # Invalidate memory entries whose node_ids no longer exist
+            # (graph changed → some Q&A may reference removed nodes).
+            self._invalidate_stale_memory_after_sync()
         except Exception as exc:
             self.state.last_error = str(exc)
             self.state.status = STATUS_RUNNING
@@ -1071,6 +1074,9 @@ class Daemon:
             self.state.total_syncs += 1
             self.state.last_error = ""
             self.state.status = STATUS_RUNNING
+            # Invalidate memory entries after bulk rebuild (graph may have
+            # changed significantly → many memory refs may now be stale).
+            self._invalidate_stale_memory_after_sync()
         except Exception as exc:
             self.state.last_error = str(exc)
             self.state.status = STATUS_RUNNING
@@ -1163,6 +1169,15 @@ class Daemon:
 
             from _builder.graph_build import _load_full_graph
             G = _load_full_graph(self.graph_dir)
+            # LazySQLiteGraph (read-only SQLite view) doesn't support
+            # G.nodes[nid][...] = ... assignment; skip mutation and rely on
+            # the SQL UPDATE path above for SQLite-backed graphs.
+            if type(G).__name__ == "LazySQLiteGraph":
+                self._log(
+                    f"skip stale-mark via LazySQLiteGraph (read-only); "
+                    f"SQL path handles it for SQLite-backed graphs"
+                )
+                return
             if not hasattr(self, '_file_to_nodes_cache'):
                 self._file_to_nodes_cache = {}
                 for nid, nd in G.nodes(data=True):
@@ -1174,6 +1189,26 @@ class Daemon:
                 G.nodes[nid]["stale"] = True
         except Exception as exc:
             self._log(f"mark_file_stale failed: {exc}")
+
+    def _invalidate_stale_memory_after_sync(self):
+        """After graph sync, mark memory entries with missing node_ids as
+        'experience' (stale) so they don't pollute search results.
+
+        Called from _sync_incremental and _sync_bulk. Safe to call on
+        LazySQLiteGraph (only reads G.nodes() — no mutation).
+        """
+        try:
+            from _builder.memory_cmd import _auto_validate_memory
+            from _builder.graph_build import _load_full_graph
+            G = _load_full_graph(self.graph_dir)
+            # _auto_validate_memory only reads set(G.nodes()); safe on
+            # LazySQLiteGraph (which supports __contains__ + nodes()).
+            _auto_validate_memory(G, os.path.join(self.graph_dir, "memory"),
+                                  self.graph_dir)
+        except Exception as exc:
+            self._log(f"memory invalidate after sync skipped: {exc}")
+            # Non-fatal: memory stays as-is; user can run `validate-memory`
+            # manually to catch stale entries.
 
     def _rebuild_output_files(self):
         """Rebuild affected output files (CODE2DATABASE_SUMMARY.md, etc.)."""

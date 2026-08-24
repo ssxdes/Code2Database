@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -146,35 +147,50 @@ def _load_graph_functions(graph_dir: str) -> Dict[str, dict]:
 
 
 def _load_knowledge(graph_dir: str) -> List[dict]:
-    """Load knowledge entries from a graph directory."""
-    knowledge_dir = os.path.join(graph_dir, ".code2database_knowledge")
+    """Load knowledge entries from a graph directory.
+
+    Reads the canonical knowledge/ directory (Markdown files + index.json).
+    Each .md file becomes one entry with id=filename, body=content, and
+    headings extracted from the file. Fact-level dedup is deferred to
+    kb-cluster (Phase 4); here we just transfer file-level knowledge.
+    """
+    knowledge_dir = os.path.join(graph_dir, "knowledge")
     entries = []
-    index_path = os.path.join(knowledge_dir, "index.json")
-    if not os.path.exists(index_path):
+    if not os.path.isdir(knowledge_dir):
         return entries
-    try:
-        with open(index_path, "r", encoding="utf-8") as f:
-            index = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return entries
-    for entry_meta in index.get("entries", []):
-        entry_id = entry_meta.get("id", "")
-        if not entry_id:
+    # Walk all .md files in knowledge/
+    for fname in sorted(os.listdir(knowledge_dir)):
+        if not fname.endswith(".md"):
             continue
-        entry_path = os.path.join(knowledge_dir, "entries", f"{entry_id}.json")
-        if os.path.exists(entry_path):
-            try:
-                with open(entry_path, "r", encoding="utf-8") as f:
-                    entry = json.load(f)
-                entries.append(entry)
-            except (OSError, json.JSONDecodeError):
-                pass
+        fpath = os.path.join(knowledge_dir, fname)
+        if not os.path.isfile(fpath):
+            continue
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                content = f.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        # Extract top-level ## headings as topics for matching
+        headings = re.findall(r'^##\s+(.+)$', content, re.MULTILINE)
+        entries.append({
+            "id": fname,
+            "file": fname,
+            "body": content,
+            "headings": headings[:20],
+            "kind": "knowledge_md",
+        })
     return entries
 
 
 def _load_memory(graph_dir: str) -> List[dict]:
-    """Load memory entries from a graph directory."""
-    memory_dir = os.path.join(graph_dir, ".code2database_memory")
+    """Load memory entries from a graph directory.
+
+    Reads the canonical memory/ directory: index.json + root/ + leaf/ +
+    experience/. Returns ALL entries (root, leaf, experience) so merge
+    logic can see the complete memory state. Each entry is sanitized
+    defensively in case the index contains non-dict items.
+    """
+    memory_dir = os.path.join(graph_dir, "memory")
     entries = []
     index_path = os.path.join(memory_dir, "index.json")
     if not os.path.exists(index_path):
@@ -184,19 +200,41 @@ def _load_memory(graph_dir: str) -> List[dict]:
             index = json.load(f)
     except (OSError, json.JSONDecodeError):
         return entries
-    for entry_meta in index.get("entries", []):
+    if not isinstance(index, dict):
+        return entries
+    entry_metas = index.get("entries", [])
+    if not isinstance(entry_metas, list):
+        return entries
+    # Filter non-dict entries defensively (mirrors _sanitize_memory_index)
+    entry_metas = [e for e in entry_metas if isinstance(e, dict)]
+    for entry_meta in entry_metas:
         entry_id = entry_meta.get("id", "")
         if not entry_id:
             continue
-        # Memory entries are stored in root/leaf structure
-        root_path = os.path.join(memory_dir, "root", f"root_{entry_id}.json")
-        if os.path.exists(root_path):
-            try:
-                with open(root_path, "r", encoding="utf-8") as f:
-                    entry = json.load(f)
-                entries.append(entry)
-            except (OSError, json.JSONDecodeError):
-                pass
+        # Try root first, then leaf, then experience
+        for subdir, prefix in (("root", "root_"), ("leaf", "mem_"),
+                               ("experience", "experience_")):
+            entry_path = os.path.join(memory_dir, subdir, f"{prefix}{entry_id}.json")
+            if os.path.exists(entry_path):
+                try:
+                    with open(entry_path, "r", encoding="utf-8") as f:
+                        entry = json.load(f)
+                    if isinstance(entry, dict):
+                        entries.append(entry)
+                        break
+                except (OSError, json.JSONDecodeError):
+                    continue
+        else:
+            # Fallback: old flat path
+            old_path = os.path.join(memory_dir, f"memory_{entry_id}.json")
+            if os.path.exists(old_path):
+                try:
+                    with open(old_path, "r", encoding="utf-8") as f:
+                        entry = json.load(f)
+                    if isinstance(entry, dict):
+                        entries.append(entry)
+                except (OSError, json.JSONDecodeError):
+                    pass
     return entries
 
 
@@ -262,50 +300,46 @@ def _save_merged_knowledge(
     entries: List[dict],
     source_branch: str,
 ) -> int:
-    """Save merged knowledge entries to the target graph directory."""
-    knowledge_dir = os.path.join(target_graph_dir, ".code2database_knowledge")
-    entries_dir = os.path.join(knowledge_dir, "entries")
-    os.makedirs(entries_dir, exist_ok=True)
-    index_path = os.path.join(knowledge_dir, "index.json")
+    """Save merged knowledge entries to the target graph directory.
 
-    # Load existing index
-    existing_index = {"entries": []}
-    if os.path.exists(index_path):
-        try:
-            with open(index_path, "r", encoding="utf-8") as f:
-                existing_index = json.load(f)
-        except (OSError, json.JSONDecodeError):
-            pass
-
-    existing_ids = {e.get("id") for e in existing_index.get("entries", [])}
+    Writes each knowledge entry as a Markdown file under knowledge/ with
+    a merged_ prefix to avoid clobbering existing files. The merge
+    header records the source branch and timestamp.
+    """
+    knowledge_dir = os.path.join(target_graph_dir, "knowledge")
+    os.makedirs(knowledge_dir, exist_ok=True)
+    # Sanitize branch name for filename safety
+    safe_branch = re.sub(r'[^a-zA-Z0-9_-]', '_', source_branch)[:40] or "unknown"
     saved = 0
     for entry in entries:
-        entry_id = entry.get("id", "")
-        if not entry_id or entry_id in existing_ids:
+        if not isinstance(entry, dict):
             continue
-        # Tag as merged
-        entry["source"] = f"merged:from:{source_branch}"
-        entry["merge_timestamp"] = _now_iso()
-        entry_path = os.path.join(entries_dir, f"{entry_id}.json")
+        body = entry.get("body", "")
+        if not body:
+            continue
+        orig_name = entry.get("file", entry.get("id", "knowledge.md"))
+        # Strip any existing merged_ prefix to avoid recursive prefixing
+        orig_name = re.sub(r'^merged_[a-zA-Z0-9_-]+_', '', orig_name)
+        # Construct new filename
+        new_name = f"merged_{safe_branch}_{orig_name}"
+        # If filename clash, append counter
+        new_path = os.path.join(knowledge_dir, new_name)
+        counter = 1
+        while os.path.exists(new_path):
+            stem, ext = os.path.splitext(new_name)
+            new_path = os.path.join(knowledge_dir, f"{stem}_{counter}{ext}")
+            counter += 1
+        # Prepend merge header to body
+        merge_header = (
+            f"<!-- Merged from {source_branch} at {_now_iso()} -->\n"
+            f"<!-- Original file: {orig_name} -->\n\n"
+        )
         try:
-            with open(entry_path, "w", encoding="utf-8") as f:
-                json.dump(entry, f, ensure_ascii=False, indent=2)
-            existing_index["entries"].append({
-                "id": entry_id,
-                "function": entry.get("function", ""),
-                "kind": entry.get("kind", ""),
-                "source": entry["source"],
-            })
-            existing_ids.add(entry_id)
+            with open(new_path, "w", encoding="utf-8") as f:
+                f.write(merge_header + body)
             saved += 1
         except OSError:
             pass
-
-    try:
-        with open(index_path, "w", encoding="utf-8") as f:
-            json.dump(existing_index, f, ensure_ascii=False, indent=2)
-    except OSError:
-        pass
     return saved
 
 
@@ -314,42 +348,75 @@ def _save_merged_memory(
     entries: List[dict],
     source_branch: str,
 ) -> int:
-    """Save merged memory entries to the target graph directory."""
-    memory_dir = os.path.join(target_graph_dir, ".code2database_memory")
+    """Save merged memory entries to the target graph directory.
+
+    Writes each entry to memory/leaf/ with a new ID allocated by the
+    target's index.next_id counter. Memory entries are merged as LEAF
+    entries (not root) so they don't become canonical roots in the
+    target; the user can promote them later if desired.
+    """
+    memory_dir = os.path.join(target_graph_dir, "memory")
+    leaf_dir = os.path.join(memory_dir, "leaf")
     root_dir = os.path.join(memory_dir, "root")
+    os.makedirs(leaf_dir, exist_ok=True)
     os.makedirs(root_dir, exist_ok=True)
     index_path = os.path.join(memory_dir, "index.json")
 
-    existing_index = {"entries": []}
+    # Load existing index defensively
+    existing_index = {"entries": [], "next_id": 1, "roots": []}
     if os.path.exists(index_path):
         try:
             with open(index_path, "r", encoding="utf-8") as f:
-                existing_index = json.load(f)
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                existing_index = loaded
+                if not isinstance(existing_index.get("entries"), list):
+                    existing_index["entries"] = []
+                # Filter non-dict entries defensively
+                existing_index["entries"] = [
+                    e for e in existing_index["entries"] if isinstance(e, dict)
+                ]
+                existing_index.setdefault("next_id", 1)
+                existing_index.setdefault("roots", [])
         except (OSError, json.JSONDecodeError):
             pass
 
-    existing_ids = {e.get("id") for e in existing_index.get("entries", [])}
+    next_id = existing_index.get("next_id", 1)
     saved = 0
     for entry in entries:
-        entry_id = entry.get("id", "")
-        if not entry_id or entry_id in existing_ids:
+        if not isinstance(entry, dict):
             continue
-        entry["source"] = f"merged:from:{source_branch}"
+        entry_id = next_id
+        next_id += 1
+        # Tag as merged; preserve original ID in merge_meta
+        entry["id"] = entry_id
+        entry["root_id"] = 0  # leaf entry, no root (target user can promote later)
+        entry["status"] = "trusted"
+        entry["merged_from"] = source_branch
         entry["merge_timestamp"] = _now_iso()
-        entry_path = os.path.join(root_dir, f"root_{entry_id}.json")
+        # Reset version-sensitive fields
+        entry["weight"] = 1.0
+        entry["access_count"] = 0
+        entry["created"] = _now_iso()
+        entry["last_accessed"] = entry["created"]
+        entry["validated_at"] = entry["created"]
+
+        entry_path = os.path.join(leaf_dir, f"mem_{entry_id}.json")
         try:
             with open(entry_path, "w", encoding="utf-8") as f:
                 json.dump(entry, f, ensure_ascii=False, indent=2)
             existing_index["entries"].append({
                 "id": entry_id,
-                "topic": entry.get("topic", ""),
-                "source": entry["source"],
+                "question": entry.get("question", ""),
+                "tags": entry.get("tags", []),
+                "status": "trusted",
+                "root_id": 0,
             })
-            existing_ids.add(entry_id)
             saved += 1
         except OSError:
             pass
 
+    existing_index["next_id"] = next_id
     try:
         with open(index_path, "w", encoding="utf-8") as f:
             json.dump(existing_index, f, ensure_ascii=False, indent=2)
@@ -419,27 +486,36 @@ def merge_cross_graph(
     # Merge knowledge
     if merge_knowledge:
         source_knowledge = _load_knowledge(source_graph_dir)
+        # Knowledge entries are project-level Markdown files (no per-function
+        # matching). Skip function-name matching for kind='knowledge_md' and
+        # transfer all of them; the target user can run knowledge-validate
+        # to flag any that no longer apply.
         mergeable = []
         needs_review = []
         skipped = 0
         for entry in source_knowledge:
-            func_fqn = entry.get("function", "") or entry.get("function_id", "")
-            func_name = entry.get("function_name", "")
-            source_sig = entry.get("signature", "")
-            target_fqn, sig_compat = _match_function(
-                func_name, func_fqn, source_sig, target_functions
-            )
-            if target_fqn is None:
-                skipped += 1
-                continue
-            # Remap function reference to target's FQN
-            entry["function"] = target_fqn
-            if not sig_compat:
-                entry["needs_review"] = True
-                entry["review_reason"] = "function signature changed between branches"
-                needs_review.append(entry)
-            else:
+            if entry.get("kind") == "knowledge_md":
+                # Project-level knowledge: transfer directly
                 mergeable.append(entry)
+            else:
+                # Legacy fact-level knowledge with function refs (kept for
+                # backward compat with any old schema that might exist)
+                func_fqn = entry.get("function", "") or entry.get("function_id", "")
+                func_name = entry.get("function_name", "")
+                source_sig = entry.get("signature", "")
+                target_fqn, sig_compat = _match_function(
+                    func_name, func_fqn, source_sig, target_functions
+                )
+                if target_fqn is None:
+                    skipped += 1
+                    continue
+                entry["function"] = target_fqn
+                if not sig_compat:
+                    entry["needs_review"] = True
+                    entry["review_reason"] = "function signature changed between branches"
+                    needs_review.append(entry)
+                else:
+                    mergeable.append(entry)
         if not dry_run:
             saved = _save_merged_knowledge(
                 target_graph_dir, mergeable + needs_review, source_branch
@@ -453,23 +529,16 @@ def merge_cross_graph(
     # Merge memory
     if merge_memory:
         source_memory = _load_memory(source_graph_dir)
+        # Memory entries are project-level Q&A; transfer all (target user
+        # can validate-memory against the target graph to flag stale refs).
         mergeable = []
         skipped = 0
         for entry in source_memory:
-            # Memory entries may reference function names or be topic-based
-            func_ref = entry.get("function", "") or entry.get("node_id", "")
-            if func_ref:
-                target_fqn, _ = _match_function(
-                    "", func_ref, "", target_functions
-                )
-                if target_fqn is None:
-                    # Topic-based memory — merge if no function reference
-                    if entry.get("topic"):
-                        mergeable.append(entry)
-                    else:
-                        skipped += 1
-                    continue
-                entry["function"] = target_fqn
+            if not isinstance(entry, dict):
+                continue
+            # Strip target-incompatible fields; the target will re-validate
+            entry.pop("node_ids", None)  # node_ids don't transfer across branches
+            entry.pop("root_id", None)
             mergeable.append(entry)
         if not dry_run:
             saved = _save_merged_memory(

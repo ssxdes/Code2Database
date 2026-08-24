@@ -86,7 +86,7 @@ LLM 执行任何修改 code graph database的命令时，**必须先获得用户
 | `doc-mark-stale` | 标记某节点文档为陈旧（**需用户确认**） |
 | `update-node` | LLM 增量补充节点属性（**需用户确认**，非破坏性） |
 | `update-edge` | LLM 增量补充边属性（**需用户确认**，非破坏性） |
-| `serve` | MCP 服务器模式（stdio，49 个工具：30 code2database_* + 19 cgdb_*） |
+| `serve` | MCP 服务器模式（stdio，50 个工具：31 code2database_* + 19 cgdb_*） |
 
 ## 路由表 — 按问题类型分组的中权重命令
 

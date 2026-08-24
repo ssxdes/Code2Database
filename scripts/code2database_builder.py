@@ -56,6 +56,7 @@ from _builder.graph_history import (
 )
 from _builder.memory_manager import cmd_manage_memory, cmd_memory_health
 from _builder.knowledge_manager import cmd_extract_knowledge, cmd_apply_knowledge, cmd_knowledge_query, cmd_knowledge_validate
+from _builder.kb_index import rebuild_kb_index as cmd_kb_rebuild_index_impl
 from _builder.patcher import cmd_patch_from_diff, cmd_patch_from_git, cmd_light_scan
 from _builder.changelog_update import cmd_quick_update, cmd_export_changes, cmd_merge_changes, cmd_semantic_status
 from _builder.update_cmd import cmd_update_node, cmd_update_edge, cmd_patch_profile
@@ -102,6 +103,172 @@ def _lazy(module_path: str, func_name: str):
         return fn(args)
     wrapper.__name__ = func_name
     return wrapper
+
+
+def cmd_kb_rebuild_index(args):
+    """Rebuild the unified kb_paragraphs FTS5 index from filesystem sources."""
+    summary = cmd_kb_rebuild_index_impl(args.graph, verbose=True)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def cmd_kb_query(args):
+    """Unified FTS5+BM25 query across memory + knowledge."""
+    from _builder.kb_index import query_kb
+    kinds = [k.strip() for k in args.kinds.split(",") if k.strip()] if args.kinds else None
+    results = query_kb(
+        graph_dir=args.graph,
+        query=args.query,
+        top_n=args.top,
+        kinds=kinds,
+        min_weight=args.min_weight,
+        max_tokens=args.max_tokens,
+        semantic=getattr(args, 'semantic', False),
+    )
+    # Phase 8: fall back to global KB if no project matches
+    if not results and getattr(args, 'global', False):
+        from _builder.kb_global import global_search
+        results = global_search(args.query, top_n=args.top)
+    if not results:
+        print("No matches found.")
+        return
+    print(json.dumps(results, ensure_ascii=False, indent=2))
+
+
+def cmd_kb_cluster(args):
+    """Phase 4: cluster kb_paragraphs by FTS5 similarity."""
+    from _builder.kb_cluster import cluster_kb
+    summary = cluster_kb(args.graph, threshold=args.threshold, verbose=True)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def cmd_kb_migrate(args):
+    """Phase 6: migrate kb_paragraphs → kb_items (fact-level)."""
+    from _builder.kb_index import _kb_connect
+    conn = _kb_connect(args.graph)
+    if conn is None:
+        print("No code2database.db found")
+        sys.exit(1)
+    try:
+        # Copy rows; kb_items gets the same id, title, body, tags etc.
+        # plus defaults for new columns (decay_class, provenance_*)
+        rows = conn.execute(
+            "SELECT id, source_kind AS kind_proxy, source_file, "
+            "       para_index, title, body, tags, node_ids, weight, "
+            "       confidence, kind, graph_version, created_at, "
+            "       accessed_at, access_count, scope_id, canonical_id, "
+            "       principle_ref, embedding FROM kb_paragraphs"
+        ).fetchall()
+        # Clear kb_items first
+        conn.execute("DELETE FROM kb_items")
+        migrated = 0
+        for r in rows:
+            # Map source_kind → decay_class
+            sk = r["kind_proxy"]
+            if sk == "knowledge":
+                decay_class = "none"
+            elif sk == "memory":
+                decay_class = "soft"
+            else:
+                decay_class = "soft"
+            try:
+                conn.execute(
+                    "INSERT INTO kb_items (id, kind, scope_id, canonical_id, "
+                    "  principle_ref, title, body, tags, node_ids, "
+                    "  weight, confidence, decay_class, graph_version, "
+                    "  embedding, created_at, accessed_at, access_count) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (r["id"], r["kind"], r["scope_id"], r["canonical_id"],
+                     r["principle_ref"], r["title"], r["body"], r["tags"],
+                     r["node_ids"], r["weight"], r["confidence"],
+                     decay_class, r["graph_version"], r["embedding"],
+                     r["created_at"], r["accessed_at"],
+                     r["access_count"] or 0)
+                )
+                migrated += 1
+            except Exception:
+                pass
+        conn.commit()
+        print(json.dumps({"migrated": migrated}, ensure_ascii=False, indent=2))
+    finally:
+        conn.close()
+
+
+def cmd_kb_known_unknowns(args):
+    """Phase 9: list queries that returned no matches."""
+    from _builder.kb_index import get_known_unknowns
+    results = get_known_unknowns(args.graph, top_n=args.top,
+                                 min_occurrences=args.min_occurrences)
+    if not results:
+        print("No known unknowns (all queries matched or no queries logged).")
+        return
+    print(json.dumps(results, ensure_ascii=False, indent=2))
+
+
+def cmd_kb_audit(args):
+    """Phase 10: audit KB."""
+    from _builder.kb_audit import audit_kb
+    result = audit_kb(args.graph, topic=args.topic)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def cmd_kb_conflict(args):
+    """Phase 11: detect contradictory items."""
+    from _builder.kb_conflict import detect_conflicts
+    conflicts = detect_conflicts(args.graph)
+    if not conflicts:
+        print("No conflicts detected.")
+        return
+    print(json.dumps({"conflict_count": len(conflicts), "conflicts": conflicts},
+                     ensure_ascii=False, indent=2))
+
+
+def cmd_kb_rollback(args):
+    """Phase 11: restore a kb_item to a prior version."""
+    from _builder.kb_conflict import rollback_kb_item
+    result = rollback_kb_item(args.graph, args.id, args.to_version)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def cmd_kb_forget(args):
+    """Phase 11: immediately delete a kb_paragraph."""
+    from _builder.kb_conflict import forget_kb_paragraph
+    result = forget_kb_paragraph(args.graph, args.id, reason=args.reason)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def cmd_kb_global_add(args):
+    """Phase 8: add to global KB."""
+    from _builder.kb_global import global_add
+    tags = [t.strip() for t in args.tags.split(",") if t.strip()] if args.tags else []
+    entry_id = global_add(
+        title=args.title, body=args.body, tags=tags, kind=args.kind,
+        source_project=args.source_project, source_file=args.source_file,
+    )
+    print(json.dumps({"added": True, "id": entry_id}, ensure_ascii=False, indent=2))
+
+
+def cmd_kb_global_search(args):
+    """Phase 8: search global KB."""
+    from _builder.kb_global import global_search
+    results = global_search(args.query, top_n=args.top)
+    if not results:
+        print("No matches in global KB.")
+        return
+    print(json.dumps(results, ensure_ascii=False, indent=2))
+
+
+def cmd_kb_global_share(args):
+    """Phase 8: export global KB."""
+    from _builder.kb_global import global_share
+    output = global_share(args.output)
+    print(json.dumps({"exported": True, "path": output}, ensure_ascii=False, indent=2))
+
+
+def cmd_kb_global_import(args):
+    """Phase 8: import shared global KB JSON."""
+    from _builder.kb_global import global_import
+    imported = global_import(args.input)
+    print(json.dumps({"imported": imported}, ensure_ascii=False, indent=2))
 
 
 def cmd_install_hook(args):
@@ -561,6 +728,98 @@ def main():
     # knowledge-validate
     p_kv = sub.add_parser("knowledge-validate", help="Validate knowledge against current graph")
     p_kv.add_argument("--graph", required=True, help="Call graph output directory")
+
+    # kb-rebuild-index (Phase 1: unified FTS5 index rebuild)
+    p_kri = sub.add_parser("kb-rebuild-index",
+                           help="Rebuild the unified kb_paragraphs FTS5 index "
+                                "from memory/*.json and knowledge/*.md")
+    p_kri.add_argument("--graph", required=True, help="Call graph output directory")
+
+    # kb-query (Phase 3: unified FTS5+BM25 query across memory + knowledge)
+    p_kq2 = sub.add_parser("kb-query",
+                           help="Unified FTS5+BM25 query across memory and knowledge")
+    p_kq2.add_argument("--graph", required=True, help="Call graph output directory")
+    p_kq2.add_argument("--query", required=True, help="Free-form text query")
+    p_kq2.add_argument("--top", type=int, default=10, help="Max results (default 10)")
+    p_kq2.add_argument("--kinds", default="",
+                       help="Comma-separated kind filter (e.g., 'memory_qa,knowledge_principle')")
+    p_kq2.add_argument("--min-weight", type=float, default=0.0,
+                       help="Skip rows with weight below this (default 0.0 = no filter)")
+    p_kq2.add_argument("--max-tokens", type=int, default=4000,
+                       help="Approximate character cap on returned bodies")
+    p_kq2.add_argument("--semantic", action="store_true",
+                       help="Phase 5: enable semantic search (requires embeddings)")
+    p_kq2.add_argument("--global", action="store_true",
+                       help="Phase 8: fall back to global KB if project KB has no match")
+
+    # kb-cluster (Phase 4: union-find clustering + principle_ref)
+    p_kc = sub.add_parser("kb-cluster",
+                          help="Cluster kb_paragraphs by FTS5 similarity + link principles")
+    p_kc.add_argument("--graph", required=True, help="Call graph output directory")
+    p_kc.add_argument("--threshold", type=float, default=0.5,
+                      help="BM25 similarity threshold for clustering (default 0.5)")
+
+    # kb-migrate (Phase 6: migrate kb_paragraphs → kb_items fact-level)
+    p_km = sub.add_parser("kb-migrate",
+                          help="Migrate kb_paragraphs rows into kb_items (fact-level)")
+    p_km.add_argument("--graph", required=True, help="Call graph output directory")
+
+    # kb-known-unknowns (Phase 9: aggregate unmatched queries)
+    p_kku = sub.add_parser("kb-known-unknowns",
+                           help="List queries that returned no matches (Phase 9)")
+    p_kku.add_argument("--graph", required=True, help="Call graph output directory")
+    p_kku.add_argument("--top", type=int, default=20, help="Max results")
+    p_kku.add_argument("--min-occurrences", type=int, default=2,
+                       help="Only show queries asked at least this many times")
+
+    # kb-audit (Phase 10: knowledge audit)
+    p_ka = sub.add_parser("kb-audit",
+                          help="Audit KB: counts, stale, low-confidence, citations")
+    p_ka.add_argument("--graph", required=True, help="Call graph output directory")
+    p_ka.add_argument("--topic", default="", help="Optional: 'what do we know about X'")
+
+    # kb-conflict (Phase 11: detect contradictions)
+    p_kcf = sub.add_parser("kb-conflict",
+                           help="Detect contradictory items in the same cluster")
+    p_kcf.add_argument("--graph", required=True, help="Call graph output directory")
+
+    # kb-rollback (Phase 11: restore kb_item to prior version)
+    p_kr = sub.add_parser("kb-rollback",
+                          help="Restore a kb_item to a prior version")
+    p_kr.add_argument("--graph", required=True, help="Call graph output directory")
+    p_kr.add_argument("--id", required=True, type=int, help="kb_item id to rollback")
+    p_kr.add_argument("--to-version", type=int, default=None,
+                       help="Version to restore (default: latest)")
+
+    # kb-forget (Phase 11: immediate delete)
+    p_kf = sub.add_parser("kb-forget",
+                          help="Immediately delete a kb_paragraph (no decay)")
+    p_kf.add_argument("--graph", required=True, help="Call graph output directory")
+    p_kf.add_argument("--id", required=True, type=int, help="kb_paragraph id to forget")
+    p_kf.add_argument("--reason", default="", help="Reason for forgetting (audit log)")
+
+    # kb-global-* (Phase 8: cross-project global KB)
+    p_kga = sub.add_parser("kb-global-add",
+                           help="Add an entry to the cross-project global KB")
+    p_kga.add_argument("--title", required=True)
+    p_kga.add_argument("--body", required=True)
+    p_kga.add_argument("--tags", default="")
+    p_kga.add_argument("--kind", default="principle")
+    p_kga.add_argument("--source-project", default="")
+    p_kga.add_argument("--source-file", default="")
+
+    p_kgs = sub.add_parser("kb-global-search",
+                           help="Search the cross-project global KB")
+    p_kgs.add_argument("--query", required=True)
+    p_kgs.add_argument("--top", type=int, default=10)
+
+    p_kgsh = sub.add_parser("kb-global-share",
+                            help="Export global KB to a portable JSON file")
+    p_kgsh.add_argument("--output", required=True, help="Output JSON path")
+
+    p_kgi = sub.add_parser("kb-global-import",
+                           help="Import a shared global KB JSON file")
+    p_kgi.add_argument("--input", required=True, help="Input JSON path")
 
     # patch-from-diff
     p_pdiff = sub.add_parser("patch-from-diff", help="Patch graph from unified diff text")
@@ -1618,7 +1877,9 @@ def main():
         "patch-profile": cmd_patch_profile,
         "think-chain": cmd_think_chain,
         "save-memory": cmd_save_memory,
+        "save": cmd_save_memory,  # SKILL.md alias
         "search-memory": cmd_search_memory,
+        "recall": cmd_search_memory,  # SKILL.md alias
         "validate-memory": cmd_validate_memory,
         "export-html": cmd_export_html,
         "export-obsidian": cmd_export_obsidian,
@@ -1650,7 +1911,21 @@ def main():
         "extract-knowledge": cmd_extract_knowledge,
         "apply-knowledge": cmd_apply_knowledge,
         "knowledge-query": cmd_knowledge_query,
+        "know": cmd_knowledge_query,  # SKILL.md alias
         "knowledge-validate": cmd_knowledge_validate,
+        "kb-rebuild-index": cmd_kb_rebuild_index,
+        "kb-query": cmd_kb_query,
+        "kb-cluster": cmd_kb_cluster,
+        "kb-migrate": cmd_kb_migrate,
+        "kb-known-unknowns": cmd_kb_known_unknowns,
+        "kb-audit": cmd_kb_audit,
+        "kb-conflict": cmd_kb_conflict,
+        "kb-rollback": cmd_kb_rollback,
+        "kb-forget": cmd_kb_forget,
+        "kb-global-add": cmd_kb_global_add,
+        "kb-global-search": cmd_kb_global_search,
+        "kb-global-share": cmd_kb_global_share,
+        "kb-global-import": cmd_kb_global_import,
         "patch-from-diff": cmd_patch_from_diff,
         "patch-from-git": cmd_patch_from_git,
         "light-scan": cmd_light_scan,

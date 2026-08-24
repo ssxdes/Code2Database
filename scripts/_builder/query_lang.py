@@ -1301,4 +1301,45 @@ def cmd_query(args):
         for row in rows:
             print("| " + " | ".join(str(row.get(c, "")) for c in cols) + " |")
     else:
-        print(json.dumps(rows, ensure_ascii=False, indent=2, default=str))
+        # Phase 3: consult memory/knowledge before printing graph rows.
+        # This realizes the SKILL.md "Query Priority Chain:
+        # memory → knowledge → graph → source" — when the user asks a
+        # natural-language-shaped query, we surface top kb_paragraphs
+        # hits as a `_hints` field alongside the graph rows. The agent
+        # can then decide whether to consult the hinted memory/knowledge
+        # before relying solely on the graph rows.
+        output = list(rows)
+        try:
+            from _builder.kb_index import query_kb
+            # Use the raw query string as the FTS5 query (best-effort).
+            # If parsing failed earlier we already exited; here args.query
+            # is the validated query string.
+            hints = query_kb(
+                graph_dir=graph_dir,
+                query=query_str,
+                top_n=3,
+                kinds=None,  # any kind
+                min_weight=0.0,
+                max_tokens=1000,
+            )
+            if hints:
+                # Inject as a sibling key so consumers can read both
+                # rows and hints from the same JSON object.
+                output = {
+                    "rows": list(rows),
+                    "_hints": [
+                        {
+                            "source_kind": h["source_kind"],
+                            "source_file": h["source_file"],
+                            "title": h["title"],
+                            "body": h["body"][:500],
+                            "score": h["score"],
+                            "kind": h["kind"],
+                        }
+                        for h in hints
+                    ],
+                }
+        except Exception:
+            # Hints are best-effort; never fail the query because of them.
+            pass
+        print(json.dumps(output, ensure_ascii=False, indent=2, default=str))

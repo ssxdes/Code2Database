@@ -207,12 +207,40 @@ def cmd_save_memory(args):
 
 
 def cmd_search_memory(args):
-    """Search memory and experience for similar questions."""
+    """Search memory and experience for similar questions.
+
+    Prefers the unified FTS5+BM25 index (kb_paragraphs) when
+    code2database.db exists; falls back to the legacy in-memory
+    Jaccard-token search otherwise.
+    """
     graph_dir = args.graph
-    mem_dir = _memory_dir(graph_dir)
-    exp_dir = _experience_dir(graph_dir)
     query = args.query
     top = args.top
+
+    # Try unified FTS5 path first (Phase 1+2 upgrade)
+    try:
+        from _builder.kb_index import query_kb
+        results = query_kb(
+            graph_dir=graph_dir,
+            query=query,
+            top_n=top,
+            kinds=["memory_qa", "memory_experience"],
+            min_weight=0.0,  # no weight filter — let BM25 rank
+            max_tokens=4000,
+        )
+        if results:
+            print(json.dumps(results, ensure_ascii=False, indent=2))
+            return
+        # No FTS5 hits or no db — fall through to legacy
+    except Exception as _e:
+        # Fall back to legacy search if FTS5 path fails (no db, schema
+        # mismatch, etc.). Don't print the error — it's expected when
+        # the project hasn't run `kb-rebuild-index` yet.
+        pass
+
+    # Legacy path: Jaccard token-set similarity on filesystem JSON entries
+    mem_dir = _memory_dir(graph_dir)
+    exp_dir = _experience_dir(graph_dir)
 
     index_path = os.path.join(mem_dir, "index.json")
     if not os.path.exists(index_path):

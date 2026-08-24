@@ -673,14 +673,14 @@ python3 scripts/code2database_builder.py embeddings-search \
 
 ### `serve`
 
-Start the MCP server (stdio transport, 49 tools: 30 `code2database_*` + 19 `cgdb_*`).
+Start the MCP server (stdio transport, 50 tools: 31 `code2database_*` + 19 `cgdb_*`).
 
 ```bash
 python3 scripts/code2database_builder.py serve \
   --graph code2db-out/
 ```
 
-All 49 tools are accessible regardless of sub-skill activation. MCP is separate from skill layer activation. See `references/analysis_commands.md` for the 19 `cgdb_*` tools; see parent `references/usage_reference.md` for the 30 `code2database_*` tools.
+All 50 tools are accessible regardless of sub-skill activation. MCP is separate from skill layer activation. See `references/analysis_commands.md` for the 19 `cgdb_*` tools; see parent `references/usage_reference.md` for the 31 `code2database_*` tools.
 
 ## On-demand / Low-weight Commands
 

@@ -1,7 +1,7 @@
 {
   "name": "Code2Database-analysis",
   "version": "1.0.0",
-  "description": "Deep semantic analysis for Code2Database. Activated when the user asks about concurrency safety, data races, value flow, invariants, FFI boundaries, path feasibility, or cgdb tables. All 171 commands remain accessible from the parent skill.",
+  "description": "Deep semantic analysis for Code2Database. Activated when the user asks about concurrency safety, data races, value flow, invariants, FFI boundaries, path feasibility, or cgdb tables. All 184 commands remain accessible from the parent skill.",
   "trigger": "/Code2Database-analysis",
   "parent_skill": "Code2Database",
   "languages": [
@@ -188,6 +188,6 @@
   "activation_model": "User explicitly invokes /Code2Database-analysis, OR /Code2Database core skill detects a deep-analysis question (concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb) and hands off with the phrase 'activate Code2Database-analysis sub-skill'.",
   "shared_resources": {
     "scripts": "scripts/ (shared with parent and ops sub-skill \u2014 single CLI)",
-    "mcp_server": "All 49 MCP tools (30 code2database_* + 19 cgdb_*) accessible regardless of sub-skill activation. MCP is separate from skill layer."
+    "mcp_server": "All 50 MCP tools (31 code2database_* + 19 cgdb_*) accessible regardless of sub-skill activation. MCP is separate from skill layer."
   }
 }

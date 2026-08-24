@@ -807,7 +807,36 @@ class KnowledgeManager:
     # -----------------------------------------------------------------------
 
     def query_knowledge(self, topic: str, max_tokens: int = 500) -> str:
-        """Search knowledge files for a topic, return relevant content."""
+        """Search knowledge files for a topic, return relevant content.
+
+        Prefers the unified FTS5+BM25 index (kb_paragraphs) when
+        code2database.db exists; falls back to legacy substring search.
+        """
+        # Phase 1+2 upgrade: FTS5 path
+        try:
+            from _builder.kb_index import query_kb
+            results = query_kb(
+                graph_dir=self.graph_dir,
+                query=topic,
+                top_n=10,
+                kinds=["principle", "fact", "pattern", "glossary"],
+                min_weight=0.0,
+                max_tokens=max_tokens,
+            )
+            if results:
+                lines = []
+                for r in results:
+                    lines.append(f"--- {r['source_file']} (score={r['score']}) ---")
+                    if r["title"]:
+                        lines.append(f"## {r['title']}")
+                    lines.append(r["body"])
+                    lines.append("")
+                return "\n".join(lines)
+            # FTS5 returned no hits — fall through to legacy
+        except Exception:
+            pass
+
+        # Legacy: pure substring match across .md files
         topic_lower = topic.lower()
         results = []
 

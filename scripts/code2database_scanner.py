@@ -1727,6 +1727,35 @@ def _parse_macros_str(text: str) -> dict:
     return macros
 
 
+def _parse_macros_file(path: str) -> dict:
+    """Parse a macros-from file (one macro per line) into dict.
+
+    Each line may be 'NAME', 'NAME=VALUE', '-DNAME', or '-DNAME=VALUE'.
+    Lines starting with '#' or blank lines are skipped.
+    """
+    macros = {}
+    if not path or not os.path.exists(path):
+        return macros
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                if line.startswith('-D'):
+                    line = line[2:]
+                if not line:
+                    continue
+                if '=' in line:
+                    k, v = line.split('=', 1)
+                    macros[k] = v
+                else:
+                    macros[line] = ""
+    except OSError:
+        pass
+    return macros
+
+
 def _parse_clang_args(text: str) -> list:
     """Parse a clang-args string into a list of args, preserving -I/-D/-std values.
 
@@ -1859,6 +1888,16 @@ def cmd_scan(args):
         sys.exit(1)
 
     macro_bindings = _parse_macros_str(args.macros) if args.macros else None
+    # Merge macros-from file (CLI --macros takes precedence on key conflict)
+    macros_from_path = getattr(args, 'macros_from', '') or ''
+    if macros_from_path:
+        file_macros = _parse_macros_file(macros_from_path)
+        if file_macros:
+            if macro_bindings is None:
+                macro_bindings = {}
+            # CLI --macros wins; file fills in the rest
+            for k, v in file_macros.items():
+                macro_bindings.setdefault(k, v)
     api_prefixes = args.api_prefixes.split(",") if args.api_prefixes else None
 
     # --auto-profile: generate .code2database_profile.json before scanning
@@ -2701,6 +2740,12 @@ def main():
                              "Used when the file list is too large to fit on the command line "
                              "(Linux ARG_MAX ~128KB). Files are merged with --files if both given.")
     p_scan.add_argument("--macros", help="Macro bindings for #ifdef resolution (e.g., 'NDEBUG FEATURE_X=1 -DFOO')")
+    p_scan.add_argument("--macros-from", default="",
+                        help="Path to a file containing macro bindings, one per line "
+                             "(format: 'NAME' or 'NAME=VALUE' or '-DNAME' or '-DNAME=VALUE'). "
+                             "Used when the macro set is too large for the command line "
+                             "(Linux ARG_MAX ~128KB). Merged with --macros if both given; "
+                             "--macros takes precedence on conflict.")
     p_scan.add_argument("-j", "--workers", type=int, default=0,
                          help="Parallel scan workers (0=auto, 1=sequential, "
                               "N=N threads). Tree-sitter (C) releases the GIL, "

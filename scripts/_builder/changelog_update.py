@@ -290,6 +290,12 @@ def merge_change_graph(graph_dir: str, change_graph_path: str,
     - Added edges -> add edges
     """
     G = _load_full_graph(graph_dir)
+    # merge_change_graph mutates the graph (G.nodes[fid]["stale"]=True,
+    # G.nodes[fid]["semantic_desc"]="", G.add_node, G.add_edge, G.remove_node);
+    # LazySQLiteGraph (read-only SQLite view for >=50K-function projects)
+    # rejects item assignment. Detect early and exit with a clear error.
+    from _builder.utils import _ensure_mutable_graph
+    _ensure_mutable_graph(G, "merge-changes")
     changes = json.loads(Path(change_graph_path).read_text(encoding="utf-8"))
 
     added = 0

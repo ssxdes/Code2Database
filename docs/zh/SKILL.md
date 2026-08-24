@@ -50,7 +50,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP 服�
 
 | 命令 | 用途 | 查询层 |
 |------|------|--------|
-| `query` | 自然语言意图查询（自动注入 kb hint） | Memory→Knowledge→Graph |
+| `query` | 自然语言意图查询（kb hint 输出到 stderr；`--with-hints` 包装 stdout） | Memory→Knowledge→Graph |
 | `kb-query` | 跨 memory + knowledge 的统一 FTS5+BM25 查询 | Memory+Knowledge |
 | `describe` | 节点详情 + 源码片段 + memory_refs + knowledge_refs | Graph→Source |
 | `trace` | A→B 调用链（含条件） | Graph |

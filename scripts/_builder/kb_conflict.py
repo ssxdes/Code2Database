@@ -23,14 +23,42 @@ from _builder.kb_audit import write_audit_log_entry
 
 
 # Pairs of words indicating contradiction in technical writing.
+# Each pair (w1, w2) means "if w1 appears in item A and w2 in item B
+# (or vice versa), they likely contradict". Conservative — only well-
+# defined technical antonyms are included.
 _CONTRADICTION_PAIRS = [
-    ("yes", "no"), ("true", "false"), ("must", "must not"),
-    ("must", "mustn't"), ("always", "never"), ("should", "should not"),
-    ("required", "optional"), ("safe", "unsafe"),
-    ("thread-safe", "not thread-safe"),
+    # Boolean / truth
+    ("yes", "no"), ("true", "false"), ("y", "n"),
+    # Modal verbs
+    ("must", "must not"), ("must", "mustn't"), ("must", "mustn't"),
+    ("should", "should not"), ("should", "shouldn't"),
+    ("shall", "shall not"), ("shall", "shan't"),
+    ("may", "may not"),
+    ("can", "cannot"), ("can", "can't"),
+    # Quantifiers
+    ("always", "never"), ("always", "rarely"),
+    ("all", "none"), ("every", "no"),
+    # State / status
+    ("required", "optional"), ("mandatory", "optional"),
+    ("present", "absent"), ("exists", "missing"),
+    ("enabled", "disabled"), ("active", "inactive"),
     ("initialized", "uninitialized"),
-    ("valid", "invalid"), ("present", "absent"),
-    ("enabled", "disabled"),
+    ("valid", "invalid"), ("legal", "illegal"),
+    # Safety
+    ("safe", "unsafe"), ("secure", "insecure"),
+    ("thread-safe", "not thread-safe"), ("thread-safe", "thread-unsafe"),
+    ("reentrant", "non-reentrant"), ("reentrant", "not reentrant"),
+    # Lifecycle
+    ("open", "close"), ("opened", "closed"),
+    ("start", "stop"), ("started", "stopped"),
+    ("begin", "end"), ("started", "ended"),
+    # Permission / behavior
+    ("allow", "deny"), ("allowed", "denied"),
+    ("accept", "reject"), ("accepted", "rejected"),
+    ("permit", "forbid"), ("permitted", "forbidden"),
+    # Comparison
+    ("greater", "less"), ("larger", "smaller"),
+    ("equal", "unequal"), ("equal", "different"),
 ]
 
 

@@ -6,6 +6,7 @@ handles argparse configuration and command routing.
 """
 
 import argparse
+import json
 import os
 import sys
 
@@ -1206,6 +1207,11 @@ def main():
                      help="Query string, e.g. \"MATCH (n:Function) WHERE n.name='foo' RETURN n.id, n.name\"")
     p_q.add_argument("--format", choices=["json", "md"], default="json",
                      help="Output format (json or markdown table)")
+    p_q.add_argument("--with-hints", action="store_true",
+                     help="Wrap output as {\"rows\": [...], \"_hints\": [...]} where _hints "
+                          "contains top-3 kb_paragraphs hits matching the query string "
+                          "(Phase 3 priority chain). Default off for backward compat — "
+                          "stdout stays a flat rows list.")
 
     # Deficiency 4 (P0): value flow / taint tracking
     p_vf = sub.add_parser("value-flow",

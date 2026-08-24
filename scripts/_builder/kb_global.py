@@ -202,16 +202,38 @@ def global_share(output_path: str) -> str:
 
 
 def global_import(input_path: str) -> int:
-    """Import a global KB JSON file (e.g., shared by a teammate)."""
-    data = json.loads(Path(input_path).read_text(encoding="utf-8"))
+    """Import a global KB JSON file (e.g., shared by a teammate).
+
+    Defensive against JSON bombing: rejects files > 50MB.
+    """
+    # Size guard against JSON bombing (deeply nested or huge files)
+    try:
+        size = os.path.getsize(input_path)
+        if size > 50 * 1024 * 1024:  # 50 MB
+            print(f"[kb-global-import] rejecting {input_path}: "
+                  f"file too large ({size} bytes > 50MB limit)",
+                  file=sys.stderr)
+            return 0
+    except OSError:
+        return 0
+    try:
+        data = json.loads(Path(input_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"[kb-global-import] failed to parse {input_path}: {e}",
+              file=sys.stderr)
+        return 0
     entries = data.get("entries", []) if isinstance(data, dict) else []
     imported = 0
     for e in entries:
         if not isinstance(e, dict):
             continue
+        # Per-entry size guard: skip overly large single entries
+        body = e.get("body", "")
+        if isinstance(body, str) and len(body) > 100_000:
+            continue
         global_add(
             title=e.get("title", ""),
-            body=e.get("body", ""),
+            body=body,
             tags=e.get("tags", []),
             kind=e.get("kind", "principle"),
             source_project=e.get("source_project", ""),

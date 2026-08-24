@@ -302,6 +302,63 @@
       "prompt": "Convert a function with a large switch statement (process_command()) into a vtable dispatch using a struct command_ops with fields .handle. Verify the ops_bindings detect the new dispatch.",
       "expected_output": "Should add the struct, add the registration site with .handle = process_xxx for each case, re-scan with clang backend, and verify cgdb_find_ops_impls returns the impl functions. Should verify no direct call edges remain from process_command.",
       "files": []
+    },
+    {
+      "id": 44,
+      "category": "knowledge_base",
+      "prompt": "Build the unified KB index after a fresh graph build, then query 'how does bdev register io_device' across memory and knowledge stores",
+      "expected_output": "Should run 'kb-rebuild-index --graph code2db-out/' to populate kb_paragraphs from memory/*.json + knowledge/*.md, then 'kb-query --graph code2db-out/ --query \"how does bdev register io_device\"'. Result must be a JSON list with source_kind ('memory' or 'knowledge'), title, body, score, and see_also fields. Both source kinds should appear if memory and knowledge both mention bdev.",
+      "commands": [
+        "kb-rebuild-index --graph code2db-out/",
+        "kb-query --graph code2db-out/ --query 'how does bdev register io_device'"
+      ]
+    },
+    {
+      "id": 45,
+      "category": "knowledge_base",
+      "prompt": "Cluster similar kb items and detect contradictions within the same cluster",
+      "expected_output": "Should run 'kb-cluster --graph code2db-out/' to compute scope_id/canonical_id/principle_ref via union-find on FTS5 BM25 similarity. Then 'kb-conflict --graph code2db-out/' to detect pairs of items in the same scope_id with contradictory word pairs (yes/no, must/must not, safe/unsafe, etc.). Output: {conflict_count, conflicts: [{scope_id, item_a, item_b, contradiction}]}.",
+      "commands": [
+        "kb-cluster --graph code2db-out/",
+        "kb-conflict --graph code2db-out/"
+      ]
+    },
+    {
+      "id": 46,
+      "category": "knowledge_base",
+      "prompt": "Audit the project knowledge base: report counts by kind, stale items, low-confidence, high-citation items, and what we know about 'bdev registration'",
+      "expected_output": "Should run 'kb-audit --graph code2db-out/ --topic \"bdev registration\"'. Output must include by_kind dict, total_items, stale_items, low_confidence_items, high_citation_items, most_linked_principles, and what_we_know_about_X (top-5 kb hits for the topic).",
+      "commands": [
+        "kb-audit --graph code2db-out/ --topic 'bdev registration'"
+      ]
+    },
+    {
+      "id": 47,
+      "category": "knowledge_base",
+      "prompt": "Show queries that returned no matches (known unknowns) to identify knowledge gaps",
+      "expected_output": "Should run 'kb-known-unknowns --graph code2db-out/ --min-occurrences 2'. Output: list of {query, occurrences, last_asked} for queries that returned 0 results and were asked at least 2 times. These are knowledge gaps the user should fill by writing new memory/knowledge.",
+      "commands": [
+        "kb-known-unknowns --graph code2db-out/ --min-occurrences 2"
+      ]
+    },
+    {
+      "id": 48,
+      "category": "knowledge_base",
+      "prompt": "Forget an incorrect memory entry by id 42 with reason 'bdev_register does not call io_device_register'",
+      "expected_output": "Should run 'kb-forget --graph code2db-out/ --id 42 --reason \"bdev_register does not call io_device_register\"'. Output: {forgotten: true, item_id: 42, source_kind, source_file, title}. An audit_log entry must be written recording the operator, timestamp, and reason.",
+      "commands": [
+        "kb-forget --graph code2db-out/ --id 42 --reason 'bdev_register does not call io_device_register'"
+      ]
+    },
+    {
+      "id": 49,
+      "category": "knowledge_base",
+      "prompt": "Add a cross-project principle 'Linux kernel threading model: per-thread event loops' to the global KB, then search it from a different project",
+      "expected_output": "Should run 'kb-global-add --title \"Linux kernel threading model\" --body \"Per-thread event loops; no locks needed within thread\" --tags kernel,threading --kind principle'. Then from any project: 'kb-query --graph <any-project>/ --query \"thread safety\" --global' should fall back to the global KB and return the entry with global: true.",
+      "commands": [
+        "kb-global-add --title '...' --body '...' --tags kernel,threading",
+        "kb-query --graph <project>/ --query 'thread safety' --global"
+      ]
     }
   ]
 }

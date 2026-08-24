@@ -778,8 +778,12 @@ else
     info "  For a leaner install, set C2D_LANGUAGES=c,go (etc.) before re-running install.sh"
 fi
 echo ""
-info "MCP server: 48 tools (30 code2database_* + 18 cgdb_*) — start with:"
+info "MCP server: 50 tools (31 code2database_* + 19 cgdb_*) — start with:"
 info "  python3 $INSTALL_DIR/scripts/code2database_builder.py serve --graph code2db-out/"
+echo ""
+info "Knowledge base (kb-*): unified FTS5+BM25 across memory+knowledge+global — start with:"
+info "  python3 $INSTALL_DIR/scripts/code2database_builder.py kb-rebuild-index --graph code2db-out/"
+info "  python3 $INSTALL_DIR/scripts/code2database_builder.py kb-query --graph code2db-out/ --query \"bdev register\""
 echo ""
 info "Optional backends (recommended, not required):"
 info "  pip install libclang==17.0.6   # enables cgdb clang backend (typed vtable dispatch, CFG, data flow, sync primitives)"

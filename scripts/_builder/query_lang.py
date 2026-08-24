@@ -1305,15 +1305,15 @@ def cmd_query(args):
         # This realizes the SKILL.md "Query Priority Chain:
         # memory → knowledge → graph → source" — when the user asks a
         # natural-language-shaped query, we surface top kb_paragraphs
-        # hits as a `_hints` field alongside the graph rows. The agent
-        # can then decide whether to consult the hinted memory/knowledge
-        # before relying solely on the graph rows.
-        output = list(rows)
+        # hits as a `_hints` field alongside the graph rows.
+        #
+        # Backward-compat: by default stdout stays a flat rows list
+        # (so existing consumers don't break). Hints go to stderr as a
+        # `kb_hints: <json>` line. Pass --with-hints to wrap stdout as
+        # {"rows": [...], "_hints": [...]}.
+        hints: list = []
         try:
             from _builder.kb_index import query_kb
-            # Use the raw query string as the FTS5 query (best-effort).
-            # If parsing failed earlier we already exited; here args.query
-            # is the validated query string.
             hints = query_kb(
                 graph_dir=graph_dir,
                 query=query_str,
@@ -1321,25 +1321,42 @@ def cmd_query(args):
                 kinds=None,  # any kind
                 min_weight=0.0,
                 max_tokens=1000,
+                log_query=False,  # don't log cmd_query hints
             )
-            if hints:
-                # Inject as a sibling key so consumers can read both
-                # rows and hints from the same JSON object.
-                output = {
-                    "rows": list(rows),
-                    "_hints": [
-                        {
-                            "source_kind": h["source_kind"],
-                            "source_file": h["source_file"],
-                            "title": h["title"],
-                            "body": h["body"][:500],
-                            "score": h["score"],
-                            "kind": h["kind"],
-                        }
-                        for h in hints
-                    ],
-                }
         except Exception:
             # Hints are best-effort; never fail the query because of them.
             pass
-        print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
+        with_hints = getattr(args, "with_hints", False)
+        if with_hints:
+            output = {
+                "rows": list(rows),
+                "_hints": [
+                    {
+                        "source_kind": h["source_kind"],
+                        "source_file": h["source_file"],
+                        "title": h["title"],
+                        "body": h["body"][:500],
+                        "score": h["score"],
+                        "kind": h["kind"],
+                    }
+                    for h in hints
+                ],
+            }
+            print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
+        else:
+            # Backward-compat: stdout is a flat rows list.
+            # Hints (if any) go to stderr so they don't corrupt stdout parsing.
+            if hints:
+                try:
+                    import sys as _sys
+                    _sys.stderr.write(
+                        "kb_hints: " + json.dumps([
+                            {"source_kind": h["source_kind"],
+                             "title": h["title"],
+                             "score": h["score"]}
+                            for h in hints
+                        ], ensure_ascii=False) + "\n"
+                    )
+                except Exception:
+                    pass
+            print(json.dumps(rows, ensure_ascii=False, indent=2, default=str))

@@ -302,6 +302,63 @@
       "prompt": "将含大型 switch 的函数 process_command() 转换为 vtable 派发，使用 struct command_ops 字段 .handle。验证 ops_bindings 检测到新派发。",
       "expected_output": "应添加 struct，添加每个 case 对应的注册点 .handle = process_xxx，用 clang 后端重新扫描，并验证 cgdb_find_ops_impls 返回实现函数。应验证 process_command 不再有直接调用边。",
       "files": []
+    },
+    {
+      "id": 44,
+      "category": "knowledge_base",
+      "prompt": "在新鲜构建图后构建统一 KB 索引，然后查询 'how does bdev register io_device' 跨 memory 和 knowledge 存储",
+      "expected_output": "应运行 'kb-rebuild-index --graph code2db-out/' 从 memory/*.json + knowledge/*.md 填充 kb_paragraphs，然后 'kb-query --graph code2db-out/ --query \"how does bdev register io_device\"'。结果必须是 JSON 列表，含 source_kind（'memory' 或 'knowledge'）、title、body、score、see_also 字段。如果 memory 和 knowledge 都提到 bdev，两种 source_kind 都应出现。",
+      "commands": [
+        "kb-rebuild-index --graph code2db-out/",
+        "kb-query --graph code2db-out/ --query 'how does bdev register io_device'"
+      ]
+    },
+    {
+      "id": 45,
+      "category": "knowledge_base",
+      "prompt": "聚类相似 kb 条目并检测同 cluster 内的矛盾",
+      "expected_output": "应运行 'kb-cluster --graph code2db-out/' 通过 union-find on FTS5 BM25 相似度计算 scope_id/canonical_id/principle_ref。然后 'kb-conflict --graph code2db-out/' 检测同 scope_id 内含矛盾词对（yes/no、must/must not、safe/unsafe 等）的条目对。输出：{conflict_count, conflicts: [{scope_id, item_a, item_b, contradiction}]}。",
+      "commands": [
+        "kb-cluster --graph code2db-out/",
+        "kb-conflict --graph code2db-out/"
+      ]
+    },
+    {
+      "id": 46,
+      "category": "knowledge_base",
+      "prompt": "审计项目知识库：按 kind 计数、过期条目、低置信度、高引用条目，以及'关于 bdev 注册我们知道什么'",
+      "expected_output": "应运行 'kb-audit --graph code2db-out/ --topic \"bdev 注册\"'。输出必须包含 by_kind 字典、total_items、stale_items、low_confidence_items、high_citation_items、most_linked_principles，以及 what_we_know_about_X（该主题的 top-5 kb 命中）。",
+      "commands": [
+        "kb-audit --graph code2db-out/ --topic 'bdev 注册'"
+      ]
+    },
+    {
+      "id": 47,
+      "category": "knowledge_base",
+      "prompt": "展示未命中的查询（已知不知道）以识别知识缺口",
+      "expected_output": "应运行 'kb-known-unknowns --graph code2db-out/ --min-occurrences 2'。输出：{query, occurrences, last_asked} 列表，仅包含返回 0 结果且至少被问过 2 次的查询。这些是用户应通过编写新 memory/knowledge 来填补的知识缺口。",
+      "commands": [
+        "kb-known-unknowns --graph code2db-out/ --min-occurrences 2"
+      ]
+    },
+    {
+      "id": 48,
+      "category": "knowledge_base",
+      "prompt": "通过 id 42 立即遗忘一条错误的 memory 条目，原因为 'bdev_register 不调用 io_device_register'",
+      "expected_output": "应运行 'kb-forget --graph code2db-out/ --id 42 --reason \"bdev_register 不调用 io_device_register\"'。输出：{forgotten: true, item_id: 42, source_kind, source_file, title}。必须写入 audit_log 条目记录操作者、时间戳、原因。",
+      "commands": [
+        "kb-forget --graph code2db-out/ --id 42 --reason 'bdev_register 不调用 io_device_register'"
+      ]
+    },
+    {
+      "id": 49,
+      "category": "knowledge_base",
+      "prompt": "向全局 KB 添加跨项目原则 'Linux 内核线程模型：每线程事件循环'，然后从不同项目搜索它",
+      "expected_output": "应运行 'kb-global-add --title \"Linux 内核线程模型\" --body \"每线程事件循环；线程内无需锁\" --tags kernel,threading --kind principle'。然后从任意项目：'kb-query --graph <任意项目>/ --query \"thread safety\" --global' 应回退到全局 KB 并返回带 global: true 的条目。",
+      "commands": [
+        "kb-global-add --title '...' --body '...' --tags kernel,threading",
+        "kb-query --graph <project>/ --query 'thread safety' --global"
+      ]
     }
   ]
 }

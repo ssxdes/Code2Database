@@ -50,7 +50,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP serve
 
 | Command | Purpose | Query Layer |
 |---------|---------|-------------|
-| `query` | Natural-language intent query (auto-injects kb hits) | Memory→Knowledge→Graph |
+| `query` | Natural-language intent query (kb hints to stderr; `--with-hints` wraps stdout) | Memory→Knowledge→Graph |
 | `kb-query` | Unified FTS5+BM25 across memory + knowledge | Memory+Knowledge |
 | `describe` | Node details + source snippet + memory_refs + knowledge_refs | Graph→Source |
 | `trace` | Call chain A→B with conditions | Graph |

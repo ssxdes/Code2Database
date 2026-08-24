@@ -27,15 +27,21 @@ def _kb_db_path(graph_dir: str) -> str:
     return os.path.join(graph_dir, "code2database.db")
 
 
-def _kb_connect(graph_dir: str) -> Optional[sqlite3.Connection]:
+def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqlite3.Connection]:
     """Open a connection to the project's code2database.db.
 
-    Returns None if the db doesn't exist (caller should fall back to
-    the legacy per-store search in that case).
+    By default, creates the db file (and kb_* tables) if missing —
+    this lets `kb-rebuild-index` work even without a prior `build`
+    (e.g., user wants to populate kb from memory/knowledge alone).
+    Pass `create_if_missing=False` to instead return None when the
+    db doesn't exist (used by `query_kb` to fall back to legacy
+    per-store search when no project db has been built yet).
     """
     db_path = _kb_db_path(graph_dir)
     if not os.path.exists(db_path):
-        return None
+        if not create_if_missing:
+            return None
+        # else: create the db by connecting (SQLite creates the file)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -79,8 +85,7 @@ def _kb_connect(graph_dir: str) -> Optional[sqlite3.Connection]:
                 ON kb_paragraphs(principle_ref) WHERE principle_ref IS NOT NULL;
             CREATE VIRTUAL TABLE IF NOT EXISTS kb_paragraphs_fts USING fts5(
                 title, body, tags,
-                content='kb_paragraphs',
-                content_rowid='id',
+                content='kb_paragraphs', content_rowid='id',
                 tokenize='porter unicode61'
             );
             CREATE TRIGGER IF NOT EXISTS kb_paragraphs_ai AFTER INSERT ON kb_paragraphs BEGIN
@@ -158,6 +163,29 @@ def _kb_connect(graph_dir: str) -> Optional[sqlite3.Connection]:
                 ON kb_query_log(matched, queried_at);
             CREATE INDEX IF NOT EXISTS idx_kb_query_log_query
                 ON kb_query_log(query);
+            -- audit_log table (mirrors SQLiteStore schema; needed when
+            -- _kb_connect creates a fresh db without prior `build`.
+            -- kb_audit.write_audit_log_entry writes here.)
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                operator TEXT,
+                command TEXT,
+                target_kind TEXT,
+                target_id TEXT,
+                action TEXT,
+                attribute TEXT,
+                before_value TEXT,
+                after_value TEXT,
+                reason TEXT,
+                tx_id TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_audit_log_target
+                ON audit_log(target_kind, target_id);
+            CREATE INDEX IF NOT EXISTS idx_audit_log_command
+                ON audit_log(command);
+            CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp
+                ON audit_log(timestamp);
         """)
     except sqlite3.OperationalError:
         pass
@@ -285,7 +313,10 @@ def _load_memory_entries(graph_dir: str) -> List[dict]:
         if not os.path.isdir(sub_path):
             continue
         for fname in sorted(os.listdir(sub_path)):
-            if not fname.endswith(".json"):
+            # Skip index.json files inside subdirs (experience/index.json
+            # would otherwise be loaded as a memory entry — harmless
+            # because rebuild skips empty Q/A, but wasteful).
+            if not fname.endswith(".json") or fname == "index.json":
                 continue
             fpath = os.path.join(sub_path, fname)
             try:

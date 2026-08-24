@@ -186,6 +186,41 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
                 ON audit_log(command);
             CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp
                 ON audit_log(timestamp);
+            -- foreign_refs + watched_c2ds (needed by _query_foreign_kb
+            -- for F2 cross-C2D kb-query fallback). If these tables don't
+            -- exist on a fresh kb-only db, _query_foreign_kb silently
+            -- returns [] — creating them here makes F2 actually work.
+            CREATE TABLE IF NOT EXISTS foreign_refs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                local_node_id TEXT NOT NULL,
+                invoked_name TEXT NOT NULL,
+                invoked_signature TEXT,
+                foreign_c2d_path TEXT NOT NULL,
+                foreign_project_name TEXT,
+                foreign_node_id TEXT,
+                foreign_name TEXT,
+                foreign_domain TEXT,
+                foreign_source_file TEXT,
+                foreign_signature TEXT,
+                status TEXT NOT NULL DEFAULT 'unresolved',
+                resolution_strategy TEXT,
+                last_resolved_at TEXT,
+                call_order INTEGER,
+                call_condition TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_foreign_refs_local
+                ON foreign_refs(local_node_id);
+            CREATE INDEX IF NOT EXISTS idx_foreign_refs_status
+                ON foreign_refs(status);
+            CREATE TABLE IF NOT EXISTS watched_c2ds (
+                c2d_path TEXT PRIMARY KEY,
+                project_name TEXT,
+                db_mtime_at_sync TEXT,
+                db_size_at_sync INTEGER,
+                functions_count_at_sync INTEGER,
+                last_synced_at TEXT NOT NULL,
+                sync_status TEXT NOT NULL DEFAULT 'unknown'
+            );
         """)
     except sqlite3.OperationalError:
         pass

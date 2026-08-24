@@ -75,9 +75,36 @@ CREATE TABLE IF NOT EXISTS watched_c2ds (
 
 
 def _ensure_foreign_tables(conn: sqlite3.Connection) -> None:
-    """Idempotent table creation (used when _kb_connect created a fresh db)."""
+    """Idempotent table creation (used when _kb_connect created a fresh db).
+
+    Also creates audit_log table (needed by kb_audit.write_audit_log_entry
+    when the db was created by c2d_foreign._connect without prior build).
+    """
     try:
-        conn.executescript(FOREIGN_REFS_SCHEMA + WATCHED_C2DS_SCHEMA)
+        conn.executescript(FOREIGN_REFS_SCHEMA + WATCHED_C2DS_SCHEMA + """
+            -- audit_log table (mirrors SQLiteStore schema; needed when
+            -- _connect creates a fresh db without prior build/kb-rebuild.
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                operator TEXT,
+                command TEXT,
+                target_kind TEXT,
+                target_id TEXT,
+                action TEXT,
+                attribute TEXT,
+                before_value TEXT,
+                after_value TEXT,
+                reason TEXT,
+                tx_id TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_audit_log_target
+                ON audit_log(target_kind, target_id);
+            CREATE INDEX IF NOT EXISTS idx_audit_log_command
+                ON audit_log(command);
+            CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp
+                ON audit_log(timestamp);
+        """)
     except sqlite3.OperationalError:
         pass
 

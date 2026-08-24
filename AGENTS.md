@@ -26,11 +26,11 @@ Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/
 - MSVC `__asm {}` block support and ERROR node fallback
 - Static fn-ptr dispatch array resolution (dispatch_op)
 - LLM context packs (micro/lite/standard/full tiers)
-- MCP server mode for real-time agent queries (48 tools: 30 `code2database_*` + 18 `cgdb_*`)
+- MCP server mode for real-time agent queries (49 tools: 30 `code2database_*` + 19 `cgdb_*`)
 
 Capabilities:
 - **Dual extraction backend** — `auto` (default, uses clang when libclang is installed, falls back to tree-sitter), `clang` (force clang, enables cgdb layer; libclang 17+), `tree-sitter` (force tree-sitter, no libclang dep). Selected via `--extraction-backend` flag at scan time. **libclang is recommended, NOT required** — tree-sitter-only mode is fully functional.
-- **cgdb (code graph database) layer** — when clang backend is enabled, 13 semantic tables are populated alongside legacy `functions`/`edges`: L1 AST nodes, L2 types, L3.5 config predicates, L4 CFG, L5 data flow, L6 alias (stub), L7 ops_bindings (typed vtable dispatch), L8 sync_primitives + happens_before, L10 provenance + time-travel versions. Queried via 18 `cgdb_*` MCP tools.
+- **cgdb (code graph database) layer** — when clang backend is enabled, semantic tables are populated alongside legacy `functions`/`edges`: L1 AST nodes, L2 types, L3.5 config predicates, L4 CFG, L5 data flow, L6 alias (stub), L7 ops_bindings (typed vtable dispatch), L8 sync_primitives + happens_before, L10 provenance + time-travel versions. Queried via 19 `cgdb_*` MCP tools.
 - Commit-based provenance — every node/edge carries `commit_meta.source_commit` (git/svn hash)
 - Cypher-subset query language (`query` command, MATCH/WHERE/RETURN)
 - Value flow with DATA_FLOW edges (`value-flow`, `param-flow`)
@@ -49,7 +49,7 @@ Capabilities:
 
 ## Skill Structure (3 sub-skills)
 
-The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 122 commands) is shared — all commands are accessible regardless of sub-skill activation.
+The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 171 commands) is shared — all commands are accessible regardless of sub-skill activation.
 
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|

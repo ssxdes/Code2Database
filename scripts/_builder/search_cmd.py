@@ -14,7 +14,7 @@ from _builder.graph_build import _load_full_graph
 def cmd_domain(args):
     """List all nodes and edges in a specific architecture domain.
 
-    P0_fix: Support SQLite-only builds by querying code2database.db directly
+    Supports SQLite-only builds by querying code2database.db directly
     when code2database_master.json is absent.
     """
     graph_dir = args.graph
@@ -22,7 +22,7 @@ def cmd_domain(args):
     domain_name = args.name
 
     if not os.path.exists(master_path):
-        # P0_fix: SQLite fallback
+        # SQLite fallback when master.json is absent (large-project build)
         db_path = os.path.join(graph_dir, "code2database.db")
         if os.path.exists(db_path):
             return _cmd_domain_from_sqlite(db_path, domain_name)
@@ -52,7 +52,7 @@ def cmd_domain(args):
 
 
 def _cmd_domain_from_sqlite(db_path: str, domain_name: str):
-    """P0_fix: Query a domain's nodes and edges from SQLite."""
+    """Query a domain's nodes and edges from SQLite."""
     import sqlite3
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -275,7 +275,7 @@ def cmd_neighbors(args):
             print(f"Node '{args.node}' not found in graph.", file=sys.stderr)
         sys.exit(1)
 
-    # P0_fix: For high-degree nodes (e.g. mutex_lock with 21K callers), unbounded
+    # For high-degree nodes (e.g. mutex_lock with 21K callers), unbounded
     # BFS at depth 2+ can visit millions of nodes. Cap total results.
     max_results = getattr(args, "max_results", 200)
 
@@ -497,7 +497,7 @@ def cmd_path(args):
 
     origin_domain = _node_domain(G, args.from_node)
 
-    # P0_fix: For LazySQLiteGraph (large SQLite-backed graphs), building a full
+    # For LazySQLiteGraph (large SQLite-backed graphs), building a full
     # call-only subgraph via _make_call_graph iterates 1.5M nodes + 4.8M edges,
     # which times out. Use direct BFS on the lazy graph instead.
     is_lazy = type(G).__name__ == "LazySQLiteGraph"
@@ -586,7 +586,7 @@ def cmd_path(args):
 def cmd_search(args):
     """Search nodes by keywords.
 
-    P0_fix: When code2database_master.json is absent (SQLite-only build),
+    When code2database_master.json is absent (SQLite-only build),
     use SQLite-native search instead of loading the full 1.5M-node graph
     into memory. The full-graph approach times out for kernel-scale projects.
     """

@@ -1680,7 +1680,8 @@ def _build_scenarios_file(G: nx.DiGraph, outdir: str, build_info: dict = None):
                     member = v["member"]
                     val = v.get("value", member)
                     try:
-                        # BUG 239 fix: use str(val) for consistency checking
+                        # Coerce numeric strings to int; leave symbolic values as str
+                        # so downstream consistency checks compare types uniformly.
                         val = int(val) if str(val).strip().isdigit() else val
                     except (ValueError, TypeError):
                         pass

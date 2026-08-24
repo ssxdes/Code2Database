@@ -12,7 +12,7 @@ import networkx as nx
 def _streaming_json_lookup(json_path: str, key: str, max_size_mb: int = 200):
     """Look up a single key in a large JSON object file via streaming parse.
 
-    P0_fix: For SQLite-built graphs, .code2database_concurrency_index.json can be
+    For SQLite-built graphs, .code2database_concurrency_index.json can be
     500+MB. Loading it with json.loads() twice per query (as describe-node did)
     takes minutes for 1.5M nodes. This helper uses ijson to stream-parse only
     until the target key is found, returning its value without materializing
@@ -77,7 +77,7 @@ def _streaming_json_has_keys(json_path: str, keys: list) -> dict:
     Uses streaming parse to avoid loading the entire file. Returns a dict
     mapping each key to a boolean (True if present).
 
-    P0_fix: describe-node uses .get("thread_entries", []) and .get("concurrent_groups", [])
+    describe-node uses .get("thread_entries", []) and .get("concurrent_groups", [])
     on .code2database_concurrency_index.json. For SQLite builds, this file is
     node_id-keyed and does NOT have those keys. We need to detect this without
     loading 500+MB.
@@ -613,7 +613,7 @@ def _resolve_invoked_id(callee_name: str, domain: str, id_registry: dict,
     # check if it exists directly in the registry. This avoids normalizing
     # "domain.func_name" → "domain_func_name" which can collide with a
     # different function whose name includes the domain prefix.
-    # Bug: nvmf.poll_group_update_subsystem normalized to nvmf_poll_group_update_subsystem
+    # Example: nvmf.poll_group_update_subsystem normalized to nvmf_poll_group_update_subsystem
     # which matched the caller nvmf.nvmf_poll_group_update_subsystem instead.
     if "." in callee_name and callee_name in id_registry:
         return callee_name

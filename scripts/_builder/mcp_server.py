@@ -1935,7 +1935,7 @@ def run_mcp_server(graph_dir: str):
 def cmd_serve(args):
     """Handle serve command — start MCP server.
 
-    P0_fix: Support SQLite-only builds (code2database.db without
+    Supports SQLite-only builds (code2database.db without
     code2database_master.json). Large projects (>100K functions) must use
     --storage sqlite, and without this fallback the MCP server cannot
     start for them — breaking LLM agent integration.

@@ -217,7 +217,7 @@ class SQLiteStore:
                 stats_json TEXT
             );
 
-            -- Deficiency 1 fix: SQL-native field-access table for O(log n) queries
+            -- SQL-native field-access table for O(log n) queries
             -- instead of O(n) Python traversal of all nodes.
             -- Replaces the G.nodes(data=True) loop in cmd_field_access.
             CREATE TABLE IF NOT EXISTS field_access (
@@ -237,7 +237,7 @@ class SQLiteStore:
                 FOREIGN KEY (function_id) REFERENCES functions(id)
             );
 
-            -- Deficiency 1 fix: SQL-native global-access table.
+            -- SQL-native global-access table (mirrors field_access for globals).
             CREATE TABLE IF NOT EXISTS global_access (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 function_id TEXT NOT NULL,
@@ -313,7 +313,7 @@ class SQLiteStore:
             CREATE INDEX IF NOT EXISTS idx_edges_invoker_relation ON edges(invoker_id, relation);
             CREATE INDEX IF NOT EXISTS idx_edges_invoked_relation ON edges(invoked_id, relation);
             CREATE INDEX IF NOT EXISTS idx_entry_scores_score ON entry_scores(score DESC);
-            -- Deficiency 1 fix: indexes for field/global access SQL queries.
+            -- Indexes backing field/global access SQL queries.
             CREATE INDEX IF NOT EXISTS idx_field_access_field ON field_access(field_name);
             CREATE INDEX IF NOT EXISTS idx_field_access_struct_field ON field_access(struct_chain, field_name);
             CREATE INDEX IF NOT EXISTS idx_field_access_func ON field_access(function_id);
@@ -501,7 +501,7 @@ class SQLiteStore:
         )
         self._conn.commit()
 
-    # ---- Deficiency 1 fix: SQL-native field/global access storage ----
+    # ---- SQL-native field/global access storage ----
 
     def store_field_access_batch(self, functions: List[Dict], autocommit: bool = True):
         """Store field-access records for multiple functions at once.
@@ -753,7 +753,7 @@ class SQLiteStore:
         ).fetchall()
         return [r[0] for r in rows]
 
-    # ---- Deficiency 1 fix: SQL-native query methods ----
+    # ---- SQL-native query methods ----
 
     def query_field_access(self, field_name: str, struct_name: str = "",
                            access_type: str = "", assigned_value: str = "",

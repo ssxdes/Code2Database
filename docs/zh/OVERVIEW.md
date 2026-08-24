@@ -21,7 +21,7 @@ Code2Database 旨在回答传统调用图工具无法回答的问题：**"工程
 
 多数工具止步于第一个问题。Code2Database 回答了全部问题，把答案持久化在图谱里，让 LLM 代理可以用一次工具调用查询，而不是跨 N 个文件 grep/glob/Read。这就是从*阅读*代码到*查询*代码的转变。
 
-下面的架构服务于这个目标：三阶段流水线把不可变 AST 事实与可迭代推理分离；分层上下文包系统最小化 token 开销；双 tree-sitter + clang 提取后端；13 层 cgdb（代码图数据库）层提供强类型语义表；带 WAL + 快照的事务性更新；以及保持图谱新鲜度的实时守护进程。
+下面的架构服务于这个目标：三阶段流水线把不可变 AST 事实与可迭代推理分离；分层上下文包系统最小化 token 开销；双 tree-sitter + clang 提取后端；强类型 cgdb（代码图数据库）层提供语义表；带 WAL + 快照的事务性更新；以及保持图谱新鲜度的实时守护进程。
 
 ## 设计思路
 
@@ -456,7 +456,7 @@ scripts/
 │   │                                schema 迁移 v1→v6、field_access + global_access 表
 │   ├── sqlite_postprocess.py     ← 构建索引、CODE2DATABASE_SUMMARY.md、领域 README、
 │   │                                场景、上下文包、架构流程（从 SQLite）
-│   ├── cgdb_schema.py            ← cgdb 13 层 schema DDL，CGDB_SCHEMA_VERSION=3，幂等
+│   ├── cgdb_schema.py            ← cgdb 强类型语义 schema DDL，CGDB_SCHEMA_VERSION=4，幂等
 │   ├── cgdb_migrations.py        ← Schema 演进（原地 ALTER TABLE，保留数据）
 │   ├── cgdb_records.py           ← Dataclass 记录：NodeRecord、EdgeRecord、TypeRecord、
 │   │                                ConfigPredicateRecord、BasicBlockRecord、DataFlowRecord 等
@@ -527,7 +527,7 @@ scripts/
 │   ├── semantic_edges.py         ← who-allocates、who-frees、unbalanced-alloc-free、who-locks、
 │   │                                add-semantic-edges
 │   ├── logging_utils.py          ← 结构化日志（configure_logging、get_logger）
-│   ├── mcp_server.py             ← MCP 服务器（stdio 传输，48 个工具：30 code2database_* + 18 cgdb_*）
+│   ├── mcp_server.py             ← MCP 服务器（stdio 传输，49 个工具：30 code2database_* + 19 cgdb_*）
 │   ├── validate.py               ← 图校验
 │   └── utils.py                  ← 共享构建器工具（_normalize_id、_resolve_invoked_id、
 │                                    _find_node_id、_parse_bindings、_load_globals 等）
@@ -567,7 +567,7 @@ scripts/
 - **`BaseScanner`**——每种语言的扫描器都继承自这个 ABC，共享 `_walk(node)` 递归模式（带 `cond_stack` 用于条件调用注解）、`_emit_cgdb_records`（cgdb 层填充）、`_annotate_config_predicates`（跨语言 `#ifdef`/`//go:build`/`#[cfg]`/`sys.platform`/`@Profile` 归一化）。
 - **`transaction(graph_dir)`**——每个改 DB 的操作都应包裹在这个上下文管理器里（快照 + WAL + 文件锁）。`patch-from-diff`/`patch-from-git` 默认已包裹。
 - **`StreamingGraph`**——NetworkX 兼容 API，把节点/边流式写入 SQLite 而非内存。在 `--storage sqlite --low-memory` 模式下是 `nx.DiGraph` 的即插即用替代（1.4M 节点 ~1.9GB RAM）。
-- **`SQLiteStore` + `CGDBStore`**——共存于同一个 `code2database.db`。遗留 `functions`/`edges` 表向后兼容；cgdb 13 层表用于强类型语义查询。Schema 迁移幂等。
+- **`SQLiteStore` + `CGDBStore`**——共存于同一个 `code2database.db`。遗留 `functions`/`edges` 表向后兼容；cgdb 强类型语义表用于查询。Schema 迁移幂等。
 
 ## 技术栈
 
@@ -606,7 +606,7 @@ ASM（.s .S .asm）用正则扫描——无需 tree-sitter 语法。
 
 | 组件 | 用途 |
 |------|------|
-| **SQLite**（标准库 `sqlite3`） | 主存储后端（`code2database.db`）：遗留表 + cgdb 13 层表 |
+| **SQLite**（标准库 `sqlite3`） | 主存储后端（`code2database.db`）：遗留表 + cgdb 强类型语义表 |
 | **WAL 日志模式** | `PRAGMA journal_mode=WAL`，支持并发读者 + 单写者 |
 | **zlib 压缩** | 函数体的 `body_text_compressed BLOB` |
 | **FTS5** | `nodes_fts` 虚拟表，用于符号全文搜索（cgdb 层） |
@@ -821,7 +821,7 @@ Code2Database 当前能力，按类别组织：
 
 ### 查询与分析
 - 146 个 CLI 子命令（3 个子 skill：核心 15、分析 13、运维 14 个 Tier-1）
-- 48 个 MCP 工具（30 code2database_* + 18 cgdb_*）
+- 49 个 MCP 工具（30 code2database_* + 19 cgdb_*）
 - Cypher 子集查询语言（MATCH/WHERE/RETURN）
 - Z3 SMT 路径可行性（启发式回退）
 - 分层上下文包（micro/lite/standard/full）

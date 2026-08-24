@@ -118,10 +118,10 @@ def _detect_locks_held(ndata, profile=None, G=None, nid=None):
     locks_acquired = set()
     locks_released = set()
 
-    # P0 fix: Use _get_body_text when G is provided — on StreamingGraph /
+    # Use _get_body_text when G is provided — on StreamingGraph /
     # LazySQLiteGraph, body_text is empty in cached attrs (compressed in
     # body_text_compressed to avoid per-fetch zlib cost). Without this,
-    # lock detection silently returned empty for all --low-memory builds.
+    # lock detection silently returns empty for all --low-memory builds.
     if G is not None and nid is not None:
         body = _get_body_text(G, nid)
     else:

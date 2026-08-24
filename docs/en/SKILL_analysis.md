@@ -1,6 +1,6 @@
 ---
 name: Code2Database-analysis
-description: "Deep semantic analysis sub-skill for Code2Database. Activated when the user asks about concurrency safety, data races, value flow, parameter flow, data dependencies, path feasibility under constraints, invariants (preconditions/postconditions/loop_invariants/state_machine), FFI boundaries (Python ctypes / Go cgo / Rust extern C), commit-level provenance, lock-held regions, resource allocation/free, blast radius of a change, or wants to query the cgdb (code graph database) layer directly via the 18 cgdb_* MCP tools. Provides hierarchical routing: 13 Tier-1 high-weight commands shown in Quick Reference, a routing table mapping question types to medium-weight command groups, and an on-demand section listing low-weight experimental commands by name only. Use when /Code2Database detects a deep-analysis question and explicitly hands off, or when the user types /Code2Database-analysis. Not for: graph building, scanning, or simple browsing (use parent /Code2Database); not for transactions, daemon, profile editing, or exports (use /Code2Database-ops)."
+description: "Deep semantic analysis sub-skill for Code2Database. Activated when the user asks about concurrency safety, data races, value flow, parameter flow, data dependencies, path feasibility under constraints, invariants (preconditions/postconditions/loop_invariants/state_machine), FFI boundaries (Python ctypes / Go cgo / Rust extern C), commit-level provenance, lock-held regions, resource allocation/free, blast radius of a change, or wants to query the cgdb (code graph database) layer directly via the 19 cgdb_* MCP tools. Provides hierarchical routing: 13 Tier-1 high-weight commands shown in Quick Reference, a routing table mapping question types to medium-weight command groups, and an on-demand section listing low-weight experimental commands by name only. Use when /Code2Database detects a deep-analysis question and explicitly hands off, or when the user types /Code2Database-analysis. Not for: graph building, scanning, or simple browsing (use parent /Code2Database); not for transactions, daemon, profile editing, or exports (use /Code2Database-ops)."
 trigger: /Code2Database-analysis
 parent_skill: Code2Database
 ---
@@ -131,7 +131,7 @@ When you detect a question about **simple browsing, scanning, building, or gener
 
 | Document | Content |
 |----------|---------|
-| `references/analysis_commands.md` | Full syntax for all 48 analysis commands + 18 cgdb_* MCP tools |
+| `references/analysis_commands.md` | Full syntax for all 49 analysis commands + 19 cgdb_* MCP tools |
 | `references/data_model.md` | Node/edge attributes, context pack tiers, cgdb table schemas |
 | `references/semantic_enhancement.md` | Semantic extraction and enhancement details |
 | `references/endpoint_pipeline.md` | Endpoint classification pipeline |

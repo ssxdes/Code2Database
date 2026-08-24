@@ -1108,8 +1108,8 @@ def scan_directory(source_root: str, lang: str = "auto",
                 print(f"[MemoryGuard] MemoryError scanning {fpath} - skipping", file=sys.stderr)
                 continue
             except Exception as _scan_exc:
-                # O_fix: sequential path must catch all exceptions like the
-                # parallel path does (line 580). Without this, a single
+                # Sequential path catches all exceptions to mirror the parallel
+                # path's behavior (see _scan_file_worker). Without this, a single
                 # buggy file crashes the entire large-project scan.
                 print(f"[scan] Error scanning {fpath}: {_scan_exc} - skipping",
                       file=sys.stderr)

@@ -419,9 +419,8 @@ def scan_c_file(filepath: str, source_root: str = "", api_prefixes: list = None,
     for fdef in func_defs:
         sig = fdef.get("signature", "")
         # Extract all parameter names with their indices from the signature
-        # BUG fix: use balanced-paren parsing instead of sig.split('(')[-1]
-        # which incorrectly extracts inner function-pointer params when the
-        # signature contains types like void (*cb_fn)(void *ctx, int status)
+        # Balanced-paren parsing instead of sig.split('(')[-1]: the latter
+        # breaks on function-pointer params like void (*cb_fn)(void *ctx, int status)
         sig_params = _split_outer_params(sig)
         fp_params = _FP_PARAM_RE.findall(sig)
         if fp_params:

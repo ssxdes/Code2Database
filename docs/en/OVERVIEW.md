@@ -21,7 +21,7 @@ Code2Database was built to answer a question that traditional call-graph tools c
 
 Most tools stop at the first question. Code2Database answers all of them, persisting the answers in a graph that an LLM agent can query with a single tool call instead of grep/glob/Read across N files. That's the shift from *reading* code to *querying* code.
 
-The architecture below is in service of that goal: a three-stage pipeline that separates immutable AST facts from iterable inferences, a tiered context-pack system that minimizes token cost, a dual tree-sitter + clang extraction backend, a 13-layer cgdb (code graph database) layer for typed semantic tables, transactional updates with WAL + snapshots, and a real-time daemon for keeping the graph fresh.
+The architecture below is in service of that goal: a three-stage pipeline that separates immutable AST facts from iterable inferences, a tiered context-pack system that minimizes token cost, a dual tree-sitter + clang extraction backend, a typed cgdb (code graph database) layer for semantic tables, transactional updates with WAL + snapshots, and a real-time daemon for keeping the graph fresh.
 
 ## Design Rationale
 
@@ -53,7 +53,7 @@ This design lets Code2Database scale from a quick install (`pip install tree-sit
 The skill ships as 3 sub-skills (`/Code2Database` core, `/Code2Database-analysis` deep analysis, `/Code2Database-ops` operations) so the LLM agent loads only the commands relevant to its current question:
 
 - **Core (15 Tier-1 commands)** — always loaded. Build, browse, basic query (scan, build, explore-flow, describe-node, trace-chain, neighbors, path, search, key-paths, etc.)
-- **Analysis (13 Tier-1 + 18 cgdb_* MCP tools)** — loaded on demand. Concurrency, data flow, invariants, FFI, path feasibility, provenance, cgdb tables.
+- **Analysis (13 Tier-1 + 19 cgdb_* MCP tools)** — loaded on demand. Concurrency, data flow, invariants, FFI, path feasibility, provenance, cgdb tables.
 - **Ops (14 Tier-1 commands)** — loaded on demand. Transactions, daemon, profile health, doc-code alignment, exports, plugins, memory, embeddings.
 
 All 122 CLI commands are accessible via the shared `scripts/code2database_builder.py` regardless of which sub-skill is active. The split is purely about LLM context economy: a 4K-token core skill is always useful; a 20K-token analysis skill should only be loaded when the user asks about races or invariants.
@@ -458,7 +458,7 @@ scripts/
 │   │                                schema migration v1→v6, field_access + global_access tables
 │   ├── sqlite_postprocess.py     ← Build indexes, CODE2DATABASE_SUMMARY.md, domain READMEs,
 │   │                                scenarios, context packs, architecture flows from SQLite
-│   ├── cgdb_schema.py            ← cgdb 13-layer schema DDL, CGDB_SCHEMA_VERSION=3, idempotent
+│   ├── cgdb_schema.py            ← cgdb typed semantic schema DDL, CGDB_SCHEMA_VERSION=4, idempotent
 │   ├── cgdb_migrations.py        ← Schema evolution (ALTER TABLE in-place, preserves data)
 │   ├── cgdb_records.py           ← Dataclass records: NodeRecord, EdgeRecord, TypeRecord,
 │   │                                ConfigPredicateRecord, BasicBlockRecord, DataFlowRecord, etc.
@@ -529,7 +529,7 @@ scripts/
 │   ├── semantic_edges.py         ← who-allocates, who-frees, unbalanced-alloc-free, who-locks,
 │   │                                add-semantic-edges
 │   ├── logging_utils.py          ← Structured logging (configure_logging, get_logger)
-│   ├── mcp_server.py             ← MCP server (stdio transport, 48 tools: 30 code2database_* + 18 cgdb_*)
+│   ├── mcp_server.py             ← MCP server (stdio transport, 49 tools: 30 code2database_* + 19 cgdb_*)
 │   ├── validate.py               ← Graph validation
 │   └── utils.py                  ← Shared builder utilities (_normalize_id, _resolve_invoked_id,
 │                                    _find_node_id, _parse_bindings, _load_globals, etc.)
@@ -569,7 +569,7 @@ The packages are loosely coupled:
 - **`BaseScanner`** — every language scanner inherits from this ABC, sharing the `_walk(node)` recursive pattern with `cond_stack` for conditional call annotation, `_emit_cgdb_records` for cgdb layer population, `_annotate_config_predicates` for cross-language `#ifdef`/`//go:build`/`#[cfg]`/`sys.platform`/`@Profile` normalization.
 - **`transaction(graph_dir)`** — every DB-modifying operation should be wrapped in this context manager (snapshot + WAL + file lock). `patch-from-diff`/`patch-from-git` already do this by default.
 - **`StreamingGraph`** — NetworkX-compatible API that streams nodes/edges to SQLite instead of holding them in RAM. Drop-in replacement for `nx.DiGraph` in `--storage sqlite --low-memory` mode (1.4M nodes in ~1.9GB RAM).
-- **`SQLiteStore` + `CGDBStore`** — coexist in the same `code2database.db`. Legacy `functions`/`edges` tables for backward compat; cgdb 13-layer tables for typed semantic queries. Schema migrations are idempotent.
+- **`SQLiteStore` + `CGDBStore`** — coexist in the same `code2database.db`. Legacy `functions`/`edges` tables for backward compat; cgdb typed semantic tables for queries. Schema migrations are idempotent.
 
 ## Technology Stack
 
@@ -608,7 +608,7 @@ ASM (.s .S .asm) uses regex-based scanning — no tree-sitter grammar needed.
 
 | Component | Purpose |
 |-----------|---------|
-| **SQLite** (stdlib `sqlite3`) | Primary storage backend (`code2database.db`): legacy tables + cgdb 13-layer tables |
+| **SQLite** (stdlib `sqlite3`) | Primary storage backend (`code2database.db`): legacy tables + cgdb typed semantic tables |
 | **WAL journal mode** | `PRAGMA journal_mode=WAL` for concurrent readers + single writer |
 | **zlib compression** | `body_text_compressed BLOB` for function bodies |
 | **FTS5** | `nodes_fts` virtual table for full-text symbol search (cgdb layer) |
@@ -626,7 +626,7 @@ ASM (.s .S .asm) uses regex-based scanning — no tree-sitter grammar needed.
 
 | Component | Purpose |
 |-----------|---------|
-| **MCP (Model Context Protocol) stdio transport** | `serve` command exposes 48 tools (30 `code2database_*` + 18 `cgdb_*`) over JSON-RPC with Content-Length framing |
+| **MCP (Model Context Protocol) stdio transport** | `serve` command exposes 49 tools (30 `code2database_*` + 19 `cgdb_*`) over JSON-RPC with Content-Length framing |
 | **Tiered context packs** | micro (~200 tokens) → lite (~500) → standard (~1500) → full — minimizes LLM token cost |
 | **Lazy module imports** | `_builder/__init__.py` delays module load until first access, reducing startup time |
 
@@ -778,7 +778,7 @@ Circuit breaker: if events/minute > 1000 (configurable via `daemon.circuit_break
 
 ### MCP Server
 
-`serve` exposes 48 tools over stdio JSON-RPC with Content-Length framing:
+`serve` exposes 49 tools over stdio JSON-RPC with Content-Length framing:
 
 - 30 `code2database_*` tools (load, search, describe, explore, trace, impact, key_paths, concurrency, data_lifecycle, domain, knowledge_query, memory_search, semantic_status, etc.)
 - 18 `cgdb_*` tools (cgdb_search_symbols, cgdb_find_invokers, cgdb_find_invoked, cgdb_get_definition, cgdb_get_function_body, cgdb_get_struct_layout, cgdb_find_type_definition, cgdb_find_ops_impls, cgdb_find_cfg_paths, cgdb_find_data_flow, cgdb_find_aliases, cgdb_find_lock_held_calls, cgdb_check_race_condition, cgdb_find_configs_for, cgdb_find_nodes_under_config, cgdb_index_status, cgdb_time_travel_query, cgdb_list_versions)
@@ -823,7 +823,7 @@ Code2Database's current capabilities, organized by category:
 
 ### Query & Analysis
 - 146 CLI subcommands (3 sub-skills: core 15, analysis 13, ops 14 Tier-1)
-- 48 MCP tools (30 code2database_* + 18 cgdb_*)
+- 49 MCP tools (30 code2database_* + 19 cgdb_*)
 - Cypher-subset query language (MATCH/WHERE/RETURN)
 - Z3 SMT path feasibility (heuristic fallback)
 - Tiered context packs (micro/lite/standard/full)

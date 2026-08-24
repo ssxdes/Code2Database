@@ -989,7 +989,7 @@ def _eval_pp_expr(expr: str, bindings: dict) -> bool:
         if val is None:
             return True  # Conservative
         try:
-            lhs = int(val, 0)  # BUG 247 fix: handle 0x hex prefix
+            lhs = int(val, 0)  # base=0 parses 0x/0b/decimal uniformly from #if expressions
         except (ValueError, TypeError):
             return True
         if op == '>': return lhs > rhs
@@ -1004,7 +1004,7 @@ def _eval_pp_expr(expr: str, bindings: dict) -> bool:
         is_negated = expr.startswith('!')
         if macro in bindings:
             val = bindings[macro]
-            # BUG 246 fix: check for zero in any base (0x0, 0b0, 0, etc.)
+            # Zero is falsy in any base (0x0, 0b0, 0); non-numeric strings fall back to truthiness.
             if val == "":
                 alive = False
             else:

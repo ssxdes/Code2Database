@@ -118,6 +118,10 @@ def main():
         print(f"Error: expected {en_dir} and {zh_dir} to exist", file=sys.stderr)
         sys.exit(2)
 
+    # Root README.md is the canonical English counterpart for docs/zh/README.md
+    # when docs/en/README.md is absent (common project layout).
+    root_readme = docs_dir.parent / "README.md"
+
     all_diffs = []
     en_files = sorted(p for p in en_dir.glob("*.md"))
     for en_path in en_files:
@@ -126,10 +130,17 @@ def main():
         if diffs:
             all_diffs.append((en_path.name, diffs))
 
-    # Also check files only in zh/ (like README.md)
+    # Also check files only in zh/ (like README.md). If the EN counterpart is the
+    # repo-root README.md, compare against that instead of flagging as missing.
     zh_only_files = sorted(p for p in zh_dir.glob("*.md") if not (en_dir / p.name).exists())
     for zh_path in zh_only_files:
-        all_diffs.append((zh_path.name, [f"  EN missing: {en_dir / zh_path.name}"]))
+        en_alt = root_readme if zh_path.name == "README.md" and root_readme.exists() else None
+        if en_alt is not None:
+            diffs = compare_docs(en_alt, zh_path)
+            if diffs:
+                all_diffs.append((zh_path.name, diffs))
+        else:
+            all_diffs.append((zh_path.name, [f"  EN missing: {en_dir / zh_path.name}"]))
 
     if not all_diffs:
         print(f"OK: docs/en/ and docs/zh/ are in sync ({len(en_files)} files checked)")

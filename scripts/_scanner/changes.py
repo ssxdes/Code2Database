@@ -36,7 +36,7 @@ def save_manifest(source_root: str, outdir: str) -> int:
 
     Returns the number of files fingerprinted.
 
-    Deficiency 2 fix: also records source_commit (git/svn HEAD info) so
+    Also records source_commit (git/svn HEAD info) so
     engineers can ask "which commit does this graph correspond to?" rather
     than the meaningless "when was the database updated?".
     """

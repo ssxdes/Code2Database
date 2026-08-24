@@ -987,7 +987,7 @@ def _domain_subdir(domain: str, domain_count: dict, max_per_dir: int = 50) -> st
 def _load_full_graph(graph_dir: str) -> nx.DiGraph:
     """Load the full invocation graph from domain-split JSON files.
 
-    P0_fix: When code2database_master.json is absent (SQLite/deferred build mode,
+    When code2database_master.json is absent (SQLite/deferred build mode,
     required for projects >100K functions), fall back to loading from
     code2database.db. Without this, ALL query commands (search, describe-node,
     explore-flow, neighbors, path, impact, serve/MCP, etc.) fail for large
@@ -1031,7 +1031,7 @@ def _load_full_graph(graph_dir: str) -> nx.DiGraph:
                   f"falling back to eager load", file=sys.stderr)
 
     if not os.path.exists(master_path):
-        # P0_fix: SQLite fallback for large-project query support.
+        # SQLite fallback for large-project query support.
         # Use LazySQLiteGraph (on-demand loading) instead of eager full-load
         # — eager load of 1.5M nodes times out interactive queries.
         if os.path.exists(db_path):
@@ -1291,7 +1291,7 @@ def _load_full_graph(graph_dir: str) -> nx.DiGraph:
 
 
 def _load_full_graph_from_sqlite(db_path: str) -> nx.DiGraph:
-    """P0_fix: Load the full invocation graph from SQLite (code2database.db).
+    """Load the full invocation graph from SQLite (code2database.db).
 
     Used when code2database_master.json is absent — i.e., builds that used
     --storage sqlite --low-memory (required for projects >100K functions
@@ -1450,7 +1450,7 @@ def _load_full_graph_from_sqlite(db_path: str) -> nx.DiGraph:
 
 
 def _load_node_from_sqlite(db_path: str, node_id: str) -> dict:
-    """P0_fix: Load a single node from SQLite (memory-efficient for targeted queries).
+    """Load a single node from SQLite (memory-efficient for targeted queries).
 
     Returns a dict of node attributes, or empty dict if not found.
     Used by query commands that only need one node (describe-node, neighbors)
@@ -1525,7 +1525,7 @@ def _load_node_from_sqlite(db_path: str, node_id: str) -> dict:
 
 
 def _load_neighbors_from_sqlite(db_path: str, node_id: str):
-    """P0_fix: Load a node's predecessors and successors from SQLite.
+    """Load a node's predecessors and successors from SQLite.
 
     Returns (predecessors, successors) where each is a list of
     (neighbor_id, edge_attrs) tuples. Used by neighbors/describe-node
@@ -2190,7 +2190,7 @@ def build_graph(extraction: dict, profile: dict = None,
         param_count = sum(1 for nid in nodes_to_remove
                           if G is not None)  # all removed nodes count
         print(f"Removed {len(nodes_to_remove)} noise nodes (param-name-only + C++ artifacts)")
-        # Debug: list C++ artifact removals
+        # Diag: list removed C++ artifacts for verification
         for nid in nodes_to_remove:
             nd = id_registry.get(nid, {})
             name = nd.get("name", nid) if isinstance(nd, dict) else nid
@@ -2902,8 +2902,8 @@ def build_graph(extraction: dict, profile: dict = None,
                             target_domain = id_registry.get(dispatch_id, {}).get("domain", "")
                             if _is_test_domain(target_domain, profile) and not _is_test_domain(source_domain, profile):
                                 continue
-                        # Skip dispatch self-loops (resolution bug: function
-                        # dispatches through a field named after itself)
+                        # Skip dispatch self-loops: a function dispatching
+                        # through a field named after itself is a false edge.
                         if source_id == dispatch_id:
                             continue
                         # Classify as vtable_dispatch if field is a known vtable field
@@ -5025,7 +5025,7 @@ def build_graph(extraction: dict, profile: dict = None,
             # Skip self-loops
             if nid == du_nid:
                 continue
-            # Debug: check that both nodes exist in G
+            # Defensive: stale id_registry entries may reference removed nodes
             if nid not in G or du_nid not in G:
                 continue
             G.add_edge(nid, du_nid,
@@ -5972,7 +5972,7 @@ def _load_split_extraction(extraction_dir: str, strip_body_text: bool = False) -
         with open(meta_path, "r", encoding="utf-8") as f:
             data.update(json.load(f))
 
-    # P0 fix: Load globals and field_assignments BEFORE functions.
+    # Load globals and field_assignments BEFORE functions.
     # Reason: when strip_body_text=True, we strip body_text after deriving
     # state_access (globals_read/written, fields_read/written) per-function
     # in the loop below. That derivation needs globals_data and
@@ -6988,7 +6988,7 @@ def cmd_build(args):
                     # the mapping have no functions and would become isolated nodes.
                     continue
             tgt_id = None
-            # BUG 243 fix: prefer exact path match, then directory-aware match,
+            # Prefer exact path match, then directory-aware match,
             # then basename-only match as last resort (avoid false positives)
             # Only use endswith for partial paths (containing '/'), not bare basenames
             if '/' in tgt:
@@ -7285,7 +7285,7 @@ def cmd_build(args):
                 store.store_functions(_func_batch)
             del _func_batch
 
-            # Deficiency 1 fix: populate field_access and global_access tables
+            # Populate field_access and global_access tables
             # so query commands can use SQL-native indexed lookups instead of
             # O(n) Python traversal of all nodes.
             print(f"[SQLite] Populating field_access/global_access tables...", file=sys.stderr)

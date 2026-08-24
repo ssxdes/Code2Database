@@ -28,8 +28,8 @@ def _resolve_imports(G, source_root: str) -> int:
     # Collect #include directives from source text
     _INCLUDE_RE = re.compile(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]', re.MULTILINE)
 
-    # BUG 222 fix: read source files directly for file-level includes (not body_text)
-    # The original code incorrectly scanned function body_text for #include directives
+    # Read source files directly for file-level includes — #include directives
+    # live at file scope, not inside function body_text.
     source_files_with_includes = set()
     _INCLUDE_FILE_RE = re.compile(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]', re.MULTILINE)
     _MAX_SOURCE_SIZE = 500_000  # Skip source files > 500KB
@@ -284,8 +284,8 @@ def _build_resolve_lookups(G: nx.DiGraph) -> tuple:
 def _get_file_includes(source_file: str, source_root: str) -> set:
     """Extract #include/import/use directives from a source file (cached).
 
-    Reads the actual source file, not function body_text.
-    BUG 222 fix: previously used body_text (function body) instead of file content.
+    Reads the actual source file, not function body_text — #include is a
+    file-scope directive, so scanning body_text would miss it.
     """
     if not source_file or not source_root:
         return set()
@@ -346,7 +346,7 @@ def _multi_strategy_resolve(G: nx.DiGraph, callee_name: str, invoker_id: str,
                   from _build_resolve_lookups(). Pass this when calling
                   _multi_strategy_resolve in a loop to avoid O(N) rebuild per call.
         source_root: Source root directory. Used by import_map strategy to
-                  read source files directly for #include extraction (BUG 222 fix).
+                  read source files directly for #include extraction.
         suffix_index: Optional pre-built suffix index from _build_suffix_index().
                   When provided, Strategy 4 uses O(1) lookup instead of O(N) scan.
 
@@ -376,7 +376,7 @@ def _multi_strategy_resolve(G: nx.DiGraph, callee_name: str, invoker_id: str,
                 return (nid, "same_file", 0.95)
 
     # Strategy 2: import_map (check if callee's source is imported by caller)
-    # BUG 222 fix: read source file directly for file-level includes, not body_text
+    # Read source file directly for file-level includes; #include is file-scope, not body-scope.
     caller_includes = _get_file_includes(caller_file, source_root) if source_root else set()
 
     if caller_includes:

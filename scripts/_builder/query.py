@@ -543,7 +543,7 @@ def cmd_describe_node(args):
     related_chains = []
     if os.path.exists(chains_path):
         chains_data = json.loads(Path(chains_path).read_text(encoding="utf-8"))
-        # P0_fix: Handle both formats:
+        # Handle both on-disk formats:
         #   JSON build  → dict with "chains" key
         #   SQLite build → flat list of chain dicts
         if isinstance(chains_data, dict):
@@ -623,7 +623,7 @@ def cmd_describe_node(args):
         # Find which spawn created this thread
         conc_path = os.path.join(graph_dir, ".code2database_concurrency_index.json")
         if os.path.exists(conc_path):
-            # P0_fix: detect file format to avoid loading 500+MB unnecessarily.
+            # Detect file format to avoid loading 500+MB unnecessarily.
             # SQLite build → node_id-keyed dict (no thread_entries key).
             # JSON build  → has thread_entries/concurrent_groups keys.
             has_keys = _streaming_json_has_keys(conc_path, ["thread_entries"])
@@ -1156,7 +1156,7 @@ def cmd_resolve_chain(args):
     concurrent_groups = []
     conc_path = os.path.join(graph_dir, ".code2database_concurrency_index.json")
     if os.path.exists(conc_path):
-        # P0_fix: detect file format — SQLite build lacks concurrent_groups key.
+        # Detect file format — SQLite build lacks concurrent_groups key.
         has_keys = _streaming_json_has_keys(conc_path, ["concurrent_groups"])
         if has_keys.get("concurrent_groups"):
             size_mb = os.path.getsize(conc_path) / (1024 * 1024)
@@ -2147,7 +2147,7 @@ def cmd_field_access(args):
     struct fields and globals matching that name are returned. Results are
     grouped with writers first, then readers.
 
-    Deficiency 1 fix: when code2database.db exists, uses SQL-native indexed
+    When code2database.db exists, uses SQL-native indexed
     lookup via query_router.route_field_access (O(log n)) instead of O(n)
     Python traversal of all nodes. Falls back to NetworkX traversal if
     SQLite unavailable or SQL query fails.

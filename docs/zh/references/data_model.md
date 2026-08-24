@@ -285,7 +285,7 @@ CREATE INDEX idx_field_struct ON field_access(struct_name);
 
 ## cgdb（代码图数据库）层 —— 54 张强类型语义表（Schema v4）
 
-启用 clang 提取后端（`--extraction-backend clang` 或装了 libclang 的 `auto`）时，Code2Database 会在同一个 `code2database.db` 中填充额外的 13 层强类型语义 schema。这些表由 18 个 `cgdb_*` MCP 工具查询，支撑强类型 vtable 分发、CFG 路径查找、def-use 链、Z3 可判定的 config 谓词等功能。Schema 版本：`CGDB_SCHEMA_VERSION = 3`。
+启用 clang 提取后端（`--extraction-backend clang` 或装了 libclang 的 `auto`）时，Code2Database 会在同一个 `code2database.db` 中填充额外的强类型语义 schema。这些表由 19 个 `cgdb_*` MCP 工具查询，支撑强类型 vtable 分发、CFG 路径查找、def-use 链、Z3 可判定的 config 谓词等功能。Schema 版本：`CGDB_SCHEMA_VERSION = 4`。
 
 | 层 | 表 | 用途 | 关键列 |
 |----|----|------|--------|

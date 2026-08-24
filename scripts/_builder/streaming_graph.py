@@ -593,7 +593,7 @@ class StreamingGraph:
 class LazySQLiteGraph:
     """NetworkX-DiGraph-compatible view over a code2database.db SQLite file.
 
-    P0_fix: For large projects (>100K functions) that use --storage sqlite,
+    For large projects (>100K functions) that use --storage sqlite,
     loading the full graph into NetworkX consumes 10+ GB and times out.
     This class provides the subset of nx.DiGraph API that query commands
     use, but fetches nodes/edges from SQLite on demand.

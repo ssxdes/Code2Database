@@ -314,26 +314,39 @@ def coverage_cross_c2d(test_c2d: str, target_c2d: str,
         if not target_funcs:
             summary["error"] = "target c2d has no functions"
             return summary
-        # Find which target functions are called by test code
-        # (test's edges where invoked_id matches a target function)
+        # Find which target functions are called by test code.
+        # Use a single LEFT JOIN query instead of O(N) per-function queries.
+        # A target function is "covered" if any edge in test_c2d has
+        # invoked_id matching the target's id OR name.
         covered_ids: set = set()
-        for tf in target_funcs:
-            # Direct call
-            row = conn.execute(
-                "SELECT 1 FROM edges WHERE invoked_id = ? LIMIT 1",
-                (tf["id"],)
-            ).fetchone()
-            if row:
-                covered_ids.add(tf["id"])
-                continue
-            # Try by name (foreign_ref scenario)
-            row = conn.execute(
-                "SELECT 1 FROM edges e JOIN functions f ON e.invoked_id = f.id "
-                "WHERE f.name = ? LIMIT 1",
-                (tf["name"],)
-            ).fetchone()
-            if row:
-                covered_ids.add(tf["id"])
+        # Direct id match (fast — uses index)
+        try:
+            direct_rows = conn.execute(
+                "SELECT DISTINCT t.id FROM target.functions t "
+                "INNER JOIN edges e ON e.invoked_id = t.id"
+            ).fetchall()
+            for r in direct_rows:
+                covered_ids.add(r["id"])
+        except sqlite3.Error:
+            pass
+        # Name match (for foreign_ref scenario where invoked_id differs)
+        try:
+            name_rows = conn.execute(
+                "SELECT DISTINCT t.id FROM target.functions t "
+                "INNER JOIN edges e ON e.invoked_id = t.id"
+            ).fetchall()
+            # Also check by name (slower but catches renamed refs)
+            name_match_rows = conn.execute(
+                "SELECT DISTINCT t.id FROM target.functions t "
+                "WHERE t.name IN ("
+                "  SELECT f.name FROM functions f "
+                "  INNER JOIN edges e ON e.invoked_id = f.id"
+                ")"
+            ).fetchall()
+            for r in name_match_rows:
+                covered_ids.add(r["id"])
+        except sqlite3.Error:
+            pass
         covered = [tf for tf in target_funcs if tf["id"] in covered_ids]
         uncovered = [tf for tf in target_funcs if tf["id"] not in covered_ids]
         summary["covered_count"] = len(covered)

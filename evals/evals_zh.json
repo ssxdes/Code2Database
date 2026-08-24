@@ -359,6 +359,43 @@
         "kb-global-add --title '...' --body '...' --tags kernel,threading",
         "kb-query --graph <project>/ --query 'thread safety' --global"
       ]
+    },
+    {
+      "id": 50,
+      "category": "multi_project",
+      "prompt": "使用 manifest 从 3 个有依赖关系的项目 A->B->C 构建统一 C2D。验证 A:init() 和 B:init() 不冲突——它们应分别有 domain 'A' 和 'B'。",
+      "expected_output": "应创建 projects.json manifest 含 3 个项目，运行 build-multi --manifest projects.json --outdir joint_c2db-out/。联合 C2D 应有 domain A、B、C（无 'root'）。A 的 init() id 为 A_init，B 的 init() id 为 B_init——无冲突。",
+      "commands": [
+        "build-multi --manifest projects.json --outdir joint_c2db-out/"
+      ]
+    },
+    {
+      "id": 51,
+      "category": "multi_project",
+      "prompt": "将 A 的 C2D 注册为 B 的外部依赖，然后验证 B 对 A 函数的未解析调用已被解析。",
+      "expected_output": "应运行 c2d-add-foreign --graph B/c2db-out/ --foreign-c2d A/c2db-out/ --project-name A。输出应显示 resolved_count > 0。然后 c2d-list-foreign 应显示 A 为 'sync_status: ok'。",
+      "commands": [
+        "c2d-add-foreign --graph B/c2db-out/ --foreign-c2d A/c2db-out/ --project-name A",
+        "c2d-list-foreign --graph B/c2db-out/"
+      ]
+    },
+    {
+      "id": 52,
+      "category": "multi_project",
+      "prompt": "使用组合查询在 B 和 C 的 C2D 中查找 A 的 init() 的所有调用者。",
+      "expected_output": "应运行 composite-query --graph B/c2db-out/ --query 'CALLERS_OF init' --foreign-c2d C/c2db-out/。结果应包含来自 B（source_db: local）和 C（source_db: C 的路径）的调用者。",
+      "commands": [
+        "composite-query --graph B/c2db-out/ --query 'CALLERS_OF init' --foreign-c2d C/c2db-out/"
+      ]
+    },
+    {
+      "id": 53,
+      "category": "multi_project",
+      "prompt": "检查 B 对 A 的 foreign_refs 是否与 A 的新版本（A_v2）兼容。",
+      "expected_output": "应运行 c2d-check-compat --graph B/c2db-out/ --against-c2d A_v2/c2db-out/。输出应报告 broken_edges、signature_changed 和兼容性判定：ok/partial/broken。",
+      "commands": [
+        "c2d-check-compat --graph B/c2db-out/ --against-c2d A_v2/c2db-out/"
+      ]
     }
   ]
 }

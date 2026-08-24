@@ -268,12 +268,13 @@ def scan_rpc_edges(graph_dir: str, verbose: bool = True) -> Dict[str, Any]:
     }
     conn = _connect(graph_dir)
     try:
-        # Get all functions' body_text to scan for RPC patterns
-        # body_text is stored in body_text_compressed (zlib) or as plain
-        # We'll scan the extra_json field which may contain resolved body
+        # Get all functions' body_text to scan for RPC patterns.
+        # Early filter: only fetch functions that HAVE body_text_compressed
+        # (skip functions without source body — saves O(N) zlib decompress).
         rows = conn.execute(
             "SELECT id, name, domain, source_file, line_number, "
             "signature FROM functions WHERE name IS NOT NULL "
+            "AND id IN (SELECT id FROM functions WHERE body_text_compressed IS NOT NULL) "
             "LIMIT 50000"
         ).fetchall()
         rpc_endpoints_found: List[Dict[str, str]] = []
@@ -301,9 +302,12 @@ def scan_rpc_edges(graph_dir: str, verbose: bool = True) -> Dict[str, Any]:
                     url_or_host = m.group(m.lastindex if m.groups() else 0)
                     if not url_or_host:
                         continue
-                    # Construct stub callee node id
-                    stub_id = f"rpc_{proto}_{url_or_host}"
-                    stub_id = re.sub(r'[^A-Za-z0-9_]', '_', stub_id)[:200]
+                    # Construct stub callee node id using SHA-256 hash
+                    # (avoids truncation collisions for long URLs)
+                    import hashlib
+                    stub_id = "rpc_" + hashlib.sha256(
+                        f"{proto}_{url_or_host}".encode("utf-8")
+                    ).hexdigest()[:16]
                     rpc_endpoints_found.append({
                         "caller_id": r["id"],
                         "caller_name": r["name"],

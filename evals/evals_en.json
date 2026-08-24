@@ -359,6 +359,43 @@
         "kb-global-add --title '...' --body '...' --tags kernel,threading",
         "kb-query --graph <project>/ --query 'thread safety' --global"
       ]
+    },
+    {
+      "id": 50,
+      "category": "multi_project",
+      "prompt": "Build a unified C2D from 3 interdependent projects A->B->C using a manifest. Verify that A:init() and B:init() don't collide — they should have domains 'A' and 'B' respectively.",
+      "expected_output": "Should create projects.json manifest with 3 projects, run build-multi --manifest projects.json --outdir joint_c2db-out/. The joint C2D should have functions with domains A, B, C (no 'root'). A's init() has id A_init, B's init() has id B_init — no collision.",
+      "commands": [
+        "build-multi --manifest projects.json --outdir joint_c2db-out/"
+      ]
+    },
+    {
+      "id": 51,
+      "category": "multi_project",
+      "prompt": "Register project A's C2D as a foreign dependency of B's C2D, then verify that B's unresolved calls to A's functions are resolved.",
+      "expected_output": "Should run c2d-add-foreign --graph B/c2db-out/ --foreign-c2d A/c2db-out/ --project-name A. Output should show resolved_count > 0 for calls like B_main -> A_init. Then c2d-list-foreign should show A as 'sync_status: ok'.",
+      "commands": [
+        "c2d-add-foreign --graph B/c2db-out/ --foreign-c2d A/c2db-out/ --project-name A",
+        "c2d-list-foreign --graph B/c2db-out/"
+      ]
+    },
+    {
+      "id": 52,
+      "category": "multi_project",
+      "prompt": "Find all callers of A's init() function across both B's and C's C2Ds using a composite query.",
+      "expected_output": "Should run composite-query --graph B/c2db-out/ --query 'CALLERS_OF init' --foreign-c2d C/c2db-out/. Results should include callers from B (source_db: local) and C (source_db: C's path).",
+      "commands": [
+        "composite-query --graph B/c2db-out/ --query 'CALLERS_OF init' --foreign-c2d C/c2db-out/"
+      ]
+    },
+    {
+      "id": 53,
+      "category": "multi_project",
+      "prompt": "Check if B's foreign_refs to A are still compatible with a new version of A (A_v2).",
+      "expected_output": "Should run c2d-check-compat --graph B/c2db-out/ --against-c2d A_v2/c2db-out/. Output should report broken_edges (functions removed in A_v2), signature_changed (functions with different signatures), and a compatibility verdict: ok/partial/broken.",
+      "commands": [
+        "c2d-check-compat --graph B/c2db-out/ --against-c2d A_v2/c2db-out/"
+      ]
     }
   ]
 }

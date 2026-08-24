@@ -226,7 +226,8 @@ def merge_node_attributes(
 
 __all__ = [
     "LARGE_GRAPH_NODES",
-    "MAX_WORKERS_HARD_CAP",
+    "DEFAULT_MAX_WORKERS",
+    "_get_max_workers_cap",
     "resolve_jobs",
     "cap_for_graph",
     "map_nodes",

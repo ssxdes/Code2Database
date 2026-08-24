@@ -854,10 +854,16 @@ def scan_directory(source_root: str, lang: str = "auto",
                 return None
         return _tls.scanners[file_lang]
 
-    # Determine worker count
-    if workers == 0:
-        import multiprocessing
-        workers = min(multiprocessing.cpu_count(), 8)
+    # Determine worker count — use parallel.resolve_jobs so the cap
+    # respects C2D_MAX_WORKERS env var and --max-workers CLI flag.
+    # Was hardcoded to min(cpu, 8) — same bottleneck as parallel.py.
+    try:
+        from _builder.parallel import resolve_jobs
+        workers = resolve_jobs(workers)
+    except ImportError:
+        if workers == 0:
+            import multiprocessing
+            workers = min(multiprocessing.cpu_count(), 8)
     if workers < 2 or len(file_list) < 2:
         workers = 1
 
@@ -2752,6 +2758,12 @@ def main():
                               "so multi-worker scans get real speedup. "
                               "With --large-project, auto-picks 2-4 workers "
                               "and caps explicit values at 4 to bound memory.")
+    p_scan.add_argument("--max-workers", type=int, default=0,
+                         help="Override the hard cap on parallel workers "
+                              "(default: min(cpu_count, 16), or C2D_MAX_WORKERS "
+                              "env var). On high-core machines (64+ cores, 250GB+ "
+                              "RAM), set this to your core count for maximum "
+                              "throughput.")
     p_scan.add_argument("--api-prefixes", default="",
                          help="Comma-separated public API prefixes for entry detection (e.g., 'mylib_,api_')")
     p_scan.add_argument("--profile", default="",

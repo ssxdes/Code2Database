@@ -114,15 +114,22 @@ def _db_path(graph_dir: str) -> str:
 
 
 def _connect(graph_dir: str) -> Optional[sqlite3.Connection]:
-    """Connect to B's code2database.db, ensuring foreign tables exist."""
-    db_path = _db_path(graph_dir)
-    if not os.path.exists(db_path):
-        # Create empty db so foreign_* commands work without prior build
-        Path(db_path).touch()
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
+    """Connect to B's code2database.db, ensuring ALL tables exist.
+
+    Delegates to kb_index._kb_connect (which creates kb_paragraphs,
+    kb_items, kb_query_log, audit_log, foreign_refs, watched_c2ds)
+    so any fresh db has the complete schema regardless of which
+    entry point created it. Also ensures c2d-specific tables via
+    _ensure_foreign_tables (idempotent — no-op if already created
+    by _kb_connect).
+    """
+    from _builder.kb_index import _kb_connect
+    conn = _kb_connect(graph_dir, create_if_missing=True)
+    if conn is None:
+        return None
+    # _kb_connect already creates foreign_refs + watched_c2ds (added in
+    # round 4), but call _ensure_foreign_tables as a belt-and-suspenders
+    # in case _kb_connect's executescript failed silently.
     _ensure_foreign_tables(conn)
     return conn
 

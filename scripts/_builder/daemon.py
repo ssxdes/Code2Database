@@ -1050,6 +1050,9 @@ class Daemon:
             # Invalidate memory entries whose node_ids no longer exist
             # (graph changed → some Q&A may reference removed nodes).
             self._invalidate_stale_memory_after_sync()
+            # Phase 1 cross-C2D: re-resolve foreign refs (B's unresolved
+            # calls may now match A's existing functions after B's update).
+            self._sync_foreign_refs_after_local_update()
         except Exception as exc:
             self.state.last_error = str(exc)
             self.state.status = STATUS_RUNNING
@@ -1077,6 +1080,8 @@ class Daemon:
             # Invalidate memory entries after bulk rebuild (graph may have
             # changed significantly → many memory refs may now be stale).
             self._invalidate_stale_memory_after_sync()
+            # Phase 1 cross-C2D: also re-resolve foreign refs after bulk.
+            self._sync_foreign_refs_after_local_update()
         except Exception as exc:
             self.state.last_error = str(exc)
             self.state.status = STATUS_RUNNING
@@ -1209,6 +1214,29 @@ class Daemon:
             self._log(f"memory invalidate after sync skipped: {exc}")
             # Non-fatal: memory stays as-is; user can run `validate-memory`
             # manually to catch stale entries.
+
+    def _sync_foreign_refs_after_local_update(self):
+        """After B's graph updates, re-resolve foreign refs in case B's
+        unresolved calls now match A's existing functions.
+
+        Phase 1 cross-C2D sync integration. Iterates over watched_c2ds
+        and calls sync_foreign for each. Best-effort: errors are logged
+        but don't fail the daemon sync.
+        """
+        try:
+            from _builder.c2d_foreign import sync_foreign
+            summary = sync_foreign(self.graph_dir, verbose=False)
+            if summary.get("synced_c2ds"):
+                synced = [s for s in summary["synced_c2ds"]
+                           if s.get("status") == "synced"]
+                if synced:
+                    self._log(
+                        f"foreign refs synced: {len(synced)} c2d(s); "
+                        f"newly_resolved={summary.get('newly_resolved', 0)}, "
+                        f"deleted={summary.get('deleted_marked', 0)}"
+                    )
+        except Exception as exc:
+            self._log(f"foreign refs sync after local update skipped: {exc}")
 
     def _rebuild_output_files(self):
         """Rebuild affected output files (CODE2DATABASE_SUMMARY.md, etc.)."""

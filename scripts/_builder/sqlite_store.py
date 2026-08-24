@@ -34,7 +34,7 @@ from _builder.cgdb_schema import apply_cgdb_schema
 class SQLiteStore:
     """SQLite-based storage for invocation graph data."""
 
-    SCHEMA_VERSION = 12
+    SCHEMA_VERSION = 13
 
     def __init__(self, db_path: str):
         self.db_path = db_path
@@ -297,7 +297,7 @@ class SQLiteStore:
                             CREATE TABLE IF NOT EXISTS kb_query_log (
                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                                 query TEXT NOT NULL,
-                                matched INTEGER NOT NULL,  -- 1 if results returned, 0 if not
+                                matched INTEGER NOT NULL,
                                 match_count INTEGER DEFAULT 0,
                                 top_score REAL,
                                 queried_at TEXT NOT NULL
@@ -306,6 +306,49 @@ class SQLiteStore:
                                 ON kb_query_log(matched, queried_at);
                             CREATE INDEX IF NOT EXISTS idx_kb_query_log_query
                                 ON kb_query_log(query);
+                        """)
+                    except sqlite3.OperationalError:
+                        pass
+                # Schema v13: Phase 1 cross-C2D sync — foreign_refs +
+                # watched_c2ds tables. Lets project B's C2D reference
+                # functions in project A's C2D without merging dbs.
+                # When A updates, B can sync to detect renamed/deleted/added.
+                if int(row[0]) < 13:
+                    try:
+                        self._conn.executescript("""
+                            CREATE TABLE IF NOT EXISTS foreign_refs (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                local_node_id TEXT NOT NULL,
+                                invoked_name TEXT NOT NULL,
+                                invoked_signature TEXT,
+                                foreign_c2d_path TEXT NOT NULL,
+                                foreign_project_name TEXT,
+                                foreign_node_id TEXT,
+                                foreign_name TEXT,
+                                foreign_domain TEXT,
+                                foreign_source_file TEXT,
+                                foreign_signature TEXT,
+                                status TEXT NOT NULL DEFAULT 'unresolved',
+                                resolution_strategy TEXT,
+                                last_resolved_at TEXT,
+                                call_order INTEGER,
+                                call_condition TEXT
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_foreign_refs_local
+                                ON foreign_refs(local_node_id);
+                            CREATE INDEX IF NOT EXISTS idx_foreign_refs_status
+                                ON foreign_refs(status);
+                            CREATE INDEX IF NOT EXISTS idx_foreign_refs_foreign_c2d
+                                ON foreign_refs(foreign_c2d_path);
+                            CREATE TABLE IF NOT EXISTS watched_c2ds (
+                                c2d_path TEXT PRIMARY KEY,
+                                project_name TEXT,
+                                db_mtime_at_sync TEXT,
+                                db_size_at_sync INTEGER,
+                                functions_count_at_sync INTEGER,
+                                last_synced_at TEXT NOT NULL,
+                                sync_status TEXT NOT NULL DEFAULT 'unknown'
+                            );
                         """)
                     except sqlite3.OperationalError:
                         pass
@@ -637,6 +680,43 @@ class SQLiteStore:
                 ON kb_query_log(matched, queried_at);
             CREATE INDEX IF NOT EXISTS idx_kb_query_log_query
                 ON kb_query_log(query);
+
+            -- Phase 1 cross-C2D sync: foreign_refs + watched_c2ds.
+            -- Lets project B's C2D reference functions in A's C2D
+            -- without merging dbs; sync detects A's changes.
+            CREATE TABLE IF NOT EXISTS foreign_refs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                local_node_id TEXT NOT NULL,
+                invoked_name TEXT NOT NULL,
+                invoked_signature TEXT,
+                foreign_c2d_path TEXT NOT NULL,
+                foreign_project_name TEXT,
+                foreign_node_id TEXT,
+                foreign_name TEXT,
+                foreign_domain TEXT,
+                foreign_source_file TEXT,
+                foreign_signature TEXT,
+                status TEXT NOT NULL DEFAULT 'unresolved',
+                resolution_strategy TEXT,
+                last_resolved_at TEXT,
+                call_order INTEGER,
+                call_condition TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_foreign_refs_local
+                ON foreign_refs(local_node_id);
+            CREATE INDEX IF NOT EXISTS idx_foreign_refs_status
+                ON foreign_refs(status);
+            CREATE INDEX IF NOT EXISTS idx_foreign_refs_foreign_c2d
+                ON foreign_refs(foreign_c2d_path);
+            CREATE TABLE IF NOT EXISTS watched_c2ds (
+                c2d_path TEXT PRIMARY KEY,
+                project_name TEXT,
+                db_mtime_at_sync TEXT,
+                db_size_at_sync INTEGER,
+                functions_count_at_sync INTEGER,
+                last_synced_at TEXT NOT NULL,
+                sync_status TEXT NOT NULL DEFAULT 'unknown'
+            );
         """)
         self._conn.execute(
             "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",

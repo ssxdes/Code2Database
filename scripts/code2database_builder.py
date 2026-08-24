@@ -272,6 +272,62 @@ def cmd_kb_global_import(args):
     print(json.dumps({"imported": imported}, ensure_ascii=False, indent=2))
 
 
+def cmd_build_multi(args):
+    """Phase 1: build unified C2D from multi-project manifest."""
+    from _builder.build_multi import build_multi
+    summary = build_multi(
+        manifest_path=args.manifest,
+        outdir=args.outdir,
+        jobs=getattr(args, "jobs", 0),
+        force_rescan=[s.strip() for s in (args.force_rescan or "").split(",")
+                      if s.strip()] or None,
+        no_clang=getattr(args, "no_clang", False),
+        verbose=True,
+    )
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def cmd_c2d_add_foreign(args):
+    """Phase 1: register foreign C2D + resolve refs."""
+    from _builder.c2d_foreign import add_foreign
+    summary = add_foreign(
+        graph_dir=args.graph,
+        foreign_c2d_path=args.foreign_c2d,
+        project_name=getattr(args, "project_name", "") or "",
+        rescan_unresolved=getattr(args, "rescan_unresolved", False),
+        verbose=True,
+    )
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def cmd_c2d_sync_foreign(args):
+    """Phase 1: sync foreign_refs with updated foreign C2Ds."""
+    from _builder.c2d_foreign import sync_foreign
+    summary = sync_foreign(
+        graph_dir=args.graph,
+        foreign_c2d_path=getattr(args, "foreign_c2d", "") or "",
+        verbose=True,
+    )
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def cmd_c2d_list_foreign(args):
+    """Phase 1: list watched foreign C2Ds."""
+    from _builder.c2d_foreign import list_foreign
+    result = list_foreign(args.graph)
+    if not result:
+        print("No watched foreign C2Ds.")
+        return
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def cmd_c2d_remove_foreign(args):
+    """Phase 1: unregister a foreign C2D."""
+    from _builder.c2d_foreign import remove_foreign
+    summary = remove_foreign(args.graph, args.foreign_c2d)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
 def cmd_install_hook(args):
     """Install git post-commit hook for auto quick-update after commits."""
     import shutil
@@ -821,6 +877,48 @@ def main():
     p_kgi = sub.add_parser("kb-global-import",
                            help="Import a shared global KB JSON file")
     p_kgi.add_argument("--input", required=True, help="Input JSON path")
+
+    # build-multi (Phase 1: multi-project aggregate build)
+    p_bm = sub.add_parser("build-multi",
+                          help="Build a unified C2D from a multi-project manifest")
+    p_bm.add_argument("--manifest", required=True, help="Path to manifest JSON")
+    p_bm.add_argument("--outdir", required=True, help="Output directory for joint C2D")
+    p_bm.add_argument("-j", "--jobs", type=int, default=0,
+                      help="Parallel workers (0=auto)")
+    p_bm.add_argument("--force-rescan", default="",
+                      help="Comma-separated project names to force re-scan")
+    p_bm.add_argument("--no-clang", action="store_true",
+                      help="Force tree-sitter (no libclang)")
+
+    # c2d-add-foreign (Phase 1: register external C2D + resolve refs)
+    p_caf = sub.add_parser("c2d-add-foreign",
+                           help="Register a foreign C2D and resolve cross-project refs")
+    p_caf.add_argument("--graph", required=True, help="Local (B) C2D directory")
+    p_caf.add_argument("--foreign-c2d", required=True,
+                       help="Foreign (A) C2D directory to register")
+    p_caf.add_argument("--project-name", default="",
+                       help="Project name of foreign C2D (e.g., 'A')")
+    p_caf.add_argument("--rescan-unresolved", action="store_true",
+                       help="Re-attempt resolution of all unresolved refs")
+
+    # c2d-sync-foreign (Phase 1: detect foreign changes + re-resolve)
+    p_csf = sub.add_parser("c2d-sync-foreign",
+                           help="Sync foreign_refs with updated foreign C2Ds")
+    p_csf.add_argument("--graph", required=True, help="Local (B) C2D directory")
+    p_csf.add_argument("--foreign-c2d", default="",
+                       help="Specific foreign C2D to sync (default: all watched)")
+
+    # c2d-list-foreign (Phase 1: list watched C2Ds)
+    p_clf = sub.add_parser("c2d-list-foreign",
+                           help="List watched foreign C2Ds with sync status")
+    p_clf.add_argument("--graph", required=True, help="Local C2D directory")
+
+    # c2d-remove-foreign (Phase 1: unregister foreign C2D)
+    p_crf = sub.add_parser("c2d-remove-foreign",
+                           help="Unregister a foreign C2D")
+    p_crf.add_argument("--graph", required=True, help="Local C2D directory")
+    p_crf.add_argument("--foreign-c2d", required=True,
+                       help="Foreign C2D path to remove")
 
     # patch-from-diff
     p_pdiff = sub.add_parser("patch-from-diff", help="Patch graph from unified diff text")
@@ -1932,6 +2030,11 @@ def main():
         "kb-global-search": cmd_kb_global_search,
         "kb-global-share": cmd_kb_global_share,
         "kb-global-import": cmd_kb_global_import,
+        "build-multi": cmd_build_multi,
+        "c2d-add-foreign": cmd_c2d_add_foreign,
+        "c2d-sync-foreign": cmd_c2d_sync_foreign,
+        "c2d-list-foreign": cmd_c2d_list_foreign,
+        "c2d-remove-foreign": cmd_c2d_remove_foreign,
         "patch-from-diff": cmd_patch_from_diff,
         "patch-from-git": cmd_patch_from_git,
         "light-scan": cmd_light_scan,

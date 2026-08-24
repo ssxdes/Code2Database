@@ -586,6 +586,37 @@ def cmd_update(args):
 
     # Step 2: Load existing graph and prune deleted
     G = _load_full_graph(graph_dir)
+    # Error 3 defense: cmd_update's merge pipeline uses nx.compose + per-node
+    # attribute writes (split_by_domain → G.nodes[nid]["domain"] = ...),
+    # both of which require an in-memory nx.DiGraph. When the graph is large
+    # (>=50K functions), _load_full_graph returns a LazySQLiteGraph (read-only
+    # SQLite view) which has no `.graph` attribute (breaks nx.compose) and
+    # rejects item assignment (breaks split_by_domain). Detect this early and
+    # direct the user to daemon-start (cgdb incremental sync) which is the
+    # correct path for SQLite-backed large graphs. Without this check, the
+    # user sees a cryptic "AttributeError: 'LazySQLiteGraph' object has no
+    # attribute 'graph'" at nx.compose.
+    _G_CLASS = type(G).__name__
+    if _G_CLASS == "LazySQLiteGraph":
+        print(
+            "Error: 'update' is not supported on SQLite-backed large graphs\n"
+            f"  Loaded graph: {G.number_of_nodes()} nodes via LazySQLiteGraph "
+            f"(db: {getattr(G, '_db_path', '?')})\n"
+            "  Reason: 'update' uses in-memory nx.compose + per-node writes "
+            "(split_by_domain),\n"
+            "          but LazySQLiteGraph is a read-only SQLite view with no "
+            ".graph attribute.\n"
+            "Alternatives:\n"
+            "  1. Run 'daemon-start' for real-time incremental sync "
+            "(cgdb_incremental path,\n"
+            "     designed for SQLite-backed large graphs).\n"
+            "  2. Run 'build' for a full rebuild from scratch "
+            "(rebuilds the SQLite db).\n"
+            "  3. If you must use 'update', force eager load by removing the "
+            "code2database.db file\n"
+            "     first (NOTE: this may OOM for >100K-function projects).",
+            file=sys.stderr)
+        sys.exit(1)
     if deleted_files:
         pruned = _prune_nodes_by_source(G, deleted_files)
         print(f"Pruned {pruned} node(s) from deleted files")
@@ -605,23 +636,56 @@ def cmd_update(args):
             extraction_path = args.extraction
         else:
             extraction_path = os.path.join(graph_dir, ".code2database_incremental.json")
-            files_arg = ",".join(to_scan)
-            scan_cmd = [sys.executable, scanner_script, "scan",
-                        "--source", source, "--files", files_arg,
-                        "--output", extraction_path,
-                        "--no-interactive"]
-            if macros_str:
-                scan_cmd.extend(["--macros", macros_str])
-            scan_result = subprocess.run(
-                scan_cmd,
-                capture_output=True, text=True,
-                stdin=subprocess.DEVNULL,
-                timeout=3600
-            )
-            if scan_result.returncode != 0:
-                print(f"Error scanning changed files: {scan_result.stderr}", file=sys.stderr)
-                sys.exit(1)
-            print(scan_result.stderr.strip() if scan_result.stderr else "", file=sys.stderr)
+            # Use --files-from (temp file) when the file list is large to avoid
+            # OSError: [Errno 7] Argument list too long (Linux ARG_MAX ~128KB).
+            # Threshold: 1000 files or any single path containing commas that
+            # would inflate the joined string. Fall back to --files for small
+            # lists to preserve backward compatibility with older scanners.
+            _FILES_FROM_THRESHOLD = 200
+            files_list_fd = None
+            files_list_path = None
+            try:
+                if len(to_scan) >= _FILES_FROM_THRESHOLD:
+                    files_list_fd, files_list_path = tempfile.mkstemp(
+                        prefix="c2d_update_files_", suffix=".txt")
+                    with os.fdopen(files_list_fd, "w", encoding="utf-8") as _fh:
+                        for _p in to_scan:
+                            _fh.write(_p + "\n")
+                    files_list_fd = None  # closed by _fh.__exit__
+                    scan_cmd = [sys.executable, scanner_script, "scan",
+                                "--source", source,
+                                "--files-from", files_list_path,
+                                "--output", extraction_path,
+                                "--no-interactive"]
+                else:
+                    files_arg = ",".join(to_scan)
+                    scan_cmd = [sys.executable, scanner_script, "scan",
+                                "--source", source, "--files", files_arg,
+                                "--output", extraction_path,
+                                "--no-interactive"]
+                if macros_str:
+                    scan_cmd.extend(["--macros", macros_str])
+                scan_result = subprocess.run(
+                    scan_cmd,
+                    capture_output=True, text=True,
+                    stdin=subprocess.DEVNULL,
+                    timeout=3600
+                )
+                if scan_result.returncode != 0:
+                    print(f"Error scanning changed files: {scan_result.stderr}", file=sys.stderr)
+                    sys.exit(1)
+                print(scan_result.stderr.strip() if scan_result.stderr else "", file=sys.stderr)
+            finally:
+                if files_list_fd is not None:
+                    try:
+                        os.close(files_list_fd)
+                    except OSError:
+                        pass
+                if files_list_path and os.path.exists(files_list_path):
+                    try:
+                        os.remove(files_list_path)
+                    except OSError:
+                        pass
 
         new_data = json.loads(Path(extraction_path).read_text(encoding="utf-8"))
         result = build_graph(new_data)

@@ -12,13 +12,45 @@ from _builder.utils import _experience_dir, _extract_chain_node_ids, _memory_dir
 from _builder.graph_build import _load_full_graph
 
 
+def _sanitize_memory_index(index, path_for_warn: str = ""):
+    """Sanitize a memory index dict loaded from JSON.
+
+    Defensive against corrupt/legacy memory.json files where `entries` may
+    contain plain strings instead of {"id": ..., "question": ...} dicts.
+    Without this, downstream loops call entry_meta.get("status") which
+    crashes with `AttributeError: 'str' object has no attribute 'get'`
+    (seen in inline memory-merge scripts run on another environment).
+
+    Filters out non-dict entries, ensures required keys exist, and logs
+    a warning when items are dropped.
+    """
+    if not isinstance(index, dict):
+        if path_for_warn:
+            print(f"[memory] Warning: index at {path_for_warn} is not a dict, "
+                  f"returning empty default", file=sys.stderr)
+        return {"entries": [], "next_id": 1, "roots": []}
+    if not isinstance(index.get("entries"), list):
+        index["entries"] = []
+    else:
+        _orig_len = len(index["entries"])
+        index["entries"] = [e for e in index["entries"] if isinstance(e, dict)]
+        if len(index["entries"]) != _orig_len and path_for_warn:
+            print(f"[memory] Warning: filtered {_orig_len - len(index['entries'])} "
+                  f"non-dict entries from {path_for_warn}", file=sys.stderr)
+    index.setdefault("next_id", 1)
+    index.setdefault("roots", [])
+    return index
+
+
 def _auto_validate_memory(G: nx.DiGraph, mem_dir: str, graph_dir: str):
     """Auto-validate memory entries against current graph after update."""
     current_nodes = set(G.nodes())
     exp_dir = _experience_dir(graph_dir)
 
     index_path = os.path.join(mem_dir, "index.json")
-    index = json.loads(Path(index_path).read_text(encoding="utf-8"))
+    index = _sanitize_memory_index(
+        json.loads(Path(index_path).read_text(encoding="utf-8")),
+        index_path)
 
     invalidated = 0
     for entry_meta in list(index["entries"]):
@@ -70,7 +102,9 @@ def _auto_validate_memory(G: nx.DiGraph, mem_dir: str, graph_dir: str):
         exp_index_path = os.path.join(exp_dir, "index.json")
         exp_entries = []
         if os.path.exists(exp_index_path):
-            exp_idx = json.loads(Path(exp_index_path).read_text(encoding="utf-8"))
+            exp_idx = _sanitize_memory_index(
+                json.loads(Path(exp_index_path).read_text(encoding="utf-8")),
+                exp_index_path)
             exp_entries = exp_idx.get("entries", [])
         for em in index["entries"]:
             if em.get("status") == "experience" and not any(e.get("id") == em["id"] for e in exp_entries):
@@ -104,7 +138,9 @@ def cmd_save_memory(args):
     # Load existing memories to check for merge
     index_path = os.path.join(mem_dir, "index.json")
     if os.path.exists(index_path):
-        index = json.loads(Path(index_path).read_text(encoding="utf-8"))
+        index = _sanitize_memory_index(
+            json.loads(Path(index_path).read_text(encoding="utf-8")),
+            index_path)
     else:
         index = {"entries": [], "next_id": 1}
 
@@ -183,7 +219,9 @@ def cmd_search_memory(args):
         print("No memory entries found.", file=sys.stderr)
         sys.exit(0)
 
-    index = json.loads(Path(index_path).read_text(encoding="utf-8"))
+    index = _sanitize_memory_index(
+        json.loads(Path(index_path).read_text(encoding="utf-8")),
+        index_path)
     query_tokens = _simple_tokenize(query)
 
     scored = []
@@ -211,7 +249,9 @@ def cmd_search_memory(args):
     if os.path.exists(exp_dir):
         exp_index_path = os.path.join(exp_dir, "index.json")
         if os.path.exists(exp_index_path):
-            exp_index = json.loads(Path(exp_index_path).read_text(encoding="utf-8"))
+            exp_index = _sanitize_memory_index(
+                json.loads(Path(exp_index_path).read_text(encoding="utf-8")),
+                exp_index_path)
             for entry_meta in exp_index.get("entries", []):
                 e_tokens = _simple_tokenize(entry_meta.get("question", ""))
                 tag_tokens = set()
@@ -276,7 +316,9 @@ def cmd_validate_memory(args):
     G = _load_full_graph(graph_dir)
     current_nodes = set(G.nodes())
 
-    index = json.loads(Path(index_path).read_text(encoding="utf-8"))
+    index = _sanitize_memory_index(
+        json.loads(Path(index_path).read_text(encoding="utf-8")),
+        index_path)
 
     validated = 0
     invalidated = 0
@@ -351,7 +393,9 @@ def cmd_validate_memory(args):
     exp_index_path = os.path.join(exp_dir, "index.json")
     exp_entries = []
     if os.path.exists(exp_index_path):
-        exp_index = json.loads(Path(exp_index_path).read_text(encoding="utf-8"))
+        exp_index = _sanitize_memory_index(
+            json.loads(Path(exp_index_path).read_text(encoding="utf-8")),
+            exp_index_path)
         exp_entries = exp_index.get("entries", [])
 
     for inv in invalidated_ids:

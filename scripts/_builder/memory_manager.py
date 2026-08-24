@@ -107,7 +107,33 @@ class MemoryManager:
     def _load_index(self) -> dict:
         path = os.path.join(self.mem_dir, "index.json")
         if os.path.exists(path):
-            return json.loads(_locked_read(path))
+            index = json.loads(_locked_read(path))
+            # Sanitize entries: filter out non-dict items (defensive against
+            # corrupt/legacy memory.json files where entries may be plain
+            # strings instead of {"id": ..., "question": ...} dicts).
+            # Without this, downstream loops call entry_meta.get("status")
+            # which crashes with `AttributeError: 'str' object has no
+            # attribute 'get'` (seen in inline memory-merge scripts run on
+            # another environment).
+            if isinstance(index, dict) and isinstance(index.get("entries"), list):
+                _orig_len = len(index["entries"])
+                index["entries"] = [
+                    e for e in index["entries"] if isinstance(e, dict)
+                ]
+                if len(index["entries"]) != _orig_len:
+                    print(f"[memory] Warning: filtered {_orig_len - len(index['entries'])} "
+                          f"non-dict entries from {path}", file=sys.stderr)
+            elif not isinstance(index, dict):
+                # Totally corrupt index file — return empty default
+                print(f"[memory] Warning: index at {path} is not a dict, "
+                      f"returning empty default", file=sys.stderr)
+                return {"entries": [], "next_id": 1, "roots": []}
+            else:
+                # dict but missing 'entries' key
+                index.setdefault("entries", [])
+                index.setdefault("next_id", 1)
+                index.setdefault("roots", [])
+            return index
         return {"entries": [], "next_id": 1, "roots": []}
 
     def _save_index(self, index: dict):
@@ -118,7 +144,24 @@ class MemoryManager:
     def _load_exp_index(self) -> dict:
         path = os.path.join(self.exp_dir, "index.json")
         if os.path.exists(path):
-            return json.loads(_locked_read(path))
+            index = json.loads(_locked_read(path))
+            # Same defensive sanitize as _load_index — experience entries
+            # can also be corrupted by inline merge scripts.
+            if isinstance(index, dict) and isinstance(index.get("entries"), list):
+                _orig_len = len(index["entries"])
+                index["entries"] = [
+                    e for e in index["entries"] if isinstance(e, dict)
+                ]
+                if len(index["entries"]) != _orig_len:
+                    print(f"[memory] Warning: filtered {_orig_len - len(index['entries'])} "
+                          f"non-dict entries from {path}", file=sys.stderr)
+            elif not isinstance(index, dict):
+                print(f"[memory] Warning: exp index at {path} is not a dict, "
+                      f"returning empty default", file=sys.stderr)
+                return {"entries": []}
+            else:
+                index.setdefault("entries", [])
+            return index
         return {"entries": []}
 
     def _save_exp_index(self, index: dict):

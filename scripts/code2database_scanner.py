@@ -2168,8 +2168,24 @@ def cmd_scan(args):
                 print(json.dumps(result, ensure_ascii=False, indent=2))
             return
 
-    if args.files:
-        file_list = args.files.split(",")
+    _files_from_arg = getattr(args, 'files_from', '') or ''
+    if args.files or _files_from_arg:
+        file_list = []
+        if args.files:
+            file_list.extend(args.files.split(","))
+        if _files_from_arg:
+            try:
+                with open(_files_from_arg, "r", encoding="utf-8") as _ff:
+                    for _line in _ff:
+                        _p = _line.strip()
+                        if _p:
+                            file_list.append(_p)
+            except OSError as _e:
+                print(f"Error reading --files-from {_files_from_arg}: {_e}", file=sys.stderr)
+                sys.exit(1)
+        # Deduplicate while preserving order
+        _seen = set()
+        file_list = [_p for _p in file_list if not (_p in _seen or _seen.add(_p))]
         result = scan_files(file_list, source, args.lang, macro_bindings=macro_bindings,
                             api_prefixes=api_prefixes, profile=profile,
                             extraction_backend=getattr(args, 'extraction_backend', 'auto'),
@@ -2680,6 +2696,10 @@ def main():
                          help="Language (default: auto-detect from extension)")
     p_scan.add_argument("--output", help="Output JSON file path")
     p_scan.add_argument("--files", help="Comma-separated list of specific files to scan (incremental)")
+    p_scan.add_argument("--files-from", default="",
+                        help="Path to a file containing one file path per line to scan. "
+                             "Used when the file list is too large to fit on the command line "
+                             "(Linux ARG_MAX ~128KB). Files are merged with --files if both given.")
     p_scan.add_argument("--macros", help="Macro bindings for #ifdef resolution (e.g., 'NDEBUG FEATURE_X=1 -DFOO')")
     p_scan.add_argument("-j", "--workers", type=int, default=0,
                          help="Parallel scan workers (0=auto, 1=sequential, "

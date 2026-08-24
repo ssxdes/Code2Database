@@ -637,6 +637,15 @@ class LazySQLiteGraph:
         self._pred_cache = OrderedDict()
         self._pred_cache_max = 50000
         self._node_neg_cache = set()
+        # nx.DiGraph-compatibility attrs. networkx functions like nx.compose
+        # call `result.graph.update(G1.graph)` which requires a `.graph` dict.
+        # LazySQLiteGraph is read-only, so we expose an empty dict — callers
+        # that try to set graph-level attrs will get a no-op rather than
+        # AttributeError. Note: nx.compose still won't work because it tries
+        # to copy all nodes/edges into a fresh in-memory graph; use the
+        # custom merge helper in update_sync.py for incremental SQLite writes.
+        self.graph = {}
+        self.adj = {}
 
     def __contains__(self, node_id) -> bool:
         if node_id in self._node_cache:

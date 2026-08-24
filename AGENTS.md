@@ -54,7 +54,7 @@ The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|
 | `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded. 15 Tier-1 high-weight commands. |
-| `Code2Database-analysis` | `/Code2Database-analysis` | Deep semantic analysis (concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb tables). 13 Tier-1 commands + 18 `cgdb_*` MCP tools. |
+| `Code2Database-analysis` | `/Code2Database-analysis` | Deep semantic analysis (concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb tables). 13 Tier-1 commands + 19 `cgdb_*` MCP tools. |
 | `Code2Database-ops` | `/Code2Database-ops` | Graph editing + ops (transactions, daemon, profile/doc-code, exports, plugins, memory, embeddings). 14 Tier-1 commands. |
 
 ## Pipeline Architecture

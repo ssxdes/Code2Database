@@ -319,6 +319,29 @@ CREATE INDEX idx_field_struct ON field_access(struct_name);
 
 `cgdb_migrations.run_migrations` 在 schema 版本升级时原地 ALTER 表，保留数据。Schema 版本：4。检查方式：`cgdb_index_status` MCP 工具报告每文件每层行数。
 
+`SQLiteStore.SCHEMA_VERSION`（当前 **12**，在同一 db 的遗留表侧）跟踪非-cgdb schema。v9-v12 新增：
+
+- **kb_paragraphs**（Phase 1）— 跨 `memory/*.json` + `knowledge/*.md` 的统一 FTS5+BM25 索引；替代逐存储的 Jaccard / 子串搜索。可通过 `kb-rebuild-index` 重建。
+- **kb_paragraphs_fts** — title/body/tags 的 FTS5 虚拟表（porter + unicode61 分词器），带 AI/AD/AU 触发器。
+- **scope_id / canonical_id / principle_ref** 列（Phase 4）— 聚类 + 跨类型链接。
+- **embedding BLOB** 列（Phase 5）— 可选的 384 维 float32 语义搜索；sentence-transformers 不可用时为 NULL。
+- **kb_items**（Phase 6）— fact 级表，带 versions_json、decay_class、provenance_commit、provenance_operator；长期替代 kb_paragraphs（迁移期间两者共存）。
+- **kb_items_fts** — kb_items 的 FTS5。
+- **kb_query_log**（Phase 9）— 记录每次 `kb-query` 调用，供 feedback loop 分析；驱动 `kb-known-unknowns`。
+
+### 知识库表（Schema v9-v12）
+
+| 表 | 用途 | Phase |
+|---|---|---|
+| `kb_paragraphs` | 跨 memory + knowledge 的统一 FTS5 索引（派生；可重建） | 1 |
+| `kb_paragraphs_fts` | FTS5 虚拟表（porter + unicode61） | 1 |
+| `kb_items` | kb_paragraphs 的 fact 级后继（带 versions + provenance） | 6 |
+| `kb_items_fts` | kb_items 的 FTS5 | 6 |
+| `kb_query_log` | 查询反馈日志（matched, count, top_score, timestamp） | 9 |
+
+位于 `~/.code2database_global_kb/global.db` 的全局 KB 有独立的
+`kb_global` + `kb_global_fts` 表对，用于跨项目知识（Phase 8）。
+
 ### 遗留 ↔ cgdb 同步
 
 `cgdb_sync.sync_legacy_and_cgdb()` 保持 `functions`/`edges`（遗留）与 `cgdb_nodes`/`cgdb_edges`（cgdb）同步。遗留表回答"谁调用谁"；cgdb 表回答强类型语义问题。两者共存于同一个 SQLite 数据库。

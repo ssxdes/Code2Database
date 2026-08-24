@@ -280,7 +280,7 @@ bash scripts/setup.sh --languages c,go
                                      │
                                      ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  [Query]     micro → lite → local · 48 个 MCP 工具 · 122 CLI 命令         │
+│  [Query]     micro → lite → local · 50 个 MCP 工具 · 184 CLI 命令         │
 │              explore-flow · trace-chain · detect-races · param-flow      │
 │              value-flow · lock-coverage · path-feasible · data-dep       │
 │              extract-invariants · ffi-trace · doc-code-check · query     │
@@ -306,7 +306,7 @@ bash scripts/setup.sh --languages c,go
 | **语言** | 7 种 — C/C++、Go、Python、Java、Rust、ASM（Python + tree-sitter + ASM 正则）|
 | **存储** | JSON 输出 + 大图可选 SQLite 后端 |
 | **MCP 服务器** | stdio 传输，**50 个查询工具**（31 code2database_* + 19 cgdb_*）供 LLM 代理使用 |
-| **CLI 命令** | **122 命令** 分为 3 个子技能（`/Code2Database` 核心、`/Code2Database-analysis`、`/Code2Database-ops`）— Build、Query、Trace、Concurrency、Knowledge、Memory、Provenance、Cypher、Data Flow、Lock Analysis、Path Feasibility、Invariants、Auto-Enhance、Transactions、FFI、Web UI、Benchmark、Profile Health、Doc-Code、Daemon、cgdb（clang 后端） |
+| **CLI 命令** | **184 命令** 分为 3 个子技能（`/Code2Database` 核心、`/Code2Database-analysis`、`/Code2Database-ops`）— Build、Query、Trace、Concurrency、Knowledge、Memory、Provenance、Cypher、Data Flow、Lock Analysis、Path Feasibility、Invariants、Auto-Enhance、Transactions、FFI、Web UI、Benchmark、Profile Health、Doc-Code、Daemon、cgdb（clang 后端） |
 | **调用条件解析** | `if`/`switch`/`#ifdef` 分支 + 空节点聚合 |
 | **条件编译（`#ifdef`）** | 图谱知道哪些调用只在哪些 `CONFIG_*` 标志下存在 |
 | **数据竞争检测** | 跨线程隐患检测 — `detect-races` |
@@ -507,7 +507,7 @@ bash scripts/setup.sh --languages c,go
 python3 scripts/code2database_builder.py serve --graph code2db-out/
 ```
 
-通过 stdio 传输暴露 **48 个 MCP 工具**：30 个 `code2database_*` 工具（包括 `explore-flow`、`trace-chain`、`describe-node`、`detect-races`、`param-flow`、`field-access`、`reverse-trace`、`blast-radius`）+ 18 个 `cgdb_*` 工具（启用 clang 提取后端时直接查询 cgdb 层——类型化 vtable 派发、CFG、数据流、同步原语、配置谓词、时间旅行版本）。代理可以直接查询图谱，无需重读源文件——一次工具调用获得精准上下文。
+通过 stdio 传输暴露 **50 个 MCP 工具**：31 个 `code2database_*` 工具（包括 `explore-flow`、`trace-chain`、`describe-node`、`detect-races`、`param-flow`、`field-access`、`reverse-trace`、`blast-radius`）+ 19 个 `cgdb_*` 工具（启用 clang 提取后端时直接查询 cgdb 层——类型化 vtable 派发、CFG、数据流、同步原语、配置谓词、时间旅行版本）。代理可以直接查询图谱，无需重读源文件——一次工具调用获得精准上下文。
 
 ---
 
@@ -518,7 +518,7 @@ Code2Database 对 C/C++ 提取支持**双后端**。在扫描时选择后端；�
 | 后端 | 何时使用 | 依赖 | 启用 |
 |------|---------|------|------|
 | `auto`（默认）| 多数用户 | tree-sitter（必装）+ libclang（可选）| 始终启用 tree-sitter；libclang 存在时启用 cgdb 层 |
-| `clang` | 需要深度语义分析的 C/C++ 项目（类型化 vtable 派发、CFG、数据流、同步原语、配置谓词）| libclang 17+（`pip install libclang==17.0.6`）| 完整 cgdb 层 + 18 个 `cgdb_*` MCP 工具 |
+| `clang` | 需要深度语义分析的 C/C++ 项目（类型化 vtable 派发、CFG、数据流、同步原语、配置谓词）| libclang 17+（`pip install libclang==17.0.6`）| 完整 cgdb 层 + 19 个 `cgdb_*` MCP 工具 |
 | `tree-sitter` | 精简安装，无 libclang 依赖，纯 AST 提取 | 仅 tree-sitter 语言绑定 | 标准调用图——无 cgdb 层 |
 
 **libclang 是推荐项，非必装。** Tree-sitter-only 模式完全可用——所有 7 种语言都可扫描、构建、查询。Clang 后端额外填充 cgdb（代码图谱数据库）层。
@@ -550,21 +550,21 @@ python3 scripts/code2database_scanner.py scan --source /path --extraction-backen
 | L8 | `cgdb_sync_primitives` + `cgdb_happens_before` | 同步原语 + happens-before |
 | L10 | `cgdb_versions` | 时间旅行版本查询 |
 
-这些表通过 18 个 `cgdb_*` MCP 工具直接查询——完整工具参考见 `/Code2Database-analysis` 子技能。
+这些表通过 19 个 `cgdb_*` MCP 工具直接查询——完整工具参考见 `/Code2Database-analysis` 子技能。
 
 ---
 
 ## 技能激活（3 个子技能）
 
-技能分为 3 个子技能以保持 LLM 上下文精简。每个子技能有自己的 `SKILL.md`，仅暴露与其层相关的命令。CLI（`scripts/code2database_builder.py`）共享——无论哪个子技能激活，全部 122 个命令都可访问。
+技能分为 3 个子技能以保持 LLM 上下文精简。每个子技能有自己的 `SKILL.md`，仅暴露与其层相关的命令。CLI（`scripts/code2database_builder.py`）共享——无论哪个子技能激活，全部 184 个命令都可访问。
 
 | 子技能 | 触发 | 用途 |
 |--------|------|------|
 | `Code2Database`（核心）| `/Code2Database` | 构建 + 浏览——始终加载。15 个 Tier-1 高权重命令（scan、build、explore-flow、describe-node、trace-chain 等）|
-| `Code2Database-analysis` | `/Code2Database-analysis` | 深度语义分析——并发、数据流、不变量、FFI、来源、路径可行性、cgdb 表。13 个 Tier-1 命令 + 18 个 `cgdb_*` MCP 工具 |
+| `Code2Database-analysis` | `/Code2Database-analysis` | 深度语义分析——并发、数据流、不变量、FFI、来源、路径可行性、cgdb 表。13 个 Tier-1 命令 + 19 个 `cgdb_*` MCP 工具 |
 | `Code2Database-ops` | `/Code2Database-ops` | 图谱编辑 + 运维——事务、守护进程、profile/文档-代码、导出、插件、记忆、embeddings。14 个 Tier-1 命令 |
 
-当核心技能检测到深度分析或运维问题时，会显式移交给相应子技能。MCP 服务器（48 个工具）与技能激活分离——无论哪个子技能激活，全部 48 个工具都可访问。
+当核心技能检测到深度分析或运维问题时，会显式移交给相应子技能。MCP 服务器（50 个工具）与技能激活分离——无论哪个子技能激活，全部 50 个工具都可访问。
 
 ---
 

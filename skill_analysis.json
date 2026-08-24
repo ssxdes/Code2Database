@@ -18,7 +18,8 @@
     "concurrency",
     "find",
     "trace",
-    "impact"
+    "impact",
+    "kb-query"
   ],
   "commands": [
     "concurrency-risks",
@@ -187,7 +188,7 @@
   ],
   "activation_model": "User explicitly invokes /Code2Database-analysis, OR /Code2Database core skill detects a deep-analysis question (concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb) and hands off with the phrase 'activate Code2Database-analysis sub-skill'.",
   "shared_resources": {
-    "scripts": "scripts/ (shared with parent and ops sub-skill \u2014 single CLI)",
+    "scripts": "scripts/ (shared with parent and ops sub-skill — single CLI)",
     "mcp_server": "All 50 MCP tools (31 code2database_* + 19 cgdb_*) accessible regardless of sub-skill activation. MCP is separate from skill layer."
   }
 }

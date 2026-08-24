@@ -673,14 +673,155 @@ python3 scripts/code2database_builder.py embeddings-search \
 
 ### `serve`
 
-启动 MCP 服务器（stdio 传输，48 个工具：30 个 `code2database_*` + 18 个 `cgdb_*`）。
+启动 MCP 服务器（stdio 传输，50 个工具：31 个 `code2database_*` + 19 个 `cgdb_*`）。
 
 ```bash
 python3 scripts/code2database_builder.py serve \
   --graph code2db-out/
 ```
 
-无论子技能是否激活，全部 48 个工具都可访问。MCP 与技能层激活分离。18 个 `cgdb_*` 工具见 `references/analysis_commands.md`；30 个 `code2database_*` 工具见父技能 `references/usage_reference.md`。
+无论子技能是否激活，全部 50 个工具都可访问。MCP 与技能层激活分离。19 个 `cgdb_*` 工具见 `references/analysis_commands.md`；31 个 `code2database_*` 工具见父技能 `references/usage_reference.md`。
+
+新增 `code2database_kb_query` 工具（Phase 3）是跨越 memory + knowledge
+存储的统一 FTS5+BM25 查询接口：
+
+```json
+{"tool": "code2database_kb_query",
+ "arguments": {"query": "bdev register io_device", "top": 10,
+               "kinds": "memory_qa,knowledge_principle"}}
+```
+
+## 知识库（kb-* 命令 — Phase 1-11）
+
+### `kb-rebuild-index`
+
+从 `memory/*.json` + `knowledge/*.md` 重建统一 FTS5 索引。
+每次 `build` / `update` 后或手动修改 memory/knowledge 后运行。
+
+```bash
+python3 scripts/code2database_builder.py kb-rebuild-index \
+  --graph code2db-out/
+```
+
+### `kb-query`
+
+跨 memory + knowledge 的统一 FTS5+BM25 查询。返回带 `source_kind`、
+`score`、`body`、`see_also` 的排序结果。
+
+```bash
+python3 scripts/code2database_builder.py kb-query \
+  --graph code2db-out/ \
+  --query "bdev 如何注册 io_device" \
+  [--top 10] [--kinds memory_qa,knowledge_principle] \
+  [--min-weight 0.0] [--max-tokens 4000] \
+  [--semantic] [--global]
+```
+
+`--semantic`：启用 embedding 语义搜索（需 sentence-transformers；
+不可用时自动降级到 FTS5）。
+`--global`：项目 KB 无命中时回退到 `~/.code2database_global_kb/global.db`。
+
+### `kb-cluster`
+
+按 FTS5 BM25 > 阈值用 union-find 聚类相似 kb 条目。每 cluster 选
+canonical（最高 weight × confidence）并链接
+`memory_qa` → `knowledge_principle`（`principle_ref`）。
+
+```bash
+python3 scripts/code2database_builder.py kb-cluster \
+  --graph code2db-out/ \
+  [--threshold 0.5]
+```
+
+### `kb-migrate`
+
+把 `kb_paragraphs` 行迁移到 `kb_items`（fact 级 + `versions_json` +
+`decay_class` + `provenance_commit`）。两表共存；kb_items 是长期后继。
+
+```bash
+python3 scripts/code2database_builder.py kb-migrate \
+  --graph code2db-out/
+```
+
+### `kb-known-unknowns`
+
+列出未命中的查询（从 `kb_query_log` 聚合）。帮助识别知识缺口。
+
+```bash
+python3 scripts/code2database_builder.py kb-known-unknowns \
+  --graph code2db-out/ \
+  [--top 20] [--min-occurrences 2]
+```
+
+### `kb-audit`
+
+审计项目 KB：按 kind 计数、过期条目（>90 天未访问）、低置信度
+（<0.5）、高引用（top access_count）、最被链接的 principles。
+可选 `--topic` 用于"关于 X 我们知道什么"。
+
+```bash
+python3 scripts/code2database_builder.py kb-audit \
+  --graph code2db-out/ \
+  [--topic "bdev 注册"]
+```
+
+### `kb-conflict`
+
+检测同 cluster 内矛盾条目（pairwise 检查 14 个矛盾词对：
+yes/no、must/must not、always/never、safe/unsafe 等）。
+
+```bash
+python3 scripts/code2database_builder.py kb-conflict \
+  --graph code2db-out/
+```
+
+### `kb-rollback`
+
+把 `kb_item` 回滚到旧版本（先把当前状态保存为新版本条目，
+所以回滚本身可逆）。
+
+```bash
+python3 scripts/code2database_builder.py kb-rollback \
+  --graph code2db-out/ \
+  --id 42 [--to-version 3]
+```
+
+### `kb-forget`  [write]
+
+立即删除某条 `kb_paragraph`（不等 decay）。写 audit_log 条目
+（操作者、时间戳、原因）以备审计。
+
+```bash
+python3 scripts/code2database_builder.py kb-forget \
+  --graph code2db-out/ \
+  --id 42 \
+  --reason "incorrect: bdev_register 不调用 io_device_register"
+```
+
+### `kb-global-add` / `kb-global-search` / `kb-global-share` / `kb-global-import`
+
+跨项目全局 KB（`~/.code2database_global_kb/global.db`）。存储项目无关
+知识（调试方法论、协议标准、工具用法），可跨所有项目复用。
+
+```bash
+# 添加
+python3 scripts/code2database_builder.py kb-global-add \
+  --title "Linux 内核线程模型" \
+  --body "每线程事件循环；线程内无需锁..." \
+  --tags "kernel,threading" --kind principle
+
+# 搜索
+python3 scripts/code2database_builder.py kb-global-search \
+  --query "thread safety" [--top 10]
+
+# 导出（给 teammate）
+python3 scripts/code2database_builder.py kb-global-share \
+  --output ~/global_kb_share.json
+
+# 导入（teammate 的 JSON）
+python3 scripts/code2database_builder.py kb-global-import \
+  --input ~/global_kb_share.json
+```
 
 ## 按需 / 低权重命令
 

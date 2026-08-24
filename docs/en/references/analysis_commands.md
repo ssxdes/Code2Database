@@ -1,6 +1,6 @@
 # Analysis Commands Reference (Tier 2)
 
-This document covers the full syntax for all 48 analysis commands and 18 `cgdb_*` MCP tools exposed by the `/Code2Database-analysis` sub-skill. **Read on demand only** — do not load this file into agent context unless you need detailed syntax for a specific command.
+This document covers the full syntax for all 50 analysis commands and 19 `cgdb_*` MCP tools exposed by the `/Code2Database-analysis` sub-skill. **Read on demand only** — do not load this file into agent context unless you need detailed syntax for a specific command.
 
 The commands are grouped by question type, mirroring the routing table in `SKILL_analysis.md`.
 

@@ -1,6 +1,6 @@
 ---
 name: Code2Database-ops
-description: "Code2Database 运维子技能。当用户询问安全图谱编辑（事务、快照、WAL 重放）、保持图谱新鲜（守护进程控制、文件监视、git hook 安装、patch-from-diff、patch-from-git、sync、merge）、profile 健康度与演化、文档-代码对齐与陈旧文档标记、图谱版本、持久记忆管理、导出（HTML、Obsidian、Web UI）、插件、embeddings（实验性）或 BUG 基准测试时激活。提供分层路由：Quick Reference 显示 14 个 Tier-1 高权重命令，路由表按问题类型映射到中权重命令组，按需部分仅列出低权重实验性命令名。数据库写入约束：LLM 在任何修改数据库的命令前必须获得用户确认（update-node、update-edge、patch-profile、apply-semantics、apply-invariants、auto-enhance、profile-evolve --apply、doc-mark-stale、ffi-types、merge-changes、tx-commit）。当 /Code2Database 检测到运维问题并显式移交，或用户输入 /Code2Database-ops 时使用。不适用于：查询图谱（用父 /Code2Database）；不适用于深度语义分析（用 /Code2Database-analysis）。"
+description: "Code2Database 运维子技能。当用户询问安全图谱编辑（事务、快照、WAL 重放）、保持图谱新鲜（守护进程控制、文件监视、git hook 安装、patch-from-diff、patch-from-git、sync、merge）、profile 健康度与演化、文档-代码对齐与陈旧文档标记、图谱版本、持久记忆管理、导出（HTML、Obsidian、Web UI）、插件、embeddings（实验性）或 BUG 基准测试时激活。提供分层路由：Quick Reference 显示 22 个 Tier-1 高权重命令，路由表按问题类型映射到中权重命令组，按需部分仅列出低权重实验性命令名。数据库写入约束：LLM 在任何修改数据库的命令前必须获得用户确认（update-node、update-edge、patch-profile、apply-semantics、apply-invariants、auto-enhance、profile-evolve --apply、doc-mark-stale、ffi-types、merge-changes、tx-commit）。当 /Code2Database 检测到运维问题并显式移交，或用户输入 /Code2Database-ops 时使用。不适用于：查询图谱（用父 /Code2Database）；不适用于深度语义分析（用 /Code2Database-analysis）。"
 trigger: /Code2Database-ops
 parent_skill: Code2Database
 ---
@@ -41,6 +41,11 @@ LLM 执行任何修改 code graph database的命令时，**必须先获得用户
 - `classify-endpoints` — 应用 LLM 端点分类结果
 - `manage-memory --action add/correct/reshape/promote/refine` — 写入持久记忆
 - `save-memory` — 保存 Q&A 记忆
+- `kb-rebuild-index` — 从 memory/*.json + knowledge/*.md 重建统一 FTS5 索引（每次 build/update 或手动修改后运行）
+- `kb-cluster` — 聚类相似 kb 条目 + 链接 memory_qa → knowledge_principle
+- `kb-migrate` — 把 kb_paragraphs 迁移到 kb_items（fact 级 + versions + provenance）
+- `kb-forget --id N` — 立即删除某条 kb_paragraph（不靠 decay，写 audit_log）
+- `kb-rollback --id N --to-version M` — 把 kb_item 回滚到旧版本（保留当前为版本历史）
 - `apply-invariants` — 应用提取的不变量；**AMBIGUOUS 永不应用**；INFERRED 需确认；EXTRACTED 自动应用
 - `auto-enhance` — LLM 自动语义增强；EXTRACTED+证据自动写入；**INFERRED 需确认**；AMBIGUOUS 拒绝
 - `batch-confirm` — 批量确认待处理的 INFERRED 增强
@@ -87,6 +92,14 @@ LLM 执行任何修改 code graph database的命令时，**必须先获得用户
 | `update-node` | LLM 增量补充节点属性（**需用户确认**，非破坏性） |
 | `update-edge` | LLM 增量补充边属性（**需用户确认**，非破坏性） |
 | `serve` | MCP 服务器模式（stdio，50 个工具：31 code2database_* + 19 cgdb_*） |
+| `kb-rebuild-index` | 从 memory/ + knowledge/ 重建统一 FTS5 索引（build/update 后运行） |
+| `kb-cluster` | 聚类相似 kb 条目 + 链接 principle |
+| `kb-audit` | KB 审计：counts by kind / stale / low-confidence / citations |
+| `kb-known-unknowns` | 列出未命中的查询（feedback loop） |
+| `kb-forget` | 立即删除某条 kb 条目（不靠 decay；**需用户确认**，写 audit_log） |
+| `kb-rollback` | 把 kb_item 回滚到旧版本（保留当前为版本历史） |
+| `kb-conflict` | 检测同 cluster 内矛盾条目（yes/no, must/must not 等） |
+| `kb-global-add` / `kb-global-search` / `kb-global-share` / `kb-global-import` | 跨项目全局 KB（~/.code2database_global_kb/） |
 
 ## 路由表 — 按问题类型分组的中权重命令
 
@@ -128,7 +141,7 @@ LLM 执行任何修改 code graph database的命令时，**必须先获得用户
 - **文档-代码对齐**：`describe-node`（父技能）暴露 `doc_code_mismatches`——若非空，`semantic_desc` 可能不可靠；查阅 `body_text` 并考虑 `doc-mark-stale` 直到文档重新提取
 - **profile 演化**：`profile-evolve --apply` 只应用 EXTRACTED 置信度建议；INFERRED **需用户确认**。演化后运行 `profile-bind-version` 绑定 git/svn HEAD
 - **记忆管理**：`manage-memory --action add/correct/reshape/promote/refine` 需用户确认；`save-memory` 需用户确认
-- **MCP 服务器**：`serve` 暴露 48 个工具（30 个 `code2database_*` + 18 个 `cgdb_*`）；无论子技能是否激活，全部可访问
+- **MCP 服务器**：`serve` 暴露 50 个工具（31 个 `code2database_*` + 19 个 `cgdb_*`）；无论子技能是否激活，全部可访问
 - **禁止预加载** `references/ops_commands.md`——仅在需要某命令的详细语法时按需读取
 - **守护进程日志**位于 `~/.code2database/daemon-<project>.log`；守护进程状态位于 `<graph_dir>/.daemon_status.json`
 

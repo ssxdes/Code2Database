@@ -1,13 +1,13 @@
 ---
 name: Code2Database-analysis
-description: "Code2Database 的深度语义分析子技能。当用户询问并发安全、数据竞争、值流、参数流、数据依赖、约束下路径可行性、不变量（前置/后置/循环不变量/状态机）、FFI 边界（Python ctypes / Go cgo / Rust extern C）、提交级来源、锁持有区域、资源分配/释放、变更影响范围，或想通过 18 个 cgdb_* MCP 工具直接查询 cgdb（代码图谱数据库）层时激活。提供分层路由：Quick Reference 显示 13 个 Tier-1 高权重命令，路由表按问题类型映射到中权重命令组，按需部分仅列出低权重实验性命令名。当 /Code2Database 检测到深度分析问题并显式移交，或用户输入 /Code2Database-analysis 时使用。不适用于：图谱构建、扫描、简单浏览（用父 /Code2Database）；不适用于事务、守护进程、profile 编辑、导出（用 /Code2Database-ops）。"
+description: "Code2Database 的深度语义分析子技能。当用户询问并发安全、数据竞争、值流、参数流、数据依赖、约束下路径可行性、不变量（前置/后置/循环不变量/状态机）、FFI 边界（Python ctypes / Go cgo / Rust extern C）、提交级来源、锁持有区域、资源分配/释放、变更影响范围，或想通过 19 个 cgdb_* MCP 工具直接查询 cgdb（代码图谱数据库）层时激活。提供分层路由：Quick Reference 显示 13 个 Tier-1 高权重命令，路由表按问题类型映射到中权重命令组，按需部分仅列出低权重实验性命令名。当 /Code2Database 检测到深度分析问题并显式移交，或用户输入 /Code2Database-analysis 时使用。不适用于：图谱构建、扫描、简单浏览（用父 /Code2Database）；不适用于事务、守护进程、profile 编辑、导出（用 /Code2Database-ops）。"
 trigger: /Code2Database-analysis
 parent_skill: Code2Database
 ---
 
 # /Code2Database-analysis
 
-**Code2Database 的深度语义分析层。** 当用户问题超越"谁调用谁"——涉及并发安全、数据竞争、值流、约束下路径可行性、不变量、FFI 边界、提交级来源、或直接通过 18 个 `cgdb_*` MCP 工具查询 cgdb（代码图谱数据库）层时激活。
+**Code2Database 的深度语义分析层。** 当用户问题超越"谁调用谁"——涉及并发安全、数据竞争、值流、约束下路径可行性、不变量、FFI 边界、提交级来源、或直接通过 19 个 `cgdb_*` MCP 工具查询 cgdb（代码图谱数据库）层时激活。
 
 本子技能**不**重新扫描或重建图谱。它假设 `code2db-out/` 已构建完成（通过父技能 `/Code2Database`）且图谱是新鲜的（若守护进程在运行，先调用 `daemon-status` / `daemon-wait-sync`）。
 
@@ -61,7 +61,7 @@ parent_skill: Code2Database
 | **哪个 Python/Go/Rust 函数调到 C？** | `ffi-detect` → `ffi-list` → `ffi-trace` → `ffi-types` |
 | **哪个 commit 引入了这个？** | `blame-node` → `describe-commit` → `node-history` → `graph-provenance` → `find-commits` |
 | **谁分配 / 释放了这个资源？** | `who-allocates` → `who-frees` → `unbalanced-alloc-free` → `add-semantic-edges` |
-| **直接查询 cgdb 表（clang 后端）** | 使用 18 个 `cgdb_*` MCP 工具——见下方"cgdb MCP 工具"节 |
+| **直接查询 cgdb 表（clang 后端）** | 使用 19 个 `cgdb_*` MCP 工具——见下方"cgdb MCP 工具"节 |
 
 ## cgdb MCP 工具（clang 后端 — 18 个工具）
 
@@ -131,7 +131,7 @@ parent_skill: Code2Database
 
 | 文档 | 内容 |
 |------|------|
-| `references/analysis_commands.md` | 48 个分析命令 + 18 个 cgdb_* MCP 工具的完整语法 |
+| `references/analysis_commands.md` | 50 个分析命令 + 19 个 cgdb_* MCP 工具的完整语法 |
 | `references/data_model.md` | 节点/边属性、上下文包层级、cgdb 表 schema |
 | `references/semantic_enhancement.md` | 语义提取和增强详情 |
 | `references/endpoint_pipeline.md` | 端点分类流水线 |

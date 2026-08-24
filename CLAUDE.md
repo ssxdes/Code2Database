@@ -72,7 +72,7 @@ The skill is split into **3 sub-skills** to keep LLM context lean. Each sub-skil
 | Sub-skill | Trigger | Purpose | Tier-1 commands |
 |-----------|---------|---------|-----------------|
 | `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded | 15 high-weight commands (scan, build, explore-flow, describe-node, trace-chain, etc.) |
-| `Code2Database-analysis` | `/Code2Database-analysis` | Deep semantic analysis (concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb tables) | 13 high-weight commands (concurrency-analyze, value-flow, path-feasible, find-invariants, ffi-trace, blame-node, etc.) + 18 `cgdb_*` MCP tools |
+| `Code2Database-analysis` | `/Code2Database-analysis` | Deep semantic analysis (concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb tables) | 13 high-weight commands (concurrency-analyze, value-flow, path-feasible, find-invariants, ffi-trace, blame-node, etc.) + 19 `cgdb_*` MCP tools |
 | `Code2Database-ops` | `/Code2Database-ops` | Graph editing, transactions, daemon, profile/doc-code, exports, plugins, memory, embeddings | 14 high-weight commands (tx-begin/commit/rollback, daemon-start/stop/wait-sync, profile-health, doc-code-check, etc.) |
 
 The main skill instructions are in `docs/<lang>/SKILL.md` (lang = en or zh). When installed, the appropriate language version is placed as `SKILL.md` at each sub-skill root.
@@ -96,7 +96,7 @@ python3 scripts/code2database_scanner.py scan --source /path --extraction-backen
 python3 scripts/code2database_scanner.py scan --source /path --extraction-backend tree-sitter
 ```
 
-**libclang is recommended, NOT required.** Tree-sitter-only mode remains fully functional — every supported language can be scanned, built, and queried. The clang backend additionally populates the cgdb (code graph database) layer with typed semantic tables (CFG, data flow, ops bindings, sync primitives, config predicates) exposed via 18 `cgdb_*` MCP tools.
+**libclang is recommended, NOT required.** Tree-sitter-only mode remains fully functional — every supported language can be scanned, built, and queried. The clang backend additionally populates the cgdb (code graph database) layer with typed semantic tables (CFG, data flow, ops bindings, sync primitives, config predicates) exposed via 19 `cgdb_*` MCP tools.
 
 ## Key Directories
 

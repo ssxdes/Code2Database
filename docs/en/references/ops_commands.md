@@ -682,6 +682,151 @@ python3 scripts/code2database_builder.py serve \
 
 All 50 tools are accessible regardless of sub-skill activation. MCP is separate from skill layer activation. See `references/analysis_commands.md` for the 19 `cgdb_*` tools; see parent `references/usage_reference.md` for the 31 `code2database_*` tools.
 
+The new `code2database_kb_query` tool (Phase 3) is the unified FTS5+BM25
+query surface across memory + knowledge stores:
+
+```json
+{"tool": "code2database_kb_query",
+ "arguments": {"query": "bdev register io_device", "top": 10,
+               "kinds": "memory_qa,knowledge_principle"}}
+```
+
+## Knowledge Base (kb-* commands — Phase 1-11)
+
+### `kb-rebuild-index`
+
+Rebuild the unified FTS5 index from `memory/*.json` + `knowledge/*.md`.
+Run after each `build` / `update` or after manual memory/knowledge edits.
+
+```bash
+python3 scripts/code2database_builder.py kb-rebuild-index \
+  --graph code2db-out/
+```
+
+### `kb-query`
+
+Unified FTS5+BM25 query across memory + knowledge. Returns ranked hits
+with `source_kind` (memory / knowledge), `score`, `body`, `see_also`.
+
+```bash
+python3 scripts/code2database_builder.py kb-query \
+  --graph code2db-out/ \
+  --query "how does bdev register io_device" \
+  [--top 10] [--kinds memory_qa,knowledge_principle] \
+  [--min-weight 0.0] [--max-tokens 4000] \
+  [--semantic] [--global]
+```
+
+`--semantic`: enable embedding-based semantic search (requires
+sentence-transformers; auto-degrades to FTS5 if unavailable).
+`--global`: fall back to `~/.code2database_global_kb/global.db` when the
+project KB has no matches.
+
+### `kb-cluster`
+
+Cluster similar kb items via union-find on FTS5 BM25 > threshold. Picks
+canonical (highest weight × confidence) per cluster and links
+`memory_qa` → `knowledge_principle` via `principle_ref`.
+
+```bash
+python3 scripts/code2database_builder.py kb-cluster \
+  --graph code2db-out/ \
+  [--threshold 0.5]
+```
+
+### `kb-migrate`
+
+Migrate `kb_paragraphs` rows → `kb_items` (fact-level with `versions_json`,
+`decay_class`, `provenance_commit`). Both tables coexist; kb_items is the
+long-term successor.
+
+```bash
+python3 scripts/code2database_builder.py kb-migrate \
+  --graph code2db-out/
+```
+
+### `kb-known-unknowns`
+
+List queries that returned no matches (aggregated from `kb_query_log`).
+Helps identify knowledge gaps the user should fill.
+
+```bash
+python3 scripts/code2database_builder.py kb-known-unknowns \
+  --graph code2db-out/ \
+  [--top 20] [--min-occurrences 2]
+```
+
+### `kb-audit`
+
+Audit the project KB: counts by kind, stale items (>90d untouched),
+low-confidence (<0.5), high-citation (top access_count), most-linked
+principles. Optional `--topic` for "what do we know about X".
+
+```bash
+python3 scripts/code2database_builder.py kb-audit \
+  --graph code2db-out/ \
+  [--topic "bdev registration"]
+```
+
+### `kb-conflict`
+
+Detect contradictory items within the same cluster (pairwise check for
+14 word pairs: yes/no, must/must not, always/never, safe/unsafe, ...).
+
+```bash
+python3 scripts/code2database_builder.py kb-conflict \
+  --graph code2db-out/
+```
+
+### `kb-rollback`
+
+Restore a `kb_item` to a prior version (saves current state as a new
+version entry first, so rollback is itself reversible).
+
+```bash
+python3 scripts/code2database_builder.py kb-rollback \
+  --graph code2db-out/ \
+  --id 42 [--to-version 3]
+```
+
+### `kb-forget`  [write]
+
+Immediately delete a `kb_paragraph` row (no decay wait). Writes an
+audit_log entry (operator, timestamp, reason) for traceability.
+
+```bash
+python3 scripts/code2database_builder.py kb-forget \
+  --graph code2db-out/ \
+  --id 42 \
+  --reason "incorrect: bdev_register doesn't call io_device_register"
+```
+
+### `kb-global-add` / `kb-global-search` / `kb-global-share` / `kb-global-import`
+
+Cross-project global KB at `~/.code2database_global_kb/global.db`. Stores
+project-agnostic knowledge (debugging methodology, protocol standards,
+tool usage) reusable across all projects.
+
+```bash
+# Add
+python3 scripts/code2database_builder.py kb-global-add \
+  --title "Linux kernel threading model" \
+  --body "Per-thread event loops; no locks needed within thread..." \
+  --tags "kernel,threading" --kind principle
+
+# Search
+python3 scripts/code2database_builder.py kb-global-search \
+  --query "thread safety" [--top 10]
+
+# Share (export to JSON for teammate)
+python3 scripts/code2database_builder.py kb-global-share \
+  --output ~/global_kb_share.json
+
+# Import (teammate's JSON)
+python3 scripts/code2database_builder.py kb-global-import \
+  --input ~/global_kb_share.json
+```
+
 ## On-demand / Low-weight Commands
 
 ### `domain`

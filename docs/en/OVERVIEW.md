@@ -44,7 +44,7 @@ The C/C++ extraction backend has two modes that serve different needs:
 - **tree-sitter** (default fallback, no system dependency) — robust to malformed code, handles C/C++/Go/Python/Java/Rust uniformly, produces the canonical legacy graph (functions/edges/vtable_registrations). Cannot resolve types precisely.
 - **clang** (optional, requires `pip install libclang==17.0.6`) — uses libclang's AST for precise type resolution, USR-stable node IDs, CFG basic blocks, def-use data flow, sync primitives, happens-before, typed vtable dispatch (FieldDecl → FunctionDecl). Populates the cgdb layer with 13 typed semantic tables.
 
-The `auto` backend (default) runs both: tree-sitter provides legacy-shape data, clang provides cgdb tables, and the `DualBackendScanner` merges them. If libclang is missing, the system degrades gracefully — every supported language can still be scanned, built, and queried; only the 18 `cgdb_*` MCP tools return empty results.
+The `auto` backend (default) runs both: tree-sitter provides legacy-shape data, clang provides cgdb tables, and the `DualBackendScanner` merges them. If libclang is missing, the system degrades gracefully — every supported language can still be scanned, built, and queried; only the 19 `cgdb_*` MCP tools return empty results.
 
 This design lets Code2Database scale from a quick install (`pip install tree-sitter-c`) to a full semantic database (`pip install libclang==17.0.6`) without code changes.
 
@@ -56,7 +56,7 @@ The skill ships as 3 sub-skills (`/Code2Database` core, `/Code2Database-analysis
 - **Analysis (13 Tier-1 + 19 cgdb_* MCP tools)** — loaded on demand. Concurrency, data flow, invariants, FFI, path feasibility, provenance, cgdb tables.
 - **Ops (14 Tier-1 commands)** — loaded on demand. Transactions, daemon, profile health, doc-code alignment, exports, plugins, memory, embeddings.
 
-All 122 CLI commands are accessible via the shared `scripts/code2database_builder.py` regardless of which sub-skill is active. The split is purely about LLM context economy: a 4K-token core skill is always useful; a 20K-token analysis skill should only be loaded when the user asks about races or invariants.
+All 184 CLI commands are accessible via the shared `scripts/code2database_builder.py` regardless of which sub-skill is active. The split is purely about LLM context economy: a 4K-token core skill is always useful; a 20K-token analysis skill should only be loaded when the user asks about races or invariants.
 
 ### Why micro → lite → local Query Mode
 
@@ -110,7 +110,7 @@ Plus the design-report v4 layers (additive, populated by `ir_adapters.py` and `s
 | Report-多库 | `db_routing` / `precompute_tasks` | `db_router.py` (P1, pending) |
 | Report-跨语言 | `cross_lang_bindings` / `type_mappings` / `ffi_call_sites` / `language_adapters` / `runtime_observations` / `dependencies` | `ffi_bridge.py` (existing) + `ir_adapters.py` |
 
-These tables are populated by the clang backend (for legacy cgdb layers) and the IR/L1/L4 pipelines (for report layers). They are queried by 18 `cgdb_*` MCP tools (legacy) plus 28 design-report MCP tools (`render_source` / `verify_consistency` / `edit_token` / `find_symbol` / `callers_of` / `indirect_targets` / `commit_db_transaction` / etc.). All tables coexist in the same SQLite database (`code2database.db`).
+These tables are populated by the clang backend (for legacy cgdb layers) and the IR/L1/L4 pipelines (for report layers). They are queried by 19 `cgdb_*` MCP tools (legacy) plus 28 design-report MCP tools (`render_source` / `verify_consistency` / `edit_token` / `find_symbol` / `callers_of` / `indirect_targets` / `commit_db_transaction` / etc.). All tables coexist in the same SQLite database (`code2database.db`).
 
 ### Why Transactional Updates
 
@@ -530,9 +530,15 @@ scripts/
 │   │                                add-semantic-edges
 │   ├── logging_utils.py          ← Structured logging (configure_logging, get_logger)
 │   ├── mcp_server.py             ← MCP server (stdio transport, 50 tools: 31 code2database_* + 19 cgdb_*)
+│   ├── kb_index.py               ← Unified KB FTS5+BM25 index (kb_paragraphs table, cross memory+knowledge query)
+│   ├── kb_cluster.py             ← KB clustering (union-find on FTS5 similarity, scope_id/canonical_id/principle_ref)
+│   ├── kb_global.py              ← Cross-project global KB (~/.code2database_global_kb/global.db, reusable knowledge)
+│   ├── kb_audit.py               ← KB audit (counts by kind, stale, low-confidence, citations, audit_log integration)
+│   ├── kb_conflict.py            ← KB conflict detection (within-cluster contradiction pairs) + rollback + forget
 │   ├── validate.py               ← Graph validation
 │   └── utils.py                  ← Shared builder utilities (_normalize_id, _resolve_invoked_id,
-│                                    _find_node_id, _parse_bindings, _load_globals, etc.)
+│                                    _find_node_id, _parse_bindings, _load_globals,
+│                                    _ensure_mutable_graph, etc.)
 │
 ├── config/
 │   ├── profiles/                 ← Built-in project profiles (DO NOT load into context)
@@ -781,7 +787,7 @@ Circuit breaker: if events/minute > 1000 (configurable via `daemon.circuit_break
 `serve` exposes 50 tools over stdio JSON-RPC with Content-Length framing:
 
 - 31 `code2database_*` tools (load, search, describe, explore, trace, impact, key_paths, concurrency, data_lifecycle, domain, knowledge_query, memory_search, semantic_status, etc.)
-- 18 `cgdb_*` tools (cgdb_search_symbols, cgdb_find_invokers, cgdb_find_invoked, cgdb_get_definition, cgdb_get_function_body, cgdb_get_struct_layout, cgdb_find_type_definition, cgdb_find_ops_impls, cgdb_find_cfg_paths, cgdb_find_data_flow, cgdb_find_aliases, cgdb_find_lock_held_calls, cgdb_check_race_condition, cgdb_find_configs_for, cgdb_find_nodes_under_config, cgdb_index_status, cgdb_time_travel_query, cgdb_list_versions)
+- 19 `cgdb_*` tools (cgdb_search_symbols, cgdb_find_invokers, cgdb_find_invoked, cgdb_get_definition, cgdb_get_function_body, cgdb_get_struct_layout, cgdb_find_type_definition, cgdb_find_ops_impls, cgdb_find_cfg_paths, cgdb_find_data_flow, cgdb_find_aliases, cgdb_find_lock_held_calls, cgdb_check_race_condition, cgdb_find_configs_for, cgdb_find_nodes_under_config, cgdb_index_status, cgdb_time_travel_query, cgdb_list_versions)
 
 The MCP server is accessible regardless of sub-skill activation; sub-skills are purely an LLM-context economy mechanism.
 

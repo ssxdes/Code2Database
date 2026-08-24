@@ -329,6 +329,29 @@ Each predicate carries a `status` field:
 
 `cgdb_migrations.run_migrations` ALTERs tables in-place when schema version bumps, preserving data. Current schema version: 4. To check: `cgdb_index_status` MCP tool reports per-file row counts per layer.
 
+`SQLiteStore.SCHEMA_VERSION` (currently **12**, on the legacy tables side of the same db) tracks the non-cgdb schema. v9-v12 added:
+
+- **kb_paragraphs** (Phase 1) — unified FTS5+BM25 index across `memory/*.json` + `knowledge/*.md`; replaces per-store Jaccard / substring search. Rebuildable via `kb-rebuild-index`.
+- **kb_paragraphs_fts** — FTS5 virtual table (porter + unicode61 tokenizer) over title/body/tags with AI/AD/AU triggers.
+- **scope_id / canonical_id / principle_ref** columns (Phase 4) — clustering + cross-kind linking.
+- **embedding BLOB** column (Phase 5) — optional 384-dim float32 for semantic search; NULL when sentence-transformers unavailable.
+- **kb_items** (Phase 6) — fact-level table with versions_json, decay_class, provenance_commit, provenance_operator; long-term successor to kb_paragraphs (both coexist during migration).
+- **kb_items_fts** — FTS5 over kb_items.
+- **kb_query_log** (Phase 9) — records every `kb-query` call for feedback-loop analysis; powers `kb-known-unknowns`.
+
+### Knowledge Base Tables (Schema v9-v12)
+
+| Table | Purpose | Phase |
+|---|---|---|
+| `kb_paragraphs` | Unified FTS5 index across memory + knowledge (derived; rebuildable) | 1 |
+| `kb_paragraphs_fts` | FTS5 virtual table (porter + unicode61) | 1 |
+| `kb_items` | Fact-level successor to kb_paragraphs (with versions + provenance) | 6 |
+| `kb_items_fts` | FTS5 over kb_items | 6 |
+| `kb_query_log` | Query feedback log (matched, count, top_score, timestamp) | 9 |
+
+The global KB at `~/.code2database_global_kb/global.db` has a separate
+`kb_global` + `kb_global_fts` pair for cross-project knowledge (Phase 8).
+
 ### Legacy ↔ cgdb Sync
 
 `cgdb_sync.sync_legacy_and_cgdb()` keeps `functions`/`edges` (legacy) and `cgdb_nodes`/`cgdb_edges` (cgdb) synchronized. Legacy tables answer "who calls whom"; cgdb tables answer typed semantic questions. Both coexist in the same SQLite database.

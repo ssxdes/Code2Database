@@ -520,7 +520,7 @@ Code2Database supports a **dual backend** for C/C++ extraction. You pick the bac
 | Backend | When to use | Dependencies | Enables |
 |---------|-------------|--------------|---------|
 | `auto` (default) | Most users | tree-sitter (required) + libclang (optional) | tree-sitter always; cgdb layer when libclang is present |
-| `clang` | C/C++ projects needing deep semantic analysis (typed vtable dispatch, CFG, data flow, sync primitives, config predicates) | libclang 17+ (`pip install libclang==17.0.6`) | Full cgdb layer + 18 `cgdb_*` MCP tools |
+| `clang` | C/C++ projects needing deep semantic analysis (typed vtable dispatch, CFG, data flow, sync primitives, config predicates) | libclang 17+ (`pip install libclang==17.0.6`) | Full cgdb layer + 19 `cgdb_*` MCP tools |
 | `tree-sitter` | Lean install, no libclang dependency, pure AST extraction | tree-sitter language bindings only | Standard code graph — no cgdb layer |
 
 **libclang is recommended, NOT required.** Tree-sitter-only mode is fully functional — every supported language can be scanned, built, and queried. The clang backend additionally populates the cgdb (code graph database) layer.
@@ -552,7 +552,7 @@ When the clang backend is enabled, the build step populates the cgdb semantic ta
 | L8 | `cgdb_sync_primitives` + `cgdb_happens_before` | Sync primitives + happens-before |
 | L10 | `cgdb_versions` | Time-travel version queries |
 
-These tables are queried directly via 18 `cgdb_*` MCP tools — see the `/Code2Database-analysis` sub-skill for the full tool reference.
+These tables are queried directly via 19 `cgdb_*` MCP tools — see the `/Code2Database-analysis` sub-skill for the full tool reference.
 
 ---
 
@@ -563,7 +563,7 @@ The skill is split into 3 sub-skills to keep LLM context lean. Each sub-skill ha
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|
 | `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded. 15 Tier-1 high-weight commands (scan, build, explore-flow, describe-node, trace-chain, etc.) |
-| `Code2Database-analysis` | `/Code2Database-analysis` | Deep semantic analysis — concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb tables. 13 Tier-1 commands + 18 `cgdb_*` MCP tools |
+| `Code2Database-analysis` | `/Code2Database-analysis` | Deep semantic analysis — concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb tables. 13 Tier-1 commands + 19 `cgdb_*` MCP tools |
 | `Code2Database-ops` | `/Code2Database-ops` | Graph editing + ops — transactions, daemon, profile/doc-code, exports, plugins, memory, embeddings. 14 Tier-1 commands |
 
 When the core skill detects a deep-analysis or ops question, it explicitly hands off to the appropriate sub-skill. MCP server (50 tools) is separate from skill activation — all 50 tools are accessible regardless of which sub-skill is active.

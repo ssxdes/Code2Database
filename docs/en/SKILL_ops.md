@@ -1,6 +1,6 @@
 ---
 name: Code2Database-ops
-description: "Operations sub-skill for Code2Database. Activated when the user asks about safe graph editing (transactions, snapshots, WAL replay), keeping the graph up to date (daemon control, file watching, git hook install, patch-from-diff, patch-from-git, sync, merge), profile health and evolution, doc-code alignment and stale-doc marking, graph versioning, persistent memory management, exports (HTML, Obsidian, Web UI), plugins, embeddings (experimental), or the BUG benchmark. Provides hierarchical routing: 14 Tier-1 high-weight commands shown in Quick Reference, a routing table mapping question types to medium-weight command groups, and an on-demand section listing low-weight experimental commands by name only. Database write constraint: LLM MUST get user confirmation before any DB-modifying command (update-node, update-edge, patch-profile, apply-semantics, apply-invariants, auto-enhance, profile-evolve --apply, doc-mark-stale, ffi-types, merge-changes, tx-commit). Use when /Code2Database detects an ops question and explicitly hands off, or when the user types /Code2Database-ops. Not for: querying the graph (use parent /Code2Database); not for deep semantic analysis (use /Code2Database-analysis)."
+description: "Operations sub-skill for Code2Database. Activated when the user asks about safe graph editing (transactions, snapshots, WAL replay), keeping the graph up to date (daemon control, file watching, git hook install, patch-from-diff, patch-from-git, sync, merge), profile health and evolution, doc-code alignment and stale-doc marking, graph versioning, persistent memory management, exports (HTML, Obsidian, Web UI), plugins, embeddings (experimental), or the BUG benchmark. Provides hierarchical routing: 22 Tier-1 high-weight commands shown in Quick Reference, a routing table mapping question types to medium-weight command groups, and an on-demand section listing low-weight experimental commands by name only. Database write constraint: LLM MUST get user confirmation before any DB-modifying command (update-node, update-edge, patch-profile, apply-semantics, apply-invariants, auto-enhance, profile-evolve --apply, doc-mark-stale, ffi-types, merge-changes, tx-commit). Use when /Code2Database detects an ops question and explicitly hands off, or when the user types /Code2Database-ops. Not for: querying the graph (use parent /Code2Database); not for deep semantic analysis (use /Code2Database-analysis)."
 trigger: /Code2Database-ops
 parent_skill: Code2Database
 ---
@@ -41,6 +41,11 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 - `classify-endpoints` — Apply LLM endpoint classification results
 - `manage-memory --action add/correct/reshape/promote/refine` — Write persistent memory
 - `save-memory` — Save Q&A memory
+- `kb-rebuild-index` — Rebuild unified FTS5 index from memory/*.json + knowledge/*.md (run after each build/update or manual edit)
+- `kb-cluster` — Cluster similar kb items + link memory_qa → knowledge_principle
+- `kb-migrate` — Migrate kb_paragraphs to kb_items (fact-level + versions + provenance)
+- `kb-forget --id N` — Immediately delete a kb_paragraph (no decay; writes audit_log)
+- `kb-rollback --id N --to-version M` — Roll back a kb_item to a prior version (saves current as version)
 - `apply-invariants` — Apply extracted invariants; **AMBIGUOUS never applied**; INFERRED require confirmation; EXTRACTED auto-applied
 - `auto-enhance` — LLM auto-semantic enhancement; EXTRACTED+evidence auto-writes; **INFERRED require confirmation**; AMBIGUOUS rejected
 - `batch-confirm` — Batch-confirm pending INFERRED enhancements
@@ -87,6 +92,14 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 | `update-node` | LLM-driven incremental node attribute supplement (**requires user confirmation**, non-destructive) |
 | `update-edge` | LLM-driven incremental edge attribute supplement (**requires user confirmation**, non-destructive) |
 | `serve` | MCP server mode (stdio, 50 tools: 31 code2database_* + 19 cgdb_*) |
+| `kb-rebuild-index` | Rebuild unified FTS5 index from memory/ + knowledge/ (run after build/update) |
+| `kb-cluster` | Cluster similar kb items + link principle refs |
+| `kb-audit` | KB audit: counts by kind / stale / low-confidence / citations |
+| `kb-known-unknowns` | List unmatched queries (feedback loop) |
+| `kb-forget` | Immediately delete a kb item (no decay; **requires user confirmation**; writes audit_log) |
+| `kb-rollback` | Roll a kb_item back to a prior version (saves current as version history) |
+| `kb-conflict` | Detect contradictory items in the same cluster (yes/no, must/must not, ...) |
+| `kb-global-add` / `kb-global-search` / `kb-global-share` / `kb-global-import` | Cross-project global KB (~/.code2database_global_kb/) |
 
 ## Routing Table — Medium-weight Commands by Question Type
 

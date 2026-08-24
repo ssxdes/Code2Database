@@ -5,6 +5,129 @@ All notable changes to Code2Database will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-08-25
+
+**Major feature release**: unified knowledge base (kb-*) with FTS5+BM25 across
+memory + knowledge + global stores. 13 new kb-* CLI commands, 1 new MCP tool,
+5 new modules, 3 new SQLite tables, 4 schema migrations.
+
+### Phase 0 — Urgent BUG fixes
+- **Storage path split**: `cgdb_merge` and `cgdb_suggest` read from
+  `.code2database_memory` and `.code2database_knowledge` (always empty);
+  `save-memory` and `apply-knowledge` write to `memory/` and `knowledge/`.
+  Unified to canonical paths; rewrote 4 functions in `cgdb_merge.py` with
+  root+leaf+experience loading and non-dict sanitize.
+- **LazySQLiteGraph incompatibility**: `cmd_update` had early detection
+  (prior commit); this release covers the remaining 5 mutation sites —
+  `cmd_merge`, `cmd_sync`, `merge_change_graph`, `cmd_apply_semantics`,
+  `_mark_file_stale`. New shared helper `_ensure_mutable_graph` in utils.py.
+- **ARG_MAX**: `graph_build.py:6525` joined thousands of CONFIG_* macros
+  into a single `--macros` CLI arg (kernel exceeds ~128KB ARG_MAX). Added
+  `--macros-from <file>` to scanner + `_parse_macros_file` helper;
+  graph_build uses tempfile when joined length > 8KB with finally cleanup.
+- **Daemon memory invalidate**: `daemon.py` had zero memory references;
+  source updates left memory `node_ids` as dangling pointers. Added
+  `_invalidate_stale_memory_after_sync()` called from `_sync_incremental`
+  and `_sync_bulk`.
+
+### Phase 1 — FTS5 schema + kb-rebuild-index (SCHEMA v9)
+- New table `kb_paragraphs` + `kb_paragraphs_fts` (porter + unicode61
+  tokenizer) + AI/AD/AU triggers + 3 indexes.
+- New module `scripts/_builder/kb_index.py`: `rebuild_kb_index()` walks
+  `memory/{root,leaf,experience}/*.json` + `knowledge/*.md` (paragraph-split
+  via `##` headings) and bulk-inserts. `query_kb()` returns ranked hits
+  with `see_also` and `access_count` bump.
+- New CLI `kb-rebuild-index`.
+
+### Phase 2 — memory/knowledge search upgrade
+- `cmd_search_memory`, `_tool_memory_search`, `KnowledgeManager.query_knowledge`,
+  `_tool_knowledge_query` all try FTS5+BM25 first, fall back to legacy
+  Jaccard / substring search when no db.
+
+### Phase 3 — unified query interface
+- New CLI `kb-query` with `--kinds` / `--min-weight` / `--max-tokens` /
+  `--semantic` / `--global` flags.
+- New MCP tool `code2database_kb_query` (TOOLS dict 49 -> 50).
+- `cmd_query` (Cypher) injects top-3 kb hits as `_hints` alongside rows,
+  realizing the SKILL.md `memory -> knowledge -> graph -> source` chain.
+- `cmd_describe_node` returns `memory_refs` + `knowledge_refs`.
+- `_build_context_pack` merges `.memory_pack_lite` + `.knowledge_pack_lite`
+  into the main context_pack as `memory_summary` + `knowledge_summary`.
+
+### Phase 4 — clustering (SCHEMA v10)
+- Added `scope_id` / `canonical_id` / `principle_ref` columns to kb_paragraphs.
+- New module `kb_cluster.py`: union-find on FTS5 BM25 > threshold, picks
+  canonical (highest weight x confidence), links `memory_qa` -> principle.
+- New CLI `kb-cluster`. `query_kb` returns `see_also` from same cluster.
+
+### Phase 5 — embedding schema (SCHEMA v11)
+- Added `embedding BLOB` column. `kb-query --semantic` flag interface in
+  place; degrades to FTS5 when sentence-transformers unavailable.
+
+### Phase 6 — kb_items unified table (SCHEMA v12)
+- New fact-level table `kb_items` + `kb_items_fts` with `versions_json`,
+  `decay_class`, `provenance_commit`, `provenance_operator`.
+- New CLI `kb-migrate` copies `kb_paragraphs` -> `kb_items` with kind-based
+  `decay_class` assignment.
+
+### Phase 8 — cross-project global KB
+- New module `kb_global.py`: `~/.code2database_global_kb/global.db` with
+  `kb_global` + `kb_global_fts`. `global_add` / `search` / `share` / `import`.
+- 4 new CLI: `kb-global-add`, `kb-global-search`, `kb-global-share`,
+  `kb-global-import`. `kb-query --global` falls back when project KB empty.
+
+### Phase 9 — feedback loop
+- New table `kb_query_log` records every `query_kb` call (matched / count /
+  top_score / timestamp).
+- New CLI `kb-known-unknowns` aggregates unmatched queries (occurrences >= N).
+
+### Phase 10 — knowledge audit
+- New module `kb_audit.py`: `audit_kb()` reports counts by kind, stale items
+  (90d untouched), low-confidence (<0.5), high-citation (top access_count),
+  most-linked principles, and optional 'what we know about X'.
+- `write_audit_log_entry()` reuses the existing `audit_log` table.
+- New CLI `kb-audit`.
+
+### Phase 11 — conflict & rollback
+- New module `kb_conflict.py`: `detect_conflicts()` pairwise-scan within
+  clusters for 14 contradiction word pairs (yes/no, must/must not,
+  always/never, safe/unsafe, ...). `rollback_kb_item()` restores from
+  `versions_json` (saves current as new version first).
+  `forget_kb_paragraph()` immediately deletes with `audit_log` entry.
+- 3 new CLI: `kb-conflict`, `kb-rollback`, `kb-forget`.
+
+### SKILL.md aliases
+- `save` -> `save-memory`, `recall` -> `search-memory`, `know` ->
+  `knowledge-query` (so SKILL.md Quick Reference commands work as documented).
+
+### Doc sync
+- 16 `.md` / `.json` files updated for new counts (50 MCP tools /
+  31 code2database_* / 184 CLI commands / 24 core).
+- `docs/en/references/memory_knowledge.md` and `docs/zh/references/memory_knowledge.md`
+  rewritten to match actual code schema (removed fictional `mem_xxx` /
+  `topic` / `fact` / `source` / `confidence` / `related_functions` /
+  `graph_version` fields; removed `--threshold-days` fictional param;
+  replaced with real entry schema + Markdown file schema).
+- `docs/{en,zh}/OVERVIEW.md` directory tree updated with 5 new `kb_*.py`
+  modules.
+- `docs/{en,zh}/SKILL_ops.md` Quick Reference updated with 8 new kb-* ops
+  commands; Tier-1 count bumped 14 -> 22.
+- `docs/{en,zh}/references/data_model.md` adds kb_paragraphs / kb_items /
+  kb_query_log table descriptions.
+- `skill.json` tier_1_commands: 20 -> 24 (added `kb-query`,
+  `kb-rebuild-index`, `kb-audit`, `kb-forget`).
+- `skill_ops.json` tier_1_commands: 5 -> 8 (added `kb-rebuild-index`,
+  `kb-audit`, `kb-forget`).
+- `skill_analysis.json` tier_1_commands: 5 -> 6 (added `kb-query`).
+
+### Stats
+- 5 new modules: `kb_index.py`, `kb_cluster.py`, `kb_global.py`,
+  `kb_audit.py`, `kb_conflict.py`.
+- 13 new kb-* CLI commands (CLI total 171 -> 184).
+- 1 new MCP tool `code2database_kb_query` (MCP total 49 -> 50).
+- 3 new tables (`kb_paragraphs` + FTS5, `kb_items` + FTS5, `kb_query_log`).
+- 4 schema migrations (v9-v12).
+
 ## [1.1.2] - 2026-08-22
 
 Patch release refactoring the Web UI to **cytoscape.js 3.28.1** for dense-graph UX.
@@ -169,7 +292,7 @@ First public release. Code2Database scans C/C++/Go/Python/Java/Rust/ASM codebase
 
 - **Dual extraction backend**: `auto` (default — uses clang when libclang is installed, falls back to tree-sitter), `clang` (force clang, enables cgdb semantic layer; libclang 17+), `tree-sitter` (force tree-sitter, no libclang dep). Selected via `--extraction-backend` flag at scan time. **libclang is recommended, NOT required** — tree-sitter-only mode is fully functional for every supported language.
 - **cgdb semantic tables** populated when clang backend is enabled: L1 AST nodes, L2 types, L3.5 config predicates (`#ifdef CONFIG_*`), L4 CFG (basic blocks + edges), L5 data flow (def-use chains), L6 alias (stub), L7 ops_bindings (typed vtable dispatch via FieldDecl → FunctionDecl) + invoke_sites, L8 sync_primitives + happens_before, L10 provenance + time-travel versions.
-- **122 CLI commands** organized into 3 sub-skills: `/Code2Database` (core, 15 Tier-1 high-weight commands), `/Code2Database-analysis` (deep semantic analysis, 13 Tier-1 + 18 `cgdb_*` MCP tools), `/Code2Database-ops` (graph editing + ops, 14 Tier-1).
+- **122 CLI commands** organized into 3 sub-skills: `/Code2Database` (core, 15 Tier-1 high-weight commands), `/Code2Database-analysis` (deep semantic analysis, 13 Tier-1 + 19 `cgdb_*` MCP tools), `/Code2Database-ops` (graph editing + ops, 14 Tier-1).
 - **50 MCP tools** (31 `code2database_*` + 19 `cgdb_*`) exposed over stdio transport via `serve` command.
 - **Multi-language scanning** for C, C++, Go, Python, Java, Rust, ASM (regex-based for NASM x86_64 / kernel GNU as / ARM bl/blr).
 

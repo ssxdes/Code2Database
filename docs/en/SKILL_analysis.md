@@ -7,7 +7,7 @@ parent_skill: Code2Database
 
 # /Code2Database-analysis
 
-**Deep semantic analysis layer for Code2Database.** Activated when the user's question goes beyond "what calls what" — concurrency safety, data races, value flow, path feasibility under constraints, invariants, FFI boundaries, commit-level provenance, or direct cgdb (code graph database) queries via the 18 `cgdb_*` MCP tools.
+**Deep semantic analysis layer for Code2Database.** Activated when the user's question goes beyond "what calls what" — concurrency safety, data races, value flow, path feasibility under constraints, invariants, FFI boundaries, commit-level provenance, or direct cgdb (code graph database) queries via the 19 `cgdb_*` MCP tools.
 
 This sub-skill does **not** re-scan or rebuild the graph. It assumes `code2db-out/` is already built (via the parent `/Code2Database` skill) and the graph is fresh (run `daemon-status` / `daemon-wait-sync` first if a daemon is running).
 
@@ -61,7 +61,7 @@ When the question type matches one of these, use the listed command sequence. Re
 | **Which Python/Go/Rust function calls into C?** | `ffi-detect` → `ffi-list` → `ffi-trace` → `ffi-types` |
 | **Which commit introduced this?** | `blame-node` → `describe-commit` → `node-history` → `graph-provenance` → `find-commits` |
 | **Who allocates / frees this resource?** | `who-allocates` → `who-frees` → `unbalanced-alloc-free` → `add-semantic-edges` |
-| **Query cgdb tables directly (clang backend)** | use the 18 `cgdb_*` MCP tools — see "cgdb MCP Tools" section below |
+| **Query cgdb tables directly (clang backend)** | use the 19 `cgdb_*` MCP tools — see "cgdb MCP Tools" section below |
 
 ## cgdb MCP Tools (clang backend — 18 tools)
 
@@ -131,7 +131,7 @@ When you detect a question about **simple browsing, scanning, building, or gener
 
 | Document | Content |
 |----------|---------|
-| `references/analysis_commands.md` | Full syntax for all 49 analysis commands + 19 cgdb_* MCP tools |
+| `references/analysis_commands.md` | Full syntax for all 50 analysis commands + 19 cgdb_* MCP tools |
 | `references/data_model.md` | Node/edge attributes, context pack tiers, cgdb table schemas |
 | `references/semantic_enhancement.md` | Semantic extraction and enhancement details |
 | `references/endpoint_pipeline.md` | Endpoint classification pipeline |

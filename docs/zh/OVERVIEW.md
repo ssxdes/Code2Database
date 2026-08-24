@@ -44,7 +44,7 @@ C/C++ 提取后端有两种模式，服务于不同需求：
 - **tree-sitter**（默认回退，无系统依赖）——对畸形代码鲁棒，统一处理 C/C++/Go/Python/Java/Rust，产生规范的遗留图（functions/edges/vtable_registrations）。无法精确解析类型。
 - **clang**（可选，需 `pip install libclang==17.0.6`）——使用 libclang 的 AST 进行精确类型解析、USR 稳定节点 ID、CFG 基本块、def-use 数据流、同步原语、happens-before、强类型 vtable 分发（FieldDecl → FunctionDecl）。用 13 张强类型语义表填充 cgdb 层。
 
-`auto` 后端（默认）两者都跑：tree-sitter 提供遗留形态数据，clang 提供 cgdb 表，`DualBackendScanner` 合并它们。若 libclang 缺失，系统优雅降级——每种支持的语言仍可扫描、构建、查询；仅 18 个 `cgdb_*` MCP 工具返回空结果。
+`auto` 后端（默认）两者都跑：tree-sitter 提供遗留形态数据，clang 提供 cgdb 表，`DualBackendScanner` 合并它们。若 libclang 缺失，系统优雅降级——每种支持的语言仍可扫描、构建、查询；仅 19 个 `cgdb_*` MCP 工具返回空结果。
 
 这个设计让 Code2Database 能从快速安装（`pip install tree-sitter-c`）扩展到完整语义数据库（`pip install libclang==17.0.6`）而无需改代码。
 
@@ -53,10 +53,10 @@ C/C++ 提取后端有两种模式，服务于不同需求：
 skill 以 3 个子 skill 形式发布（`/Code2Database` 核心、`/Code2Database-analysis` 深度分析、`/Code2Database-ops` 运维），让 LLM 代理只加载与当前问题相关的命令：
 
 - **核心（15 个 Tier-1 命令）**——常驻加载。构建、浏览、基础查询（scan、build、explore-flow、describe-node、trace-chain、neighbors、path、search、key-paths 等）。
-- **分析（13 个 Tier-1 + 18 个 cgdb_* MCP 工具）**——按需加载。并发、数据流、不变量、FFI、路径可行性、来源、cgdb 表。
+- **分析（13 个 Tier-1 + 19 个 cgdb_* MCP 工具）**——按需加载。并发、数据流、不变量、FFI、路径可行性、来源、cgdb 表。
 - **运维（14 个 Tier-1 命令）**——按需加载。事务、守护进程、profile 健康、文档-代码对齐、导出、插件、记忆、嵌入。
 
-全部 122 个 CLI 命令都通过共享的 `scripts/code2database_builder.py` 可访问，无论哪个子 skill 激活。这个拆分纯粹是为了 LLM 上下文经济：4K-token 的核心 skill 总是有用；20K-token 的分析 skill 只应在用户问及竞争或不变量时加载。
+全部 184 个 CLI 命令都通过共享的 `scripts/code2database_builder.py` 可访问，无论哪个子 skill 激活。这个拆分纯粹是为了 LLM 上下文经济：4K-token 的核心 skill 总是有用；20K-token 的分析 skill 只应在用户问及竞争或不变量时加载。
 
 ### 为什么是 micro → lite → local 查询模式
 
@@ -110,7 +110,7 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 | 报告多库 | `db_routing` / `precompute_tasks` | `db_router.py`（P1，待实现） |
 | 报告跨语言 | `cross_lang_bindings` / `type_mappings` / `ffi_call_sites` / `language_adapters` / `runtime_observations` / `dependencies` | `ffi_bridge.py`（现有）+ `ir_adapters.py` |
 
-这些表由 clang 后端填充（遗留 cgdb 层）和 IR/L1/L4 流水线填充（报告层）。它们由 18 个 `cgdb_*` MCP 工具（遗留）+ 28 个设计报告 MCP 工具（`render_source` / `verify_consistency` / `edit_token` / `find_symbol` / `callers_of` / `indirect_targets` / `commit_db_transaction` / 等）查询。所有表共存于同一个 SQLite 数据库（`code2database.db`）。
+这些表由 clang 后端填充（遗留 cgdb 层）和 IR/L1/L4 流水线填充（报告层）。它们由 19 个 `cgdb_*` MCP 工具（遗留）+ 28 个设计报告 MCP 工具（`render_source` / `verify_consistency` / `edit_token` / `find_symbol` / `callers_of` / `indirect_targets` / `commit_db_transaction` / 等）查询。所有表共存于同一个 SQLite 数据库（`code2database.db`）。
 
 ### 为什么需要事务性更新
 
@@ -528,9 +528,15 @@ scripts/
 │   │                                add-semantic-edges
 │   ├── logging_utils.py          ← 结构化日志（configure_logging、get_logger）
 │   ├── mcp_server.py             ← MCP 服务器（stdio 传输，50 个工具：31 code2database_* + 19 cgdb_*）
+│   ├── kb_index.py               ← 统一 KB FTS5+BM25 索引（kb_paragraphs 表，跨 memory+knowledge 查询）
+│   ├── kb_cluster.py             ← KB 聚类（union-find on FTS5 similarity，scope_id/canonical_id/principle_ref）
+│   ├── kb_global.py              ← 跨项目全局 KB（~/.code2database_global_kb/global.db，跨项目复用知识）
+│   ├── kb_audit.py               ← KB 审计（counts by kind、stale、low-confidence、citations、audit_log 接入）
+│   ├── kb_conflict.py            ← KB 冲突检测（同 cluster 内矛盾词对）+ rollback + forget
 │   ├── validate.py               ← 图校验
 │   └── utils.py                  ← 共享构建器工具（_normalize_id、_resolve_invoked_id、
-│                                    _find_node_id、_parse_bindings、_load_globals 等）
+│                                    _find_node_id、_parse_bindings、_load_globals、
+│                                    _ensure_mutable_graph 等）
 │
 ├── config/
 │   ├── profiles/                 ← 内置项目 profile（不要加载进上下文）
@@ -624,7 +630,7 @@ ASM（.s .S .asm）用正则扫描——无需 tree-sitter 语法。
 
 | 组件 | 用途 |
 |------|------|
-| **MCP（Model Context Protocol）stdio 传输** | `serve` 命令通过 JSON-RPC 暴露 48 个工具（30 个 `code2database_*` + 18 个 `cgdb_*`），带 Content-Length 帧 |
+| **MCP（Model Context Protocol）stdio 传输** | `serve` 命令通过 JSON-RPC 暴露 50 个工具（31 个 `code2database_*` + 19 个 `cgdb_*`），带 Content-Length 帧 |
 | **分层上下文包** | micro（~200 token） → lite（~500） → standard（~1500） → full——最小化 LLM token 成本 |
 | **懒加载模块导入** | `_builder/__init__.py` 延迟模块加载到首次访问，降低启动时间 |
 
@@ -776,10 +782,10 @@ inotify 等待 → debounce 500ms → 批窗口 1000ms → transaction() {
 
 ### MCP 服务器
 
-`serve` 通过 stdio JSON-RPC 暴露 48 个工具，带 Content-Length 帧：
+`serve` 通过 stdio JSON-RPC 暴露 50 个工具，带 Content-Length 帧：
 
-- 30 个 `code2database_*` 工具（load、search、describe、explore、trace、impact、key_paths、concurrency、data_lifecycle、domain、knowledge_query、memory_search、semantic_status 等）
-- 18 个 `cgdb_*` 工具（cgdb_search_symbols、cgdb_find_invokers、cgdb_find_invoked、cgdb_get_definition、cgdb_get_function_body、cgdb_get_struct_layout、cgdb_find_type_definition、cgdb_find_ops_impls、cgdb_find_cfg_paths、cgdb_find_data_flow、cgdb_find_aliases、cgdb_find_lock_held_calls、cgdb_check_race_condition、cgdb_find_configs_for、cgdb_find_nodes_under_config、cgdb_index_status、cgdb_time_travel_query、cgdb_list_versions）
+- 31 个 `code2database_*` 工具（load、search、describe、explore、trace、impact、key_paths、concurrency、data_lifecycle、domain、knowledge_query、memory_search、semantic_status 等）
+- 19 个 `cgdb_*` 工具（cgdb_search_symbols、cgdb_find_invokers、cgdb_find_invoked、cgdb_get_definition、cgdb_get_function_body、cgdb_get_struct_layout、cgdb_find_type_definition、cgdb_find_ops_impls、cgdb_find_cfg_paths、cgdb_find_data_flow、cgdb_find_aliases、cgdb_find_lock_held_calls、cgdb_check_race_condition、cgdb_find_configs_for、cgdb_find_nodes_under_config、cgdb_index_status、cgdb_time_travel_query、cgdb_list_versions）
 
 MCP 服务器无论哪个子 skill 激活都可访问；子 skill 纯粹是 LLM 上下文经济机制。
 

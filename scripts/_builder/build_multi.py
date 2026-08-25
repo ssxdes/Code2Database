@@ -329,6 +329,7 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
 # ---------------------------------------------------------------------------
 
 def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
+                max_workers: int = 0,
                 force_rescan: Optional[List[str]] = None,
                 no_clang: bool = False, verbose: bool = True) -> Dict[str, Any]:
     """Build a unified C2D from a multi-project manifest.
@@ -407,6 +408,7 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
             "source_root": source,
             "lang": "auto",
             "workers": jobs,
+            "max_workers": max_workers or jobs,
         }
         # Macros
         macros = p.get("macros", [])
@@ -473,7 +475,7 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                 extraction=joint_extraction_path,
                 outdir=outdir,
                 jobs=jobs,
-                max_workers=0,
+                max_workers=max_workers or 0,
                 build_config="auto",
                 profile=None,
                 macros=None,

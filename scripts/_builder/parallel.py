@@ -126,6 +126,7 @@ def map_nodes(
     items: List[Tuple[Any, Any]],
     work_fn: Callable[[Any, Any], Any],
     jobs: int = 0,
+    max_workers_cap: int = 0,
     desc: str = "",
     batch_size: int = 200,
 ) -> List[Any]:
@@ -138,15 +139,14 @@ def map_nodes(
     dict, since merging happens sequentially on the main thread.
 
     Args:
-        items: List of ``(node_id, node_data)`` tuples (typically
-            ``list(G.nodes(data=True))``).
-        work_fn: Top-level or local callable taking ``(node_id, node_data)``
-            and returning a result. For ThreadPoolExecutor this can be a
-            closure; no pickling is involved.
+        items: List of ``(node_id, node_data)`` tuples.
+        work_fn: Top-level or local callable taking ``(node_id, node_data)``.
         jobs: Worker count (0=auto, 1=sequential, N=N threads).
-        desc: Human-readable label printed once at start (for stderr logs).
-        batch_size: Submit futures in batches of this size to bound the
-            number of pending Future objects in flight.
+        max_workers_cap: Override the hard cap (0=use env/default). Pass
+            through from --max-workers CLI flag so the user's explicit
+            choice isn't silently lost when resolve_jobs re-resolves.
+        desc: Human-readable label printed once at start.
+        batch_size: Submit futures in batches of this size.
 
     Returns:
         List of results, in the same order as ``items``.
@@ -154,7 +154,7 @@ def map_nodes(
     n = len(items)
     if n == 0:
         return []
-    workers = cap_for_graph(resolve_jobs(jobs), n)
+    workers = cap_for_graph(resolve_jobs(jobs, max_workers_cap=max_workers_cap), n)
     if workers <= 1 or n < 2:
         return [work_fn(nid, nd) for nid, nd in items]
 
@@ -191,6 +191,7 @@ def merge_node_attributes(
     items: List[Tuple[Any, Any]],
     work_fn: Callable[[Any, Any], Optional[Dict[str, Any]]],
     jobs: int = 0,
+    max_workers_cap: int = 0,
     desc: str = "",
     batch_size: int = 200,
 ) -> int:
@@ -202,8 +203,9 @@ def merge_node_attributes(
 
     Returns the count of nodes that produced a non-empty result.
     """
-    results = map_nodes(items, work_fn, jobs=jobs, desc=desc,
-                        batch_size=batch_size)
+    results = map_nodes(items, work_fn, jobs=jobs,
+                        max_workers_cap=max_workers_cap,
+                        desc=desc, batch_size=batch_size)
     count = 0
     for (nid, _nd), res in zip(items, results):
         if not res:

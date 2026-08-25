@@ -710,6 +710,11 @@ def resolve_foreign_by_name(graph_dir: str, foreign_c2d_path: str = "",
         "total_checked": 0,
     }
     try:
+        # Force WAL checkpoint before ATTACH to avoid lock conflicts
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error:
+            pass
         # Get watched c2ds
         if foreign_c2d_path:
             watched = conn.execute(

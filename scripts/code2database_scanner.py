@@ -366,6 +366,7 @@ def _extract_state_access_then_drop_body_text(functions: list,
 
 def scan_directory(source_root: str, lang: str = "auto",
                    macro_bindings: dict = None, workers: int = 0,
+                   max_workers: int = 0,
                    api_prefixes: list = None,
                    profile: dict = None,
                    memory_guard=None,
@@ -859,7 +860,7 @@ def scan_directory(source_root: str, lang: str = "auto",
     # Was hardcoded to min(cpu, 8) — same bottleneck as parallel.py.
     try:
         from _builder.parallel import resolve_jobs
-        workers = resolve_jobs(workers)
+        workers = resolve_jobs(workers, max_workers_cap=max_workers)
     except ImportError:
         if workers == 0:
             import multiprocessing
@@ -2267,7 +2268,9 @@ def cmd_scan(args):
             if _prof_subs:
                 _scan_subsystems_list = list(_prof_subs)
         result = scan_directory(source, args.lang, macro_bindings=macro_bindings,
-                                workers=args.workers, api_prefixes=api_prefixes,
+                                workers=args.workers,
+                                max_workers=getattr(args, 'max_workers', 0) or 0,
+                                api_prefixes=api_prefixes,
                                 profile=profile, memory_guard=memory_guard,
                                 streaming_output=_streaming_path,
                                 memory_limit_gb=getattr(args, 'memory_limit', 0),

@@ -279,6 +279,7 @@ def cmd_build_multi(args):
         manifest_path=args.manifest,
         outdir=args.outdir,
         jobs=getattr(args, "jobs", 0),
+        max_workers=getattr(args, "max_workers", 0) or 0,
         force_rescan=[s.strip() for s in (args.force_rescan or "").split(",")
                       if s.strip()] or None,
         no_clang=getattr(args, "no_clang", False),
@@ -1007,6 +1008,10 @@ def main():
     p_bm.add_argument("--outdir", required=True, help="Output directory for joint C2D")
     p_bm.add_argument("-j", "--jobs", type=int, default=0,
                       help="Parallel workers (0=auto)")
+    p_bm.add_argument("--max-workers", type=int, default=0,
+                      help="Override the hard cap on parallel workers "
+                           "(default: min(cpu_count, 16)). On high-core "
+                           "machines, set to your core count.")
     p_bm.add_argument("--force-rescan", default="",
                       help="Comma-separated project names to force re-scan")
     p_bm.add_argument("--no-clang", action="store_true",

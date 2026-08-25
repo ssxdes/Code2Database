@@ -857,6 +857,7 @@ def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
 
     from _builder.parallel import merge_node_attributes
     merge_node_attributes(G, candidates, _work, jobs=workers,
+                          max_workers_cap=max_workers,
                           desc="state_access")
 
 

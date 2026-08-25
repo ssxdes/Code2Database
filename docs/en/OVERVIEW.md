@@ -539,6 +539,8 @@ scripts/
 │   ├── c2d_foreign.py             ← Cross-C2D foreign_refs + watched_c2ds (add/sync/list/remove)
 │   ├── c2d_phase2.py              ← Composite query + check-compat + coverage-cross-c2d
 │   ├── c2d_phase3.py              ← Vendor stub + FFI auto-link + RPC scan + cross-team knowledge            ← KB conflict detection (within-cluster contradiction pairs) + rollback + forget
+│   ├── lsp_server.py             ← LSP server (expose C2D graph to IDEs: definition/references/callHierarchy)
+│   ├── lsp_backend.py             ← LSP extraction backend (consume gopls/rust-analyzer/clangd as scan source)
 │   ├── validate.py               ← Graph validation
 │   └── utils.py                  ← Shared builder utilities (_normalize_id, _resolve_invoked_id,
 │                                    _find_node_id, _parse_bindings, _load_globals,

@@ -869,6 +869,115 @@ python3 scripts/code2database_builder.py c2d-unpin-foreign \
   --ref-id 42
 ```
 
+## 多项目命令
+
+### `build-multi`
+
+通过 manifest JSON 从多个有依赖关系的项目（A→B→C）构建统一 C2D。强制项目名 domain 前缀防止冲突。
+
+```bash
+python3 scripts/code2database_builder.py build-multi \
+  --manifest projects.json --outdir joint_c2db-out/ \
+  [-j 8] [--max-workers 48] [--force-rescan A,B] [--no-clang]
+```
+
+### `c2d-add-foreign`
+
+注册外部 C2D（项目 A）并解析 B 的未解析调用。
+
+```bash
+python3 scripts/code2database_builder.py c2d-add-foreign \
+  --graph B/c2db-out/ --foreign-c2d A/c2db-out/ --project-name A
+```
+
+### `c2d-sync-foreign`
+
+检测外部 C2D 变更并重新解析 foreign_refs。
+
+```bash
+python3 scripts/code2database_builder.py c2d-sync-foreign \
+  --graph B/c2db-out/ [--foreign-c2d A/c2db-out/]
+```
+
+### `c2d-list-foreign`
+
+列出所有被监听的外部 C2D 及同步状态和引用计数。
+
+```bash
+python3 scripts/code2database_builder.py c2d-list-foreign --graph B/c2db-out/
+```
+
+### `c2d-remove-foreign`
+
+注销外部 C2D。foreign_refs 标记为 'orphaned'。
+
+```bash
+python3 scripts/code2database_builder.py c2d-remove-foreign \
+  --graph B/c2db-out/ --foreign-c2d A/c2db-out/
+```
+
+### `composite-query`
+
+跨 C2D 查询（SQLite ATTACH）。支持 CALLERS_OF / CALLEES_OF。
+
+```bash
+python3 scripts/code2database_builder.py composite-query \
+  --graph B/c2db-out/ --query "CALLERS_OF init" \
+  --foreign-c2d C/c2db-out/ --top 50
+```
+
+### `c2d-check-compat`
+
+检查 B 的 foreign_refs 对新版本 A 是否仍有效。
+
+```bash
+python3 scripts/code2database_builder.py c2d-check-compat \
+  --graph B/c2db-out/ --against-c2d A_v2/c2db-out/
+```
+
+### `coverage-cross-c2d`
+
+计算 target_c2d 中哪些函数被 test_c2d 调用。
+
+```bash
+python3 scripts/code2database_builder.py coverage-cross-c2d \
+  --test-c2d test_A/c2db-out/ --target-c2d A/c2db-out/
+```
+
+### `c2d-add-foreign-stub`
+
+注册 vendor SDK 签名 stub C2D（仅签名，API 稳定）。
+
+```bash
+python3 scripts/code2database_builder.py c2d-add-foreign-stub \
+  --graph B/c2db-out/ --stub-c2d glibc_stub/ --project-name glibc
+```
+
+### `ffi-auto-link`
+
+自动链接 FFI 绑定（ctypes/cgo/extern C）到被监听的外部 C2D。
+
+```bash
+python3 scripts/code2database_builder.py ffi-auto-link --graph B/c2db-out/
+```
+
+### `scan-rpc`
+
+扫描源码中的 HTTP/gRPC 调用，创建 rpc_endpoint stub 节点和边。
+
+```bash
+python3 scripts/code2database_builder.py scan-rpc --graph B/c2db-out/
+```
+
+### `import-foreign-knowledge`
+
+将外部 C2D 的 knowledge/*.md 复制到本地（带项目前缀）。
+
+```bash
+python3 scripts/code2database_builder.py import-foreign-knowledge \
+  --graph B/c2db-out/ --foreign-c2d A/c2db-out/ --project-name A
+```
+
 ## 按需 / 低权重命令
 
 ### `domain`

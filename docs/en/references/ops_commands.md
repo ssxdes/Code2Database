@@ -876,6 +876,116 @@ python3 scripts/code2database_builder.py c2d-unpin-foreign \
   --ref-id 42
 ```
 
+## Multi-Project Commands
+
+### `build-multi`
+
+Build a unified C2D from multiple interdependent projects (A→B→C) via a
+manifest JSON. Forces project-name domain prefix to prevent collisions.
+
+```bash
+python3 scripts/code2database_builder.py build-multi \
+  --manifest projects.json --outdir joint_c2db-out/ \
+  [-j 8] [--max-workers 48] [--force-rescan A,B] [--no-clang]
+```
+
+### `c2d-add-foreign`
+
+Register a foreign C2D (project A) and resolve B's unresolved calls against it.
+
+```bash
+python3 scripts/code2database_builder.py c2d-add-foreign \
+  --graph B/c2db-out/ --foreign-c2d A/c2db-out/ --project-name A
+```
+
+### `c2d-sync-foreign`
+
+Detect changes in foreign C2Ds and re-resolve foreign_refs.
+
+```bash
+python3 scripts/code2database_builder.py c2d-sync-foreign \
+  --graph B/c2db-out/ [--foreign-c2d A/c2db-out/]
+```
+
+### `c2d-list-foreign`
+
+List watched foreign C2Ds with sync status and ref counts.
+
+```bash
+python3 scripts/code2database_builder.py c2d-list-foreign --graph B/c2db-out/
+```
+
+### `c2d-remove-foreign`
+
+Unregister a foreign C2D. Foreign_refs are marked 'orphaned'.
+
+```bash
+python3 scripts/code2database_builder.py c2d-remove-foreign \
+  --graph B/c2db-out/ --foreign-c2d A/c2db-out/
+```
+
+### `composite-query`
+
+Cross-C2D query via SQLite ATTACH. Supports CALLERS_OF / CALLEES_OF.
+
+```bash
+python3 scripts/code2database_builder.py composite-query \
+  --graph B/c2db-out/ --query "CALLERS_OF init" \
+  --foreign-c2d C/c2db-out/ --top 50
+```
+
+### `c2d-check-compat`
+
+Check if B's foreign_refs are still valid against a new version of A.
+
+```bash
+python3 scripts/code2database_builder.py c2d-check-compat \
+  --graph B/c2db-out/ --against-c2d A_v2/c2db-out/
+```
+
+### `coverage-cross-c2d`
+
+Compute which functions in target_c2d are called by test_c2d.
+
+```bash
+python3 scripts/code2database_builder.py coverage-cross-c2d \
+  --test-c2d test_A/c2db-out/ --target-c2d A/c2db-out/
+```
+
+### `c2d-add-foreign-stub`
+
+Register a vendor SDK stub C2D (signatures only, API stable).
+
+```bash
+python3 scripts/code2database_builder.py c2d-add-foreign-stub \
+  --graph B/c2db-out/ --stub-c2d glibc_stub/ --project-name glibc
+```
+
+### `ffi-auto-link`
+
+Auto-link FFI bindings (ctypes/cgo/extern C) to watched foreign C2Ds.
+
+```bash
+python3 scripts/code2database_builder.py ffi-auto-link --graph B/c2db-out/
+```
+
+### `scan-rpc`
+
+Scan source for HTTP/gRPC calls, create rpc_endpoint stub nodes + edges.
+
+```bash
+python3 scripts/code2database_builder.py scan-rpc --graph B/c2db-out/
+```
+
+### `import-foreign-knowledge`
+
+Copy foreign C2D's knowledge/*.md into local with project prefix.
+
+```bash
+python3 scripts/code2database_builder.py import-foreign-knowledge \
+  --graph B/c2db-out/ --foreign-c2d A/c2db-out/ --project-name A
+```
+
 ## On-demand / Low-weight Commands
 
 ### `domain`

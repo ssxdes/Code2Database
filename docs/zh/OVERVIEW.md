@@ -537,6 +537,8 @@ scripts/
 │   ├── c2d_foreign.py             ← Cross-C2D foreign_refs + watched_c2ds (add/sync/list/remove)
 │   ├── c2d_phase2.py              ← Composite query + check-compat + coverage-cross-c2d
 │   ├── c2d_phase3.py              ← Vendor stub + FFI auto-link + RPC scan + cross-team knowledge            ← KB 冲突检测（同 cluster 内矛盾词对）+ rollback + forget
+│   ├── lsp_server.py             ← LSP server（暴露 C2D 图给 IDE：definition/references/callHierarchy）
+│   ├── lsp_backend.py             ← LSP 提取后端（消费 gopls/rust-analyzer/clangd 作为扫描源）
 │   ├── validate.py               ← 图校验
 │   └── utils.py                  ← 共享构建器工具（_normalize_id、_resolve_invoked_id、
 │                                    _find_node_id、_parse_bindings、_load_globals、

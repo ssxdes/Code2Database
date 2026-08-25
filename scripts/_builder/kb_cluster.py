@@ -17,7 +17,7 @@ import sys
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from _builder.kb_index import _kb_connect, _fts5_escape, _split_markdown_paragraphs
+from _builder.kb_index import _kb_connect, _fts5_escape
 import re as _re
 
 

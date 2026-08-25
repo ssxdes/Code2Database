@@ -827,6 +827,55 @@ python3 scripts/code2database_builder.py kb-global-import \
   --input ~/global_kb_share.json
 ```
 
+## Cross-C2D Management (Phase 1 F5/F7/F8)
+
+### `c2d-resolve-foreign`
+
+Force re-resolve stale/deleted foreign_refs by function name, regardless of
+whether the foreign C2D's mtime changed. Useful when A renamed a function and
+B's refs are stale — `c2d-sync-foreign` only re-resolves on mtime change.
+
+```bash
+python3 scripts/code2database_builder.py c2d-resolve-foreign \
+  --graph code2db-out/ \
+  [--foreign-c2d /path/to/A/c2db-out/]
+```
+
+### `c2d-prune-foreign`
+
+Remove old foreign_refs with specified statuses (default: `deleted,orphaned`)
+older than `--max-age-days` (default 30). Keeps resolved/stale/unresolved
+refs (still active). Prevents foreign_refs table from growing unboundedly.
+
+```bash
+python3 scripts/code2database_builder.py c2d-prune-foreign \
+  --graph code2db-out/ \
+  [--max-age-days 30] \
+  [--prune-statuses deleted,orphaned]
+```
+
+### `c2d-pin-foreign`  [write]
+
+Pin a resolved foreign_ref so it won't auto-update when A changes. Pinned
+refs keep their current `foreign_node_id` even if A renames or deletes the
+function. Useful for stable API contracts.
+
+```bash
+python3 scripts/code2database_builder.py c2d-pin-foreign \
+  --graph code2db-out/ \
+  --ref-id 42
+```
+
+### `c2d-unpin-foreign`
+
+Restore auto-update behavior for a pinned foreign_ref.
+
+```bash
+python3 scripts/code2database_builder.py c2d-unpin-foreign \
+  --graph code2db-out/ \
+  --ref-id 42
+```
+
 ## On-demand / Low-weight Commands
 
 ### `domain`

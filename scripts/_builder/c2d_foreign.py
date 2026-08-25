@@ -483,100 +483,99 @@ def sync_foreign(graph_dir: str, foreign_c2d_path: str = "",
                 print(f"[c2d-sync-foreign] {c2d_path}: changed "
                       f"(mtime={mtime_changed}, size={size_changed}, "
                       f"count={count_changed})", file=sys.stderr)
-            # ATTACH foreign db (new version)
-            conn.execute(
-                f"ATTACH DATABASE 'file:{_escape_sql_path(fdb_path)}?mode=ro' AS foreign_db"
-            )
-            # Step 1: verify existing resolved refs still exist
-            resolved = conn.execute(
-                "SELECT id, foreign_node_id, invoked_name, "
-                "invoked_signature FROM foreign_refs "
-                "WHERE foreign_c2d_path = ? AND status = 'resolved'",
-                (c2d_path,)
-            ).fetchall()
-            for r in resolved:
-                if r["foreign_node_id"]:
-                    # Try exact_id strategy
-                    new_row = _resolve_by_exact_id(
-                        conn, r["foreign_node_id"])
+            # ATTACH foreign db (new version) using the context manager
+            # for guaranteed DETACH even on exception.
+            with with_foreign_attached(conn, fdb_path, "foreign_db"):
+                # Step 1: verify existing resolved refs still exist
+                resolved = conn.execute(
+                    "SELECT id, foreign_node_id, invoked_name, "
+                    "invoked_signature FROM foreign_refs "
+                    "WHERE foreign_c2d_path = ? AND status = 'resolved'",
+                    (c2d_path,)
+                ).fetchall()
+                for r in resolved:
+                    if r["foreign_node_id"]:
+                        # Try exact_id strategy
+                        new_row = _resolve_by_exact_id(
+                            conn, r["foreign_node_id"])
+                        if new_row:
+                            # Still exists — update metadata
+                            conn.execute(
+                                "UPDATE foreign_refs SET "
+                                "foreign_name = ?, foreign_domain = ?, "
+                                "foreign_source_file = ?, foreign_signature = ?, "
+                                "last_resolved_at = ? WHERE id = ?",
+                                (new_row["name"], new_row["domain"],
+                                 new_row["source_file"], new_row["signature"],
+                                 datetime.now().isoformat(), r["id"])
+                            )
+                        else:
+                            # Gone — try re-resolve by name
+                            new_row = _resolve_by_exact_name(
+                                conn, r["invoked_name"], project_name,
+                                table_prefix="foreign_db.")
+                            if new_row:
+                                conn.execute(
+                                    "UPDATE foreign_refs SET "
+                                    "foreign_node_id = ?, foreign_name = ?, "
+                                    "foreign_domain = ?, foreign_source_file = ?, "
+                                    "foreign_signature = ?, "
+                                    "resolution_strategy = 'exact_name', "
+                                    "last_resolved_at = ?, status = 'resolved' "
+                                    "WHERE id = ?",
+                                    (new_row["id"], new_row["name"],
+                                     new_row["domain"], new_row["source_file"],
+                                     new_row["signature"],
+                                     datetime.now().isoformat(), r["id"])
+                                )
+                                summary["stale_marked"] += 0  # auto-recovered
+                            else:
+                                # Truly gone — mark as deleted
+                                conn.execute(
+                                    "UPDATE foreign_refs SET status = 'deleted' "
+                                    "WHERE id = ?",
+                                    (r["id"],)
+                                )
+                                summary["deleted_marked"] += 1
+                # Step 2: re-resolve unresolved + deleted + stale
+                unresolved = conn.execute(
+                    "SELECT id, local_node_id, invoked_name, invoked_signature "
+                    "FROM foreign_refs "
+                    "WHERE foreign_c2d_path = ? "
+                    "AND status IN ('unresolved', 'deleted', 'stale')",
+                    (c2d_path,)
+                ).fetchall()
+                for r in unresolved:
+                    new_row = _resolve_by_exact_name(
+                        conn, r["invoked_name"], project_name,
+                        table_prefix="foreign_db.")
                     if new_row:
-                        # Still exists — update metadata
                         conn.execute(
                             "UPDATE foreign_refs SET "
-                            "foreign_name = ?, foreign_domain = ?, "
-                            "foreign_source_file = ?, foreign_signature = ?, "
+                            "foreign_node_id = ?, foreign_name = ?, "
+                            "foreign_domain = ?, foreign_source_file = ?, "
+                            "foreign_signature = ?, status = 'resolved', "
+                            "resolution_strategy = 'exact_name', "
                             "last_resolved_at = ? WHERE id = ?",
-                            (new_row["name"], new_row["domain"],
+                            (new_row["id"], new_row["name"], new_row["domain"],
                              new_row["source_file"], new_row["signature"],
                              datetime.now().isoformat(), r["id"])
                         )
+                        summary["newly_resolved"] += 1
                     else:
-                        # Gone — try re-resolve by name
-                        new_row = _resolve_by_exact_name(
-                            conn, r["invoked_name"], project_name,
-                            table_prefix="foreign_db.")
-                        if new_row:
-                            conn.execute(
-                                "UPDATE foreign_refs SET "
-                                "foreign_node_id = ?, foreign_name = ?, "
-                                "foreign_domain = ?, foreign_source_file = ?, "
-                                "foreign_signature = ?, "
-                                "resolution_strategy = 'exact_name', "
-                                "last_resolved_at = ?, status = 'resolved' "
-                                "WHERE id = ?",
-                                (new_row["id"], new_row["name"],
-                                 new_row["domain"], new_row["source_file"],
-                                 new_row["signature"],
-                                 datetime.now().isoformat(), r["id"])
-                            )
-                            summary["stale_marked"] += 0  # auto-recovered
-                        else:
-                            # Truly gone — mark as deleted
-                            conn.execute(
-                                "UPDATE foreign_refs SET status = 'deleted' "
-                                "WHERE id = ?",
-                                (r["id"],)
-                            )
-                            summary["deleted_marked"] += 1
-            # Step 2: re-resolve unresolved + deleted + stale
-            unresolved = conn.execute(
-                "SELECT id, local_node_id, invoked_name, invoked_signature "
-                "FROM foreign_refs "
-                "WHERE foreign_c2d_path = ? "
-                "AND status IN ('unresolved', 'deleted', 'stale')",
-                (c2d_path,)
-            ).fetchall()
-            for r in unresolved:
-                new_row = _resolve_by_exact_name(
-                    conn, r["invoked_name"], project_name,
-                    table_prefix="foreign_db.")
-                if new_row:
-                    conn.execute(
-                        "UPDATE foreign_refs SET "
-                        "foreign_node_id = ?, foreign_name = ?, "
-                        "foreign_domain = ?, foreign_source_file = ?, "
-                        "foreign_signature = ?, status = 'resolved', "
-                        "resolution_strategy = 'exact_name', "
-                        "last_resolved_at = ? WHERE id = ?",
-                        (new_row["id"], new_row["name"], new_row["domain"],
-                         new_row["source_file"], new_row["signature"],
-                         datetime.now().isoformat(), r["id"])
-                    )
-                    summary["newly_resolved"] += 1
-                else:
-                    summary["still_unresolved"] += 1
-            # Update watched_c2ds signature
-            conn.execute(
-                "UPDATE watched_c2ds SET "
-                "db_mtime_at_sync = ?, db_size_at_sync = ?, "
-                "functions_count_at_sync = ?, "
-                "last_synced_at = ?, sync_status = 'ok' "
-                "WHERE c2d_path = ?",
-                (current_sig.get("mtime", ""), current_sig.get("size", 0),
-                 current_sig.get("functions_count", 0),
-                 datetime.now().isoformat(), c2d_path)
-            )
-            conn.execute("DETACH DATABASE foreign_db")
+                        summary["still_unresolved"] += 1
+                # Update watched_c2ds signature
+                conn.execute(
+                    "UPDATE watched_c2ds SET "
+                    "db_mtime_at_sync = ?, db_size_at_sync = ?, "
+                    "functions_count_at_sync = ?, "
+                    "last_synced_at = ?, sync_status = 'ok' "
+                    "WHERE c2d_path = ?",
+                    (current_sig.get("mtime", ""), current_sig.get("size", 0),
+                     current_sig.get("functions_count", 0),
+                     datetime.now().isoformat(), c2d_path)
+                )
+            # with_foreign_attached guarantees DETACH here
             summary["synced_c2ds"].append({
                 "c2d_path": c2d_path,
                 "status": "synced",
@@ -584,10 +583,7 @@ def sync_foreign(graph_dir: str, foreign_c2d_path: str = "",
         conn.commit()
     except sqlite3.Error as e:
         summary["error"] = str(e)
-        try:
-            conn.execute("DETACH DATABASE foreign_db")
-        except sqlite3.Error:
-            pass
+        # DETACH is handled by with_foreign_attached context manager
     finally:
         conn.close()
     return summary

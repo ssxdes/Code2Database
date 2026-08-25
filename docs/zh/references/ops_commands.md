@@ -823,6 +823,52 @@ python3 scripts/code2database_builder.py kb-global-import \
   --input ~/global_kb_share.json
 ```
 
+## 跨 C2D 管理（Phase 1 F5/F7/F8）
+
+### `c2d-resolve-foreign`
+
+强制按函数名重新解析 stale/deleted foreign_refs，不检查外部 C2D 的 mtime 是否变化。
+适用于 A 重命名了函数、B 的 refs 过期的场景——`c2d-sync-foreign` 仅在 mtime 变化时重新解析。
+
+```bash
+python3 scripts/code2database_builder.py c2d-resolve-foreign \
+  --graph code2db-out/ \
+  [--foreign-c2d /path/to/A/c2db-out/]
+```
+
+### `c2d-prune-foreign`
+
+删除指定状态（默认 `deleted,orphaned`）且超过 `--max-age-days`（默认 30 天）的 foreign_refs。
+保留 resolved/stale/unresolved（仍活跃的）refs。防止 foreign_refs 表无界增长。
+
+```bash
+python3 scripts/code2database_builder.py c2d-prune-foreign \
+  --graph code2db-out/ \
+  [--max-age-days 30] \
+  [--prune-statuses deleted,orphaned]
+```
+
+### `c2d-pin-foreign`  [write]
+
+锁定一条 resolved foreign_ref，使其在 A 变化时不自动更新。锁定的 refs 即使 A 重命名或删除
+函数也保持当前 `foreign_node_id`。适用于稳定的 API 契约场景。
+
+```bash
+python3 scripts/code2database_builder.py c2d-pin-foreign \
+  --graph code2db-out/ \
+  --ref-id 42
+```
+
+### `c2d-unpin-foreign`
+
+恢复被锁定的 foreign_ref 的自动更新行为。
+
+```bash
+python3 scripts/code2database_builder.py c2d-unpin-foreign \
+  --graph code2db-out/ \
+  --ref-id 42
+```
+
 ## 按需 / 低权重命令
 
 ### `domain`

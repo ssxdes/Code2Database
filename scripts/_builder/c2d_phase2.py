@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from _builder.c2d_foreign import _connect, _foreign_db_path
+from _builder.c2d_foreign import _connect, _foreign_db_path, _escape_sql_path
 
 
 def composite_query(graph_dir: str, query: str,
@@ -43,7 +43,7 @@ def composite_query(graph_dir: str, query: str,
                     continue
                 alias = f"foreign_{i}"
                 conn.execute(
-                    f"ATTACH DATABASE 'file:{fdb}?mode=ro' AS {alias}"
+                    f"ATTACH DATABASE 'file:{_escape_sql_path(fdb)}?mode=ro' AS {alias}"
                 )
                 summary["attached_c2ds"].append({
                     "alias": alias,
@@ -210,7 +210,7 @@ def check_compat(graph_dir: str, against_c2d: str,
         "signature_changed_details": [],
     }
     try:
-        conn.execute(f"ATTACH DATABASE 'file:{foreign_db}?mode=ro' AS new_a")
+        conn.execute(f"ATTACH DATABASE 'file:{_escape_sql_path(foreign_db)}?mode=ro' AS new_a")
         # Get all resolved foreign_refs (don't filter by foreign_c2d_path
         # because the user may be checking against a different A version
         # at a different path)
@@ -298,6 +298,7 @@ def coverage_cross_c2d(test_c2d: str, target_c2d: str,
     conn = sqlite3.connect(test_db, uri=True)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     summary: Dict[str, Any] = {
         "test_c2d": test_c2d,
         "target_c2d": target_c2d,
@@ -307,7 +308,7 @@ def coverage_cross_c2d(test_c2d: str, target_c2d: str,
         "coverage_ratio": 0.0,
     }
     try:
-        conn.execute(f"ATTACH DATABASE 'file:{target_db}?mode=ro' AS target")
+        conn.execute(f"ATTACH DATABASE 'file:{_escape_sql_path(target_db)}?mode=ro' AS target")
         # Get all target functions
         target_funcs = conn.execute(
             "SELECT id, name, domain, source_file FROM target.functions "

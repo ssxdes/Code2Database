@@ -18,6 +18,7 @@ import os
 import re
 import sqlite3
 import sys
+from _builder.c2d_foreign import _escape_sql_path
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -51,6 +52,7 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=5000")  # 5s retry on locked db
     # Ensure kb_paragraphs + kb_items + kb_query_log tables exist
     # (idempotent — mirrors sqlite_store.py schema v9-v12).
     try:
@@ -740,7 +742,7 @@ def _query_foreign_kb(conn: sqlite3.Connection, query: str, top_n: int,
         alias = f"fkb_{abs(hash(c2d_path)) % 100000}"
         try:
             conn.execute(
-                f"ATTACH DATABASE 'file:{fdb_path}?mode=ro' AS {alias}"
+                f"ATTACH DATABASE 'file:{_escape_sql_path(fdb_path)}?mode=ro' AS {alias}"
             )
             rows = conn.execute(
                 f"SELECT p.id, p.source_kind, p.source_file, p.title, "

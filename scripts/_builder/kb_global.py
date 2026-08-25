@@ -41,6 +41,7 @@ def _global_kb_connect() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS kb_global (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

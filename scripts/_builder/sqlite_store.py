@@ -46,6 +46,7 @@ class SQLiteStore:
         self._conn = sqlite3.connect(self.db_path)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
         self._conn.execute("PRAGMA temp_store=MEMORY")   # Keep temp tables in RAM
         self._conn.execute("PRAGMA mmap_size=268435456")  # 256MB memory-mapped I/O

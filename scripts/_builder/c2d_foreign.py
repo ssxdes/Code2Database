@@ -31,6 +31,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+def _escape_sql_path(path: str) -> str:
+    """Escape single quotes in a file path for safe embedding in SQL.
+    
+    SQLite uses '' (doubled single quote) to represent a literal ' inside
+    a single-quoted string. Without this, a path like /path/with'quote/db.sqlite
+    would break the ATTACH statement.
+    """
+    return path.replace("'", "''")
+
+
+
 
 # ---------------------------------------------------------------------------
 # Schema (SCHEMA v13 — added to SQLiteStore._create_tables / _migrate_schema)
@@ -303,7 +314,7 @@ def add_foreign(graph_dir: str, foreign_c2d_path: str,
         conn.commit()
         # Step 2: ATTACH foreign db read-only
         conn.execute(
-            f"ATTACH DATABASE 'file:{foreign_db}?mode=ro' AS foreign_db"
+            f"ATTACH DATABASE 'file:{_escape_sql_path(foreign_db)}?mode=ro' AS foreign_db"
         )
         # Step 3: Find B's unresolved calls
         # An unresolved call is an edge in B.edges where invoked_id is empty
@@ -466,7 +477,7 @@ def sync_foreign(graph_dir: str, foreign_c2d_path: str = "",
                       f"count={count_changed})", file=sys.stderr)
             # ATTACH foreign db (new version)
             conn.execute(
-                f"ATTACH DATABASE 'file:{fdb_path}?mode=ro' AS foreign_db"
+                f"ATTACH DATABASE 'file:{_escape_sql_path(fdb_path)}?mode=ro' AS foreign_db"
             )
             # Step 1: verify existing resolved refs still exist
             resolved = conn.execute(
@@ -730,7 +741,7 @@ def resolve_foreign_by_name(graph_dir: str, foreign_c2d_path: str = "",
             if not os.path.exists(fdb):
                 continue
             try:
-                conn.execute(f"ATTACH DATABASE 'file:{fdb}?mode=ro' AS resolve_db")
+                conn.execute(f"ATTACH DATABASE 'file:{_escape_sql_path(fdb)}?mode=ro' AS resolve_db")
             except sqlite3.Error:
                 continue
             # Get all non-resolved refs for this c2d
@@ -883,7 +894,7 @@ def with_foreign_attached(conn: sqlite3.Connection, foreign_db_path: str,
             rows = c.execute("SELECT * FROM a_db.functions").fetchall()
     """
     conn.execute(
-        f"ATTACH DATABASE 'file:{foreign_db_path}?mode=ro' AS {alias}"
+        f"ATTACH DATABASE 'file:{_escape_sql_path(foreign_db_path)}?mode=ro' AS {alias}"
     )
     try:
         yield conn

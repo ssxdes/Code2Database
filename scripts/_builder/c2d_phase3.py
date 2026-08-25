@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional
 
 from _builder.c2d_foreign import (
     _connect, _foreign_db_path, _ensure_foreign_tables,
-    _get_db_signature, _resolve_by_exact_name,
+    _get_db_signature, _resolve_by_exact_name, _escape_sql_path,
 )
 
 
@@ -74,7 +74,7 @@ def add_foreign_stub(graph_dir: str, stub_c2d_path: str,
         # WAL lock conflict from _get_db_signature opening a separate
         # connection that hasn't released its lock before ATTACH.
         conn.execute(
-            f"ATTACH DATABASE 'file:{foreign_db}?mode=ro' AS stub_db"
+            f"ATTACH DATABASE 'file:{_escape_sql_path(foreign_db)}?mode=ro' AS stub_db"
         )
         # Query stub db signature through the attached alias
         try:
@@ -202,7 +202,7 @@ def auto_link_ffi_to_foreign(graph_dir: str, verbose: bool = True) -> Dict[str, 
                 continue
             try:
                 conn.execute(
-                    f"ATTACH DATABASE 'file:{fdb_path}?mode=ro' AS ffi_foreign"
+                    f"ATTACH DATABASE 'file:{_escape_sql_path(fdb_path)}?mode=ro' AS ffi_foreign"
                 )
             except sqlite3.Error:
                 continue

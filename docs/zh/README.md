@@ -8,7 +8,7 @@
 
 [![语言](https://img.shields.io/badge/语言-7%20%2B%20ASM-orange)](#语言支持)
 [![MCP工具](https://img.shields.io/badge/MCP工具-53-blueviolet)](#mcp-服务器)
-[![查询命令](https://img.shields.io/badge/查询命令-200-success)](#命令参考)
+[![查询命令](https://img.shields.io/badge/查询命令-201-success)](#命令参考)
 [![许可证: MIT](https://img.shields.io/badge/许可证-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](#安装)
 [![tree-sitter](https://img.shields.io/badge/tree--itter-AST-green?logo=tree-sitter&logoColor=white)](#工作原理)
@@ -556,7 +556,7 @@ python3 scripts/code2database_scanner.py scan --source /path --extraction-backen
 
 ## 技能激活（3 个子技能）
 
-技能分为 3 个子技能以保持 LLM 上下文精简。每个子技能有自己的 `SKILL.md`，仅暴露与其层相关的命令。CLI（`scripts/code2database_builder.py`）共享——无论哪个子技能激活，全部 200 个命令都可访问。
+技能分为 3 个子技能以保持 LLM 上下文精简。每个子技能有自己的 `SKILL.md`，仅暴露与其层相关的命令。CLI（`scripts/code2database_builder.py`）共享——无论哪个子技能激活，全部 201 个命令都可访问。
 
 | 子技能 | 触发 | 用途 |
 |--------|------|------|

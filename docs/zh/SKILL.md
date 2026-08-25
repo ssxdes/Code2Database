@@ -75,7 +75,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP 服�
 | `daemon` | 后台自动同步 | Ops |
 | `health` | 图谱新鲜度 + profile 健康 | — |
 
-全部 200 个 CLI 命令仍可访问；上述 24 个覆盖 ~95% 的 agent 工作流。
+全部 201 个 CLI 命令仍可访问；上述 24 个覆盖 ~95% 的 agent 工作流。
 
 ## 支持语言
 
@@ -103,3 +103,11 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 - 边置信度：EXTRACTED / INFERRED / AMBIGUOUS
 - DB 写入需用户确认
 - 守护进程新鲜度：重要查询前检查 `daemon-status`
+- `update`/`merge`/`sync` 命令需要内存中的 nx.DiGraph。大型项目（>=5万函数）
+  时 `_load_full_graph` 返回 LazySQLiteGraph（只读 SQLite 视图）。这些命令会打印
+  友好错误提示使用 `daemon-start` 或 `build`。用 `daemon-start` 做增量同步。
+- 并发分析（`detect-races`、`concurrency-analyze`）是函数级而非访问点级。
+  TOCTOU 竞态不被检测。锁检测用 regex 而非 CFG。结果可能有误报/漏报——
+  用 `lock-coverage` 做更细粒度分析。
+- `path`/`trace-chain` 对不同源文件中的同名函数可能返回歧义结果。
+  用 `--source-file` 消歧。

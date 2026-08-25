@@ -8,7 +8,7 @@
 
 [![Languages](https://img.shields.io/badge/languages-6%20%2B%20ASM-orange)](#language-support)
 [![MCP Tools](https://img.shields.io/badge/MCP_tools-53-blueviolet)](#mcp-server)
-[![Query Commands](https://img.shields.io/badge/query_commands-200-success)](#command-reference)
+[![Query Commands](https://img.shields.io/badge/query_commands-201-success)](#command-reference)
 [![Sub-skills](https://img.shields.io/badge/sub_skills-3-9cf)](#skill-activation)
 [![Backend](https://img.shields.io/badge/backend-dual%20clang%20%2B%20tree--sitter-blue)](#extraction-backend)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -282,7 +282,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
                                      │
                                      ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  [Query]     micro → lite → local · 53 MCP tools · 200 CLI commands     │
+│  [Query]     micro → lite → local · 53 MCP tools · 201 CLI commands     │
 │              explore-flow · trace-chain · detect-races · param-flow      │
 │              value-flow · lock-coverage · path-feasible · data-dep       │
 │              extract-invariants · ffi-trace · doc-code-check · query     │
@@ -308,7 +308,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **Languages** | 6 + ASM — C/C++ (shared scanner), Go, Python, Java, Rust, ASM (regex — no tree-sitter grammar) (Python + tree-sitter + ASM regex) |
 | **Storage** | JSON output + optional SQLite backend for large graphs |
 | **MCP server** | stdio transport, **50 query tools** (34 `code2database_*` + 19 `cgdb_*`) for LLM agents |
-| **CLI commands** | **200 commands** organized into 3 sub-skills (`/Code2Database` core, `/Code2Database-analysis`, `/Code2Database-ops`) — Build, Query, Trace, Concurrency, Knowledge, Memory, Provenance, Cypher, Data Flow, Lock Analysis, Path Feasibility, Invariants, Auto-Enhance, Transactions, FFI, Web UI, Benchmark, Profile Health, Doc-Code, Daemon, cgdb (clang backend) |
+| **CLI commands** | **201 commands** organized into 3 sub-skills (`/Code2Database` core, `/Code2Database-analysis`, `/Code2Database-ops`) — Build, Query, Trace, Concurrency, Knowledge, Memory, Provenance, Cypher, Data Flow, Lock Analysis, Path Feasibility, Invariants, Auto-Enhance, Transactions, FFI, Web UI, Benchmark, Profile Health, Doc-Code, Daemon, cgdb (clang backend) |
 | **Call condition parsing** | `if`/`switch`/`#ifdef` branches + empty-node aggregation |
 | **Conditional compilation (`#ifdef`)** | Graph knows which calls exist only under which `CONFIG_*` flags |
 | **Data race detection** | Cross-thread hazard detection — `detect-races` |
@@ -558,7 +558,7 @@ These tables are queried directly via 19 `cgdb_*` MCP tools — see the `/Code2D
 
 ## Skill Activation (3 sub-skills)
 
-The skill is split into 3 sub-skills to keep LLM context lean. Each sub-skill has its own `SKILL.md` exposing only the commands relevant to its layer. The CLI (`scripts/code2database_builder.py`) is shared — all 200 commands are accessible regardless of which sub-skill is active.
+The skill is split into 3 sub-skills to keep LLM context lean. Each sub-skill has its own `SKILL.md` exposing only the commands relevant to its layer. The CLI (`scripts/code2database_builder.py`) is shared — all 201 commands are accessible regardless of which sub-skill is active.
 
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|

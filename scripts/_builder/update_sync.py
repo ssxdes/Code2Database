@@ -670,10 +670,30 @@ def cmd_update(args):
                                 "--no-interactive"]
                 else:
                     files_arg = ",".join(to_scan)
-                    scan_cmd = [sys.executable, scanner_script, "scan",
-                                "--source", source, "--files", files_arg,
-                                "--output", extraction_path,
-                                "--no-interactive"]
+                    # #15 fix: byte-length check — even <200 files with
+                    # long paths can exceed ARG_MAX (~128KB on Linux).
+                    if len(files_arg.encode("utf-8")) > 100_000:
+                        # Fall back to --files-from for safety
+                        import tempfile as _tf2
+                        files_list_fd2, files_list_path2 = _tf2.mkstemp(
+                            prefix="code2db_files2_", suffix=".txt")
+                        try:
+                            with os.fdopen(files_list_fd2, "w", encoding="utf-8") as _f2:
+                                _f2.write("\n".join(to_scan))
+                            scan_cmd = [sys.executable, scanner_script, "scan",
+                                        "--source", source, "--files-from", files_list_path2,
+                                        "--output", extraction_path,
+                                        "--no-interactive"]
+                        finally:
+                            try: os.close(files_list_fd2)
+                            except OSError: pass
+                            try: os.remove(files_list_path2)
+                            except OSError: pass
+                    else:
+                        scan_cmd = [sys.executable, scanner_script, "scan",
+                                    "--source", source, "--files", files_arg,
+                                    "--output", extraction_path,
+                                    "--no-interactive"]
                 if macros_str:
                     scan_cmd.extend(["--macros", macros_str])
                 scan_result = subprocess.run(

@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, and 19 cgdb semantic tables. 53 MCP tools + 200 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
+description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, and 19 cgdb semantic tables. 53 MCP tools + 201 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
 trigger: /Code2Database
 ---
 
@@ -75,7 +75,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP serve
 | `daemon` | Background auto-sync | Ops |
 | `health` | Graph freshness + profile health | — |
 
-All 200 CLI commands remain accessible; the 24 above cover ~95% of agent workflows.
+All 201 CLI commands remain accessible; the 24 above cover ~95% of agent workflows.
 
 ## Supported Languages
 
@@ -103,3 +103,13 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 - Edge confidence: EXTRACTED / INFERRED / AMBIGUOUS
 - DB writes require user confirmation
 - Daemon freshness: check `daemon-status` before important queries
+- `update`/`merge`/`sync` commands require in-memory nx.DiGraph. On large projects
+  (>=50K functions), `_load_full_graph` returns LazySQLiteGraph (read-only SQLite view).
+  These commands will print a friendly error directing to `daemon-start` or `build`.
+  Use `daemon-start` for incremental sync (designed for SQLite-backed large graphs).
+- Concurrency analysis (`detect-races`, `concurrency-analyze`) is function-level,
+  not access-site-level. TOCTOU races are NOT detected. Lock detection uses regex,
+  not CFG. Results may have false positives/negatives — use `lock-coverage` for
+  finer-grained analysis.
+- `path`/`trace-chain` may return ambiguous results for same-name functions in
+  different source files. Use `--source-file` to disambiguate.

@@ -955,13 +955,16 @@ def cmd_describe_node(args):
 
     # Auto-fill request — list empty fields the LLM should
     # fill. Lets the LLM complete the loop without manual export/import.
-    try:
-        from _builder.auto_enhance import compute_fill_request
-        fill_request = compute_fill_request(nd)
-        if fill_request:
-            result["auto_fill_request"] = fill_request
-    except Exception:
-        pass  # auto_enhance is optional, don't break describe-node on failure
+    # #4 fix: default hidden to avoid 60%+ output token waste on
+    # analysis-only queries. Use --fill-requests to show.
+    if getattr(args, "fill_requests", False):
+        try:
+            from _builder.auto_enhance import compute_fill_request
+            fill_request = compute_fill_request(nd)
+            if fill_request:
+                result["auto_fill_request"] = fill_request
+        except Exception:
+            pass  # auto_enhance is optional, don't break describe-node on failure
 
     # Doc-code alignment — if this node has any doc-code
     # mismatches (return value, param name, signature change, stale doc),
@@ -2500,7 +2503,10 @@ def cmd_field_flow(args):
     graph_dir = args.graph
     struct_name = getattr(args, "struct", "")
     field_name = args.field
+    # null-source alias: auto-set --value NULL if invoked as null-source
     value_filter = getattr(args, "value", "") or ""
+    if not value_filter and getattr(args, "command", "") == "null-source":
+        value_filter = "NULL"
     max_depth = getattr(args, "max_depth", 8)
     max_paths_per_writer = getattr(args, "max_paths_per_writer", 5)
     json_mode = getattr(args, "json", False)

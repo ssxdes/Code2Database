@@ -876,6 +876,58 @@ def cmd_explore_flow(args):
 
     G = _load_full_graph(graph_dir)
 
+    # #10 fix: Exact symbol match pre-step — if the query exactly matches
+    # a node name, return that node + its neighbors immediately instead
+    # of going through BM25 scoring (which may return irrelevant results
+    # for precise symbol names like "bdev_register").
+    exact_match = None
+    query_lower = query.strip().lower()
+    for nid, nd in G.nodes(data=True):
+        name = (nd.get("name") or "").lower()
+        if name == query_lower:
+            exact_match = nid
+            break
+    if exact_match:
+        # Return the exact match + its 2-hop neighborhood
+        from collections import deque
+        visited = {exact_match}
+        queue = deque([(exact_match, 0)])
+        nodes_data = []
+        while queue and len(nodes_data) < max_nodes:
+            cur, depth = queue.popleft()
+            if depth > 2:
+                continue
+            nd = G.nodes[cur]
+            nodes_data.append({
+                "id": cur, "name": nd.get("name", cur),
+                "domain": nd.get("domain", ""),
+                "labels": nd.get("labels", []),
+                "depth": depth,
+                "score": 100 if cur == exact_match else 80 - depth * 10,
+            })
+            for succ in G.successors(cur):
+                ed = G.get_edge_data(cur, succ) or {}
+                if ed.get("relation") in ("CONTAINS", "IMPORTS"):
+                    continue
+                if succ not in visited:
+                    visited.add(succ)
+                    queue.append((succ, depth + 1))
+            for pred in G.predecessors(cur):
+                ed = G.get_edge_data(pred, cur) or {}
+                if ed.get("relation") in ("CONTAINS", "IMPORTS"):
+                    continue
+                if pred not in visited:
+                    visited.add(pred)
+                    queue.append((pred, depth + 1))
+        print(json.dumps({
+            "query": query,
+            "exact_match": True,
+            "nodes": nodes_data,
+            "total": len(nodes_data),
+            "note": "Exact symbol match — skipped BM25 scoring."
+        }, ensure_ascii=False, indent=2, default=str))
+        return
+
     # Adaptive depth: small graphs (<500 nodes) get depth 3, large graphs depth 2
     n_nodes = G.number_of_nodes()
     adaptive_depth = 3 if n_nodes < 500 else 2

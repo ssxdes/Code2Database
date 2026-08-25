@@ -602,6 +602,8 @@ def main():
     p_desc.add_argument("--json", action="store_true", help="Output as JSON (default for describe-node)")
     p_desc.add_argument("--fields", default=None,
                         help="Comma-separated fields to include (e.g. 'signature,params,callers')")
+    p_desc.add_argument("--fill-requests", action="store_true", default=False,
+                        help="Include auto_fill_request in output (default: hidden to save tokens)")
 
     # resolve-chain
     p_resolve = sub.add_parser("resolve-chain",
@@ -649,20 +651,27 @@ def main():
     # path
     p_path = sub.add_parser("path", help="Find shortest call path between two nodes")
     p_path.add_argument("--graph", required=True)
-    p_path.add_argument("--from", dest="from_node", required=True)
+    p_path.add_argument("--from", dest="from_node")
+    p_path.add_argument("--node", dest="from_node", help="Alias for --from")
     p_path.add_argument("--to", dest="to_node", required=True)
+    p_path.add_argument("--source-file", default="",
+                        help="Filter: only match functions in this source file (disambiguates same-name functions across compilation units)")
+    p_path.add_argument("--max-hops", type=int, default=10,
+                        help="Maximum path length (default 10)")
+    p_path.add_argument("--timeout", type=int, default=30,
+                        help="Timeout in seconds (default 30). Returns partial results on timeout.")
     p_path.add_argument("--bindings", default="",
-                         help="Condition bindings for path filtering (e.g., 'SPDK_CONFIG_APP_RW=1')")
+                        help="Condition bindings for path filtering (e.g., 'SPDK_CONFIG_APP_RW=1')")
     p_path.add_argument("--no-condition-filter", action="store_true",
-                         help="Disable condition/concurrency filtering (show all paths)")
+                        help="Disable condition/concurrency filtering (show all paths)")
     p_path.add_argument("--no-prefer-same-domain", dest="prefer_same_domain",
-                         action="store_false", default=True,
-                         help="Disable same-domain preference for vtable_dispatch edges (may produce cross-filesystem false-positive paths)")
+                        action="store_false", default=True,
+                        help="Disable same-domain preference for vtable_dispatch edges (may produce cross-filesystem false-positive paths)")
     p_path.add_argument("--strict-vtable-domain", dest="strict_vtable_domain",
-                         action="store_true", default=False,
-                         help="Completely exclude cross-domain vtable_dispatch edges (no fallback). Use to verify whether a path exists within a single subsystem.")
+                        action="store_true", default=False,
+                        help="Completely exclude cross-domain vtable_dispatch edges (no fallback). Use to verify whether a path exists within a single subsystem.")
     p_path.add_argument("--vtable-bind", dest="vtable_bind", default="",
-                         help="Bind specific vtable type to a single implementation (e.g., 'super_operations=ext4_evict_inode,address_space_operations=ext4_write_end'). Only dispatches to the bound impl are followed.")
+                        help="Bind specific vtable type to a single implementation (e.g., 'super_operations=ext4_evict_inode,address_space_operations=ext4_write_end'). Only dispatches to the bound impl are followed.")
     p_path.add_argument("--json", action="store_true", help="Output as JSON")
 
     # impact
@@ -1168,8 +1177,10 @@ def main():
     p_trace = sub.add_parser("trace-chain",
                              help="One-shot trace from --from to --to with full annotation")
     p_trace.add_argument("--graph", required=True, help="Call graph output directory")
-    p_trace.add_argument("--from", dest="from_node", required=True, help="Start node ID or name")
+    p_trace.add_argument("--from", dest="from_node", help="Start node ID or name")
+    p_trace.add_argument("--node", dest="from_node", help="Alias for --from")
     p_trace.add_argument("--to", dest="to_node", default=None, help="Target node ID or name")
+    p_trace.add_argument("--timeout", type=int, default=30, help="Timeout in seconds (default 30)")
     p_trace.add_argument("--bindings", default="", help='Variable bindings, e.g. "mode=1,flag=true"')
     p_trace.add_argument("--macros", default="",
                          help="Only return paths where these macro conditions are active (comma-separated, e.g., 'SPDK_CONFIG_APP_RW')")
@@ -1179,9 +1190,11 @@ def main():
     # reverse-trace
     p_rtrace = sub.add_parser("reverse-trace",
                               help="Reverse trace from crash point through callers with condition/concurrency annotation")
-    p_rtrace.add_argument("--crash-point", required=True, help="Crash point function name or ID")
+    p_rtrace.add_argument("--crash-point", dest="crash_point", help="Crash point function name or ID")
+    p_rtrace.add_argument("--node", dest="crash_point", help="Alias for --crash-point")
     p_rtrace.add_argument("--max-depth", type=int, default=10, help="Max BFS depth (default: 10)")
     p_rtrace.add_argument("--max-paths", type=int, default=20, help="Max number of paths to return (default: 20)")
+    p_rtrace.add_argument("--timeout", type=int, default=30, help="Timeout in seconds (default 30)")
     p_rtrace.add_argument("--graph", required=True, help="Call graph output directory")
     p_rtrace.add_argument("--macros", default="",
                           help="Only return paths where these macro conditions are active (comma-separated, e.g., 'CONFIG_X')")
@@ -1213,8 +1226,9 @@ def main():
     p_dr = sub.add_parser("detect-races",
                           help="Detect data races between different thread contexts")
     p_dr.add_argument("--graph", required=True, help="Call graph output directory")
-    p_dr.add_argument("--func", default=None,
+    p_dr.add_argument("--func", dest="func", default=None,
                        help="Specific function to check (default: scan all)")
+    p_dr.add_argument("--node", dest="func", help="Alias for --func")
     p_dr.add_argument("--json", action="store_true", help="Output as JSON")
     p_dr.add_argument("--min-severity", default="low",
                        choices=["low", "medium", "high"],
@@ -1226,8 +1240,9 @@ def main():
     p_ca = sub.add_parser("concurrency-analyze",
                           help="Analyze concurrency safety between two call chains or a function and its concurrent peers")
     p_ca.add_argument("--graph", required=True, help="Call graph output directory")
-    p_ca.add_argument("--func", default=None,
+    p_ca.add_argument("--func", dest="func", default=None,
                        help="Function name to analyze (finds concurrent peers automatically)")
+    p_ca.add_argument("--node", dest="func", help="Alias for --func")
     p_ca.add_argument("--chain1", default=None,
                        help="First function name (chain1)")
     p_ca.add_argument("--chain2", default=None,
@@ -1455,6 +1470,15 @@ def main():
     p_ff.add_argument("--max-paths-per-writer", type=int, default=5,
                       help="Max call chains per writer to return (default: 5)")
     p_ff.add_argument("--json", action="store_true", help="Output as JSON")
+
+    # null-source — convenience alias for field-flow --value NULL
+    p_ns = sub.add_parser("null-source",
+                          help="Find all writers of NULL to a struct field (alias: field-flow --value NULL)")
+    p_ns.add_argument("--graph", required=True, help="Call graph output directory")
+    p_ns.add_argument("--struct", default="", help="Struct name (e.g., buffer_head)")
+    p_ns.add_argument("--field", required=True, help="Field name (e.g., b_bdev)")
+    p_ns.add_argument("--max-depth", type=int, default=8, help="Max reverse-trace depth")
+    p_ns.add_argument("--json", action="store_true", help="Output as JSON")
 
     # watch
     p_watch = sub.add_parser("watch", help="Auto-sync: watch source directory and update incrementally")
@@ -2266,6 +2290,7 @@ def main():
         "blast-radius": cmd_blast_radius,
         "field-access": cmd_field_access,
         "field-flow": cmd_field_flow,
+        "null-source": cmd_field_flow,  # alias — intercepts to set --value NULL
         "io-path": cmd_io_path,
         "param-flow": cmd_param_flow,
         "extract-signals": cmd_extract_signals,

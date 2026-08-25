@@ -1028,3 +1028,19 @@ def _print_concurrency_result(result):
                 print(f"    Thread A: {risk['thread_a']}")
             if risk.get("thread_b"):
                 print(f"    Thread B: {risk['thread_b']}")
+
+    # #11 fix: Annotate analysis limitations so users don't over-trust results
+    print("\n" + "=" * 70)
+    print("ANALYSIS LIMITATIONS (please read before drawing conclusions):")
+    print("  - Lock protection is function-level (not access-site-level).")
+    print("    A function may access a field both inside and outside a lock hold,")
+    print("    but this analysis cannot distinguish the two cases.")
+    print("  - TOCTOU (time-of-check time-of-use) races are NOT detected.")
+    print("    Check-then-act patterns within a single function are not analyzed.")
+    print("  - Lock detection uses regex on body_text (not CFG-aware).")
+    print("    False positives (lock released before access) and false negatives")
+    print("    (different variable name for same lock) may occur.")
+    print("  - Deadlock detection is heuristic (no lock-order graph analysis).")
+    print("  - Use lock-coverage for access-site-level analysis.")
+    print("  - Use happens-before for memory-ordering-aware analysis.")
+    print("=" * 70)

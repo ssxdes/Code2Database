@@ -8,7 +8,7 @@
 
 [![语言](https://img.shields.io/badge/语言-7%20%2B%20ASM-orange)](#语言支持)
 [![MCP工具](https://img.shields.io/badge/MCP工具-53-blueviolet)](#mcp-服务器)
-[![查询命令](https://img.shields.io/badge/查询命令-184-success)](#命令参考)
+[![查询命令](https://img.shields.io/badge/查询命令-200-success)](#命令参考)
 [![许可证: MIT](https://img.shields.io/badge/许可证-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](#安装)
 [![tree-sitter](https://img.shields.io/badge/tree--itter-AST-green?logo=tree-sitter&logoColor=white)](#工作原理)
@@ -280,7 +280,7 @@ bash scripts/setup.sh --languages c,go
                                      │
                                      ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  [Query]     micro → lite → local · 53 个 MCP 工具 · 184 CLI 命令         │
+│  [Query]     micro → lite → local · 53 个 MCP 工具 · 200 CLI 命令         │
 │              explore-flow · trace-chain · detect-races · param-flow      │
 │              value-flow · lock-coverage · path-feasible · data-dep       │
 │              extract-invariants · ffi-trace · doc-code-check · query     │
@@ -306,7 +306,7 @@ bash scripts/setup.sh --languages c,go
 | **语言** | 7 种 — C/C++、Go、Python、Java、Rust、ASM（Python + tree-sitter + ASM 正则）|
 | **存储** | JSON 输出 + 大图可选 SQLite 后端 |
 | **MCP 服务器** | stdio 传输，**53 个查询工具**（34 code2database_* + 19 cgdb_*）供 LLM 代理使用 |
-| **CLI 命令** | **184 命令** 分为 3 个子技能（`/Code2Database` 核心、`/Code2Database-analysis`、`/Code2Database-ops`）— Build、Query、Trace、Concurrency、Knowledge、Memory、Provenance、Cypher、Data Flow、Lock Analysis、Path Feasibility、Invariants、Auto-Enhance、Transactions、FFI、Web UI、Benchmark、Profile Health、Doc-Code、Daemon、cgdb（clang 后端） |
+| **CLI 命令** | **200 命令** 分为 3 个子技能（`/Code2Database` 核心、`/Code2Database-analysis`、`/Code2Database-ops`）— Build、Query、Trace、Concurrency、Knowledge、Memory、Provenance、Cypher、Data Flow、Lock Analysis、Path Feasibility、Invariants、Auto-Enhance、Transactions、FFI、Web UI、Benchmark、Profile Health、Doc-Code、Daemon、cgdb（clang 后端） |
 | **调用条件解析** | `if`/`switch`/`#ifdef` 分支 + 空节点聚合 |
 | **条件编译（`#ifdef`）** | 图谱知道哪些调用只在哪些 `CONFIG_*` 标志下存在 |
 | **数据竞争检测** | 跨线程隐患检测 — `detect-races` |

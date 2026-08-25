@@ -279,6 +279,14 @@ def add_foreign(graph_dir: str, foreign_c2d_path: str,
 
     Returns summary with counts.
     """
+    # Reject self-reference — B ATTACHing its own db is semantically wrong
+    # (unresolved calls can't match B's own functions; that's why they're
+    # unresolved). Samefile check handles symlinks and relative paths.
+    try:
+        if os.path.samefile(graph_dir, foreign_c2d_path):
+            return {"error": "foreign_c2d_path is the same as graph_dir (self-reference not allowed)"}
+    except OSError:
+        pass  # one or both paths don't exist yet — let the normal checks handle it
     foreign_db = _foreign_db_path(foreign_c2d_path)
     if not os.path.exists(foreign_db):
         return {"error": f"foreign c2d db not found: {foreign_db}"}

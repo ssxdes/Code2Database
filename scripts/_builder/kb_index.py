@@ -455,7 +455,15 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
         return {"rebuilt": False, "reason": "no_db",
                 "memory_count": 0, "knowledge_count": 0}
     try:
-        # Drop existing rows (triggers will sync FTS5)
+        # Clear FTS5 index first (before DELETE) so triggers don't do
+        # redundant work during the DELETE + INSERT cycle. The 'deleteall'
+        # command clears the entire FTS5 index in one shot — much faster
+        # than letting AD triggers fire row-by-row during DELETE.
+        try:
+            conn.execute("INSERT INTO kb_paragraphs_fts(kb_paragraphs_fts) VALUES ('deleteall')")
+        except sqlite3.OperationalError:
+            pass  # FTS5 table might not exist yet
+        # Drop existing rows
         conn.execute("DELETE FROM kb_paragraphs")
         # Build batch
         rows: List[tuple] = []
@@ -605,6 +613,10 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
     """
     conn = _kb_connect(graph_dir)
     if conn is None:
+        return []
+    # Validate non-empty query — FTS5 MATCH on empty string matches ALL
+    # rows (no relevance filtering), which is almost never what the user wants.
+    if not query or not query.strip():
         return []
     try:
         match_expr = _fts5_escape(query)

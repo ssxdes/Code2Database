@@ -448,9 +448,16 @@ def import_foreign_knowledge(graph_dir: str, foreign_c2d_path: str,
             continue
         dst_name = f"foreign_{safe_project}_{fname}"
         dst = os.path.join(local_knowledge_dir, dst_name)
-        # Skip if destination already exists (idempotent re-import)
+        # Skip if destination exists AND is newer than source (up-to-date).
+        # Overwrite if source is newer (A updated its knowledge).
         if os.path.exists(dst):
-            continue
+            try:
+                src_mtime = os.path.getmtime(src)
+                dst_mtime = os.path.getmtime(dst)
+                if src_mtime <= dst_mtime:
+                    continue  # dst is up-to-date
+            except OSError:
+                pass  # if mtime check fails, overwrite to be safe
         try:
             shutil.copy2(src, dst)
             copied += 1

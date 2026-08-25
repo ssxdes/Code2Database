@@ -42,7 +42,12 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
         if not create_if_missing:
             return None
         # else: create the db by connecting (SQLite creates the file)
-    conn = sqlite3.connect(db_path)
+    # uri=True so that subsequent ATTACH DATABASE 'file:...?mode=ro'
+    # statements work — SQLite requires the main connection to be opened
+    # with uri=True for ATTACH to honor file: URIs. Plain paths still
+    # work as filenames (only strings starting with 'file:' are treated
+    # as URIs).
+    conn = sqlite3.connect(db_path, uri=True)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")

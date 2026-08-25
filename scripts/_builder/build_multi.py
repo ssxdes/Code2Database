@@ -58,6 +58,11 @@ def _parse_manifest(manifest_path: str) -> Dict[str, Any]:
         raise ValueError(f"Failed to parse manifest {manifest_path}: {e}")
     if not isinstance(manifest, dict):
         raise ValueError("Manifest must be a JSON object")
+    if "version" not in manifest:
+        raise ValueError(
+            "Manifest is missing required 'version' field (expected 1). "
+            "See docs/en/references/manifest_schema.md for the schema."
+        )
     if manifest.get("version") != 1:
         raise ValueError(f"Unsupported manifest version: {manifest.get('version')} (expected 1)")
     projects = manifest.get("projects")
@@ -453,15 +458,37 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
     joint_extraction_path = os.path.join(tmpdir, "joint_extraction.json")
     with open(joint_extraction_path, "w", encoding="utf-8") as f:
         json.dump(joint_extraction, f, ensure_ascii=False)
-    # Step 5: Build the joint C2D using existing build_graph
+    # Step 5: Build the joint C2D using the full cmd_build pipeline.
+    # We construct an argparse.Namespace with the fields cmd_build reads
+    # (args.extraction, args.outdir, plus getattr-defaulted fields like
+    # jobs, max_workers, build_config, etc.) and call cmd_build(args)
+    # instead of build_graph(...) directly — build_graph's signature is
+    # build_graph(extraction: dict, profile=None, graph=None) and does
+    # NOT accept outdir/jobs, so the old call was a guaranteed TypeError.
     if joint_extraction["functions"]:
         try:
-            from _builder.graph_build import build_graph
-            build_graph(
-                extraction_path=joint_extraction_path,
+            import argparse
+            from _builder.graph_build import cmd_build
+            build_args = argparse.Namespace(
+                extraction=joint_extraction_path,
                 outdir=outdir,
                 jobs=jobs,
+                max_workers=0,
+                build_config="auto",
+                profile=None,
+                macros=None,
+                storage="sqlite",
+                auto_enhance=False,
+                large_project=False,
+                low_memory=False,
+                skip_community=False,
+                plugin=None,
+                profile_timing=False,
+                max_domain_files=0,
+                memory_warn_threshold=0.75,
+                memory_crit_threshold=0.85,
             )
+            cmd_build(build_args)
         except Exception as e:
             summary["build_error"] = str(e)
     # Step 6: Import from existing C2Ds (reuse mode)

@@ -291,8 +291,11 @@ def coverage_cross_c2d(test_c2d: str, target_c2d: str,
         return {"error": f"target db not found: {target_db}"}
     if not os.path.exists(test_db):
         return {"error": f"test db not found: {test_db}"}
-    # Use test_c2d's db as primary, ATTACH target_c2d
-    conn = sqlite3.connect(test_db)
+    # Use test_c2d's db as primary, ATTACH target_c2d.
+    # uri=True is required so that the subsequent
+    # ATTACH DATABASE 'file:...?mode=ro' honors the file: URI format
+    # (SQLite requires the main connection to enable URI mode).
+    conn = sqlite3.connect(test_db, uri=True)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     summary: Dict[str, Any] = {

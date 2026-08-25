@@ -2166,6 +2166,8 @@ def main():
         "load": cmd_load,
         "search": cmd_search,
         "describe-node": cmd_describe_node,
+        "describe": cmd_describe_node,  # SKILL.md alias
+        "context": cmd_describe_node,  # SKILL.md alias (context around a location)
         "resolve-chain": cmd_resolve_chain,
         "neighbors": cmd_neighbors,
         "path": cmd_path,
@@ -2190,9 +2192,11 @@ def main():
         "export-obsidian": cmd_export_obsidian,
         "plugins": cmd_plugins,
         "trace-chain": cmd_trace_chain,
+        "trace": cmd_trace_chain,  # SKILL.md alias
         "reverse-trace": cmd_reverse_trace,
         "diff-chains": cmd_diff_chains,
         "concurrency-risks": cmd_concurrency_risks,
+        "concurrency": cmd_concurrency_risks,  # SKILL.md alias
         "data-lifecycle": cmd_data_lifecycle,
         "detect-races": cmd_detect_races,
         "concurrency-analyze": cmd_concurrency_analyze,
@@ -2276,6 +2280,7 @@ def main():
         "query": cmd_query,
         # Deficiency 4 (P0): value flow
         "value-flow": cmd_value_flow,
+        "flow": cmd_value_flow,  # SKILL.md alias
         # Deficiency 5 (P0): lock coverage
         "lock-coverage": cmd_lock_coverage,
         # Deficiency 6: path feasibility
@@ -2286,6 +2291,7 @@ def main():
         # Deficiency 8: invariants
         "extract-invariants": cmd_extract_invariants,
         "find-invariants": cmd_find_invariants,
+        "find": cmd_find_invariants,  # SKILL.md alias
         "apply-invariants": cmd_apply_invariants,
         # Deficiency 9: auto semantic enhancement
         "auto-enhance": cmd_auto_enhance,
@@ -2318,6 +2324,7 @@ def main():
         "bug-benchmark": _lazy("_builder.bug_benchmark", "cmd_bug_benchmark"),
         # Deficiency 14: profile health + auto-evolution
         "profile-health": cmd_profile_health,
+        "health": cmd_profile_health,  # SKILL.md alias
         "profile-evolve": cmd_profile_evolve,
         "profile-bind-version": cmd_profile_bind_version,
         # Deficiency 15: doc-code dual source truth alignment
@@ -2329,6 +2336,7 @@ def main():
         "daemon-start": _lazy("_builder.daemon", "cmd_daemon_start"),
         "daemon-stop": _lazy("_builder.daemon", "cmd_daemon_stop"),
         "daemon-status": _lazy("_builder.daemon", "cmd_daemon_status"),
+        "daemon": _lazy("_builder.daemon", "cmd_daemon_status"),  # SKILL.md alias
         "daemon-force-refresh": _lazy("_builder.daemon", "cmd_daemon_force_refresh"),
         "daemon-pause": _lazy("_builder.daemon", "cmd_daemon_pause"),
         "daemon-resume": _lazy("_builder.daemon", "cmd_daemon_resume"),
@@ -2366,6 +2374,7 @@ def main():
         "cgdb-freshness": _lazy("_builder.cgdb_freshness", "cmd_cgdb_freshness"),
         "cgdb-compare": _lazy("_builder.cgdb_compare", "cmd_cgdb_compare"),
         "export-mermaid": _lazy("_builder.export_mermaid", "cmd_export_mermaid"),
+        "export": _lazy("_builder.export_mermaid", "cmd_export_mermaid"),  # SKILL.md alias
         "render-source": cmd_render_source,
         "verify-consistency": cmd_verify_consistency,
         "edit-token": cmd_edit_token,

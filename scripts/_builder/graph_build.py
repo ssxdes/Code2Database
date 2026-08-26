@@ -910,29 +910,23 @@ def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
         try:
             from concurrent.futures import ProcessPoolExecutor
             import multiprocessing as _mp
-            # Use fork (default on Linux) for COW — no pickling of
-            # the large graph/globals data needed.
+            # Use fork (default on Linux) for COW — child processes
+            # inherit the parent's memory (graph, globals) without
+            # pickling. Only the per-node args tuple + result dict
+            # cross the process boundary via pickle.
             ctx = _mp.get_context("fork")
-            # The work function must be top-level for pickling.
-            # _extract_state_access is already top-level. We pack the
-            # per-node args into a tuple the worker can unpack.
-            _cached = _cached_globals  # from the enclosing scope
-            def _proc_work(args):
-                nid, ndata = args
-                return nid, _extract_state_access(
-                    ndata.get("body_text", ""),
-                    ndata.get("local_vars", []),
-                    ndata.get("params", []),
-                    globals_data=None,
-                    field_assignments=field_assignments,
-                    node_name=ndata.get("name", ""),
-                    _cached_globals=_cached,
-                )
-            chunk_size = max(1, len(candidates) // (workers * 4))
+            # Pack all dependencies into the args tuple so the
+            # module-level _proc_state_access can work without closures.
+            _cached = _cached_globals
+            items = [
+                (nid, G.nodes[nid], field_assignments, _cached)
+                for nid, _ in candidates
+            ]
+            chunk_size = max(1, len(items) // (workers * 4))
             with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as pool:
                 results = list(pool.map(
-                    _proc_work,
-                    [(nid, G.nodes[nid]) for nid, _ in candidates],
+                    _proc_state_access,
+                    items,
                     chunksize=chunk_size,
                 ))
             for nid, res in results:
@@ -948,6 +942,25 @@ def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
     merge_node_attributes(G, candidates, _work, jobs=workers,
                           max_workers_cap=max_workers,
                           desc="state_access")
+
+
+def _proc_state_access(args):
+    """Module-level worker for ProcessPoolExecutor — must be top-level for pickling.
+
+    Receives a tuple: (nid, ndata, field_assignments, cached_globals)
+    Returns: (nid, result_dict)
+    """
+    nid, ndata, field_assignments, cached_globals = args
+    result = _extract_state_access(
+        ndata.get("body_text", ""),
+        ndata.get("local_vars", []),
+        ndata.get("params", []),
+        globals_data=None,
+        field_assignments=field_assignments,
+        node_name=ndata.get("name", ""),
+        _cached_globals=cached_globals,
+    )
+    return nid, result
 
 
 def _detect_build_system(source_root: str, build_config_arg: str,

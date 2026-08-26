@@ -1064,6 +1064,45 @@ def main():
     p_cc.add_argument("--graph", required=True, help="Graph directory")
     p_cc.add_argument("--min-co-changes", type=int, default=3)
     p_cc.add_argument("--max-commits", type=int, default=5000)
+    # AST pattern search
+    p_as = sub.add_parser("ast-search",
+                          help="Structural code search: write patterns AS code with $metavars and ... ellipsis")
+    p_as.add_argument("--graph", required=True)
+    p_as.add_argument("--pattern", required=True, help="Pattern: $X == $X, mutex_lock($L); ... mutex_unlock($L);")
+    p_as.add_argument("--limit", type=int, default=50)
+
+    # Taint analysis
+    p_ta = sub.add_parser("taint-analysis",
+                          help="Taint analysis: source/sink/sanitizer propagation through DATA_FLOW edges")
+    p_ta.add_argument("--graph", required=True)
+    p_ta.add_argument("--sources", required=True, help="Comma-separated source function names or patterns")
+    p_ta.add_argument("--sinks", required=True, help="Comma-separated sink function names or patterns")
+    p_ta.add_argument("--sanitizers", default="", help="Comma-separated sanitizer function names")
+    p_ta.add_argument("--max-depth", type=int, default=10)
+
+    # Semantic search (neural embeddings)
+    p_ss = sub.add_parser("semantic-search",
+                          help="Neural semantic search: FTS5 BM25 + neural embedding + RRF fusion")
+    p_ss.add_argument("--graph", required=True)
+    p_ss.add_argument("--query", required=True)
+    p_ss.add_argument("--top", type=int, default=20)
+
+    # Code slicing
+    p_cs = sub.add_parser("code-slice",
+                          help="Extract minimal context: data-flow slice or usage slice for LLM")
+    p_cs.add_argument("--graph", required=True)
+    p_cs.add_argument("--node", required=True, help="Function name or node ID")
+    p_cs.add_argument("--type", choices=["data-flow", "usage"], default="data-flow")
+    p_cs.add_argument("--max-depth", type=int, default=8)
+    p_cs.add_argument("--max-nodes", type=int, default=50)
+
+    # SARIF export
+    p_sx = sub.add_parser("sarif-export",
+                          help="Export analysis results to SARIF 2.1.0 format for CI/IDE")
+    p_sx.add_argument("--input", required=True, help="Input JSON results file")
+    p_sx.add_argument("--type", choices=["races", "taint", "generic"], default="generic")
+    p_sx.add_argument("--output", default="", help="Output SARIF file path (stdout if omitted)")
+
 
 
     # build-multi (Phase 1: multi-project aggregate build)
@@ -2352,6 +2391,11 @@ def main():
         "graph-diff": cmd_graph_diff,
         "hybrid-search": cmd_hybrid_search,
         "co-change": cmd_co_change,
+        "ast-search": cmd_ast_search,
+        "taint-analysis": cmd_taint_analysis,
+        "semantic-search": cmd_semantic_search,
+        "code-slice": cmd_code_slice,
+        "sarif-export": cmd_sarif_export,
         "build-multi": cmd_build_multi,
         "c2d-add-foreign": cmd_c2d_add_foreign,
         "c2d-sync-foreign": cmd_c2d_sync_foreign,

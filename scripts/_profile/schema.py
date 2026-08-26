@@ -205,6 +205,28 @@ _DEFAULT_PROFILE = {
     # EMPTY by default — built-in reference profiles populate this for
     # project-specific allocation APIs.
     "allocation_sites": [],
+    # Phase F (Fix #10): project-declared lock semantics.
+    # Maps lock primitive function names to their semantic effect (acquire or
+    # release) plus the argument index that identifies the lock object. Lets
+    # the builder emit HOLDER(obj, holder) edges linking a locked object to
+    # the function context that holds its lock, and lets detect-races /
+    # path-guards annotate race evidence with lock-held context.
+    # Each entry: {"function": "<name>", "kind": "acquire"|"release",
+    #              "arg_index": <int>, "locks_object_at": <int>,
+    #              "description": "<str>"}
+    #   function: name of the lock primitive (e.g., "mutex_lock",
+    #             "spin_lock", "down_write", "rcu_read_lock")
+    #   kind: "acquire" or "release"
+    #   arg_index: 0-based index of the lock-object argument. Default 0.
+    #   locks_object_at: 0-based index of the argument that identifies the
+    #                    *protected* object (e.g., for `mutex_lock(&sb->s_lock)`,
+    #                    the protected object is `sb`). -1 (default) means
+    #                    unknown — the lock is recorded without a HOLDER edge.
+    #   description: human-readable explanation.
+    # EMPTY by default — built-in reference profiles populate this for
+    # project-specific lock APIs. Complements concurrency_patterns.lock_acquire_patterns
+    # (which uses regex for flexible call-site matching).
+    "lock_semantics": [],
     "io_classification": {
         # Keywords for classifying functions as I/O-side (storage/network/IO
         # backends) vs I/O-main (front-end handlers). Used by io-path command.
@@ -687,6 +709,43 @@ class ProfileSchema:
                     f"allocation_sites[{i}] has unknown keys: {unknown}"
                 )
 
+        # Phase F (Fix #10): lock_semantics must be list of dicts with required keys.
+        _LOCK_SEM_REQUIRED = ("function", "kind")
+        _LOCK_SEM_OPTIONAL = ("arg_index", "locks_object_at", "description")
+        _LOCK_SEM_KINDS = ("acquire", "release")
+        for i, entry in enumerate(d.get("lock_semantics", [])):
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    f"lock_semantics[{i}] must be a dict"
+                )
+            for key in _LOCK_SEM_REQUIRED:
+                if key not in entry:
+                    raise ValueError(
+                        f"lock_semantics[{i}] missing '{key}'"
+                    )
+            if entry["kind"] not in _LOCK_SEM_KINDS:
+                raise ValueError(
+                    f"lock_semantics[{i}].kind must be one of {_LOCK_SEM_KINDS!r}, "
+                    f"got {entry['kind']!r}"
+                )
+            if "arg_index" in entry:
+                ai = entry["arg_index"]
+                if not isinstance(ai, int) or ai < 0:
+                    raise ValueError(
+                        f"lock_semantics[{i}].arg_index must be a non-negative int, got {ai!r}"
+                    )
+            if "locks_object_at" in entry:
+                lo = entry["locks_object_at"]
+                if not isinstance(lo, int) or lo < -1:
+                    raise ValueError(
+                        f"lock_semantics[{i}].locks_object_at must be an int >= -1, got {lo!r}"
+                    )
+            unknown = set(entry) - set(_LOCK_SEM_REQUIRED) - set(_LOCK_SEM_OPTIONAL)
+            if unknown:
+                raise ValueError(
+                    f"lock_semantics[{i}] has unknown keys: {unknown}"
+                )
+
     # ------------------------------------------------------------------
     # Accessors
     # ------------------------------------------------------------------
@@ -836,6 +895,7 @@ class ProfileSchema:
             "io_classification": d.get("io_classification", {}),
             "guard_functions": d.get("guard_functions", []),
             "allocation_sites": d.get("allocation_sites", []),
+            "lock_semantics": d.get("lock_semantics", []),
         }
 
     # ------------------------------------------------------------------

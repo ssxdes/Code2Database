@@ -735,7 +735,51 @@ Profile 是一个 JSON 文件，声明项目特定的知识，让扫描器和构
 
 ---
 
-### 3.17 `io_classification`（I/O 关键字） — 可选
+### 3.17 `lock_semantics`（锁-持有者边） — 可选，修复 #10
+
+| 属性 | 值 |
+|------|-----|
+| 类型 | object[] |
+| 默认值 | `[]` |
+| 作用 | 声明项目专属的锁原语（基于函数名，互补于基于正则的 `concurrency_patterns.lock_acquire_patterns`）。当 build 时带 `--profile`，builder 发出 HOLDER 边，把被锁对象链接到持有其锁的函数上下文。`detect-races` / `path-guards` / `describe-node` 能用 "writer 持有 `<lock>` 上的 `<object>`" 上下文标注竞争证据——把软性的 "这个 writer 受保护" 信号变成硬的、边可追溯的证明。 |
+
+**必填字段**：`function`、`kind`
+**可选字段**：`arg_index`、`locks_object_at`、`description`
+
+| 字段 | 类型 | 说明 |
+|------|------|-----|
+| `function` | string | 锁原语名（如 `"mutex_lock"`、`"spin_lock"`、`"down_write"`、`"rcu_read_lock"`） |
+| `kind` | enum | `"acquire"` 或 `"release"` |
+| `arg_index` | int | 锁对象参数的 0-based 下标。默认 0。 |
+| `locks_object_at` | int | 标识*受保护*对象的参数 0-based 下标。`-1`（默认）表示未知——记录锁但不发 HOLDER 边。对 `mutex_lock(&sb->s_lock)`，受保护对象是 `sb`（锁变量链的 head）。 |
+| `description` | string | 人类可读的说明。 |
+
+```json
+"lock_semantics": [
+  {"function": "mutex_lock", "kind": "acquire",
+   "arg_index": 0, "locks_object_at": 0,
+   "description": "arg0 是 &sb->s_lock；受保护对象是 head 'sb'"},
+  {"function": "mutex_unlock", "kind": "release",
+   "arg_index": 0, "locks_object_at": 0,
+   "description": "释放 mutex_lock 获取的锁"},
+  {"function": "down_write", "kind": "acquire",
+   "arg_index": 0, "locks_object_at": 0,
+   "description": "获取写侧 rwsem；受保护对象是链的 head"},
+  {"function": "rcu_read_lock", "kind": "acquire",
+   "arg_index": -1, "locks_object_at": -1,
+   "description": "RCU 读侧临界区（无具体锁对象）"}
+]
+```
+
+**行为**：当 `build` 带 `--profile /path/to/profile.json` 时，`detect_semantic_edges` 按函数名匹配每个声明的 acquire 原语，提取 `arg_index`（锁）和 `locks_object_at`（受保护对象）处的参数。锁参数的前缀 `&`/`*` 被剥离；对象参数归约到 head 变量（如从 `sb->s_lock` 取 `sb`）。HOLDER 边从受保护对象发往调用函数，`lock_function` 和 `lock_variable` 作为边属性记录。
+
+**与 `concurrency_patterns` 互补**：`concurrency_patterns.lock_acquire_patterns` 用正则做灵活调用点匹配，驱动 `lock-coverage` / `who-locks`。`lock_semantics` 用精确函数名，驱动 HOLDER 边发出。两者都声明以获得完整锁推理。
+
+**何时声明**：当项目的锁 API 结构化、受保护对象可从调用点识别时声明（如 `mutex_lock(&obj->lock)` 保护 `obj`）。对无受保护对象的全局锁（`rcu_read_lock()` 无参）跳过——把这些的 `locks_object_at` 设为 `-1`。
+
+---
+
+### 3.18 `io_classification`（I/O 关键字） — 可选
 
 | 属性 | 值 |
 |------|-----|
@@ -745,7 +789,7 @@ Profile 是一个 JSON 文件，声明项目特定的知识，让扫描器和构
 
 ---
 
-### 3.18 `dispatch_tuning`（分发启发式） — 可选
+### 3.19 `dispatch_tuning`（分发启发式） — 可选
 
 调优 vtable 分发精度。所有子字段有合理默认值；仅当分发检测出现假阳/假阴时才覆盖。
 
@@ -760,7 +804,7 @@ Profile 是一个 JSON 文件，声明项目特定的知识，让扫描器和构
 
 ---
 
-### 3.19 `project_boundaries`（路径过滤） — 可选
+### 3.20 `project_boundaries`（路径过滤） — 可选
 
 标记代码为非-API / 测试 / 厂商 / 外部的源路径子串。这些是通用跨项目约定，一般无需覆盖。
 
@@ -775,7 +819,7 @@ Profile 是一个 JSON 文件，声明项目特定的知识，让扫描器和构
 
 ---
 
-### 3.20 `phases`（阶段跟踪）
+### 3.21 `phases`（阶段跟踪）
 
 | 字段 | 默认值 | 说明 |
 |------|--------|------|

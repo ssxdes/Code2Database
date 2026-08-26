@@ -735,7 +735,51 @@ Usually does not need modification.
 
 ---
 
-### 3.17 `io_classification` (I/O Keywords) -- Optional
+### 3.17 `lock_semantics` (Lock-Holder Edges) -- Optional, Fix #10
+
+| Attribute | Value |
+|-----------|-------|
+| Type | object[] |
+| Default | `[]` |
+| Effect | Declares project-specific lock primitives (function-name-based, complementary to the regex-based `concurrency_patterns.lock_acquire_patterns`). When the profile is supplied via `--profile`, the builder emits HOLDER edges linking a locked object to the function context that holds its lock. `detect-races` / `path-guards` / `describe-node` can then annotate race evidence with "writer holds `<lock>` on `<object>`" context — turning a soft "this writer is guarded" signal into a hard, edge-traceable proof. |
+
+**Required fields**: `function`, `kind`
+**Optional fields**: `arg_index`, `locks_object_at`, `description`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `function` | string | The lock primitive name (e.g., `"mutex_lock"`, `"spin_lock"`, `"down_write"`, `"rcu_read_lock"`) |
+| `kind` | enum | `"acquire"` or `"release"` |
+| `arg_index` | int | 0-based index of the lock-object argument. Default 0. |
+| `locks_object_at` | int | 0-based index of the argument that identifies the *protected* object. `-1` (default) means unknown — the lock is recorded without a HOLDER edge. For `mutex_lock(&sb->s_lock)`, the protected object is `sb` (head of the lock-var chain). |
+| `description` | string | Human-readable explanation. |
+
+```json
+"lock_semantics": [
+  {"function": "mutex_lock", "kind": "acquire",
+   "arg_index": 0, "locks_object_at": 0,
+   "description": "arg0 is &sb->s_lock; protected object is the head 'sb'"},
+  {"function": "mutex_unlock", "kind": "release",
+   "arg_index": 0, "locks_object_at": 0,
+   "description": "releases the mutex acquired by mutex_lock"},
+  {"function": "down_write", "kind": "acquire",
+   "arg_index": 0, "locks_object_at": 0,
+   "description": "acquires write-side rwsem; protected object is the head of the chain"},
+  {"function": "rcu_read_lock", "kind": "acquire",
+   "arg_index": -1, "locks_object_at": -1,
+   "description": "RCU read-side critical section (no specific lock object)"}
+]
+```
+
+**Behavior**: When `build` is invoked with `--profile /path/to/profile.json`, `detect_semantic_edges` matches each declared acquire primitive by function name and extracts the args at `arg_index` (the lock) and `locks_object_at` (the protected object). The lock arg's leading `&`/`*` is stripped; the object arg is reduced to its head variable (e.g., `sb` from `sb->s_lock`). A HOLDER edge is emitted from the protected object to the calling function, with `lock_function` and `lock_variable` recorded as edge attributes.
+
+**Complements `concurrency_patterns`**: `concurrency_patterns.lock_acquire_patterns` uses regex for flexible call-site matching and powers `lock-coverage` / `who-locks`. `lock_semantics` uses exact function names and powers HOLDER-edge emission. Declare both for full lock reasoning.
+
+**When to declare**: Declare when the project has structured lock APIs where the protected object is identifiable from the call site (e.g., `mutex_lock(&obj->lock)` protects `obj`). Skip for global locks with no identifiable protected object (`rcu_read_lock()` with no args) — set `locks_object_at` to `-1` for those.
+
+---
+
+### 3.18 `io_classification` (I/O Keywords) -- Optional
 
 | Attribute | Value |
 |-----------|-------|
@@ -745,7 +789,7 @@ Usually does not need modification.
 
 ---
 
-### 3.18 `dispatch_tuning` (Dispatch Heuristics) -- Optional
+### 3.19 `dispatch_tuning` (Dispatch Heuristics) -- Optional
 
 Tunes vtable dispatch precision. All sub-fields have sensible defaults; override only when dispatch detection produces false positives/negatives.
 
@@ -760,7 +804,7 @@ Tunes vtable dispatch precision. All sub-fields have sensible defaults; override
 
 ---
 
-### 3.19 `project_boundaries` (Path Filters) -- Optional
+### 3.20 `project_boundaries` (Path Filters) -- Optional
 
 Source-path substrings that mark code as non-API / test / vendor / external. These are generic cross-project conventions; rarely need overriding.
 
@@ -775,7 +819,7 @@ Source-path substrings that mark code as non-API / test / vendor / external. The
 
 ---
 
-### 3.20 `phases` (Phase Tracking)
+### 3.21 `phases` (Phase Tracking)
 
 | Field | Default | Description |
 |-------|---------|-------------|

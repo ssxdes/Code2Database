@@ -190,6 +190,56 @@ def detect_semantic_edges(node_data: Dict, profile: Optional[Dict] = None) -> Li
                 "lock_function": unlock_func,
             })
 
+    # Phase F (Fix #10): HOLDER edges — link protected object to lock holder.
+    # Uses profile.lock_semantics (function-name-based, complementary to the
+    # regex-based lock_acquire_patterns above). When a function calls a
+    # declared acquire primitive with `locks_object_at` >= 0, emit a HOLDER
+    # edge from the protected object (arg at that index) to the calling
+    # function. detect-races / path-guards can then annotate race evidence
+    # with "writer holds <lock> on <object>" context.
+    lock_semantics = (profile or {}).get("lock_semantics") or []
+    if lock_semantics and body_text:
+        # Build a regex per declared primitive: name(args) — capture args.
+        for entry in lock_semantics:
+            fn = entry.get("function", "")
+            kind = entry.get("kind", "")
+            if not fn or kind != "acquire":
+                continue
+            arg_idx = entry.get("arg_index", 0)
+            obj_idx = entry.get("locks_object_at", -1)
+            if obj_idx < 0:
+                continue  # No protected-object index declared — skip HOLDER.
+            # Match fn(arg0, arg1, ...) — capture the full arg list.
+            call_re = re.compile(
+                r'\b' + re.escape(fn) + r'\s*\(([^)]*)\)'
+            )
+            for m in call_re.finditer(body_text):
+                arg_str = m.group(1)
+                args = [a.strip() for a in arg_str.split(',')]
+                if arg_idx >= len(args) or obj_idx >= len(args):
+                    continue
+                lock_arg = args[arg_idx]
+                obj_arg = args[obj_idx]
+                # Strip leading & or * for the lock and object identifiers.
+                lock_name = lock_arg.lstrip('&*').strip()
+                obj_name = obj_arg.lstrip('&*').strip()
+                # Strip field accesses: for `mutex_lock(&sb->s_lock)`,
+                # the protected object is `sb` (the head of the chain).
+                head_match = re.match(r'([A-Za-z_]\w*)', obj_name)
+                if not head_match:
+                    continue
+                obj_head = head_match.group(1)
+                edges.append({
+                    "invoker_id": invoker_id,
+                    "target": obj_head,
+                    "target_kind": "object",
+                    "relation": "HOLDER",
+                    "confidence": "EXTRACTED",
+                    "lock_function": fn,
+                    "lock_variable": lock_name,
+                    "protected_object": obj_head,
+                })
+
     return edges
 
 

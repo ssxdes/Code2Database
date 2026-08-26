@@ -42,6 +42,8 @@ python3 scripts/code2database_builder.py detect-races \
 
 Output: list of race pairs with variable, accessing functions, thread models, lock status, evidence (char positions in source).
 
+**HOLDER-edge annotation (Fix #10)**: When the project profile declares `lock_semantics` (see PROFILE_MANUAL.md §3.17) and `build` was run with `--profile`, race evidence includes `lock_held_context` showing the lock function and protected object (e.g., `{"lock_function": "mutex_lock", "lock_variable": "sb->s_lock", "protected_object": "sb"}`). This lets you prove a writer is guarded by a specific lock on a specific object — turning a soft "lock status: held" into a hard, edge-traceable proof.
+
 ### `lock-coverage`
 
 Lock-held region analysis with event-stream output and precise char positions.

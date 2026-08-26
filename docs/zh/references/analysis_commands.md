@@ -42,6 +42,8 @@ python3 scripts/code2database_builder.py detect-races \
 
 输出：竞争对列表，含变量、访问函数、线程模型、锁状态、证据（源码字符位置）。
 
+**HOLDER 边标注（Fix #10）**：当项目 profile 声明了 `lock_semantics`（见 PROFILE_MANUAL.md §3.17）且 `build` 时带 `--profile`，竞争证据会包含 `lock_held_context`，显示锁函数和受保护对象（如 `{"lock_function": "mutex_lock", "lock_variable": "sb->s_lock", "protected_object": "sb"}`）。这让你能证明 writer 被特定锁在特定对象上保护——把软性的 "锁状态：持有" 变成硬的、边可追溯的证明。
+
 ### `lock-coverage`
 
 锁持有区域分析，事件流输出 + 精确字符位置。

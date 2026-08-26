@@ -42,7 +42,7 @@ python3 scripts/code2database_builder.py detect-races \
 
 Output: list of race pairs with variable, accessing functions, thread models, lock status, evidence (char positions in source).
 
-**HOLDER-edge annotation **: When the project profile declares `lock_semantics` (see PROFILE_MANUAL.md §3.17) and `build` was run with `--profile`, race evidence includes `lock_held_context` showing the lock function and protected object (e.g., `{"lock_function": "mutex_lock", "lock_variable": "sb->s_lock", "protected_object": "sb"}`). This lets you prove a writer is guarded by a specific lock on a specific object — turning a soft "lock status: held" into a hard, edge-traceable proof.
+**HOLDER-edge annotation**: When the project profile declares `lock_semantics` (see PROFILE_MANUAL.md §3.17) and `build` was run with `--profile`, race evidence includes `lock_held_context` showing the lock function and protected object (e.g., `{"lock_function": "mutex_lock", "lock_variable": "sb->s_lock", "protected_object": "sb"}`). This lets you prove a writer is guarded by a specific lock on a specific object — turning a soft "lock status: held" into a hard, edge-traceable proof.
 
 ### `lock-coverage`
 
@@ -219,7 +219,7 @@ python3 scripts/code2database_builder.py path \
   [--max-depth N] [--json] [--no-cache]
 ```
 
-**Query result cache **: `path` results are cached (TTL 600s, max 256 entries per graph). The cache invalidates on (a) TTL expiry, (b) graph SQLite file mtime change (catches daemon tx, manual sqlite3 edits, patcher writes), and (c) node-version bump on `update-node`/`patch-from-diff` for nodes the query touched. Pass `--no-cache` to bypass the cache for a single invocation — the result is computed fresh and is NOT written back to cache. Same caching applies to `describe-node`, `trace-chain`, `reverse-trace`, and `explore-flow`.
+**Query result cache**: `path` results are cached (TTL 600s, max 256 entries per graph). The cache invalidates on (a) TTL expiry, (b) graph SQLite file mtime change (catches daemon tx, manual sqlite3 edits, patcher writes), and (c) node-version bump on `update-node`/`patch-from-diff` for nodes the query touched. Pass `--no-cache` to bypass the cache for a single invocation — the result is computed fresh and is NOT written back to cache. Same caching applies to `describe-node`, `trace-chain`, `reverse-trace`, and `explore-flow`.
 
 ### `reverse-trace`
 
@@ -278,7 +278,7 @@ Output: feasible / infeasible verdict, unsat core (if Z3), model (if feasible), 
 The `--node` mode walks all paths from a node, accumulates conditions, and for each path runs:
 1. Z3 / heuristic feasibility (`solve_path_feasibility`)
 2. Config-predicate feasibility (`check_config_feasible`, when `--with-configs` is given)
-3. **Runtime guard analysis** (`check_runtime_guards_with_profile`, ) — detects acquire/release regions, type/identity/lock-state predicates. When `--profile /path/to/profile.json` is provided, profile-declared `guard_functions` augment the built-in regex patterns; the output's `runtime_guards.profile_bindings` field lists bindings inferred from profile-declared guards (e.g., `{"sb_type": "blkdev"}`).
+3. **Runtime guard analysis** (`check_runtime_guards_with_profile`) — detects acquire/release regions, type/identity/lock-state predicates. When `--profile /path/to/profile.json` is provided, profile-declared `guard_functions` augment the built-in regex patterns; the output's `runtime_guards.profile_bindings` field lists bindings inferred from profile-declared guards (e.g., `{"sb_type": "blkdev"}`).
 
 ```bash
 # Direct condition list mode with profile-declared guards
@@ -313,7 +313,7 @@ python3 scripts/code2database_builder.py path-guards \
   [--profile /path/to/profile.json]
 ```
 
-The `--profile` flag  enables profile-declared `guard_functions` (e.g., project-specific type predicates like `sb_is_blkdev_sb`, lock acquire/release like `bd_prepare_to_claim`/`bd_abort_claim`). The output's `runtime_guards.profile_bindings` field surfaces the inferred bindings.
+The `--profile` flag enables profile-declared `guard_functions` (e.g., project-specific type predicates like `sb_is_blkdev_sb`, lock acquire/release like `bd_prepare_to_claim`/`bd_abort_claim`). The output's `runtime_guards.profile_bindings` field surfaces the inferred bindings.
 
 ### `resolve-chain`
 
@@ -555,7 +555,7 @@ python3 scripts/code2database_builder.py field-access \
 
 Output: list of functions that read/write the field, with location and context.
 
-**Object origin annotation **: When the project profile declares `allocation_sites` (see PROFILE_MANUAL.md §3.16) and `build` was run with `--profile`, each writer/reader entry includes an `object_origin` field showing where the variable was initialized (e.g., `"alloc_buffer_head(...):buffer_head"` vs `"jh->bh"`). This lets you distinguish same-typed-different-instance objects — critical for proving that two writers operate on different objects and therefore cannot race.
+**Object origin annotation**: When the project profile declares `allocation_sites` (see PROFILE_MANUAL.md §3.16) and `build` was run with `--profile`, each writer/reader entry includes an `object_origin` field showing where the variable was initialized (e.g., `"alloc_buffer_head(...):buffer_head"` vs `"jh->bh"`). This lets you distinguish same-typed-different-instance objects — critical for proving that two writers operate on different objects and therefore cannot race.
 
 ## Audit
 

@@ -656,7 +656,9 @@ Usually does not need modification.
 
 ---
 
-### 3.15 `guard_functions` (Runtime Guard Semantics) -- Optional, | Attribute | Value |
+### 3.15 `guard_functions` (Runtime Guard Semantics) -- Optional
+
+| Attribute | Value |
 |-----------|-------|
 | Type | object[] |
 | Default | `[]` |
@@ -694,7 +696,9 @@ Usually does not need modification.
 
 ---
 
-### 3.16 `allocation_sites` (Object Origin Tracking) -- Optional, | Attribute | Value |
+### 3.16 `allocation_sites` (Object Origin Tracking) -- Optional
+
+| Attribute | Value |
 |-----------|-------|
 | Type | object[] |
 | Default | `[]` |
@@ -731,7 +735,9 @@ Usually does not need modification.
 
 ---
 
-### 3.17 `lock_semantics` (Lock-Holder Edges) -- Optional, | Attribute | Value |
+### 3.17 `lock_semantics` (Lock-Holder Edges) -- Optional
+
+| Attribute | Value |
 |-----------|-------|
 | Type | object[] |
 | Default | `[]` |

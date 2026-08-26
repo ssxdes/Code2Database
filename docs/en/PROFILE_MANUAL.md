@@ -696,7 +696,46 @@ Usually does not need modification.
 
 ---
 
-### 3.16 `io_classification` (I/O Keywords) -- Optional
+### 3.16 `allocation_sites` (Object Origin Tracking) -- Optional, Fix #7
+
+| Attribute | Value |
+|-----------|-------|
+| Type | object[] |
+| Default | `[]` |
+| Effect | Declares project-specific allocation functions so `field-access` / `field-flow` / `describe-node` can annotate writer/reader entries with `object_origin_type`. Without this, the skill can identify that `bh = alloc_buffer_head()` initializes `bh` but cannot distinguish a `buffer_head` allocated by `alloc_buffer_head` from one obtained from `jh->bh` (which may belong to a different address_space). With this declaration, `_trace_object_origin` returns origins in the form `"<call_expr>:<object_type>"` (e.g., `"alloc_buffer_head(...):buffer_head"`), enabling the agent to reason about object identity across same-typed-different-instance variables. |
+
+**Required fields**: `function`, `object_type`
+**Optional fields**: `arg_index`, `description`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `function` | string | The allocation function name (e.g., `"alloc_buffer_head"`, `"kmalloc"`, `"kmem_cache_alloc"`) |
+| `object_type` | string | The type tag of the returned object (e.g., `"buffer_head"`, `"void_ptr"`) |
+| `arg_index` | int | Index of the initializer argument if the function returns a wrapper/pointer to an allocated subfield. `-1` (default) means the function itself returns the object directly (no initializer arg). |
+| `description` | string | Human-readable explanation. |
+
+```json
+"allocation_sites": [
+  {"function": "alloc_buffer_head", "object_type": "buffer_head",
+   "arg_index": -1,
+   "description": "allocates and returns a new buffer_head"},
+  {"function": "kmem_cache_alloc", "object_type": "page_cache_page",
+   "arg_index": 0,
+   "description": "arg0 is the kmem_cache that determines the allocated type"}
+]
+```
+
+**Behavior**: When `build` is invoked with `--profile /path/to/profile.json`, the builder populates a module-level map from `function` → `object_type`. During graph construction, `_extract_state_access` calls `_trace_object_origin` for each field write/read; when the trace encounters a call to a declared allocation function, the resulting origin is annotated with the object_type. This annotation surfaces in:
+
+- `field-access --struct buffer_head --field b_bdev` — writer/reader entries include `object_origin` field
+- `field-flow --field b_bdev --value NULL` — writer list groups by object origin
+- `describe-node <function>` — `fields_written` / `fields_read` entries include `object_origin`
+
+**When to declare**: Declare allocation sites when the project has type-ambiguous allocation patterns — e.g., multiple factory functions returning the same nominal type but representing different object identities (kernel `buffer_head` from different address_spaces, `task_struct` from different namespaces). For simple projects with one allocation site per type, this is unnecessary (the type itself is sufficient identity).
+
+---
+
+### 3.17 `io_classification` (I/O Keywords) -- Optional
 
 | Attribute | Value |
 |-----------|-------|
@@ -706,7 +745,7 @@ Usually does not need modification.
 
 ---
 
-### 3.17 `dispatch_tuning` (Dispatch Heuristics) -- Optional
+### 3.18 `dispatch_tuning` (Dispatch Heuristics) -- Optional
 
 Tunes vtable dispatch precision. All sub-fields have sensible defaults; override only when dispatch detection produces false positives/negatives.
 
@@ -721,7 +760,7 @@ Tunes vtable dispatch precision. All sub-fields have sensible defaults; override
 
 ---
 
-### 3.18 `project_boundaries` (Path Filters) -- Optional
+### 3.19 `project_boundaries` (Path Filters) -- Optional
 
 Source-path substrings that mark code as non-API / test / vendor / external. These are generic cross-project conventions; rarely need overriding.
 
@@ -736,7 +775,7 @@ Source-path substrings that mark code as non-API / test / vendor / external. The
 
 ---
 
-### 3.19 `phases` (Phase Tracking)
+### 3.20 `phases` (Phase Tracking)
 
 | Field | Default | Description |
 |-------|---------|-------------|

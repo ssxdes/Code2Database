@@ -696,7 +696,46 @@ Profile 是一个 JSON 文件，声明项目特定的知识，让扫描器和构
 
 ---
 
-### 3.16 `io_classification`（I/O 关键字） — 可选
+### 3.16 `allocation_sites`（对象来源追踪） — 可选，修复 #7
+
+| 属性 | 值 |
+|------|-----|
+| 类型 | object[] |
+| 默认值 | `[]` |
+| 作用 | 声明项目专属的分配函数，让 `field-access` / `field-flow` / `describe-node` 能给 writer/reader 条目附加 `object_origin_type` 标注。否则，skill 只能识别 `bh = alloc_buffer_head()` 初始化了 `bh`，但无法区分 `alloc_buffer_head()` 返回的 `buffer_head` 与 `jh->bh` 取出的 `buffer_head`（可能属于不同 address_space）。声明后，`_trace_object_origin` 返回的来源会带上对象类型，形如 `"<call_expr>:<object_type>"`（如 `"alloc_buffer_head(...):buffer_head"`），让 agent 能跨"同类型不同实例"的变量做对象身份推理。 |
+
+**必填字段**：`function`、`object_type`
+**可选字段**：`arg_index`、`description`
+
+| 字段 | 类型 | 说明 |
+|------|------|-----|
+| `function` | string | 分配函数名（如 `"alloc_buffer_head"`、`"kmalloc"`、`"kmem_cache_alloc"`） |
+| `object_type` | string | 返回对象的类型标签（如 `"buffer_head"`、`"void_ptr"`） |
+| `arg_index` | int | 若函数返回的是某个被分配子字段的包装/指针，此为初始化参数的下标。`-1`（默认）表示函数自身直接返回该对象（无初始化参数）。 |
+| `description` | string | 人类可读的说明。 |
+
+```json
+"allocation_sites": [
+  {"function": "alloc_buffer_head", "object_type": "buffer_head",
+   "arg_index": -1,
+   "description": "分配并返回一个新的 buffer_head"},
+  {"function": "kmem_cache_alloc", "object_type": "page_cache_page",
+   "arg_index": 0,
+   "description": "arg0 是决定分配类型的 kmem_cache"}
+]
+```
+
+**行为**：当 `build` 命令带 `--profile /path/to/profile.json` 时，builder 把 `function` → `object_type` 填入一个模块级映射。建图过程中，`_extract_state_access` 对每次字段写/读调用 `_trace_object_origin`；当追踪遇到已声明的分配函数调用时，返回的来源会带上 object_type 标注。标注会出现在：
+
+- `field-access --struct buffer_head --field b_bdev` — writer/reader 条目带 `object_origin` 字段
+- `field-flow --field b_bdev --value NULL` — writer 列表按对象来源分组
+- `describe-node <function>` — `fields_written` / `fields_read` 条目带 `object_origin`
+
+**何时声明**：当项目存在类型歧义的分配模式时声明——例如多个工厂函数返回相同名义类型但代表不同对象身份（内核 `buffer_head` 来自不同 address_space、`task_struct` 来自不同命名空间）。如果项目每种类型只有一个分配点，无需声明（类型本身即足够身份）。
+
+---
+
+### 3.17 `io_classification`（I/O 关键字） — 可选
 
 | 属性 | 值 |
 |------|-----|
@@ -706,7 +745,7 @@ Profile 是一个 JSON 文件，声明项目特定的知识，让扫描器和构
 
 ---
 
-### 3.17 `dispatch_tuning`（分发启发式） — 可选
+### 3.18 `dispatch_tuning`（分发启发式） — 可选
 
 调优 vtable 分发精度。所有子字段有合理默认值；仅当分发检测出现假阳/假阴时才覆盖。
 
@@ -721,7 +760,7 @@ Profile 是一个 JSON 文件，声明项目特定的知识，让扫描器和构
 
 ---
 
-### 3.18 `project_boundaries`（路径过滤） — 可选
+### 3.19 `project_boundaries`（路径过滤） — 可选
 
 标记代码为非-API / 测试 / 厂商 / 外部的源路径子串。这些是通用跨项目约定，一般无需覆盖。
 
@@ -736,7 +775,7 @@ Profile 是一个 JSON 文件，声明项目特定的知识，让扫描器和构
 
 ---
 
-### 3.19 `phases`（阶段跟踪）
+### 3.20 `phases`（阶段跟踪）
 
 | 字段 | 默认值 | 说明 |
 |------|--------|------|

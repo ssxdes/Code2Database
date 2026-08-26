@@ -189,6 +189,22 @@ _DEFAULT_PROFILE = {
     # EMPTY by default — built-in reference profiles populate this for
     # project-specific guard APIs.
     "guard_functions": [],
+    # Phase E (Fix #7): project-declared allocation sites.
+    # Maps allocation function names to the object type they return. Lets
+    # field-access / field-flow annotate writer/reader entries with
+    # `object_origin_type` (e.g., "buffer_head" for alloc_buffer_head) so the
+    # agent can distinguish same-typed-different-instance objects.
+    # Each entry: {"function": "<name>", "object_type": "<type>",
+    #              "arg_index": <int>, "description": "<str>"}
+    #   function: name of the allocation function (e.g., "alloc_buffer_head")
+    #   object_type: the type of object returned (e.g., "buffer_head")
+    #   arg_index: 0-based index of the argument that initializes the object
+    #              (for functions that take an initializer). Default -1 = no
+    #              initializer arg (the function returns a fresh object).
+    #   description: human-readable explanation shown in CLI output.
+    # EMPTY by default — built-in reference profiles populate this for
+    # project-specific allocation APIs.
+    "allocation_sites": [],
     "io_classification": {
         # Keywords for classifying functions as I/O-side (storage/network/IO
         # backends) vs I/O-main (front-end handlers). Used by io-path command.
@@ -645,6 +661,32 @@ class ProfileSchema:
                     f"guard_functions[{i}] has unknown keys: {unknown}"
                 )
 
+        # Phase E (Fix #7): allocation_sites must be list of dicts with required keys.
+        _ALLOC_SITE_REQUIRED = ("function", "object_type")
+        _ALLOC_SITE_OPTIONAL = ("arg_index", "description")
+        for i, entry in enumerate(d.get("allocation_sites", [])):
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    f"allocation_sites[{i}] must be a dict"
+                )
+            for key in _ALLOC_SITE_REQUIRED:
+                if key not in entry:
+                    raise ValueError(
+                        f"allocation_sites[{i}] missing '{key}'"
+                    )
+            if "arg_index" in entry:
+                ai = entry["arg_index"]
+                if not isinstance(ai, int) or ai < -1:
+                    raise ValueError(
+                        f"allocation_sites[{i}].arg_index must be an integer "
+                        f">= -1 (-1 means no initializer arg), got {ai!r}"
+                    )
+            unknown = set(entry) - set(_ALLOC_SITE_REQUIRED) - set(_ALLOC_SITE_OPTIONAL)
+            if unknown:
+                raise ValueError(
+                    f"allocation_sites[{i}] has unknown keys: {unknown}"
+                )
+
     # ------------------------------------------------------------------
     # Accessors
     # ------------------------------------------------------------------
@@ -793,6 +835,7 @@ class ProfileSchema:
             "concurrency_patterns": d.get("concurrency_patterns", {}),
             "io_classification": d.get("io_classification", {}),
             "guard_functions": d.get("guard_functions", []),
+            "allocation_sites": d.get("allocation_sites", []),
         }
 
     # ------------------------------------------------------------------

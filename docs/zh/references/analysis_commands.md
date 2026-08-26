@@ -528,6 +528,8 @@ python3 scripts/code2database_builder.py field-access \
 
 输出：读/写该字段的函数列表，含位置和上下文。
 
+**对象来源标注（Fix #7）**：当项目 profile 声明了 `allocation_sites`（见 PROFILE_MANUAL.md §3.16）且 `build` 时带 `--profile`，每个 writer/reader 条目会带 `object_origin` 字段，显示变量在哪里被初始化（如 `"alloc_buffer_head(...):buffer_head"` vs `"jh->bh"`）。这让你能区分"同类型不同实例"的对象——对证明两个 writer 操作不同对象、不会竞争至关重要。
+
 ## 审计
 
 ### `audit-log`

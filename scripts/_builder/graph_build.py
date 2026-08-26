@@ -387,8 +387,17 @@ _OBJ_ASSIGN_RE = re.compile(
     r'|[A-Za-z_]\w*\s*\([^)]*\))'  # or function call: foo(...)
 )
 
+# Phase E (Fix #7): Module-level map of allocation_function_name -> object_type.
+# Populated by build_call_graph_from_extraction from the project profile's
+# `allocation_sites` list. Read by _trace_object_origin (as fallback when the
+# caller doesn't pass `allocation_sites` explicitly) so that field-access /
+# field-flow can annotate writer/reader entries with object_origin_type without
+# threading the profile through every _extract_state_access call site.
+_ALLOCATION_SITES_MAP: dict = {}
 
-def _trace_object_origin(body_text: str, obj_name: str, max_depth: int = 3) -> str:
+
+def _trace_object_origin(body_text: str, obj_name: str, max_depth: int = 3,
+                         allocation_sites: list = None) -> str:
     """Trace where `obj_name` was initialized — backward through assignments.
 
     IMPROVE-OPT3: For a field access like `bh->b_bdev`, the variable `bh` may
@@ -396,8 +405,19 @@ def _trace_object_origin(body_text: str, obj_name: str, max_depth: int = 3) -> s
     this chain gives us the object's "origin" — useful for distinguishing
     buffer_head objects from different address_spaces.
 
-    Returns the source expression (e.g., "jh->bh" or "mapping->private_list")
-    or "" if no assignment is found within max_depth hops.
+    Phase E (Fix #7): When `allocation_sites` is provided (list of profile
+    entries with `function` and `object_type`), OR when the module-level
+    `_ALLOCATION_SITES_MAP` has been populated by `build_call_graph_from_extraction`,
+    the trace inspects function call sources. If the source is a call to a
+    declared allocation function, the returned origin is annotated with the
+    object type as `"<func_name>(...):<object_type>"` (e.g.,
+    `"alloc_buffer_head(...):buffer_head"`). This lets field-access /
+    field-flow consumers distinguish same-typed-different-instance objects
+    without needing full type-flow analysis.
+
+    Returns the source expression (e.g., "jh->bh" or "mapping->private_list"
+    or "alloc_buffer_head(...):buffer_head"), or "" if no assignment is found
+    within max_depth hops.
 
     Limitations: only handles simple `var = expr` assignments; doesn't handle
     compound initializers, function parameters (which are already param
@@ -406,6 +426,17 @@ def _trace_object_origin(body_text: str, obj_name: str, max_depth: int = 3) -> s
     """
     if not obj_name or max_depth <= 0:
         return ""
+    # Build a lookup of allocation function name → object_type for fast match.
+    # Priority: explicit arg > module-level global (set by build_call_graph_from_extraction).
+    alloc_map = {}
+    if allocation_sites:
+        for entry in allocation_sites:
+            fn = entry.get("function", "")
+            ot = entry.get("object_type", "")
+            if fn and ot:
+                alloc_map[fn] = ot
+    else:
+        alloc_map = _ALLOCATION_SITES_MAP
     seen = {obj_name}
     current = obj_name
     last_source = ""
@@ -430,7 +461,14 @@ def _trace_object_origin(body_text: str, obj_name: str, max_depth: int = 3) -> s
             current = head
             continue
         else:
-            # Source is a function call or terminal — return it
+            # Source is a function call or terminal.
+            # Phase E (Fix #7): if it's a call to a profile-declared
+            # allocation function, annotate with object_type.
+            if alloc_map:
+                call_match = re.match(r'([A-Za-z_]\w*)\s*\(', source)
+                if call_match and call_match.group(1) in alloc_map:
+                    obj_type = alloc_map[call_match.group(1)]
+                    return f"{source}:{obj_type}"
             return source
     return last_source
 
@@ -6612,6 +6650,21 @@ def cmd_build(args):
         if all_ext_prefixes:
             set_external_lib_prefixes(all_ext_prefixes)
             print(f"External lib prefixes loaded: {len(all_ext_prefixes)} (from lib_prefix_map)")
+
+        # Phase E (Fix #7): Populate the module-level _ALLOCATION_SITES_MAP
+        # from the profile's `allocation_sites` list. This lets
+        # _trace_object_origin (called by _extract_state_access for each
+        # field write/read) annotate origins with object_type without
+        # threading the profile through every call site.
+        global _ALLOCATION_SITES_MAP
+        _ALLOCATION_SITES_MAP = {}
+        for entry in builder_profile.get("allocation_sites", []):
+            fn = entry.get("function", "")
+            ot = entry.get("object_type", "")
+            if fn and ot:
+                _ALLOCATION_SITES_MAP[fn] = ot
+        if _ALLOCATION_SITES_MAP:
+            print(f"Allocation sites loaded: {len(_ALLOCATION_SITES_MAP)} (from allocation_sites)")
     tracker.end()
 
     # Load and run plugins

@@ -110,4 +110,6 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
   TOCTOU 竞态不被检测。锁检测用 regex 而非 CFG。结果可能有误报/漏报——
   用 `lock-coverage` 做更细粒度分析。
 - `path`/`trace-chain` 对不同源文件中的同名函数可能返回歧义结果。
-  用 `--source-file` 消歧。
+  用 `--source-file` 消歧。传入 `--source-file` 时，`--from`/`--to`
+  接受函数名（按 name+file 解析）；不传 `--source-file` 时必须用节点 ID。
+  若名字在多文件中都有同名节点，会打印警告列出候选文件。

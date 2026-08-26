@@ -112,4 +112,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
   not CFG. Results may have false positives/negatives — use `lock-coverage` for
   finer-grained analysis.
 - `path`/`trace-chain` may return ambiguous results for same-name functions in
-  different source files. Use `--source-file` to disambiguate.
+  different source files. Use `--source-file` to disambiguate. When `--source-file`
+  is provided, `--from`/`--to` accept function names (resolved by name+file);
+  without `--source-file`, they must be node IDs. If a name resolves to multiple
+  nodes across files, a warning is printed listing the candidate source files.

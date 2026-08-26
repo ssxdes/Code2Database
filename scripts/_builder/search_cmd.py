@@ -470,6 +470,77 @@ def _parse_vtable_bindings(bindings_str):
 def cmd_path(args):
     G = _load_full_graph(args.graph)
 
+    # #2 fix: --source-file disambiguation. When the user supplies
+    # --source-file, treat --from/--to as function names and resolve to
+    # the node ID whose source_file matches. Without this, passing a
+    # name like "drop_buffers" hits "node not found" because cmd_path
+    # expects node IDs. Also emit a same-name ambiguity warning when
+    # multiple nodes share a name across different source files.
+    source_file_filter = getattr(args, "source_file", "") or ""
+    if source_file_filter:
+        resolved = {}
+        for slot, raw in (("from", args.from_node), ("to", args.to_node)):
+            if raw is None:
+                continue
+            if raw in G:
+                resolved[slot] = raw
+                continue
+            matches = [
+                nid for nid, d in G.nodes(data=True)
+                if d.get("name", "") == raw
+                and (d.get("source_file", "") or "").endswith(source_file_filter)
+            ]
+            if not matches:
+                all_same_name = [
+                    nid for nid, d in G.nodes(data=True)
+                    if d.get("name", "") == raw
+                ]
+                if all_same_name:
+                    print(
+                        f"Warning: name '{raw}' found in {len(all_same_name)} nodes "
+                        f"but none in source_file ending with '{source_file_filter}'.",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"Warning: no node with name '{raw}' in source_file "
+                        f"ending with '{source_file_filter}'.",
+                        file=sys.stderr,
+                    )
+                sys.exit(1)
+            if len(matches) > 1:
+                print(
+                    f"Warning: name '{raw}' matches {len(matches)} nodes in "
+                    f"'{source_file_filter}'; using first match {matches[0]}.",
+                    file=sys.stderr,
+                )
+            resolved[slot] = matches[0]
+        if "from" in resolved:
+            args.from_node = resolved["from"]
+        if "to" in resolved:
+            args.to_node = resolved["to"]
+    else:
+        # No --source-file: still warn about same-name ambiguity if the
+        # user passed a name that resolves to multiple node IDs.
+        for slot, raw in (("from", args.from_node), ("to", args.to_node)):
+            if raw is None or raw in G:
+                continue
+            same_name = [
+                nid for nid, d in G.nodes(data=True)
+                if d.get("name", "") == raw
+            ]
+            if len(same_name) > 1:
+                files = sorted({
+                    (G.nodes[n].get("source_file", "") or "")
+                    for n in same_name
+                })
+                print(
+                    f"Warning: '{raw}' is ambiguous — {len(same_name)} nodes "
+                    f"share this name across {len(files)} source files: "
+                    f"{files[:5]}. Pass --source-file to disambiguate.",
+                    file=sys.stderr,
+                )
+
     missing = []
     for node_id, lookup in [(args.from_node, "from"), (args.to_node, "to")]:
         if node_id not in G:

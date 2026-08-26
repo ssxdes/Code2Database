@@ -5,7 +5,26 @@ All notable changes to Code2Database will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-08-26
+## [Unreleased] - 2026-08-27
+
+### Phase J — Parallelism audit + ProcessPoolExecutor helper
+
+- `scripts/_builder/parallel.py`: add `map_files_processpool` helper for
+  true multi-core file-level parallelism via `ProcessPoolExecutor` (spawn
+  context). Bypasses the GIL for CPU-bound tree-sitter post-processing.
+  Worker function must be a top-level module function (not a lambda/closure);
+  see the docstring for usage and memory caveats.
+- `scripts/_builder/parallel.py`: expanded the module docstring to document
+  the GIL caveat — Python tree-sitter releases the GIL during parse, but
+  per-node post-processing (AST walking, dict building) holds it. On
+  CPU-bound workloads where post-processing dominates, ThreadPoolExecutor
+  saturates a single core even with 48 threads. `map_files_processpool`
+  is the escape hatch.
+- **Audit conclusion**: the existing `ThreadPoolExecutor` in
+  `code2database_scanner.py:903` is the correct default — tree-sitter and
+  `re` release the GIL during the dominant cost (parse, regex matching),
+  so multi-threading yields real speedup. The new `map_files_processpool`
+  is available for the rare case where Python post-processing dominates.
 
 ### Phase A-H — Deep audit fixes (9 deficiencies)
 

@@ -8,9 +8,24 @@ supported:
   shared graph state, no pickling overhead. Tree-sitter and ``re`` release
   the GIL, so regex-heavy per-node work (state_access extraction, heuristic
   enhance) actually parallelizes.
+
+  **GIL caveat (Phase J audit, 2026-08-27)**: Python's tree-sitter bindings
+  release the GIL *during parse*, but the per-node post-processing (extracting
+  fields, building dicts, walking AST via Python) holds the GIL. On
+  CPU-bound workloads where post-processing dominates, ThreadPoolExecutor
+  can saturate a single core even with 48 threads. If you observe this
+  pattern (multi-threaded scan at ~100% CPU on one core), consider:
+
+  1. Profile the scanner to confirm where time is spent (cProfile).
+  2. If post-processing dominates, use ``map_files_processpool`` below to
+     run the scanner in child processes (each gets its own GIL).
+  3. Be aware of memory cost: each child process duplicates Python state.
+     On a 5GB RSS scan, 16 children = ~80GB. Cap workers conservatively.
+
 * ``ProcessPoolExecutor`` — true multi-core for pure-Python CPU-bound loops,
   but requires picklable work units. Caller must slice data into self-contained
   chunks and pass a top-level function (not a lambda or local closure).
+  See ``map_files_processpool`` for the file-level scan helper.
 
 The choice is governed by a single ``jobs`` integer:
 
@@ -34,8 +49,80 @@ from __future__ import annotations
 
 import multiprocessing
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+
+
+def map_files_processpool(
+    file_items: List[Tuple[str, str]],
+    work_fn: Callable[[str, str], Any],
+    jobs: int = 0,
+    max_workers_cap: int = 0,
+    desc: str = "",
+    batch_size: int = 50,
+) -> List[Any]:
+    """Apply ``work_fn(file_path, file_lang)`` to each file using ProcessPoolExecutor.
+
+    Phase J (2026-08-27): true multi-core for CPU-bound tree-sitter parsing.
+    The Python tree-sitter bindings do NOT release the GIL during parse, so
+    ThreadPoolExecutor serializes 48 threads onto a single core. This helper
+    uses ProcessPoolExecutor to bypass the GIL — each child process gets its
+    own Python interpreter, its own GIL, and its own tree-sitter parser.
+
+    Requirements on ``work_fn``:
+    - Must be a top-level module function (not a lambda or local closure).
+    - Must accept exactly ``(file_path: str, file_lang: str)``.
+    - Any config it needs must be read from a module-level context set by
+      ``_set_process_scan_context()`` in the child (call this in the
+      ``initializer``).
+    - Must return a picklable result (dict of primitives/lists).
+
+    Args:
+        file_items: List of ``(file_path, file_lang)`` tuples.
+        work_fn: Top-level callable, picklable.
+        jobs: Worker count (0=auto, 1=sequential, N=N processes).
+        max_workers_cap: Override the hard cap.
+        desc: Human-readable label (printed once).
+        batch_size: Submit futures in batches (smaller for processes —
+            each Future carries pickle overhead).
+
+    Returns:
+        List of results in the same order as ``file_items``. ``None`` entries
+        for items where the worker raised.
+    """
+    n = len(file_items)
+    if n == 0:
+        return []
+    workers = cap_for_graph(resolve_jobs(jobs, max_workers_cap=max_workers_cap), n)
+    if workers <= 1 or n < 2:
+        return [work_fn(fp, fl) for fp, fl in file_items]
+
+    results: List[Any] = [None] * n
+    idx = 0
+    ctx = multiprocessing.get_context("spawn")  # spawn is safer (no inherited state)
+    with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as pool:
+        active: Dict[Any, int] = {}
+        while idx < n or active:
+            batch_end = min(idx + batch_size, n)
+            while idx < batch_end:
+                fp, fl = file_items[idx]
+                fut = pool.submit(work_fn, fp, fl)
+                active[fut] = idx
+                idx += 1
+            completed = [f for f in active if f.done()]
+            if not completed:
+                for f in as_completed(list(active.keys())):
+                    completed.append(f)
+                    break
+            for fut in completed:
+                i = active.pop(fut)
+                try:
+                    results[i] = fut.result()
+                except Exception:
+                    results[i] = None
+    return results
+
+
 
 # Graphs above this node count are considered "large"; parallel loops over
 # their nodes auto-cap workers to avoid per-worker memory duplication.
@@ -234,4 +321,5 @@ __all__ = [
     "cap_for_graph",
     "map_nodes",
     "merge_node_attributes",
+    "map_files_processpool",
 ]

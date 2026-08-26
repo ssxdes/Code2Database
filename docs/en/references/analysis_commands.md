@@ -216,8 +216,10 @@ Find a path between two nodes.
 python3 scripts/code2database_builder.py path \
   --graph code2db-out/ \
   --from function_a --to function_b \
-  [--max-depth N] [--json]
+  [--max-depth N] [--json] [--no-cache]
 ```
+
+**Query result cache (Fix #15)**: `path` results are cached (TTL 600s, max 256 entries per graph). The cache invalidates on (a) TTL expiry, (b) graph SQLite file mtime change (catches daemon tx, manual sqlite3 edits, patcher writes), and (c) node-version bump on `update-node`/`patch-from-diff` for nodes the query touched. Pass `--no-cache` to bypass the cache for a single invocation — the result is computed fresh and is NOT written back to cache. Same caching applies to `describe-node`, `trace-chain`, `reverse-trace`, and `explore-flow`.
 
 ### `diff-chains`
 

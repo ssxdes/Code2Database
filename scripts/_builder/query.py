@@ -1262,6 +1262,22 @@ def cmd_resolve_chain(args):
 
 
 
+def _cmd_trace_chain_touched(args) -> frozenset:
+    """Nodes a trace-chain query depends on — used by query cache for invalidation."""
+    try:
+        ids = set()
+        for attr in ("from_node", "to_node"):
+            v = getattr(args, attr, "") or ""
+            if v:
+                ids.add(v)
+        return frozenset(ids) if ids else frozenset()
+    except Exception:
+        return frozenset()
+
+
+@cached_query('trace-chain', ttl=600,
+              touched_nodes_fn=_cmd_trace_chain_touched,
+              capture_stdout=True)
 def cmd_trace_chain(args):
     """One-shot trace from --from to --to with full annotation."""
     G = _load_full_graph(args.graph)
@@ -2808,6 +2824,20 @@ def cmd_field_flow(args):
     _output_result(result, json_mode)
 
 
+def _cmd_reverse_trace_touched(args) -> frozenset:
+    """Nodes a reverse-trace query depends on — used by query cache for invalidation."""
+    try:
+        v = getattr(args, 'crash_point', None) or getattr(args, 'from_node', None) or ""
+        if v:
+            return frozenset({v})
+    except Exception:
+        pass
+    return frozenset()
+
+
+@cached_query('reverse-trace', ttl=600,
+              touched_nodes_fn=_cmd_reverse_trace_touched,
+              capture_stdout=True)
 def cmd_reverse_trace(args):
     """Reverse trace from a crash point: BFS backward through callers,
     annotating each path with condition and concurrency info.

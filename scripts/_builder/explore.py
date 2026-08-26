@@ -13,6 +13,7 @@ from pathlib import Path
 from collections import defaultdict, deque
 import networkx as nx
 from _builder.graph_build import _load_full_graph
+from _builder.query_cache import cached_query
 from _builder.utils import _find_node_id, _is_condition_alive, _parse_bindings, _load_globals, _normalize_id
 from _builder.token_budget import estimate_tokens, truncate_to_tokens
 
@@ -861,6 +862,7 @@ def _extract_key_paths(G: nx.DiGraph, seed_nodes: list, max_paths: int = 5) -> l
     return paths
 
 
+@cached_query('explore-flow', ttl=600, capture_stdout=True)
 def cmd_explore_flow(args):
     """One-shot context retrieval: query → relevant nodes + paths + conditions."""
     graph_dir = args.graph

@@ -2,8 +2,8 @@
 
 LRU-style cache with TTL and node-version invalidation. Caches the result
 of expensive query commands (describe-node, explore-flow, concurrency-risks,
-blast-radius, find-invariants) so repeated queries on unchanged nodes skip
-recomputation.
+blast-radius, find-invariants, path, trace-chain, reverse-trace) so repeated
+queries on unchanged nodes skip recomputation.
 
 Invalidation strategy:
 - Each cache entry is keyed by (command, args_tuple, graph_dir, node_versions).
@@ -11,7 +11,13 @@ Invalidation strategy:
   query touched. When update_node or patch_from_diff changes a node, its
   version bumps and entries referencing the old version are evicted on next
   read.
+- Graph mtime check (Phase G, Fix #15): entries also record the mtime of the
+  graph SQLite file at cache time. On get, if the file mtime differs, the
+  entry is invalidated. This catches any write path that bypasses
+  invalidate_node (e.g., daemon transactions, manual sqlite3 edits).
 - TTL (default 600s) provides a secondary expiry for safety.
+- `--no-cache` CLI flag (Phase G, Fix #15): callers can set
+  `args.no_cache = True` to bypass the cache for a single invocation.
 
 Usage:
     from _builder.query_cache import cached_query, invalidate_node, invalidate_all
@@ -44,13 +50,31 @@ class _GraphCache:
         self.graph_dir = graph_dir
         self.max_entries = max_entries
         self.ttl_seconds = ttl_seconds
-        # key -> (timestamp, result)
-        self._entries: OrderedDict[str, Tuple[float, Any]] = OrderedDict()
+        # key -> (timestamp, result, graph_mtime_at_cache_time)
+        # Phase G (Fix #15): graph_mtime lets us invalidate entries when the
+        # SQLite file is touched by any write path (daemon tx, manual sqlite3,
+        # patcher) — even if invalidate_node wasn't called.
+        self._entries: OrderedDict[str, Tuple[float, Any, float]] = OrderedDict()
         # node_id -> version (monotonic int)
         self._node_versions: Dict[str, int] = {}
         # key -> set of node_ids touched (for invalidation)
         self._key_nodes: Dict[str, frozenset] = {}
         self._lock = threading.Lock()
+
+    def _graph_mtime(self) -> float:
+        """Return mtime of the graph SQLite file, or 0 if not found.
+
+        Phase G (Fix #15): We check `<graph_dir>/code2database.db` first,
+        then fall back to `<graph_dir>/callgraph.db` (legacy name).
+        """
+        for fname in ("code2database.db", "callgraph.db"):
+            p = os.path.join(self.graph_dir, fname)
+            if os.path.exists(p):
+                try:
+                    return os.path.getmtime(p)
+                except OSError:
+                    return 0
+        return 0
 
     def get(self, key: str, node_versions_snapshot: Dict[str, int]) -> Optional[Any]:
         """Return cached result if still valid, else None.
@@ -63,9 +87,15 @@ class _GraphCache:
             entry = self._entries.get(key)
             if entry is None:
                 return None
-            timestamp, result = entry
+            timestamp, result, cached_mtime = entry
             # TTL check
             if time.time() - timestamp > self.ttl_seconds:
+                self._entries.pop(key, None)
+                self._key_nodes.pop(key, None)
+                return None
+            # Graph mtime check (Phase G, Fix #15)
+            current_mtime = self._graph_mtime()
+            if current_mtime != cached_mtime:
                 self._entries.pop(key, None)
                 self._key_nodes.pop(key, None)
                 return None
@@ -88,9 +118,9 @@ class _GraphCache:
         with self._lock:
             # Evict oldest if at capacity
             while len(self._entries) >= self.max_entries:
-                evicted_key, _ = self._entries.popitem(last=False)
+                evicted_key, _ev = self._entries.popitem(last=False)
                 self._key_nodes.pop(evicted_key, None)
-            self._entries[key] = (time.time(), result)
+            self._entries[key] = (time.time(), result, self._graph_mtime())
             self._key_nodes[key] = touched_nodes
             # Record the versions we cached against
             for nid in touched_nodes:
@@ -169,6 +199,14 @@ def cached_query(command: str, ttl: int = 600,
             if not graph_dir:
                 return fn(args)
 
+            # Phase G (Fix #15): --no-cache bypasses cache read AND write.
+            # Caller sets args.no_cache = True (CLI flag) to skip caching
+            # for this single invocation — useful when stale data is
+            # suspected or for one-off fresh queries.
+            no_cache = getattr(args, "no_cache", False)
+            if isinstance(args, dict):
+                no_cache = args.get("no_cache", False)
+
             try:
                 args_dict = {k: v for k, v in vars(args).items() if k != "graph"}
             except TypeError:
@@ -187,12 +225,13 @@ def cached_query(command: str, ttl: int = 600,
             with cache._lock:
                 snapshot = {nid: cache._node_versions.get(nid, 0) for nid in touched}
 
-            cached = cache.get(key, snapshot)
-            if cached is not None:
-                if capture_stdout:
-                    import sys
-                    sys.stdout.write(cached)
-                return cached
+            if not no_cache:
+                cached = cache.get(key, snapshot)
+                if cached is not None:
+                    if capture_stdout:
+                        import sys
+                        sys.stdout.write(cached)
+                    return cached
 
             if capture_stdout:
                 import io
@@ -205,17 +244,19 @@ def cached_query(command: str, ttl: int = 600,
                 finally:
                     _sys.stdout = old_stdout
                 captured = buf.getvalue()
-                try:
-                    cache.put(key, captured, snapshot, touched)
-                except Exception:
-                    pass
+                if not no_cache:
+                    try:
+                        cache.put(key, captured, snapshot, touched)
+                    except Exception:
+                        pass
                 return captured
             else:
                 result = fn(args)
-                try:
-                    cache.put(key, result, snapshot, touched)
-                except Exception:
-                    pass
+                if not no_cache:
+                    try:
+                        cache.put(key, result, snapshot, touched)
+                    except Exception:
+                        pass
                 return result
         wrapper.__name__ = fn.__name__
         wrapper.__doc__ = fn.__doc__

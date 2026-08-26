@@ -216,8 +216,10 @@ python3 scripts/code2database_builder.py neighbors \
 python3 scripts/code2database_builder.py path \
   --graph code2db-out/ \
   --from function_a --to function_b \
-  [--max-depth N] [--json]
+  [--max-depth N] [--json] [--no-cache]
 ```
+
+**查询结果缓存（Fix #15）**：`path` 结果会被缓存（TTL 600 秒，每图最多 256 条）。缓存失效条件：(a) TTL 到期，(b) 图 SQLite 文件 mtime 变化（覆盖守护事务、手动 sqlite3 编辑、patcher 写入），(c) `update-node`/`patch-from-diff` 触及的节点版本号递增。传 `--no-cache` 跳过缓存——结果重新计算且不写回缓存。`describe-node`、`trace-chain`、`reverse-trace`、`explore-flow` 同样适用此缓存机制。
 
 ### `diff-chains`
 

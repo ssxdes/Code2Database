@@ -9,6 +9,7 @@ from collections import defaultdict
 import networkx as nx
 from _builder.utils import _find_node_id, _load_globals
 from _builder.graph_build import _load_full_graph
+from _builder.query_cache import cached_query
 
 
 def cmd_domain(args):
@@ -477,6 +478,22 @@ def _parse_vtable_bindings(bindings_str):
     return result if result else None
 
 
+def _cmd_path_touched(args) -> frozenset:
+    """Nodes a path query depends on — used by query cache for invalidation."""
+    try:
+        ids = set()
+        for attr in ("from_node", "to_node"):
+            v = getattr(args, attr, "") or ""
+            if v:
+                ids.add(v)
+        return frozenset(ids) if ids else frozenset()
+    except Exception:
+        return frozenset()
+
+
+@cached_query('path', ttl=600,
+              touched_nodes_fn=_cmd_path_touched,
+              capture_stdout=True)
 def cmd_path(args):
     G = _load_full_graph(args.graph)
 

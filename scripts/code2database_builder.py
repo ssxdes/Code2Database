@@ -604,6 +604,8 @@ def main():
                         help="Comma-separated fields to include (e.g. 'signature,params,callers')")
     p_desc.add_argument("--fill-requests", action="store_true", default=False,
                         help="Include auto_fill_request in output (default: hidden to save tokens)")
+    p_desc.add_argument("--no-cache", dest="no_cache", action="store_true",
+                        help="Bypass query result cache (Fix #15). Forces a fresh computation; result is also not written back to cache.")
 
     # resolve-chain
     p_resolve = sub.add_parser("resolve-chain",
@@ -674,6 +676,8 @@ def main():
                         help="Hard restriction: only traverse nodes whose domain matches this value (or 'root'). Use for cross-subsystem reachability queries that must stay within one subsystem. Comma-separated list supported (e.g., 'fs,block').")
     p_path.add_argument("--vtable-bind", dest="vtable_bind", default="",
                         help="Bind specific vtable type to a single implementation (e.g., 'super_operations=ext4_evict_inode,address_space_operations=ext4_write_end'). Only dispatches to the bound impl are followed.")
+    p_path.add_argument("--no-cache", dest="no_cache", action="store_true",
+                        help="Bypass query result cache (Fix #15). Forces a fresh computation; result is also not written back to cache.")
     p_path.add_argument("--json", action="store_true", help="Output as JSON")
 
     # impact
@@ -1163,6 +1167,8 @@ def main():
                             help="Max output tokens (default: 2000)")
     p_explore.add_argument("--focus-domain", dest="focus_domain", default=None,
                             help="Restrict search to a specific architecture domain (e.g., 'lib.bdev')")
+    p_explore.add_argument("--no-cache", dest="no_cache", action="store_true",
+                            help="Bypass query result cache (Fix #15). Forces a fresh computation; result is also not written back to cache.")
 
     # key-paths
     p_kp = sub.add_parser("key-paths",
@@ -1188,6 +1194,8 @@ def main():
                          help="Only return paths where these macro conditions are active (comma-separated, e.g., 'SPDK_CONFIG_APP_RW')")
     p_trace.add_argument("--annotate", action="store_true", help="Include signature/condition/concurrency per step")
     p_trace.add_argument("--json", action="store_true", help="Output as JSON")
+    p_trace.add_argument("--no-cache", dest="no_cache", action="store_true",
+                         help="Bypass query result cache (Fix #15). Forces a fresh computation; result is also not written back to cache.")
 
     # reverse-trace
     p_rtrace = sub.add_parser("reverse-trace",
@@ -1201,6 +1209,8 @@ def main():
     p_rtrace.add_argument("--macros", default="",
                           help="Only return paths where these macro conditions are active (comma-separated, e.g., 'CONFIG_X')")
     p_rtrace.add_argument("--json", action="store_true", help="Output as JSON")
+    p_rtrace.add_argument("--no-cache", dest="no_cache", action="store_true",
+                          help="Bypass query result cache (Fix #15). Forces a fresh computation; result is also not written back to cache.")
 
     # diff-chains
     p_diff = sub.add_parser("diff-chains",

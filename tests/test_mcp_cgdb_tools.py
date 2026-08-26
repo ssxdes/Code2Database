@@ -77,21 +77,21 @@ _FIXTURE_SOURCE = textwrap.dedent("""\
 
 
 class TestCgdbToolRegistration(unittest.TestCase):
-    """Test that all 18 cgdb tools are registered in TOOLS."""
+    """Test that all 19 cgdb tools are registered in TOOLS."""
 
     def test_all_cgdb_tools_registered(self):
-        """All 18 expected cgdb tools are in the TOOLS dict."""
+        """All 19 expected cgdb tools are in the TOOLS dict."""
         from _builder.mcp_server import TOOLS
         for tool_name in EXPECTED_CGDB_TOOLS:
             self.assertIn(tool_name, TOOLS,
                           f"Missing cgdb tool: {tool_name}")
 
     def test_cgdb_tools_count(self):
-        """At least 18 cgdb_* tools are registered."""
+        """At least 19 cgdb_* tools are registered."""
         from _builder.mcp_server import TOOLS
         cgdb_tools = [name for name in TOOLS if name.startswith("cgdb_")]
-        self.assertGreaterEqual(len(cgdb_tools), 18,
-                                f"Expected 18 cgdb tools, got {len(cgdb_tools)}")
+        self.assertGreaterEqual(len(cgdb_tools), 19,
+                                f"Expected 19 cgdb tools, got {len(cgdb_tools)}")
 
     def test_each_cgdb_tool_has_required_fields(self):
         """Each cgdb tool entry has description, inputSchema, and handler."""

@@ -405,6 +405,23 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" reverse-trace \
 
 从崩溃点沿INVOKES边反向BFS，列出所有从入口点到崩溃点的路径。优先展示从API_entry/thread_processor出发的路径。
 
+**Phase H（Fix #1）—— FIELD_WRITE 嫌疑集成**。调查某个字段读取崩溃（如 `bh->b_bdev` 解引用）时，往往需要同时看到*谁在崩溃点读取该字段*和*谁在其他地方写入该字段*。reverse-trace 本身只显示崩溃点的调用者；新增的 `--suspect-field` 标志把来自 `field_access` 表的字段写入嫌疑者集成到输出中：
+
+```bash
+python3 "$SKILL_DIR/scripts/code2database_builder.py" reverse-trace \
+  --graph code2db-out/ --crash-point __bread_gfp \
+  --suspect-field b_bdev --suspect-value NULL --suspect-struct bh \
+  --max-depth 8 --max-paths 20
+```
+
+- `--suspect-field FIELD_NAME` —— 查询 `field_access` 表中该字段的所有写入者；每个写入者作为一个 `field_write_suspects` 条目，含反向 BFS 到入口点的调用链、`guard_condition`（若有）、`object_origin`（若 Profile 声明了 `allocation_sites`）、以及 `reachable_in_scene` 判定（`guarded` / `unguarded`）。
+- `--suspect-value VALUE` —— 按赋值值过滤写入者（如 `NULL`、`0`）。用 `NULL` 匹配任意 C NULL 形式（`NULL`、`0`、`0L`、`(void*)0`）。需要 `--suspect-field`。
+- `--suspect-struct STRUCT_NAME` —— 按 struct 链过滤写入者（如 `bh` 匹配 `bh->field`）。可选；需要 `--suspect-field`。
+
+JSON 输出包含 `field_write_suspects` 数组和 `field_write_suspects_summary` 块（suspect_count、unguarded_count、field、value_filter、struct_filter）。文本输出在"Concurrency entry points:"后追加"Field write suspects:"段。
+
+这弥补了 reverse-trace 能看到崩溃点调用者却看不到导致崩溃的字段写入嫌疑的缺口（见续篇报告缺陷 #1）。要完整字段流分析（读者 + 写者 + race window），直接用 `field-flow`。
+
 ### 4k — 数据生命周期追踪
 
 ```bash

@@ -3018,6 +3018,155 @@ def cmd_reverse_trace(args):
                     "spawns": step["callee"],
                 })
 
+    # Phase H (Fix #1): FIELD_WRITE suspects integration.
+    # When --suspect-field is set, query field_access for all writers of that
+    # field and include them as suspects in the reverse-trace output. This
+    # closes the gap that reverse-trace could see callers of the crash point
+    # but not the field-write suspects that may have caused the crash.
+    # See 续篇 report 缺陷 #1: field-flow / value-flow 数据未构建 (P0).
+    field_write_suspects = []
+    suspect_field = getattr(args, 'suspect_field', None)
+    suspect_value = getattr(args, 'suspect_value', None)
+    suspect_struct = getattr(args, 'suspect_struct', None)
+    if suspect_field:
+        try:
+            from _builder.query_router import route_field_access, sqlite_available
+            suspect_rows = None
+            if sqlite_available(graph_dir):
+                suspect_rows = route_field_access(graph_dir, suspect_field,
+                                                  suspect_struct or "",
+                                                  assigned_value=suspect_value or "")
+            # NetworkX fallback — scan fields_written on each node
+            if suspect_rows is None:
+                suspect_rows = []
+                for nid, ndata in G.nodes(data=True):
+                    if ndata.get("is_empty", False) or ndata.get("node_type") == "file":
+                        continue
+                    func_name = ndata.get("name", "")
+                    for fw in ndata.get("fields_written", []):
+                        sc = fw.get("struct_chain", "")
+                        fn = fw.get("field_name", "")
+                        struct_match = (not suspect_struct) or (suspect_struct == sc) or (suspect_struct in sc)
+                        field_match = (suspect_field == fn)
+                        if not (struct_match and field_match):
+                            continue
+                        av = fw.get("assigned_value", "")
+                        if suspect_value:
+                            av_matches = (av and (av == suspect_value or av.lower().startswith(suspect_value.lower())))
+                            if not av_matches and _value_is_null_form_match(av, suspect_value):
+                                av_matches = True
+                            if not av_matches:
+                                continue
+                        suspect_rows.append({
+                            "function": func_name,
+                            "domain": ndata.get("domain", ""),
+                            "source_file": ndata.get("source_file", ""),
+                            "line": ndata.get("line", 0),
+                            "struct_chain": sc,
+                            "field_name": fn,
+                            "access_type": "write",
+                            "assigned_value": av,
+                            "thread_model": ndata.get("thread_model", ""),
+                            "_node_id": nid,
+                            "_guard_condition": fw.get("guard_condition", ""),
+                            "_object_origin": fw.get("object_origin", ""),
+                        })
+
+            # Build suspect entries with reverse-BFS call chains
+            from collections import deque as _deque
+            def _resolve_nid_local(func_name):
+                if func_name in G:
+                    return func_name
+                for nid in G:
+                    if nid.lower() == func_name.lower():
+                        return nid
+                for nid in G:
+                    if G.nodes[nid].get("name", "") == func_name:
+                        return nid
+                return None
+
+            def _reverse_bfs_suspect_chains(start_id, depth, max_paths):
+                """BFS backward through caller edges from a suspect writer."""
+                chains = []
+                queue = _deque([(start_id, [start_id])])
+                seen_paths = set()
+                while queue and len(chains) < max_paths:
+                    nid, path = queue.popleft()
+                    if len(path) - 1 >= depth:
+                        key = tuple(path)
+                        if key not in seen_paths:
+                            seen_paths.add(key)
+                            chains.append(list(path))
+                        continue
+                    nd = G.nodes[nid]
+                    labels = nd.get("labels", [])
+                    is_entry = ("API_entry" in labels or "thread_processor" in labels)
+                    call_preds = []
+                    for p in G.predecessors(nid):
+                        ed = G.get_edge_data(p, nid) or {}
+                        if ed.get("relation") not in ("CONTAINS", "IMPORTS"):
+                            call_preds.append(p)
+                    if not call_preds or is_entry:
+                        key = tuple(path)
+                        if key not in seen_paths:
+                            seen_paths.add(key)
+                            chains.append(list(path))
+                        continue
+                    for p in call_preds:
+                        if p in path:
+                            continue
+                        queue.append((p, [p] + path))
+                return chains[:max_paths]
+
+            for row in suspect_rows:
+                func_name = row.get("function", "")
+                nid = row.get("_node_id") or _resolve_nid_local(func_name)
+                suspect_entry = {
+                    "function": func_name,
+                    "domain": row.get("domain", ""),
+                    "source_file": row.get("source_file", ""),
+                    "line": row.get("line", 0),
+                    "struct_chain": row.get("struct_chain", ""),
+                    "field_name": row.get("field_name", ""),
+                    "assigned_value": row.get("assigned_value", ""),
+                    "thread_model": row.get("thread_model", ""),
+                }
+                # Attach guard_condition and object_origin (from NetworkX fallback
+                # or looked up from fields_written). These are the key signals
+                # for distinguishing real bugs from false positives.
+                guard_condition = row.get("_guard_condition", "")
+                object_origin = row.get("_object_origin", "")
+                if not (guard_condition or object_origin) and nid:
+                    ndata = G.nodes.get(nid, {})
+                    for fw in ndata.get("fields_written", []):
+                        if (fw.get("struct_chain", "") == suspect_entry["struct_chain"]
+                                and fw.get("field_name", "") == suspect_entry["field_name"]):
+                            guard_condition = guard_condition or fw.get("guard_condition", "")
+                            object_origin = object_origin or fw.get("object_origin", "")
+                            break
+                if guard_condition:
+                    suspect_entry["guard_condition"] = guard_condition
+                    suspect_entry["reachable_in_scene"] = "guarded"
+                else:
+                    suspect_entry["reachable_in_scene"] = "unguarded"
+                if object_origin:
+                    suspect_entry["object_origin"] = object_origin
+                if nid:
+                    chains = _reverse_bfs_suspect_chains(nid, max_depth, max_paths)
+                    suspect_entry["call_chains"] = chains
+                    suspect_entry["entry_origins"] = list({c[0] for c in chains if c})
+                else:
+                    suspect_entry["call_chains"] = []
+                    suspect_entry["entry_origins"] = []
+                field_write_suspects.append(suspect_entry)
+
+            # Sort suspects by chain count (most reachable first)
+            field_write_suspects.sort(key=lambda w: (-len(w.get("call_chains", [])), w["function"]))
+        except Exception as exc:
+            # Don't let suspect integration break the main reverse-trace
+            print(f"[reverse-trace] suspect-field integration failed: {exc}",
+                  file=sys.stderr)
+
     # Build result
     crash_name = G.nodes[crash_id].get("name", crash_id)
     ancestors = [nid for nid in visited if nid != crash_id]
@@ -3038,6 +3187,18 @@ def cmd_reverse_trace(args):
         result["macros"] = list(macro_set)
     if total_paths_before_limit > max_paths:
         result["path_limit_applied"] = max_paths
+    if field_write_suspects:
+        result["field_write_suspects"] = field_write_suspects
+        result["field_write_suspects_summary"] = {
+            "suspect_count": len(field_write_suspects),
+            "unguarded_count": sum(
+                1 for s in field_write_suspects
+                if s.get("reachable_in_scene") == "unguarded"
+            ),
+            "field": suspect_field or "",
+            "value_filter": suspect_value or "",
+            "struct_filter": suspect_struct or "",
+        }
 
     # Format paths for output
     for i, path in enumerate(annotated_paths, 1):
@@ -3082,6 +3243,31 @@ def cmd_reverse_trace(args):
             lines.append("Concurrency entry points:")
             for entry in concurrency_entries:
                 lines.append(f"  - {entry['caller']}: spawns thread ({entry['spawns']})")
+        if field_write_suspects:
+            summary = result.get("field_write_suspects_summary", {})
+            lines.append("")
+            lines.append(
+                f"Field write suspects (Fix #1, field={summary.get('field', '')},"
+                f"value_filter={summary.get('value_filter', '') or 'none'},"
+                f"struct_filter={summary.get('struct_filter', '') or 'none'}):"
+            )
+            lines.append(
+                f"  Total: {summary.get('suspect_count', 0)} suspect(s), "
+                f"{summary.get('unguarded_count', 0)} unguarded"
+            )
+            for idx, sus in enumerate(field_write_suspects, 1):
+                func = sus.get("function", "?")
+                reach = sus.get("reachable_in_scene", "unknown")
+                chains = sus.get("call_chains", [])
+                guard = sus.get("guard_condition", "") or "none"
+                origin = sus.get("object_origin", "") or "unknown"
+                lines.append(
+                    f"  {idx}. {func} [reach={reach}, chains={len(chains)}, "
+                    f"guard={guard}, origin={origin}]"
+                )
+                for ci, chain in enumerate(chains[:3], 1):
+                    chain_str = " -> ".join(chain) if isinstance(chain, list) else str(chain)
+                    lines.append(f"     chain {ci}: {chain_str}")
         print("\n".join(lines))
     else:
         print(json.dumps(result, ensure_ascii=False, indent=2))

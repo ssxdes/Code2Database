@@ -221,6 +221,29 @@ python3 scripts/code2database_builder.py path \
 
 **Query result cache (Fix #15)**: `path` results are cached (TTL 600s, max 256 entries per graph). The cache invalidates on (a) TTL expiry, (b) graph SQLite file mtime change (catches daemon tx, manual sqlite3 edits, patcher writes), and (c) node-version bump on `update-node`/`patch-from-diff` for nodes the query touched. Pass `--no-cache` to bypass the cache for a single invocation — the result is computed fresh and is NOT written back to cache. Same caching applies to `describe-node`, `trace-chain`, `reverse-trace`, and `explore-flow`.
 
+### `reverse-trace`
+
+Reverse BFS from a crash point along INVOKES edges, listing all paths from entry points to the crash point. Prioritizes paths starting from `API_entry` / `thread_processor`.
+
+```bash
+python3 scripts/code2database_builder.py reverse-trace \
+  --graph code2db-out/ \
+  --crash-point function_name \
+  [--max-depth N] [--max-paths N] [--macros CONFIG_X] \
+  [--suspect-field FIELD] [--suspect-value VALUE] [--suspect-struct STRUCT] \
+  [--json] [--no-cache]
+```
+
+Output: paths from entry points to the crash point, with condition and concurrency annotations on each step; critical conditions summary; concurrency entry points (functions that spawn threads).
+
+**Phase H (Fix #1) — FIELD_WRITE suspects integration**: When investigating a crash that reads a field (e.g., `bh->b_bdev` dereference), pass `--suspect-field` to include field-write suspects from the `field_access` table in the output. Each suspect has a reverse-BFS call chain back to entry points, `guard_condition` (if any), `object_origin` (if Profile declares `allocation_sites`), and a `reachable_in_scene` verdict (`guarded` / `unguarded`).
+
+- `--suspect-field FIELD_NAME` — query `field_access` for all writers of this field.
+- `--suspect-value VALUE` — filter writers by assigned value (e.g., `NULL`, `0`). Use `NULL` to match any C NULL-form (`NULL`, `0`, `0L`, `(void*)0`).
+- `--suspect-struct STRUCT_NAME` — filter writers by struct chain (e.g., `bh` matches `bh->field`).
+
+JSON output includes a `field_write_suspects` array and `field_write_suspects_summary` block. Text output appends a "Field write suspects:" section after "Concurrency entry points:".
+
 ### `diff-chains`
 
 Compare invocation paths under two macro configurations.

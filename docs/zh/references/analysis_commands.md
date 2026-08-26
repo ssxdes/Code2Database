@@ -221,6 +221,29 @@ python3 scripts/code2database_builder.py path \
 
 **查询结果缓存（Fix #15）**：`path` 结果会被缓存（TTL 600 秒，每图最多 256 条）。缓存失效条件：(a) TTL 到期，(b) 图 SQLite 文件 mtime 变化（覆盖守护事务、手动 sqlite3 编辑、patcher 写入），(c) `update-node`/`patch-from-diff` 触及的节点版本号递增。传 `--no-cache` 跳过缓存——结果重新计算且不写回缓存。`describe-node`、`trace-chain`、`reverse-trace`、`explore-flow` 同样适用此缓存机制。
 
+### `reverse-trace`
+
+从崩溃点沿 INVOKES 边反向 BFS，列出所有从入口点到崩溃点的路径。优先展示从 `API_entry` / `thread_processor` 出发的路径。
+
+```bash
+python3 scripts/code2database_builder.py reverse-trace \
+  --graph code2db-out/ \
+  --crash-point function_name \
+  [--max-depth N] [--max-paths N] [--macros CONFIG_X] \
+  [--suspect-field FIELD] [--suspect-value VALUE] [--suspect-struct STRUCT] \
+  [--json] [--no-cache]
+```
+
+输出：从入口点到崩溃点的路径，每步带条件和并发标注；关键条件汇总；并发入口点（spawn 线程的函数）。
+
+**Phase H（Fix #1）—— FIELD_WRITE 嫌疑集成**：调查某个字段读取崩溃（如 `bh->b_bdev` 解引用）时，传 `--suspect-field` 把来自 `field_access` 表的字段写入嫌疑者集成到输出中。每个嫌疑者带反向 BFS 到入口点的调用链、`guard_condition`（若有）、`object_origin`（若 Profile 声明了 `allocation_sites`）、以及 `reachable_in_scene` 判定（`guarded` / `unguarded`）。
+
+- `--suspect-field FIELD_NAME` —— 查询 `field_access` 中该字段的所有写入者。
+- `--suspect-value VALUE` —— 按赋值值过滤写入者（如 `NULL`、`0`）。用 `NULL` 匹配任意 C NULL 形式（`NULL`、`0`、`0L`、`(void*)0`）。
+- `--suspect-struct STRUCT_NAME` —— 按 struct 链过滤写入者（如 `bh` 匹配 `bh->field`）。
+
+JSON 输出包含 `field_write_suspects` 数组和 `field_write_suspects_summary` 块。文本输出在"Concurrency entry points:"后追加"Field write suspects:"段。
+
 ### `diff-chains`
 
 对比两种宏配置下的调用路径。

@@ -1208,6 +1208,18 @@ def main():
     p_rtrace.add_argument("--graph", required=True, help="Call graph output directory")
     p_rtrace.add_argument("--macros", default="",
                           help="Only return paths where these macro conditions are active (comma-separated, e.g., 'CONFIG_X')")
+    p_rtrace.add_argument("--suspect-field", dest="suspect_field", default=None,
+                          help="Phase H (Fix #1): Integrate FIELD_WRITE suspects into reverse-trace. "
+                               "When set (e.g., 'b_bdev'), query field_access for all writers of this field "
+                               "and include them as 'field_write_suspects' in the output. Use with "
+                               "--suspect-value to filter writers by assigned value (e.g., 'NULL').")
+    p_rtrace.add_argument("--suspect-value", dest="suspect_value", default=None,
+                          help="Phase H (Fix #1): Filter FIELD_WRITE suspects by assigned value (e.g., 'NULL', '0'). "
+                               "Requires --suspect-field. Use 'NULL' to match any C NULL-form "
+                               "(NULL, 0, 0L, (void*)0).")
+    p_rtrace.add_argument("--suspect-struct", dest="suspect_struct", default=None,
+                          help="Phase H (Fix #1): Filter FIELD_WRITE suspects by struct chain "
+                               "(e.g., 'bh' matches bh->field). Optional; requires --suspect-field.")
     p_rtrace.add_argument("--json", action="store_true", help="Output as JSON")
     p_rtrace.add_argument("--no-cache", dest="no_cache", action="store_true",
                           help="Bypass query result cache (Fix #15). Forces a fresh computation; result is also not written back to cache.")

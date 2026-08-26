@@ -405,6 +405,23 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" reverse-trace \
 
 Reverse BFS from crash point along INVOKES edges, listing all paths from entry points to the crash point. Prioritizes paths starting from API_entry / thread_processor.
 
+**Phase H (Fix #1) — FIELD_WRITE suspects integration**. When investigating a crash that reads a field (e.g., `bh->b_bdev` dereference), you often need to see both *who reads the field at the crash point* and *who writes the field elsewhere*. The reverse-trace alone shows callers of the crash point; the new `--suspect-field` flag integrates field-write suspects from the `field_access` table into the output:
+
+```bash
+python3 "$SKILL_DIR/scripts/code2database_builder.py" reverse-trace \
+  --graph code2db-out/ --crash-point __bread_gfp \
+  --suspect-field b_bdev --suspect-value NULL --suspect-struct bh \
+  --max-depth 8 --max-paths 20
+```
+
+- `--suspect-field FIELD_NAME` — query `field_access` for all writers of this field; each writer is included as a `field_write_suspects` entry with reverse-BFS call chains back to entry points, `guard_condition` (if any), `object_origin` (if Profile declares `allocation_sites`), and a `reachable_in_scene` verdict (`guarded` / `unguarded`).
+- `--suspect-value VALUE` — filter writers by assigned value (e.g., `NULL`, `0`). Use `NULL` to match any C NULL-form (`NULL`, `0`, `0L`, `(void*)0`). Requires `--suspect-field`.
+- `--suspect-struct STRUCT_NAME` — filter writers by struct chain (e.g., `bh` matches `bh->field`). Optional; requires `--suspect-field`.
+
+JSON output includes a `field_write_suspects` array and `field_write_suspects_summary` block (suspect_count, unguarded_count, field, value_filter, struct_filter). Text output appends a "Field write suspects:" section after "Concurrency entry points:".
+
+This closes the gap that `reverse-trace` could see callers of the crash point but not the field-write suspects that may have caused the crash (see 续篇 report 缺陷 #1). For full field-flow analysis (readers + writers + race windows), use `field-flow` directly.
+
 ### 4k — Data Lifecycle Tracking
 
 ```bash

@@ -5,6 +5,38 @@ All notable changes to Code2Database will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-08-26
+
+### Phase A-H — Deep audit fixes (9 deficiencies)
+
+Phases A-H address 9 deficiencies identified in the deep verification audit
+(see `Skill修改记录报告_续篇.md`). Each phase is committed separately.
+
+- **Phase A (Fix #2)**: `path --source-file` now actually filters by source
+  file. Previously the flag was accepted but silently ignored.
+- **Phase B (Fix #11 + new #1/#2)**: doc/code/skill.json consistency —
+  schema drift between `SKILL.md` examples, `usage_reference.md`, and the
+  actual CLI parsers fixed.
+- **Phase C (Fix #9)**: `--domain-filter` flag on `trace-chain` and
+  `reverse-trace` for cross-domain long-chain tracking.
+- **Phase D (Fix #6)**: guard-function runtime semantics annotation —
+  `guard_functions` from profile now feed into `path-feasible` and
+  `path-guards` via `runtime_guards.profile_bindings`.
+- **Phase E (Fix #7)**: object ownership / origin tracking — profile-declared
+  `allocation_sites` enable `object_origin` field on field-write suspects.
+- **Phase F (Fix #10)**: lock semantics / HOLDER edges — profile-declared
+  `lock_semantics` produce `lock_held_context` evidence in `detect-races`.
+- **Phase G (Fix #15)**: query result cache with three-layer invalidation
+  (TTL + graph mtime + node-version) and `--no-cache` bypass flag on
+  `path`, `describe-node`, `trace-chain`, `reverse-trace`, `explore-flow`.
+- **Phase H (Fix #1, P0)**: FIELD_WRITE suspects integration — `reverse-trace`
+  gains `--suspect-field` / `--suspect-value` / `--suspect-struct` flags that
+  pull writers from the `field_access` table and include them in the output
+  with reverse-BFS call chains, `guard_condition`, `object_origin`, and a
+  `reachable_in_scene` verdict. Closes the P0 gap that `reverse-trace` could
+  see callers of the crash point but not the field-write suspects that may
+  have caused the crash.
+
 ## [1.3.0] - 2026-08-25
 
 **Major feature release**: multi-project aggregate build + cross-C2D live sync.

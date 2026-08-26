@@ -359,7 +359,7 @@ def _node_domain(G, nid):
 
 def _bfs_with_domain_preference(G, from_node, to_node, no_filter, prefer_same_domain,
                                 origin_domain, strict_vtable_domain=False,
-                                vtable_bindings=None):
+                                vtable_bindings=None, domain_filter=None):
     """BFS that, at vtable_dispatch junctures, prefers targets whose domain
     matches origin_domain. Falls back to cross-domain targets only if no
     same-domain path reaches to_node.
@@ -378,6 +378,11 @@ def _bfs_with_domain_preference(G, from_node, to_node, no_filter, prefer_same_do
     vtable_dispatch edges whose vtable_type matches AND whose target's name
     matches the bound impl_name are followed. Other dispatches of the same
     vtable_type are excluded. This is the most precise filter.
+
+    If domain_filter is provided (set of domain names), the BFS hard-restricts
+    traversal to nodes whose domain is in the set or is 'root' (or empty).
+    Used for cross-subsystem reachability queries that must stay within
+    a known set of subsystems.
     """
     from collections import deque
     import heapq
@@ -398,6 +403,11 @@ def _bfs_with_domain_preference(G, from_node, to_node, no_filter, prefer_same_do
         for nb in G.successors(cur):
             if nb in came_from:
                 continue
+            # #9 fix: hard domain filter
+            if domain_filter:
+                nb_dom = _node_domain(G, nb)
+                if nb_dom and nb_dom != "root" and nb_dom not in domain_filter:
+                    continue
             if not no_filter:
                 ed = G.get_edge_data(cur, nb) or {}
                 concurrency = ed.get("concurrency", "")
@@ -566,6 +576,24 @@ def cmd_path(args):
     strict_vtable_domain = getattr(args, 'strict_vtable_domain', False)
     vtable_bindings = _parse_vtable_bindings(getattr(args, 'vtable_bind', '') or '')
 
+    # #9 fix: --domain-filter — hard restriction to one or more domains.
+    # Unlike prefer_same_domain (soft preference), this excludes any node
+    # whose domain is not in the allowlist (root is always allowed).
+    domain_filter_raw = getattr(args, "domain_filter", "") or ""
+    domain_filter_set = set()
+    if domain_filter_raw:
+        domain_filter_set = {d.strip() for d in domain_filter_raw.split(",") if d.strip()}
+        # Validate that from_node and to_node domains are in the filter
+        for slot, nid in (("from", args.from_node), ("to", args.to_node)):
+            nd = _node_domain(G, nid)
+            if nd and nd != "root" and nd not in domain_filter_set:
+                print(
+                    f"Warning: {slot} node '{nid}' is in domain '{nd}' which "
+                    f"is not in --domain-filter {sorted(domain_filter_set)}. "
+                    f"No path will be found.",
+                    file=sys.stderr,
+                )
+
     origin_domain = _node_domain(G, args.from_node)
 
     # For LazySQLiteGraph (large SQLite-backed graphs), building a full
@@ -578,11 +606,21 @@ def cmd_path(args):
                 G, args.from_node, args.to_node, no_filter,
                 prefer_same_domain, origin_domain,
                 strict_vtable_domain=strict_vtable_domain,
-                vtable_bindings=vtable_bindings
+                vtable_bindings=vtable_bindings,
+                domain_filter=domain_filter_set or None
             )
         else:
             from _builder.utils import _make_call_graph
             call_G = _make_call_graph(G, skip_file_nodes=True)
+
+            # #9 fix: hard domain filter — remove nodes outside the allowlist
+            if domain_filter_set:
+                allowed = {"root"} | domain_filter_set
+                nodes_to_remove = [
+                    n for n in call_G.nodes
+                    if (call_G.nodes[n].get("domain", "") or "") not in allowed
+                ]
+                call_G.remove_nodes_from(nodes_to_remove)
 
             if not no_filter:
                 edges_to_remove = []

@@ -116,3 +116,6 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
   is provided, `--from`/`--to` accept function names (resolved by name+file);
   without `--source-file`, they must be node IDs. If a name resolves to multiple
   nodes across files, a warning is printed listing the candidate source files.
+- `path --domain-filter fs,block` hard-restricts traversal to nodes whose domain
+  is in the allowlist (or `root`). Use for cross-subsystem reachability queries
+  that must stay within a known set of subsystems. Comma-separated list supported.

@@ -113,3 +113,6 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
   用 `--source-file` 消歧。传入 `--source-file` 时，`--from`/`--to`
   接受函数名（按 name+file 解析）；不传 `--source-file` 时必须用节点 ID。
   若名字在多文件中都有同名节点，会打印警告列出候选文件。
+- `path --domain-filter fs,block` 硬限制遍历只在指定 domain（或 `root`）
+  的节点上进行。用于跨子系统可达性查询，确保只在已知子系统集合内搜索。
+  支持逗号分隔列表。

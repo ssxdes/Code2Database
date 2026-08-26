@@ -670,6 +670,8 @@ def main():
     p_path.add_argument("--strict-vtable-domain", dest="strict_vtable_domain",
                         action="store_true", default=False,
                         help="Completely exclude cross-domain vtable_dispatch edges (no fallback). Use to verify whether a path exists within a single subsystem.")
+    p_path.add_argument("--domain-filter", dest="domain_filter", default="",
+                        help="Hard restriction: only traverse nodes whose domain matches this value (or 'root'). Use for cross-subsystem reachability queries that must stay within one subsystem. Comma-separated list supported (e.g., 'fs,block').")
     p_path.add_argument("--vtable-bind", dest="vtable_bind", default="",
                         help="Bind specific vtable type to a single implementation (e.g., 'super_operations=ext4_evict_inode,address_space_operations=ext4_write_end'). Only dispatches to the bound impl are followed.")
     p_path.add_argument("--json", action="store_true", help="Output as JSON")

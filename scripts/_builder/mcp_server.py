@@ -73,8 +73,19 @@ atexit.register(_close_cached_graphs)
 # MCP stdio transport
 # ---------------------------------------------------------------------------
 
+# Sentinel for EOF detection — distinct from None (which means "parse error,
+# skip and continue"). Using a sentinel object lets the main loop distinguish
+# "stdin closed, should exit" from "malformed JSON, skip this message".
+_EOF_SENTINEL = object()
+
+
 def _read_message():
     """Read a JSON-RPC message from stdin (MCP stdio transport).
+
+    Returns:
+        dict: parsed JSON-RPC message.
+        _EOF_SENTINEL: stdin reached EOF (client disconnected).
+        None: malformed/unparseable message (skip, continue loop).
 
     Implements Content-Length header parsing per MCP spec:
     https://spec.modelcontextprotocol.io/specification/basic/transports/#stdio
@@ -90,7 +101,7 @@ def _read_message():
     while True:
         line = sys.stdin.readline()
         if not line:
-            return None  # EOF
+            return _EOF_SENTINEL  # EOF — client disconnected
         line = line.strip()
         if not line:
             break  # End of headers
@@ -111,7 +122,7 @@ def _read_message():
         # Read exactly content_length bytes
         data = sys.stdin.read(content_length)
         if not data:
-            return None
+            return _EOF_SENTINEL  # EOF
     elif fallback_body is not None:
         # Fallback: the line we already read IS the JSON body.
         data = fallback_body
@@ -119,7 +130,7 @@ def _read_message():
         # Fallback: try reading a single JSON line (for simple clients).
         line = sys.stdin.readline()
         if not line:
-            return None
+            return _EOF_SENTINEL  # EOF
         data = line.strip()
 
     try:
@@ -2030,8 +2041,10 @@ def run_mcp_server(graph_dir: str):
 
     while True:
         msg = _read_message()
+        if msg is _EOF_SENTINEL:
+            break  # stdin closed — clean exit
         if msg is None:
-            continue
+            continue  # malformed message — skip
 
         method = msg.get("method", "")
         msg_id = msg.get("id")

@@ -66,13 +66,13 @@ class TestMcpFraming(unittest.TestCase):
         self.assertEqual(result, msg)
 
     def test_read_message_eof(self):
-        """_read_message returns None on EOF (empty stdin)."""
-        from _builder.mcp_server import _read_message
+        """_read_message returns _EOF_SENTINEL on EOF (empty stdin)."""
+        from _builder.mcp_server import _read_message, _EOF_SENTINEL
         with patch("sys.stdin", new_callable=io.StringIO) as mock_in:
             mock_in.write("")
             mock_in.seek(0)
             result = _read_message()
-        self.assertIsNone(result)
+        self.assertIs(result, _EOF_SENTINEL)
 
     def test_read_message_large(self):
         """_read_message handles a large (1MB) message without truncation."""

@@ -1,0 +1,64 @@
+name: 'Code2Database PR Review'
+description: 'Run Code2Database analysis on PR diffs — blast radius, race detection, stale knowledge'
+inputs:
+  graph-dir:
+    description: 'Path to the pre-built C2D graph directory'
+    required: true
+  source-root:
+    description: 'Path to the source repository root'
+    required: true
+  fail-on-risk:
+    description: 'Fail the check if high-severity races or blast radius > threshold'
+    required: false
+    default: 'false'
+  max-impact:
+    description: 'Maximum blast-radius affected count before warning (default 50)'
+    required: false
+    default: '50'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Code2Database
+      shell: bash
+      run: |
+        pip install tree-sitter tree-sitter-c tree-sitter-cpp tree-sitter-go tree-sitter-python
+        # Install Code2Database skill
+        git clone https://github.com/USER/Code2Database.git /opt/code2database
+        echo "C2D_DIR=/opt/code2database" >> $GITHUB_ENV
+
+    - name: Run blast-radius on changed files
+      shell: bash
+      run: |
+        CHANGED=$(git diff --name-only origin/${{ github.base_ref }}..HEAD | tr '\n' ',' | sed 's/,$//')
+        for func in $(python3 $C2D_DIR/scripts/code2database_builder.py search --graph ${{ inputs.graph-dir }} --query "$CHANGED" --json | python3 -c "import sys,json; [print(r['id']) for r in json.load(sys.stdin).get('results',[])]"); do
+          echo "::group::Blast radius for $func"
+          python3 $C2D_DIR/scripts/code2database_builder.py blast-radius --graph ${{ inputs.graph-dir }} --node $func --json
+          echo "::endgroup::"
+        done
+
+    - name: Run race detection
+      shell: bash
+      run: |
+        python3 $C2D_DIR/scripts/code2database_builder.py detect-races --graph ${{ inputs.graph-dir }} --json > /tmp/races.json
+        HIGH=$(python3 -c "import json; d=json.load(open('/tmp/races.json')); print(d.get('high_severity',0))")
+        if [ "$HIGH" -gt 0 ]; then
+          echo "::warning::$HIGH high-severity races detected"
+          if [ "${{ inputs.fail-on-risk }}" == "true" ]; then
+            exit 1
+          fi
+        fi
+
+    - name: Run hub-nodes analysis
+      shell: bash
+      run: |
+        echo "::group::Hub nodes (most connected)"
+        python3 $C2D_DIR/scripts/code2database_builder.py hub-nodes --graph ${{ inputs.graph-dir }} --top 10 --json
+        echo "::endgroup::"
+
+    - name: Run bridge-nodes analysis
+      shell: bash
+      run: |
+        echo "::group::Bridge nodes (chokepoints)"
+        python3 $C2D_DIR/scripts/code2database_builder.py bridge-nodes --graph ${{ inputs.graph-dir }} --top 10 --json
+        echo "::endgroup::"

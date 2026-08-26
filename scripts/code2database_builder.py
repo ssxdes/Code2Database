@@ -1018,6 +1018,53 @@ def main():
     p_kgi = sub.add_parser("kb-global-import",
                            help="Import a shared global KB JSON file")
     p_kgi.add_argument("--input", required=True, help="Input JSON path")
+    # Code intelligence tools
+    p_ro = sub.add_parser("references-of",
+                          help="List ALL source locations where a symbol is referenced (declaration+calls+reads+writes)")
+    p_ro.add_argument("--graph", required=True)
+    p_ro.add_argument("--node", required=True, help="Symbol name or node ID")
+    p_ro.add_argument("--limit", type=int, default=100)
+
+    p_tg = sub.add_parser("traverse-graph",
+                          help="Free-form BFS/DFS traversal with depth and token budget")
+    p_tg.add_argument("--graph", required=True)
+    p_tg.add_argument("--start", required=True, help="Start node ID or name")
+    p_tg.add_argument("--mode", choices=["bfs", "dfs"], default="bfs")
+    p_tg.add_argument("--max-depth", type=int, default=5)
+    p_tg.add_argument("--max-nodes", type=int, default=100)
+    p_tg.add_argument("--max-tokens", type=int, default=4000)
+
+    p_hn = sub.add_parser("hub-nodes",
+                           help="Most connected nodes (highest in+out degree)")
+    p_hn.add_argument("--graph", required=True)
+    p_hn.add_argument("--top", type=int, default=20)
+
+    p_bn = sub.add_parser("bridge-nodes",
+                          help="Bridge nodes with high betweenness centrality (chokepoints)")
+    p_bn.add_argument("--graph", required=True)
+    p_bn.add_argument("--top", type=int, default=20)
+
+    p_gd = sub.add_parser("graph-diff",
+                          help="Compare two graph builds: added/removed/changed nodes+edges+communities")
+    p_gd.add_argument("--before", required=True, help="Previous build directory")
+    p_gd.add_argument("--after", required=True, help="Current build directory")
+    p_gd.add_argument("--detail", choices=["summary", "full"], default="summary")
+
+    p_hs = sub.add_parser("hybrid-search",
+                          help="Hybrid search: FTS5 BM25 + optional embedding + RRF fusion")
+    p_hs.add_argument("--graph", required=True)
+    p_hs.add_argument("--query", required=True)
+    p_hs.add_argument("--top", type=int, default=20)
+    p_hs.add_argument("--no-semantic", action="store_true", help="Disable embedding channel")
+    p_hs.add_argument("--reranker", default="", help="Optional reranker URL (OpenAI-compatible /v1/rerank)")
+
+    p_cc = sub.add_parser("co-change",
+                          help="Mine git log for co-change coupling edges")
+    p_cc.add_argument("--source", required=True, help="Git repository root")
+    p_cc.add_argument("--graph", required=True, help="Graph directory")
+    p_cc.add_argument("--min-co-changes", type=int, default=3)
+    p_cc.add_argument("--max-commits", type=int, default=5000)
+
 
     # build-multi (Phase 1: multi-project aggregate build)
     p_bm = sub.add_parser("build-multi",
@@ -2298,6 +2345,13 @@ def main():
         "kb-global-search": cmd_kb_global_search,
         "kb-global-share": cmd_kb_global_share,
         "kb-global-import": cmd_kb_global_import,
+        "references-of": cmd_references_of,
+        "traverse-graph": cmd_traverse_graph,
+        "hub-nodes": cmd_hub_nodes,
+        "bridge-nodes": cmd_bridge_nodes,
+        "graph-diff": cmd_graph_diff,
+        "hybrid-search": cmd_hybrid_search,
+        "co-change": cmd_co_change,
         "build-multi": cmd_build_multi,
         "c2d-add-foreign": cmd_c2d_add_foreign,
         "c2d-sync-foreign": cmd_c2d_sync_foreign,

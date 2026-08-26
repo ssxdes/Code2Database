@@ -11,12 +11,12 @@ Invalidation strategy:
   query touched. When update_node or patch_from_diff changes a node, its
   version bumps and entries referencing the old version are evicted on next
   read.
-- Graph mtime check (Phase G, Fix #15): entries also record the mtime of the
+- Graph mtime check (entries also record the mtime of the
   graph SQLite file at cache time. On get, if the file mtime differs, the
   entry is invalidated. This catches any write path that bypasses
   invalidate_node (e.g., daemon transactions, manual sqlite3 edits).
 - TTL (default 600s) provides a secondary expiry for safety.
-- `--no-cache` CLI flag (Phase G, Fix #15): callers can set
+- `--no-cache` CLI flag (callers can set
   `args.no_cache = True` to bypass the cache for a single invocation.
 
 Usage:
@@ -51,7 +51,7 @@ class _GraphCache:
         self.max_entries = max_entries
         self.ttl_seconds = ttl_seconds
         # key -> (timestamp, result, graph_mtime_at_cache_time)
-        # Phase G (Fix #15): graph_mtime lets us invalidate entries when the
+        # graph_mtime lets us invalidate entries when the
         # SQLite file is touched by any write path (daemon tx, manual sqlite3,
         # patcher) — even if invalidate_node wasn't called.
         self._entries: OrderedDict[str, Tuple[float, Any, float]] = OrderedDict()
@@ -64,7 +64,7 @@ class _GraphCache:
     def _graph_mtime(self) -> float:
         """Return mtime of the graph SQLite file, or 0 if not found.
 
-        Phase G (Fix #15): We check `<graph_dir>/code2database.db` first,
+        We check `<graph_dir>/code2database.db` first,
         then fall back to `<graph_dir>/callgraph.db` (legacy name).
         """
         for fname in ("code2database.db", "callgraph.db"):
@@ -93,7 +93,7 @@ class _GraphCache:
                 self._entries.pop(key, None)
                 self._key_nodes.pop(key, None)
                 return None
-            # Graph mtime check (Phase G, Fix #15)
+            # Graph mtime check
             current_mtime = self._graph_mtime()
             if current_mtime != cached_mtime:
                 self._entries.pop(key, None)
@@ -199,7 +199,7 @@ def cached_query(command: str, ttl: int = 600,
             if not graph_dir:
                 return fn(args)
 
-            # Phase G (Fix #15): --no-cache bypasses cache read AND write.
+            # --no-cache bypasses cache read AND write.
             # Caller sets args.no_cache = True (CLI flag) to skip caching
             # for this single invocation — useful when stale data is
             # suspected or for one-off fresh queries.

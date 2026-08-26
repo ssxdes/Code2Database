@@ -1,4 +1,4 @@
-"""coverage_report — RPT-KERNEL-D14: build-time coverage report + path-not-found hints.
+"""coverage_report — build-time coverage report + path-not-found hints.
 
 Generates `<graph_dir>/.code2database_coverage_report.json` after build,
 summarizing which subsystems (top-level source directories like fs/, mm/,
@@ -128,7 +128,7 @@ def write_coverage_report(graph_dir: str) -> Optional[str]:
     total_files = len(rows)
     report = {
         "type": "code2database_coverage_report",
-        "generated_by": "RPT-KERNEL-D14",
+        "generated_by": "",
         "graph_dir": graph_dir,
         "total_files": total_files,
         "subsystem_count": len(subsystem_files),
@@ -310,7 +310,7 @@ def write_file_coverage(graph_dir: str) -> Optional[str]:
 
     report = {
         "type": "code2database_file_coverage",
-        "generated_by": "RPT-KERNEL-D15",
+        "generated_by": "",
         "graph_dir": graph_dir,
         "total_files": len(files),
         "total_lines": sum(f["line_count"] for f in files),

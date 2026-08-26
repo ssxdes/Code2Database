@@ -405,7 +405,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" reverse-trace \
 
 Reverse BFS from crash point along INVOKES edges, listing all paths from entry points to the crash point. Prioritizes paths starting from API_entry / thread_processor.
 
-**Phase H (Fix #1) — FIELD_WRITE suspects integration**. When investigating a crash that reads a field (e.g., `bh->b_bdev` dereference), you often need to see both *who reads the field at the crash point* and *who writes the field elsewhere*. The reverse-trace alone shows callers of the crash point; the new `--suspect-field` flag integrates field-write suspects from the `field_access` table into the output:
+**FIELD_WRITE suspects integration**. When investigating a crash that reads a field (e.g., `bh->b_bdev` dereference), you often need to see both *who reads the field at the crash point* and *who writes the field elsewhere*. The reverse-trace alone shows callers of the crash point; the new `--suspect-field` flag integrates field-write suspects from the `field_access` table into the output:
 
 ```bash
 python3 "$SKILL_DIR/scripts/code2database_builder.py" reverse-trace \
@@ -420,7 +420,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" reverse-trace \
 
 JSON output includes a `field_write_suspects` array and `field_write_suspects_summary` block (suspect_count, unguarded_count, field, value_filter, struct_filter). Text output appends a "Field write suspects:" section after "Concurrency entry points:".
 
-This closes the gap that `reverse-trace` could see callers of the crash point but not the field-write suspects that may have caused the crash (see 续篇 report 缺陷 #1). For full field-flow analysis (readers + writers + race windows), use `field-flow` directly.
+This closes the gap that `reverse-trace` could see callers of the crash point but not the field-write suspects that may have caused the crash (see 续篇 report ). For full field-flow analysis (readers + writers + race windows), use `field-flow` directly.
 
 ### 4k — Data Lifecycle Tracking
 

@@ -91,7 +91,7 @@ _DEFAULT_PROFILE = {
         "vtable_module_keys": [],
         "domain_rules": [],
         "skip_dirs": [],  # Extra directories to skip (in addition to built-in _SKIP_DIRS)
-        # RPT-KERNEL-D9: optional subsystem filter — when set, only files
+        # optional subsystem filter — when set, only files
         # whose path (relative to --source) starts with `<subsystem>/` are
         # scanned. Useful for scanning a monorepo but limiting to specific
         # subsystems (e.g., Linux kernel: ['fs', 'mm', 'block', 'kernel', 'lib']).
@@ -165,7 +165,7 @@ _DEFAULT_PROFILE = {
         "lock_acquire_patterns": [],
         "lock_release_patterns": [],
     },
-    # Phase D (Fix #6): project-declared runtime guard functions.
+    # project-declared runtime guard functions.
     # Maps guard function names to their semantic effect so path-feasible /
     # path-guards / describe-node can annotate conditions with project-specific
     # guard meaning instead of relying solely on the hardcoded regex patterns
@@ -189,7 +189,7 @@ _DEFAULT_PROFILE = {
     # EMPTY by default — built-in reference profiles populate this for
     # project-specific guard APIs.
     "guard_functions": [],
-    # Phase E (Fix #7): project-declared allocation sites.
+    # project-declared allocation sites.
     # Maps allocation function names to the object type they return. Lets
     # field-access / field-flow annotate writer/reader entries with
     # `object_origin_type` (e.g., "buffer_head" for alloc_buffer_head) so the
@@ -205,7 +205,7 @@ _DEFAULT_PROFILE = {
     # EMPTY by default — built-in reference profiles populate this for
     # project-specific allocation APIs.
     "allocation_sites": [],
-    # Phase F (Fix #10): project-declared lock semantics.
+    # project-declared lock semantics.
     # Maps lock primitive function names to their semantic effect (acquire or
     # release) plus the argument index that identifies the lock object. Lets
     # the builder emit HOLDER(obj, holder) edges linking a locked object to
@@ -650,7 +650,7 @@ class ProfileSchema:
                     f"scan_hints.domain_rules[{i}].pattern is not a valid regex: {e}"
                 )
 
-        # Phase D (Fix #6): guard_functions must be list of dicts with required keys.
+        # guard_functions must be list of dicts with required keys.
         _GUARD_FUNC_REQUIRED = ("function", "kind")
         _GUARD_FUNC_OPTIONAL = ("effect", "arg_index", "description")
         _GUARD_FUNC_KINDS = ("type_predicate", "identity_predicate",
@@ -683,7 +683,7 @@ class ProfileSchema:
                     f"guard_functions[{i}] has unknown keys: {unknown}"
                 )
 
-        # Phase E (Fix #7): allocation_sites must be list of dicts with required keys.
+        # allocation_sites must be list of dicts with required keys.
         _ALLOC_SITE_REQUIRED = ("function", "object_type")
         _ALLOC_SITE_OPTIONAL = ("arg_index", "description")
         for i, entry in enumerate(d.get("allocation_sites", [])):
@@ -709,7 +709,7 @@ class ProfileSchema:
                     f"allocation_sites[{i}] has unknown keys: {unknown}"
                 )
 
-        # Phase F (Fix #10): lock_semantics must be list of dicts with required keys.
+        # lock_semantics must be list of dicts with required keys.
         _LOCK_SEM_REQUIRED = ("function", "kind")
         _LOCK_SEM_OPTIONAL = ("arg_index", "locks_object_at", "description")
         _LOCK_SEM_KINDS = ("acquire", "release")

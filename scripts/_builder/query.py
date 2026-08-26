@@ -2258,7 +2258,7 @@ def cmd_field_access(args):
 
     graph_dir = args.graph
 
-    # Deficiency 1: try SQL-native path first
+    # try SQL-native path first
     try:
         from _builder.query_router import route_field_access, sqlite_available
         if sqlite_available(graph_dir):
@@ -2681,13 +2681,13 @@ def cmd_field_flow(args):
             "assigned_value": row.get("assigned_value", ""),
             "thread_model": row.get("thread_model", ""),
         }
-        # IMPROVE-OPT1: Look up guard_condition from the graph node data.
+        # Look up guard_condition from the graph node data.
         # The SQL path doesn't include guard_condition (schema not migrated),
         # so we look it up from the NetworkX graph's fields_written list.
         # This is the key signal for distinguishing real bugs from false
         # positives: a writer guarded by !sb_is_blkdev_sb() is unreachable
         # during ext4 mount, so it cannot be a real NULL-deref suspect.
-        # IMPROVE-OPT3: Also look up object_origin — captures the source chain
+        # Also look up object_origin — captures the source chain
         # (e.g., "jh->bh") so the agent can compare writer vs reader object
         # origins to detect when they operate on different objects.
         guard_condition = ""
@@ -2727,7 +2727,7 @@ def cmd_field_flow(args):
     # together define the race window. Without this, the agent must do a
     # separate `field-access` call and manually correlate.
     #
-    # IMPROVE-OPT2: For each reader, compute `concurrent_writers_in_scene`
+    # For each reader, compute `concurrent_writers_in_scene`
     # and `race_window_exists`. A writer is "in scene" if reachable_in_scene
     # == "unguarded" (no guard protects it). A writer is "concurrent" if it
     # is in a different thread context from the reader. race_window_exists
@@ -2765,7 +2765,7 @@ def cmd_field_flow(args):
                                 "field_name": fn,
                                 "thread_model": ndata.get("thread_model", ""),
                             }
-                            # IMPROVE-OPT3: Capture object_origin for readers
+                            # Capture object_origin for readers
                             # so agent can compare writer's object_origin
                             # vs reader's object_origin to detect different
                             # objects (e.g., bh from bdev->bd_inode->i_mapping
@@ -2784,7 +2784,7 @@ def cmd_field_flow(args):
         except Exception:
             pass
 
-        # IMPROVE-OPT2: For each reader, find concurrent writers in scene.
+        # For each reader, find concurrent writers in scene.
         # A writer is "concurrent" if in a different thread context.
         # A writer is "in scene" if reachable_in_scene == "unguarded".
         # race_window_exists = any writer is both concurrent AND in scene.
@@ -3018,12 +3018,12 @@ def cmd_reverse_trace(args):
                     "spawns": step["callee"],
                 })
 
-    # Phase H (Fix #1): FIELD_WRITE suspects integration.
+    # FIELD_WRITE suspects integration.
     # When --suspect-field is set, query field_access for all writers of that
     # field and include them as suspects in the reverse-trace output. This
     # closes the gap that reverse-trace could see callers of the crash point
     # but not the field-write suspects that may have caused the crash.
-    # See 续篇 report 缺陷 #1: field-flow / value-flow 数据未构建 (P0).
+    # See 续篇 report field-flow / value-flow 数据未构建 (P0).
     field_write_suspects = []
     suspect_field = getattr(args, 'suspect_field', None)
     suspect_value = getattr(args, 'suspect_value', None)
@@ -3274,7 +3274,7 @@ def cmd_reverse_trace(args):
 
 
 # ---------------------------------------------------------------------------
-# Deficiency 2: commit-aware provenance queries
+# commit-aware provenance queries
 # ---------------------------------------------------------------------------
 
 def cmd_describe_commit(args):

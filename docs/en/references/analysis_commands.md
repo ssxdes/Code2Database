@@ -236,7 +236,7 @@ python3 scripts/code2database_builder.py reverse-trace \
 
 Output: paths from entry points to the crash point, with condition and concurrency annotations on each step; critical conditions summary; concurrency entry points (functions that spawn threads).
 
-**Phase H (Fix #1) — FIELD_WRITE suspects integration**: When investigating a crash that reads a field (e.g., `bh->b_bdev` dereference), pass `--suspect-field` to include field-write suspects from the `field_access` table in the output. Each suspect has a reverse-BFS call chain back to entry points, `guard_condition` (if any), `object_origin` (if Profile declares `allocation_sites`), and a `reachable_in_scene` verdict (`guarded` / `unguarded`).
+**FIELD_WRITE suspects integration**: When investigating a crash that reads a field (e.g., `bh->b_bdev` dereference), pass `--suspect-field` to include field-write suspects from the `field_access` table in the output. Each suspect has a reverse-BFS call chain back to entry points, `guard_condition` (if any), `object_origin` (if Profile declares `allocation_sites`), and a `reachable_in_scene` verdict (`guarded` / `unguarded`).
 
 - `--suspect-field FIELD_NAME` — query `field_access` for all writers of this field.
 - `--suspect-value VALUE` — filter writers by assigned value (e.g., `NULL`, `0`). Use `NULL` to match any C NULL-form (`NULL`, `0`, `0L`, `(void*)0`).

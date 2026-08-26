@@ -405,7 +405,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" reverse-trace \
 
 从崩溃点沿INVOKES边反向BFS，列出所有从入口点到崩溃点的路径。优先展示从API_entry/thread_processor出发的路径。
 
-**Phase H（Fix #1）—— FIELD_WRITE 嫌疑集成**。调查某个字段读取崩溃（如 `bh->b_bdev` 解引用）时，往往需要同时看到*谁在崩溃点读取该字段*和*谁在其他地方写入该字段*。reverse-trace 本身只显示崩溃点的调用者；新增的 `--suspect-field` 标志把来自 `field_access` 表的字段写入嫌疑者集成到输出中：
+**FIELD_WRITE 嫌疑集成**。调查某个字段读取崩溃（如 `bh->b_bdev` 解引用）时，往往需要同时看到*谁在崩溃点读取该字段*和*谁在其他地方写入该字段*。reverse-trace 本身只显示崩溃点的调用者；新增的 `--suspect-field` 标志把来自 `field_access` 表的字段写入嫌疑者集成到输出中：
 
 ```bash
 python3 "$SKILL_DIR/scripts/code2database_builder.py" reverse-trace \
@@ -420,7 +420,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" reverse-trace \
 
 JSON 输出包含 `field_write_suspects` 数组和 `field_write_suspects_summary` 块（suspect_count、unguarded_count、field、value_filter、struct_filter）。文本输出在"Concurrency entry points:"后追加"Field write suspects:"段。
 
-这弥补了 reverse-trace 能看到崩溃点调用者却看不到导致崩溃的字段写入嫌疑的缺口（见续篇报告缺陷 #1）。要完整字段流分析（读者 + 写者 + race window），直接用 `field-flow`。
+这弥补了 reverse-trace 能看到崩溃点调用者却看不到导致崩溃的字段写入嫌疑的缺口（见续篇报告）。要完整字段流分析（读者 + 写者 + race window），直接用 `field-flow`。
 
 ### 4k — 数据生命周期追踪
 

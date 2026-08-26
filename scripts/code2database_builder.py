@@ -1209,16 +1209,16 @@ def main():
     p_rtrace.add_argument("--macros", default="",
                           help="Only return paths where these macro conditions are active (comma-separated, e.g., 'CONFIG_X')")
     p_rtrace.add_argument("--suspect-field", dest="suspect_field", default=None,
-                          help="Phase H (Fix #1): Integrate FIELD_WRITE suspects into reverse-trace. "
+                          help="Integrate FIELD_WRITE suspects into reverse-trace. "
                                "When set (e.g., 'b_bdev'), query field_access for all writers of this field "
                                "and include them as 'field_write_suspects' in the output. Use with "
                                "--suspect-value to filter writers by assigned value (e.g., 'NULL').")
     p_rtrace.add_argument("--suspect-value", dest="suspect_value", default=None,
-                          help="Phase H (Fix #1): Filter FIELD_WRITE suspects by assigned value (e.g., 'NULL', '0'). "
+                          help="Filter FIELD_WRITE suspects by assigned value (e.g., 'NULL', '0'). "
                                "Requires --suspect-field. Use 'NULL' to match any C NULL-form "
                                "(NULL, 0, 0L, (void*)0).")
     p_rtrace.add_argument("--suspect-struct", dest="suspect_struct", default=None,
-                          help="Phase H (Fix #1): Filter FIELD_WRITE suspects by struct chain "
+                          help="Filter FIELD_WRITE suspects by struct chain "
                                "(e.g., 'bh' matches bh->field). Optional; requires --suspect-field.")
     p_rtrace.add_argument("--json", action="store_true", help="Output as JSON")
     p_rtrace.add_argument("--no-cache", dest="no_cache", action="store_true",
@@ -1511,7 +1511,7 @@ def main():
     p_watch.add_argument("--debounce", type=float, default=2.0,
                           help="Debounce interval in seconds (default: 2.0)")
 
-    # Deficiency 2: commit-aware provenance commands
+    # commit-aware provenance commands
     p_dc = sub.add_parser("describe-commit",
                           help="Show which nodes/edges a commit affected")
     p_dc.add_argument("--graph", required=True, help="Call graph output directory")
@@ -1543,7 +1543,7 @@ def main():
     p_fc.add_argument("--limit", type=int, default=20, help="Max commits to return")
     p_fc.add_argument("--json", action="store_true", help="Output as JSON")
 
-    # Deficiency 3: unified Cypher-subset query language
+    # unified Cypher-subset query language
     p_q = sub.add_parser("query",
                          help="Run a Cypher-subset query against the graph (unified query language)")
     p_q.add_argument("--graph", required=True, help="Call graph output directory")
@@ -1557,7 +1557,7 @@ def main():
                           "(Phase 3 priority chain). Default off for backward compat — "
                           "stdout stays a flat rows list.")
 
-    # Deficiency 4 (P0): value flow / taint tracking
+    # (P0): value flow / taint tracking
     p_vf = sub.add_parser("value-flow",
                           help="Build and query value-flow edges (where does this value come from / go to?)")
     p_vf.add_argument("--graph", required=True, help="Call graph output directory")
@@ -1575,7 +1575,7 @@ def main():
     p_vf.add_argument("--max-depth", type=int, default=10, help="Max trace depth")
     p_vf.add_argument("--json", action="store_true", help="Output as JSON")
 
-    # Deficiency 5 (P0): precise lock-coverage analysis
+    # (P0): precise lock-coverage analysis
     p_lc = sub.add_parser("lock-coverage",
                           help="Analyze lock-held regions and per-access locksets (replaces over-approximation)")
     p_lc.add_argument("--graph", required=True, help="Call graph output directory")
@@ -1584,7 +1584,7 @@ def main():
     p_lc.add_argument("--detect-races", action="store_true",
                       help="Whole-graph race detection using precise locksets")
 
-    # Deficiency 6: path feasibility auto-solving (Z3 if available, heuristic fallback)
+    # path feasibility auto-solving (Z3 if available, heuristic fallback)
     p_pf = sub.add_parser("path-feasible",
                           help="Auto-solve path feasibility (no manual bindings needed)")
     p_pf.add_argument("--graph", required=True, help="Call graph output directory")
@@ -1602,7 +1602,7 @@ def main():
                            "analysis uses project-specific type/identity/lock "
                            "predicates in addition to the built-in regex patterns.")
 
-    # IMPROVE-OPT4: path-guards — prove writer reachability from entry point
+    # path-guards — prove writer reachability from entry point
     p_pg = sub.add_parser("path-guards",
                           help="Prove writer reachability from entry using guard conditions")
     p_pg.add_argument("--graph", required=True, help="Call graph output directory")
@@ -1624,7 +1624,7 @@ def main():
                            "analysis uses project-specific type/identity/lock "
                            "predicates in addition to the built-in regex patterns.")
 
-    # Deficiency 7: cross-function data dependency
+    # cross-function data dependency
     p_dd = sub.add_parser("data-dep",
                           help="Cross-function data dependencies (globals/fields as nodes, mod-read chains, dead writers)")
     p_dd.add_argument("--graph", required=True, help="Call graph output directory")
@@ -1641,7 +1641,7 @@ def main():
     p_dd.add_argument("--node", default="", help="Node ID or function name")
     p_dd.add_argument("--max-depth", type=int, default=5, help="Max trace depth")
 
-    # Deficiency 8: invariant extraction
+    # invariant extraction
     p_ei = sub.add_parser("extract-invariants",
                           help="Extract preconditions/postconditions/loop_invariants + state machines from function bodies")
     p_ei.add_argument("--graph", required=True, help="Call graph output directory")
@@ -1669,7 +1669,7 @@ def main():
     p_ai.add_argument("--input", default="",
                       help="Path to invariants JSON (default: <graph>/.code2database_invariants.json)")
 
-    # Deficiency 9: auto semantic enhancement
+    # auto semantic enhancement
     p_ae = sub.add_parser("auto-enhance",
                           help="Auto-enhance a node with LLM-supplied attributes (auto-writes EXTRACTED, prompts INFERRED)")
     p_ae.add_argument("--graph", required=True, help="Call graph output directory")
@@ -1728,7 +1728,7 @@ def main():
     p_he.add_argument("--dry-run", action="store_true",
                       help="Preview generated supplements without writing")
 
-    # Deficiency 10: transactional updates (WAL + snapshots + rollback)
+    # transactional updates (WAL + snapshots + rollback)
     p_txb = sub.add_parser("tx-begin", help="Begin a graph transaction (snapshot + WAL + write lock)")
     p_txb.add_argument("--graph", required=True, help="Call graph output directory")
     p_txb.add_argument("--description", default="", help="Description of the transaction")
@@ -1757,7 +1757,7 @@ def main():
     p_txrw = sub.add_parser("tx-replay-wal", help="Replay or rollback an unfinished WAL (crash recovery)")
     p_txrw.add_argument("--graph", required=True, help="Call graph output directory")
 
-    # Deficiency 11: cross-language FFI
+    # cross-language FFI
     p_ffid = sub.add_parser("ffi-detect",
                             help="Detect FFI boundaries (Python ctypes, Go cgo, Rust extern \"C\") and add FFI edges")
     p_ffid.add_argument("--graph", required=True, help="Call graph output directory")
@@ -1798,7 +1798,7 @@ def main():
     p_es.add_argument("--query", required=True, help="Search query text")
     p_es.add_argument("--top-k", type=int, default=10, help="Max results to return")
 
-    # Deficiency 12: interactive Web UI
+    # interactive Web UI
     p_wui = sub.add_parser("web-ui",
                            help="Start interactive Web UI server for graph browsing, path highlighting, LOD rendering")
     p_wui.add_argument("--graph", required=True, help="Call graph output directory")
@@ -1806,7 +1806,7 @@ def main():
     p_wui.add_argument("--open", action="store_true",
                        help="Open the browser automatically when the server starts")
 
-    # Deficiency 13: BUG benchmark
+    # BUG benchmark
     p_bb = sub.add_parser("bug-benchmark",
                           help="Run BUG benchmark (graph vs grep) and report recall/precision/tool-call/token efficiency")
     p_bb.add_argument("--graph", default="", help="Call graph output directory")
@@ -1815,7 +1815,7 @@ def main():
     p_bb.add_argument("--create-template", default="",
                       help="Write a benchmark template to the given path and exit")
 
-    # Deficiency 14: profile health + auto-evolution
+    # profile health + auto-evolution
     p_ph = sub.add_parser("profile-health",
                           help="Compute 0-100 health score for a project profile (callback patterns, skip_names, vtable_types, etc.)")
     p_ph.add_argument("--graph", required=True, help="Call graph output directory")
@@ -1837,7 +1837,7 @@ def main():
     p_pb.add_argument("--source", required=True, help="Source root directory")
     p_pb.add_argument("--profile", default="", help="Profile JSON path")
 
-    # Deficiency 15: doc-code dual source truth alignment
+    # doc-code dual source truth alignment
     p_dcc = sub.add_parser("doc-code-check",
                            help="Check doc-code alignment: detect mismatches between semantic_desc (from docs) and body_text (from code)")
     p_dcc.add_argument("--graph", required=True, help="Call graph output directory")
@@ -1863,7 +1863,7 @@ def main():
     p_dsd.add_argument("--old-graph", required=True, help="Old invocation graph directory")
     p_dsd.add_argument("--new-graph", required=True, help="New invocation graph directory")
 
-    # Deficiency 16 (P0): background daemon for real-time file monitoring
+    # (P0): background daemon for real-time file monitoring
     p_ds = sub.add_parser("daemon-start",
                           help="Start long-running daemon (foreground; blocks). Monitors source files and auto-updates graph.")
     p_ds.add_argument("--graph", required=True, help="Call graph output directory")
@@ -2329,36 +2329,36 @@ def main():
         "param-flow": cmd_param_flow,
         "extract-signals": cmd_extract_signals,
         "watch": cmd_watch,
-        # Deficiency 2: commit-aware provenance commands
+        # commit-aware provenance commands
         "describe-commit": cmd_describe_commit,
         "node-history": cmd_node_history,
         "graph-provenance": cmd_graph_provenance,
         "blame-node": cmd_blame_node,
         "find-commits": cmd_find_commits,
-        # Deficiency 3: unified query language
+        # unified query language
         "query": cmd_query,
-        # Deficiency 4 (P0): value flow
+        # (P0): value flow
         "value-flow": cmd_value_flow,
         "flow": cmd_value_flow,  # SKILL.md alias
-        # Deficiency 5 (P0): lock coverage
+        # (P0): lock coverage
         "lock-coverage": cmd_lock_coverage,
-        # Deficiency 6: path feasibility
+        # path feasibility
         "path-feasible": cmd_path_feasible,
         "path-guards": cmd_path_guards,
-        # Deficiency 7: data dependency
+        # data dependency
         "data-dep": cmd_data_dep,
-        # Deficiency 8: invariants
+        # invariants
         "extract-invariants": cmd_extract_invariants,
         "find-invariants": cmd_find_invariants,
         "find": cmd_find_invariants,  # SKILL.md alias
         "apply-invariants": cmd_apply_invariants,
-        # Deficiency 9: auto semantic enhancement
+        # auto semantic enhancement
         "auto-enhance": cmd_auto_enhance,
         "batch-confirm": cmd_batch_confirm,
         "rollback": cmd_rollback,
         "fill-request": cmd_fill_request,
         "heuristic-enhance": cmd_heuristic_enhance,
-        # Deficiency 10: transactional updates
+        # transactional updates
         "tx-begin": cmd_tx_begin,
         "tx-commit": cmd_tx_commit,
         "tx-rollback": cmd_tx_rollback,
@@ -2367,7 +2367,7 @@ def main():
         "tx-restore": cmd_tx_restore,
         "tx-list-snapshots": cmd_tx_list_snapshots,
         "tx-replay-wal": cmd_tx_replay_wal,
-        # Deficiency 11: cross-language FFI
+        # cross-language FFI
         "ffi-detect": cmd_ffi_detect,
         "ffi-list": cmd_ffi_list,
         "ffi-trace": cmd_ffi_trace,
@@ -2377,21 +2377,21 @@ def main():
         # D24 enhancement: TF-IDF char n-gram embeddings
         "embeddings-build": _lazy("_builder.embeddings", "cmd_embeddings_build"),
         "embeddings-search": _lazy("_builder.embeddings", "cmd_embeddings_search"),
-        # Deficiency 12: interactive Web UI
+        # interactive Web UI
         "web-ui": _lazy("_builder.web_ui", "cmd_web_ui"),
-        # Deficiency 13: BUG benchmark
+        # BUG benchmark
         "bug-benchmark": _lazy("_builder.bug_benchmark", "cmd_bug_benchmark"),
-        # Deficiency 14: profile health + auto-evolution
+        # profile health + auto-evolution
         "profile-health": cmd_profile_health,
         "health": cmd_profile_health,  # SKILL.md alias
         "profile-evolve": cmd_profile_evolve,
         "profile-bind-version": cmd_profile_bind_version,
-        # Deficiency 15: doc-code dual source truth alignment
+        # doc-code dual source truth alignment
         "doc-code-check": cmd_doc_code_check,
         "doc-mark-stale": cmd_doc_mark_stale,
         "doc-alignment-report": cmd_doc_alignment_report,
         "doc-signature-diff": cmd_doc_signature_diff,
-        # Deficiency 16 (P0): background daemon
+        # (P0): background daemon
         "daemon-start": _lazy("_builder.daemon", "cmd_daemon_start"),
         "daemon-stop": _lazy("_builder.daemon", "cmd_daemon_stop"),
         "daemon-status": _lazy("_builder.daemon", "cmd_daemon_status"),

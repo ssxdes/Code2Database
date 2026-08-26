@@ -7,7 +7,7 @@ Provides:
 - `StageTimer` — context manager that logs stage duration
 
 Why: replaces ad-hoc `print(..., file=sys.stderr)` with leveled, structured
-logging so kernel-scale scans can be post-analyzed (Phase C requirement).
+logging so kernel-scale scans can be post-analyzed (requirement).
 """
 
 from __future__ import annotations

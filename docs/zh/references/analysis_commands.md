@@ -236,7 +236,7 @@ python3 scripts/code2database_builder.py reverse-trace \
 
 输出：从入口点到崩溃点的路径，每步带条件和并发标注；关键条件汇总；并发入口点（spawn 线程的函数）。
 
-**Phase H（Fix #1）—— FIELD_WRITE 嫌疑集成**：调查某个字段读取崩溃（如 `bh->b_bdev` 解引用）时，传 `--suspect-field` 把来自 `field_access` 表的字段写入嫌疑者集成到输出中。每个嫌疑者带反向 BFS 到入口点的调用链、`guard_condition`（若有）、`object_origin`（若 Profile 声明了 `allocation_sites`）、以及 `reachable_in_scene` 判定（`guarded` / `unguarded`）。
+**FIELD_WRITE 嫌疑集成**：调查某个字段读取崩溃（如 `bh->b_bdev` 解引用）时，传 `--suspect-field` 把来自 `field_access` 表的字段写入嫌疑者集成到输出中。每个嫌疑者带反向 BFS 到入口点的调用链、`guard_condition`（若有）、`object_origin`（若 Profile 声明了 `allocation_sites`）、以及 `reachable_in_scene` 判定（`guarded` / `unguarded`）。
 
 - `--suspect-field FIELD_NAME` —— 查询 `field_access` 中该字段的所有写入者。
 - `--suspect-value VALUE` —— 按赋值值过滤写入者（如 `NULL`、`0`）。用 `NULL` 匹配任意 C NULL 形式（`NULL`、`0`、`0L`、`(void*)0`）。

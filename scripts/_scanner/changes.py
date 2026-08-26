@@ -57,7 +57,7 @@ def save_manifest(source_root: str, outdir: str) -> int:
 
     manifest_data = {"source_root": source_root, "files": manifest}
 
-    # Deficiency 2: attach commit metadata so the manifest records which
+    # attach commit metadata so the manifest records which
     # commit the fingerprints correspond to (not just the database write time).
     try:
         try:

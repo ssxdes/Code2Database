@@ -61,7 +61,7 @@ class BugCase:
     source: str = ""  # CVE id or issue link
     severity: str = ""  # "high", "medium", "low"
     hints: List[str] = field(default_factory=list)  # starting-point hints
-    # IMPROVE-OPT5: reproduction vs production environment annotations.
+    # reproduction vs production environment annotations.
     # Reproduction env: conditions under which the bug was originally observed
     #   (e.g., KASAN enabled, syzkaller injection, madvise(MADV_SOFT_OFFLINE)).
     # Production env: conditions under which the bug would need to trigger in
@@ -99,7 +99,7 @@ def create_benchmark_template(out_path: str):
                 "source": "CVE-2024-example",
                 "severity": "high",
                 "hints": ["crash in worker_init", "ctx parameter"],
-                # IMPROVE-OPT5: reproduction vs production environment.
+                # reproduction vs production environment.
                 # Fill these in so the benchmark report can flag repro-only
                 # conditions (KASAN, syzkaller injection, madvise, etc.) and
                 # force the investigator to verify production reachability.
@@ -144,7 +144,7 @@ class InvestigationResult:
     keywords_matched: int = 0
     functions_examined: List[str] = field(default_factory=list)
     final_answer: str = ""  # the investigator's final report
-    # IMPROVE-OPT5: environment delta assessment.
+    # environment delta assessment.
     # env_assessment: free-form text describing the repro-vs-production gap.
     # production_triggerable: verdict on whether the bug can fire in production.
     #   "impossible"     — writers guarded out / unreachable in production
@@ -160,7 +160,7 @@ class InvestigationResult:
 
 
 # ---------------------------------------------------------------------------
-# IMPROVE-OPT5: Reproduction vs production environment delta assessment
+# Reproduction vs production environment delta assessment
 # ---------------------------------------------------------------------------
 # Markers that indicate a repro-only condition — i.e., the bug was observed
 # under conditions that do not exist in production. If the reproduction_env
@@ -341,7 +341,7 @@ class GraphInvestigator:
                     if kw.lower() in body.lower():
                         keywords_matched += 1
 
-        # IMPROVE-OPT5: environment delta assessment.
+        # environment delta assessment.
         # The heuristic investigator does not actually prove production
         # reachability — that requires path-guards / field-flow analysis.
         # What we CAN do is flag cases where the reproduction environment
@@ -551,7 +551,7 @@ def run_benchmark(graph_dir: str, benchmark_path: str,
             "root_cause_function": case.root_cause_function,
             "root_cause_file": case.root_cause_file,
             "root_cause_line": case.root_cause_line,
-            # IMPROVE-OPT5: carry reproduction_env / production_env into the
+            # carry reproduction_env / production_env into the
             # result so generate_report can render the environment delta
             # assessment section without re-loading the benchmark file.
             "reproduction_env": case.reproduction_env,
@@ -633,7 +633,7 @@ def generate_report(results: List[Dict], summary: Dict) -> str:
         lines.append(f"| {r['case_id']} | {gfound} | {pfound} | {gcalls} | {pcalls} | {gtok} | {ptok} |")
     lines.append("")
 
-    # IMPROVE-OPT5: Environment delta assessment section.
+    # Environment delta assessment section.
     # Forces the report reader to consider whether reproduction success
     # implies production triggerability. This is the guardrail against the
     # misleading analysis pattern where "race window exists in repro"

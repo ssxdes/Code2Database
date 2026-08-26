@@ -375,7 +375,7 @@ _SA_ANY_WRITE_RE = re.compile(
 _GUARD_KW_RE = re.compile(r'\b(if|switch|else\s+if)\s*\(')
 
 
-# IMPROVE-OPT3: Match `<obj_name> = <source_expr>` where source_expr is a
+# Match `<obj_name> = <source_expr>` where source_expr is a
 # field-chain (e.g., `jh->bh`, `mapping->private_list`) or function call.
 # Used by _trace_object_origin to find where a struct pointer variable was
 # initialized, so we can distinguish buffer_head objects from different
@@ -387,7 +387,7 @@ _OBJ_ASSIGN_RE = re.compile(
     r'|[A-Za-z_]\w*\s*\([^)]*\))'  # or function call: foo(...)
 )
 
-# Phase E (Fix #7): Module-level map of allocation_function_name -> object_type.
+# Module-level map of allocation_function_name -> object_type.
 # Populated by build_call_graph_from_extraction from the project profile's
 # `allocation_sites` list. Read by _trace_object_origin (as fallback when the
 # caller doesn't pass `allocation_sites` explicitly) so that field-access /
@@ -400,12 +400,12 @@ def _trace_object_origin(body_text: str, obj_name: str, max_depth: int = 3,
                          allocation_sites: list = None) -> str:
     """Trace where `obj_name` was initialized — backward through assignments.
 
-    IMPROVE-OPT3: For a field access like `bh->b_bdev`, the variable `bh` may
+    For a field access like `bh->b_bdev`, the variable `bh` may
     itself be assigned from a field chain (e.g., `bh = jh->bh`). Following
     this chain gives us the object's "origin" — useful for distinguishing
     buffer_head objects from different address_spaces.
 
-    Phase E (Fix #7): When `allocation_sites` is provided (list of profile
+    When `allocation_sites` is provided (list of profile
     entries with `function` and `object_type`), OR when the module-level
     `_ALLOCATION_SITES_MAP` has been populated by `build_call_graph_from_extraction`,
     the trace inspects function call sources. If the source is a call to a
@@ -462,7 +462,7 @@ def _trace_object_origin(body_text: str, obj_name: str, max_depth: int = 3,
             continue
         else:
             # Source is a function call or terminal.
-            # Phase E (Fix #7): if it's a call to a profile-declared
+            # if it's a call to a profile-declared
             # allocation function, annotate with object_type.
             if alloc_map:
                 call_match = re.match(r'([A-Za-z_]\w*)\s*\(', source)
@@ -476,7 +476,7 @@ def _trace_object_origin(body_text: str, obj_name: str, max_depth: int = 3,
 def _find_enclosing_guard(body_text: str, write_pos: int) -> str:
     """Find the nearest enclosing if/switch guard condition for a field write at write_pos.
 
-    IMPROVE-OPT1: Walks body_text forward tracking brace depth and a stack of
+    Walks body_text forward tracking brace depth and a stack of
     (depth_at_block_entry, condition) for each if/switch block. Returns the
     condition of the innermost block whose range contains write_pos, or "" if
     the write is not inside any guarded block.
@@ -755,14 +755,14 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
         rhs = (m.group(4) or "").strip()
         if rhs:
             entry["assigned_value"] = rhs
-        # IMPROVE-OPT1: Capture the enclosing if/switch guard condition.
+        # Capture the enclosing if/switch guard condition.
         # This lets field-flow surface guards_on_path and reachable_in_scene,
         # which is the key signal that distinguishes a real bug (writer
         # reachable in scene) from a false positive (writer guarded out).
         guard = _find_enclosing_guard(body_text, m.start())
         if guard:
             entry["guard_condition"] = guard
-        # IMPROVE-OPT3: Trace where obj_name was initialized, to distinguish
+        # Trace where obj_name was initialized, to distinguish
         # objects from different address_spaces. The key KASAN_FINAL_REPORT
         # insight: journal_unmap_buffer's bh comes from a different
         # address_space than the reader's bh, so the writer doesn't affect
@@ -791,7 +791,7 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
             continue
         seen_read_keys.add(key)
         read_entry = {"struct_chain": obj_name, "field_name": field_name}
-        # IMPROVE-OPT3: Trace object_origin for reads too — lets the agent
+        # Trace object_origin for reads too — lets the agent
         # compare writer's object_origin vs reader's object_origin to detect
         # when they operate on different objects (e.g., buffer_head from
         # bdev->bd_inode->i_mapping vs ext4_inode->i_mapping).
@@ -1424,7 +1424,7 @@ def _load_full_graph_from_sqlite(db_path: str) -> nx.DiGraph:
                        goto_jumps=extra.get("goto_jumps", []),
                        goto_labels=extra.get("goto_labels", []),
                        stale=extra.get("stale", False),
-                       # Deficiency 8: invariants
+                       # invariants
                        preconditions=extra.get("preconditions", []),
                        postconditions=extra.get("postconditions", []),
                        loop_invariants=extra.get("loop_invariants", []),
@@ -6651,7 +6651,7 @@ def cmd_build(args):
             set_external_lib_prefixes(all_ext_prefixes)
             print(f"External lib prefixes loaded: {len(all_ext_prefixes)} (from lib_prefix_map)")
 
-        # Phase E (Fix #7): Populate the module-level _ALLOCATION_SITES_MAP
+        # Populate the module-level _ALLOCATION_SITES_MAP
         # from the profile's `allocation_sites` list. This lets
         # _trace_object_origin (called by _extract_state_access for each
         # field write/read) annotate origins with object_type without
@@ -8025,7 +8025,7 @@ def cmd_build(args):
         if getattr(args, 'auto_enhance', False):
             _post_build_auto_enhance(args, outdir)
 
-        # RPT-KERNEL-D14/D15: write coverage reports (SQLite path).
+        # /D15: write coverage reports (SQLite path).
         try:
             from _builder.coverage_report import (
                 write_coverage_report, write_file_coverage,
@@ -8078,7 +8078,7 @@ def cmd_build(args):
     if getattr(args, 'auto_enhance', False):
         _post_build_auto_enhance(args, outdir)
 
-    # RPT-KERNEL-D14/D15: write coverage reports (JSON path).
+    # /D15: write coverage reports (JSON path).
     try:
         from _builder.coverage_report import (
             write_coverage_report, write_file_coverage,

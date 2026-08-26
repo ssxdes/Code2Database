@@ -473,7 +473,7 @@ class SQLiteStore:
                 FOREIGN KEY (function_id) REFERENCES functions(id)
             );
 
-            -- Deficiency 2 preview: commit-aware change log.
+            -- preview: commit-aware change log.
             CREATE TABLE IF NOT EXISTS change_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 commit_hash TEXT,
@@ -543,7 +543,7 @@ class SQLiteStore:
             CREATE INDEX IF NOT EXISTS idx_field_access_value ON field_access(assigned_value);
             CREATE INDEX IF NOT EXISTS idx_global_access_name ON global_access(global_name);
             CREATE INDEX IF NOT EXISTS idx_global_access_func ON global_access(function_id);
-            -- Deficiency 2: index change_log by commit and node.
+            -- index change_log by commit and node.
             CREATE INDEX IF NOT EXISTS idx_change_log_commit ON change_log(commit_hash);
             CREATE INDEX IF NOT EXISTS idx_change_log_node ON change_log(node_id);
             -- Audit log indexes: query by target, command, timestamp, tx.
@@ -1043,7 +1043,7 @@ class SQLiteStore:
         self._conn.commit()
 
     def store_change_log_entry(self, entry: Dict):
-        """Deficiency 2: store one commit-aware change log entry."""
+        """store one commit-aware change log entry."""
         self._conn.execute(
             "INSERT INTO change_log (commit_hash, commit_short, commit_author, "
             "commit_date, commit_subject, branch, node_id, change_type, "
@@ -1307,7 +1307,7 @@ class SQLiteStore:
             return [self._row_to_function(r) for r in rows]
 
     def query_change_log_by_node(self, node_id: str, limit: int = 50) -> List[Dict]:
-        """Deficiency 2: get commit history for a node."""
+        """get commit history for a node."""
         rows = self._conn.execute(
             "SELECT commit_hash, commit_short, commit_author, commit_date, "
             "commit_subject, branch, change_type, diff_summary, affected_attrs "
@@ -1322,7 +1322,7 @@ class SQLiteStore:
         } for r in rows]
 
     def query_change_log_by_commit(self, commit_hash: str) -> List[Dict]:
-        """Deficiency 2: get all node changes for a commit."""
+        """get all node changes for a commit."""
         rows = self._conn.execute(
             "SELECT node_id, change_type, diff_summary, affected_attrs "
             "FROM change_log WHERE commit_hash = ? OR commit_short = ?",

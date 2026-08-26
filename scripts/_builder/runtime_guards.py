@@ -579,7 +579,7 @@ def check_runtime_guards_with_profile(
         elif ip["op"] == "!=":
             inferred_bindings[f"{ip['var']}_ne"] = ip["value"]
 
-    # Phase D (Fix #6): profile-declared guard functions.
+    # profile-declared guard functions.
     profile_guards = _detect_profile_guards(conditions, guard_functions or [])
     if profile_guards:
         for pg in profile_guards:

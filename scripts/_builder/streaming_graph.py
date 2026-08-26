@@ -763,7 +763,7 @@ class LazySQLiteGraph:
             "goto_jumps": extra.get("goto_jumps", []),
             "goto_labels": extra.get("goto_labels", []),
             "stale": extra.get("stale", False),
-            # Deficiency 8: invariants (preconditions/postconditions/loop_invariants
+            # invariants (preconditions/postconditions/loop_invariants
             # + state machine) — extracted by invariants.py and stored in extra_json
             # alongside other LLM-supplementable fields.
             "preconditions": extra.get("preconditions", []),

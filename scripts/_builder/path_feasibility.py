@@ -782,7 +782,7 @@ def cmd_path_feasible(args):
     with_configs_spec = getattr(args, "with_configs", "") or ""
     macro_bindings = parse_macro_bindings(with_configs_spec) if with_configs_spec else {}
 
-    # Phase D (Fix #6): load profile-declared guard_functions if --profile given.
+    # load profile-declared guard_functions if --profile given.
     guard_functions = None
     profile_path = getattr(args, "profile", "") or ""
     if profile_path:
@@ -806,7 +806,7 @@ def cmd_path_feasible(args):
         if macro_bindings:
             cfg_result = check_config_feasible(conds, macro_bindings)
             result["config_feasibility"] = cfg_result
-        # Phase D (Fix #6): attach runtime guard analysis (with profile if given)
+        # attach runtime guard analysis (with profile if given)
         try:
             from _builder.runtime_guards import check_runtime_guards_with_profile
             if conds:
@@ -875,9 +875,9 @@ def cmd_path_feasible(args):
                 else:
                     _walk(succ, new_path, new_conds, new_cfg_preds, depth + 1)
         _walk(node_id, [node_id], [], [], 0)
-        # RPT-KERNEL-D13: runtime guard analysis (bd_prepare_to_claim / sb_is_blkdev_sb /
+        # runtime guard analysis (bd_prepare_to_claim / sb_is_blkdev_sb /
         # bd_holder != / mutex_is_locked) — complements compile-time #ifdef analysis.
-        # Phase D (Fix #6): use check_runtime_guards_with_profile so profile-declared
+        # use check_runtime_guards_with_profile so profile-declared
         # guard_functions augment the hardcoded regex patterns.
         try:
             from _builder.runtime_guards import check_runtime_guards_with_profile
@@ -903,7 +903,7 @@ def cmd_path_feasible(args):
                         "reason": "no --with-configs bindings provided",
                         "per_predicate": [],
                     }
-            # RPT-KERNEL-D13: attach runtime guard analysis
+            # attach runtime guard analysis
             if _runtime_guards_available and conds:
                 entry["runtime_guards"] = check_runtime_guards_with_profile(
                     conds, guard_functions=guard_functions)
@@ -928,7 +928,7 @@ def cmd_path_feasible(args):
 def cmd_path_guards(args):
     """Prove reachability of a writer from an entry point, using guard conditions.
 
-    IMPROVE-OPT4: Given an entry point (--from) and a writer function (--to),
+    Given an entry point (--from) and a writer function (--to),
     find all paths from entry to writer, accumulate guard conditions along
     each path (from edge call_condition + function-body guard_condition for
     the target field write), and use Z3/heuristic to prove whether the

@@ -529,7 +529,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         if not include_vtable_dispatch:
             return direct_invokers
 
-        # RPT-KERNEL-D10-upgrade: indirect call reverse tracing via
+        # -upgrade: indirect call reverse tracing via
         # ops_bindings + invoke_sites tables.
         vtable_invokers = self._find_vtable_dispatch_invokers(
             node_id, depth=depth, edge_types=edge_types, limit=limit)
@@ -719,7 +719,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         if not include_vtable_dispatch:
             return direct_invoked
 
-        # RPT-KERNEL-D10-upgrade: forward vtable dispatch resolution.
+        # -upgrade: forward vtable dispatch resolution.
         # If node_id is an invoker that calls function pointer slots,
         # resolve each slot through ops_bindings to the impl functions.
         vtable_invoked = self._find_vtable_dispatch_invoked(

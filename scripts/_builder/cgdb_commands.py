@@ -582,7 +582,7 @@ def cmd_cgdb_path(args):
                 f"Error: src '{args.src}' or dst '{args.dst}' not found",
                 file=sys.stderr,
             )
-            # RPT-KERNEL-D14: emit actionable subsystem hints
+            # emit actionable subsystem hints
             try:
                 from _builder.coverage_report import path_not_found_hints
                 hints = path_not_found_hints(
@@ -1081,7 +1081,7 @@ def cmd_cgdb_layer_summary(args):
 
 
 def cmd_cgdb_coverage(args):
-    """RPT-KERNEL-D15: Query graph coverage.
+    """Query graph coverage.
 
     Three modes:
       - `--function NAME`: Is function NAME in the graph? Returns matching
@@ -1103,9 +1103,9 @@ def cmd_cgdb_coverage(args):
 
 
 def cmd_cgdb_write_coverage(args):
-    """RPT-KERNEL-D15: Manually (re)write the coverage reports.
+    """Manually (re)write the coverage reports.
 
-    Useful when the build was run before RPT-KERNEL-D14/D15 was integrated,
+    Useful when the build was run before /D15 was integrated,
     or after a manual DB modification (e.g., tx-commit) that added/removed
     files. Writes both `.code2database_coverage_report.json` (subsystem
     summary) and `.code2database_file_coverage.json` (file-level list).

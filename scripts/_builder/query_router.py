@@ -185,7 +185,7 @@ def route_thread_processors(graph_dir: str, limit: int = 200) -> Optional[List[D
 
 def route_change_log_by_node(graph_dir: str, node_id: str,
                              limit: int = 50) -> Optional[List[Dict]]:
-    """Deficiency 2: SQL-native commit history for a node. Returns None if no SQLite."""
+    """SQL-native commit history for a node. Returns None if no SQLite."""
     store, _ = _open_store(graph_dir)
     if store is None:
         return None

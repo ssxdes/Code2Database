@@ -190,7 +190,7 @@ def detect_semantic_edges(node_data: Dict, profile: Optional[Dict] = None) -> Li
                 "lock_function": unlock_func,
             })
 
-    # Phase F (Fix #10): HOLDER edges — link protected object to lock holder.
+    # HOLDER edges — link protected object to lock holder.
     # Uses profile.lock_semantics (function-name-based, complementary to the
     # regex-based lock_acquire_patterns above). When a function calls a
     # declared acquire primitive with `locks_object_at` >= 0, emit a HOLDER

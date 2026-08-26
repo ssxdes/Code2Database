@@ -401,7 +401,7 @@ def scan_directory(source_root: str, lang: str = "auto",
                            (files_processed, total_files, current_file).
                            When None and quiet is False, prints to stderr.
         quiet: If True, suppress progress output to stderr.
-        scan_subsystems: RPT-KERNEL-D9 — optional list of subsystem names
+        scan_subsystems: — optional list of subsystem names
                          (e.g., ['fs', 'mm', 'block', 'kernel', 'lib']) to
                          restrict the scan to. Files whose path (relative to
                          source_root) starts with `<subsystem>/` are kept;
@@ -495,7 +495,7 @@ def scan_directory(source_root: str, lang: str = "auto",
                     continue
             file_list.append((fpath, file_lang))
 
-    # RPT-KERNEL-D9: subsystem filter — restrict scan to specified
+    # subsystem filter — restrict scan to specified
     # top-level subsystem directories (e.g., ['fs', 'mm', 'block',
     # 'kernel', 'lib'] for cross-subsystem Linux kernel analysis).
     # Paths are matched relative to source_root using forward slashes.
@@ -2255,7 +2255,7 @@ def cmd_scan(args):
             for _sd in _skip_dirs:
                 if _sd and _sd not in _exclude:
                     _exclude.append(_sd)
-        # RPT-KERNEL-D9: --scan-subsystems filter — CLI takes precedence;
+        # --scan-subsystems filter — CLI takes precedence;
         # fall back to profile.scan_hints.scan_subsystems if specified.
         # Lets the linux_kernel profile default to ['fs', 'mm', 'block',
         # 'kernel', 'lib'] without requiring the user to pass the flag.
@@ -2800,7 +2800,7 @@ def main():
                          help="Comma-separated additional directory names to skip during scanning "
                               "(e.g., 'huawei,internal_tools')")
     p_scan.add_argument("--scan-subsystems", default="",
-                         help="RPT-KERNEL-D9: comma-separated list of top-level subsystem "
+                         help="comma-separated list of top-level subsystem "
                               "directories to include in the scan (e.g., 'fs,mm,block,kernel,lib' "
                               "for Linux kernel cross-subsystem analysis). Files whose path "
                               "(relative to --source) does not start with one of these "

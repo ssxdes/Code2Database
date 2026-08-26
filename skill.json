@@ -233,9 +233,8 @@
   ],
   "mcp_tools_count": 53,
   "mcp_tools_breakdown": {
-    "code2database_": 30,
-    "cgdb_": 19,
-    "design_report_l1_l2_l3_writeback_advanced": 28
+    "code2database_": 34,
+    "cgdb_": 19
   },
   "extraction_backends": [
     "auto",

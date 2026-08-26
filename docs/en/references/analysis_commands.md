@@ -248,6 +248,46 @@ python3 scripts/code2database_builder.py path-feasible \
 
 Output: feasible / infeasible verdict, unsat core (if Z3), model (if feasible), evidence chain. Flag results as **provisional** if heuristic was used.
 
+The `--node` mode walks all paths from a node, accumulates conditions, and for each path runs:
+1. Z3 / heuristic feasibility (`solve_path_feasibility`)
+2. Config-predicate feasibility (`check_config_feasible`, when `--with-configs` is given)
+3. **Runtime guard analysis** (`check_runtime_guards_with_profile`, Fix #6) — detects acquire/release regions, type/identity/lock-state predicates. When `--profile /path/to/profile.json` is provided, profile-declared `guard_functions` augment the built-in regex patterns; the output's `runtime_guards.profile_bindings` field lists bindings inferred from profile-declared guards (e.g., `{"sb_type": "blkdev"}`).
+
+```bash
+# Direct condition list mode with profile-declared guards
+python3 scripts/code2database_builder.py path-feasible \
+  --graph code2db-out/ \
+  --conditions "if(!sb_is_blkdev_sb(sb))" \
+  --profile /path/to/profile.json
+
+# Node-walk mode with profile-declared guards
+python3 scripts/code2database_builder.py path-feasible \
+  --graph code2db-out/ \
+  --node ext4_blkdev_getblock \
+  --max-depth 8 \
+  --profile /path/to/profile.json
+```
+
+See PROFILE_MANUAL.md §3.15 `guard_functions` for the profile schema.
+
+### `path-guards`
+
+Prove writer reachability from an entry point using guard conditions. Walks all paths from `--from` to `--to`, accumulates guard conditions (from edge `call_condition` + function-body `guard_condition` for the target field write), and uses Z3/heuristic to prove whether the conjunction of guards is satisfiable. If ALL paths are infeasible (guards contradict), the writer is unreachable in the scene.
+
+```bash
+python3 scripts/code2database_builder.py path-guards \
+  --graph code2db-out/ \
+  --from ext4_blkdev_getblock \
+  --to __bread_gfp \
+  --field b_bdev \
+  [--value NULL] \
+  [--max-depth 8] \
+  [--with-configs "CONFIG_X=true"] \
+  [--profile /path/to/profile.json]
+```
+
+The `--profile` flag (Fix #6) enables profile-declared `guard_functions` (e.g., project-specific type predicates like `sb_is_blkdev_sb`, lock acquire/release like `bd_prepare_to_claim`/`bd_abort_claim`). The output's `runtime_guards.profile_bindings` field surfaces the inferred bindings.
+
 ### `resolve-chain`
 
 Conditional chain resolution with macro bindings.

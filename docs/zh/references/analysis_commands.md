@@ -248,6 +248,46 @@ python3 scripts/code2database_builder.py path-feasible \
 
 输出：可行 / 不可行 判定、unsat core（若 Z3）、model（若可行）、证据链。若用启发式，结果标注为**临时**。
 
+`--node` 模式从某节点遍历所有路径，累积条件，对每条路径运行：
+1. Z3 / 启发式可行性（`solve_path_feasibility`）
+2. 配置谓词可行性（`check_config_feasible`，需 `--with-configs`）
+3. **运行时守卫分析**（`check_runtime_guards_with_profile`，修复 #6）— 检测 acquire/release 区间、类型/身份/锁状态谓词。提供 `--profile /path/to/profile.json` 时，profile 声明的 `guard_functions` 会补充（而非替代）内置正则模式；输出的 `runtime_guards.profile_bindings` 字段列出从 profile 守卫推导的绑定（如 `{"sb_type": "blkdev"}`）。
+
+```bash
+# 直接条件列表 + profile 守卫
+python3 scripts/code2database_builder.py path-feasible \
+  --graph code2db-out/ \
+  --conditions "if(!sb_is_blkdev_sb(sb))" \
+  --profile /path/to/profile.json
+
+# 节点遍历模式 + profile 守卫
+python3 scripts/code2database_builder.py path-feasible \
+  --graph code2db-out/ \
+  --node ext4_blkdev_getblock \
+  --max-depth 8 \
+  --profile /path/to/profile.json
+```
+
+profile schema 见 PROFILE_MANUAL.md §3.15 `guard_functions`。
+
+### `path-guards`
+
+用守卫条件证明 writer 从入口可达。从 `--from` 遍历所有路径到 `--to`，累积守卫条件（来自边的 `call_condition` + 目标字段写的函数体 `guard_condition`），用 Z3/启发式证明守卫合取式是否可满足。若所有路径都不可行（守卫矛盾），则 writer 在场景中不可达。
+
+```bash
+python3 scripts/code2database_builder.py path-guards \
+  --graph code2db-out/ \
+  --from ext4_blkdev_getblock \
+  --to __bread_gfp \
+  --field b_bdev \
+  [--value NULL] \
+  [--max-depth 8] \
+  [--with-configs "CONFIG_X=true"] \
+  [--profile /path/to/profile.json]
+```
+
+`--profile` 参数（修复 #6）启用 profile 声明的 `guard_functions`（如项目专属类型谓词 `sb_is_blkdev_sb`、锁 acquire/release `bd_prepare_to_claim`/`bd_abort_claim`）。输出的 `runtime_guards.profile_bindings` 字段展示推导出的绑定。
+
 ### `resolve-chain`
 
 带宏绑定的条件链解析。

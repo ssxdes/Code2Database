@@ -1574,6 +1574,11 @@ def main():
     p_pf.add_argument("--with-configs", default="",
                       help="Macro bindings for config-predicate feasibility "
                            "(e.g., 'CONFIG_X=true,CONFIG_Y=false')")
+    p_pf.add_argument("--profile", default="",
+                      help="Path to project profile JSON — enables profile-declared "
+                           "guard_functions (Fix #6). When provided, runtime guard "
+                           "analysis uses project-specific type/identity/lock "
+                           "predicates in addition to the built-in regex patterns.")
 
     # IMPROVE-OPT4: path-guards — prove writer reachability from entry point
     p_pg = sub.add_parser("path-guards",
@@ -1591,6 +1596,11 @@ def main():
     p_pg.add_argument("--with-configs", default="",
                       help="Macro bindings for config-predicate feasibility "
                            "(e.g., 'CONFIG_X=true,CONFIG_Y=false')")
+    p_pg.add_argument("--profile", default="",
+                      help="Path to project profile JSON — enables profile-declared "
+                           "guard_functions (Fix #6). When provided, runtime guard "
+                           "analysis uses project-specific type/identity/lock "
+                           "predicates in addition to the built-in regex patterns.")
 
     # Deficiency 7: cross-function data dependency
     p_dd = sub.add_parser("data-dep",

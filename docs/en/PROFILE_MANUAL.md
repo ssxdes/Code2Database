@@ -637,7 +637,106 @@ Usually does not need modification.
 
 ---
 
-### 3.14 `phases` (Phase Tracking)
+### 3.14 `concurrency_patterns` (Lock Patterns) -- Optional
+
+| Attribute | Value |
+|-----------|-------|
+| Type | `{lock_acquire_patterns: string[], lock_release_patterns: string[]}` |
+| Default | `{"lock_acquire_patterns": [], "lock_release_patterns": []}` |
+| Effect | Lock acquire/release regex patterns; each entry is a raw regex with one capture group for the lock variable (or no group for locks like `rcu_read_lock`). Auto-profile detects project-specific lock APIs by scanning source code for common lock function names. Built-in reference profiles (linux_kernel.json, spdk.json) populate these with project-appropriate patterns. |
+
+```json
+"concurrency_patterns": {
+  "lock_acquire_patterns": ["mutex_lock\\s*\\(\\s*&?(\\w+)",
+                            "spin_lock\\s*\\(\\s*&?(\\w+)"],
+  "lock_release_patterns": ["mutex_unlock\\s*\\(\\s*&?(\\w+)",
+                            "spin_unlock\\s*\\(\\s*&?(\\w+)"]
+}
+```
+
+---
+
+### 3.15 `guard_functions` (Runtime Guard Semantics) -- Optional, Fix #6
+
+| Attribute | Value |
+|-----------|-------|
+| Type | object[] |
+| Default | `[]` |
+| Effect | Declares project-specific runtime guard functions so `path-feasible` / `path-guards` / `describe-node` can annotate conditions with project-specific guard meaning instead of relying solely on the hardcoded regex patterns in `runtime_guards.py` (which cover common Linux kernel predicates like `sb_is_blkdev_sb` / `PageUptodate` but cannot generalize to arbitrary projects). When the profile is supplied via `--profile`, the declared guards augment (not replace) the built-in regex matches. |
+
+**Required fields**: `function`, `kind`
+**Optional fields**: `effect`, `arg_index`, `description`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `function` | string | The guard function name (e.g., `"sb_is_blkdev_sb"`) |
+| `kind` | enum | One of `"type_predicate"`, `"identity_predicate"`, `"lock_state"`, `"acquire"`, `"release"` |
+| `effect` | string | For `type_predicate`: the type tag asserted when the predicate returns true (e.g., `"blkdev"`). For `acquire`/`release`/`lock_state`: the lock object whose state changes. For `identity_predicate`: unused (var/value are read from the call site). |
+| `arg_index` | int | 0-based index of the argument the predicate tests (for `type_predicate`) or the lock object (for `acquire`/`release`/`lock_state`). Default 0. |
+| `description` | string | Human-readable explanation shown in CLI output. |
+
+```json
+"guard_functions": [
+  {"function": "sb_is_blkdev_sb", "kind": "type_predicate",
+   "effect": "blkdev", "arg_index": 0,
+   "description": "returns true when arg0 is a block-device superblock"},
+  {"function": "bd_prepare_to_claim", "kind": "acquire",
+   "effect": "bd_holder", "arg_index": 0,
+   "description": "acquires exclusive holder lock on arg0 (bdev)"},
+  {"function": "bd_abort_claim", "kind": "release",
+   "effect": "bd_holder", "arg_index": 0,
+   "description": "releases exclusive holder lock on arg0 (bdev)"},
+  {"function": "mutex_is_locked", "kind": "lock_state",
+   "effect": "arg0_lock", "arg_index": 0,
+   "description": "returns true when the mutex at arg0 is held"}
+]
+```
+
+**CLI usage**: pass `--profile /path/to/profile.json` to `path-feasible` or `path-guards`. The runtime guard analysis output will include `profile_bindings` listing bindings inferred specifically from profile-declared guards (e.g., `{"sb_type": "blkdev"}`).
+
+---
+
+### 3.16 `io_classification` (I/O Keywords) -- Optional
+
+| Attribute | Value |
+|-----------|-------|
+| Type | `{io_main_keywords: string[], io_side_keywords: string[]}` |
+| Default | `{"io_main_keywords": [], "io_side_keywords": []}` |
+| Effect | Keywords for classifying functions as I/O-side (storage/network/IO backends) vs I/O-main (front-end handlers). Used by `io-path` command. Auto-profile detects project-specific terminology by analyzing function names in I/O-related source directories. |
+
+---
+
+### 3.17 `dispatch_tuning` (Dispatch Heuristics) -- Optional
+
+Tunes vtable dispatch precision. All sub-fields have sensible defaults; override only when dispatch detection produces false positives/negatives.
+
+| Sub-field | Type | Default | Effect |
+|-----------|------|---------|--------|
+| `max_vtable_dispatch_per_call` | int | `50` | Max vtable dispatch targets per call site. Raise for kernel `file_operations` where some fields have >50 registrations. |
+| `max_vtable_dispatch_per_field` | `{field: int}` | `{}` | Per-field overrides, e.g., `{"write_iter": 100, "read_iter": 100}`. |
+| `inline_wrapper_patterns` | string[] | `[r"^(?:__)?(?:call\|invoke)_(\\w+)$"]` | Regex patterns matching inline wrapper function names. First capture group is the underlying field name. |
+| `macro_bridge_patterns` | `{pattern, impl}[]` | `[{"pattern": "^(\\w+)$", "impl": "__{1}"}]` | Macro-name regex → implementation-name template (use `{1}` for captured group). |
+| `macro_bridge_require_same_domain` | bool | `true` | Whether to require same-domain for macro bridge. Set `false` for kernel where headers and impls sometimes live in different subdirectories. |
+| `fn_ptr_call_require_evidence` | bool | `false` | When `true`, only treat callee as `fn_ptr_call` if there's evidence of `&func` address-of or struct assignment in the same function. When `false`, use legacy name-suffix heuristic. |
+
+---
+
+### 3.18 `project_boundaries` (Path Filters) -- Optional
+
+Source-path substrings that mark code as non-API / test / vendor / external. These are generic cross-project conventions; rarely need overriding.
+
+| Sub-field | Type | Default | Effect |
+|-----------|------|---------|--------|
+| `non_api_paths` | string[] | `[]` | Source-path substrings marking non-API code (e.g., `tools/`, `scripts/`, `selftests/`). Functions whose `source_file` contains any of these are NOT labeled `API_entry`. |
+| `test_path_patterns` | string[] | (generic) | Source-path substrings marking test code. |
+| `test_file_suffixes` | string[] | (generic) | Test file suffixes used by `_is_test_source`. |
+| `test_domain_segments` | string[] | (generic) | Domain segments marking test/unit domains. |
+| `vendor_domain_prefixes` | string[] | `[]` | Domain prefixes marking vendor/external code. EMPTY by default — auto-profile detects project-specific vendor prefixes. |
+| `external_dir_prefixes` | string[] | (generic) | Common external directory names (`vendor`, `third_party`, etc.). |
+
+---
+
+### 3.19 `phases` (Phase Tracking)
 
 | Field | Default | Description |
 |-------|---------|-------------|

@@ -165,6 +165,30 @@ _DEFAULT_PROFILE = {
         "lock_acquire_patterns": [],
         "lock_release_patterns": [],
     },
+    # Phase D (Fix #6): project-declared runtime guard functions.
+    # Maps guard function names to their semantic effect so path-feasible /
+    # path-guards / describe-node can annotate conditions with project-specific
+    # guard meaning instead of relying solely on the hardcoded regex patterns
+    # in runtime_guards.py (which cover common Linux kernel predicates like
+    # sb_is_blkdev_sb / PageUptodate but cannot generalize to arbitrary
+    # projects).
+    # Each entry: {"function": "<name>", "kind": <kind>, "effect": <effect>,
+    #              "arg_index": <int>, "description": "<str>"}
+    #   kind: "type_predicate" | "identity_predicate" | "lock_state"
+    #         | "acquire" | "release"
+    #   effect: for type_predicate — the type tag asserted when the predicate
+    #             returns true (e.g., "blkdev" for sb_is_blkdev_sb)
+    #           for acquire/release — the lock object whose state changes
+    #           for lock_state — the lock object whose state is queried
+    #           for identity_predicate — unused (the var/value are read from
+    #             the call site)
+    #   arg_index: 0-based index of the argument the predicate tests
+    #              (for type_predicate) or the lock object (for acquire/
+    #              release/lock_state). Default 0.
+    #   description: human-readable explanation shown in CLI output.
+    # EMPTY by default — built-in reference profiles populate this for
+    # project-specific guard APIs.
+    "guard_functions": [],
     "io_classification": {
         # Keywords for classifying functions as I/O-side (storage/network/IO
         # backends) vs I/O-main (front-end handlers). Used by io-path command.
@@ -588,6 +612,39 @@ class ProfileSchema:
                     f"scan_hints.domain_rules[{i}].pattern is not a valid regex: {e}"
                 )
 
+        # Phase D (Fix #6): guard_functions must be list of dicts with required keys.
+        _GUARD_FUNC_REQUIRED = ("function", "kind")
+        _GUARD_FUNC_OPTIONAL = ("effect", "arg_index", "description")
+        _GUARD_FUNC_KINDS = ("type_predicate", "identity_predicate",
+                             "lock_state", "acquire", "release")
+        for i, entry in enumerate(d.get("guard_functions", [])):
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    f"guard_functions[{i}] must be a dict"
+                )
+            for key in _GUARD_FUNC_REQUIRED:
+                if key not in entry:
+                    raise ValueError(
+                        f"guard_functions[{i}] missing '{key}'"
+                    )
+            if entry["kind"] not in _GUARD_FUNC_KINDS:
+                raise ValueError(
+                    f"guard_functions[{i}].kind must be one of "
+                    f"{', '.join(_GUARD_FUNC_KINDS)}, got {entry['kind']!r}"
+                )
+            if "arg_index" in entry:
+                ai = entry["arg_index"]
+                if not isinstance(ai, int) or ai < 0:
+                    raise ValueError(
+                        f"guard_functions[{i}].arg_index must be a non-negative "
+                        f"integer, got {ai!r}"
+                    )
+            unknown = set(entry) - set(_GUARD_FUNC_REQUIRED) - set(_GUARD_FUNC_OPTIONAL)
+            if unknown:
+                raise ValueError(
+                    f"guard_functions[{i}] has unknown keys: {unknown}"
+                )
+
     # ------------------------------------------------------------------
     # Accessors
     # ------------------------------------------------------------------
@@ -735,6 +792,7 @@ class ProfileSchema:
             "project_boundaries": d.get("project_boundaries", {}),
             "concurrency_patterns": d.get("concurrency_patterns", {}),
             "io_classification": d.get("io_classification", {}),
+            "guard_functions": d.get("guard_functions", []),
         }
 
     # ------------------------------------------------------------------

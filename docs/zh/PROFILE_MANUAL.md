@@ -637,7 +637,106 @@ Profile 是一个 JSON 文件，声明项目特定的知识，让扫描器和构
 
 ---
 
-### 3.14 `phases`（阶段跟踪）
+### 3.14 `concurrency_patterns`（锁模式） — 可选
+
+| 属性 | 值 |
+|------|-----|
+| 类型 | `{lock_acquire_patterns: string[], lock_release_patterns: string[]}` |
+| 默认值 | `{"lock_acquire_patterns": [], "lock_release_patterns": []}` |
+| 作用 | 锁获取/释放正则模式；每个条目是带一个捕获组（锁变量）的原始正则，或无捕获组（如 `rcu_read_lock`）。auto-profile 通过扫描源码常见锁函数名自动检测项目专属锁 API。内置参考 profile（linux_kernel.json、spdk.json）已填充项目适合的模式。 |
+
+```json
+"concurrency_patterns": {
+  "lock_acquire_patterns": ["mutex_lock\\s*\\(\\s*&?(\\w+)",
+                            "spin_lock\\s*\\(\\s*&?(\\w+)"],
+  "lock_release_patterns": ["mutex_unlock\\s*\\(\\s*&?(\\w+)",
+                            "spin_unlock\\s*\\(\\s*&?(\\w+)"]
+}
+```
+
+---
+
+### 3.15 `guard_functions`（运行时守卫语义） — 可选，修复 #6
+
+| 属性 | 值 |
+|------|-----|
+| 类型 | object[] |
+| 默认值 | `[]` |
+| 作用 | 声明项目专属的运行时守卫函数，让 `path-feasible` / `path-guards` / `describe-node` 能根据项目专属守卫含义标注条件，而不是只依赖 `runtime_guards.py` 中硬编码的正则模式（后者覆盖常见 Linux 内核谓词如 `sb_is_blkdev_sb` / `PageUptodate`，但无法泛化到任意项目）。通过 `--profile` 提供 profile 时，声明的守卫是补充（而非替代）内置正则匹配。 |
+
+**必填字段**：`function`、`kind`
+**可选字段**：`effect`、`arg_index`、`description`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `function` | string | 守卫函数名（如 `"sb_is_blkdev_sb"`） |
+| `kind` | enum | 之一：`"type_predicate"`、`"identity_predicate"`、`"lock_state"`、`"acquire"`、`"release"` |
+| `effect` | string | `type_predicate`：谓词返回 true 时所断言的类型标签（如 `"blkdev"`）。`acquire`/`release`/`lock_state`：状态改变的锁对象。`identity_predicate`：未用（变量/值从调用点读取）。 |
+| `arg_index` | int | 谓词测试的参数索引（`type_predicate`）或锁对象索引（`acquire`/`release`/`lock_state`），0-based。默认 0。 |
+| `description` | string | CLI 输出中显示的可读说明。 |
+
+```json
+"guard_functions": [
+  {"function": "sb_is_blkdev_sb", "kind": "type_predicate",
+   "effect": "blkdev", "arg_index": 0,
+   "description": "当 arg0 是块设备超级块时返回 true"},
+  {"function": "bd_prepare_to_claim", "kind": "acquire",
+   "effect": "bd_holder", "arg_index": 0,
+   "description": "对 arg0（bdev）获取独占持有者锁"},
+  {"function": "bd_abort_claim", "kind": "release",
+   "effect": "bd_holder", "arg_index": 0,
+   "description": "释放 arg0（bdev）的独占持有者锁"},
+  {"function": "mutex_is_locked", "kind": "lock_state",
+   "effect": "arg0_lock", "arg_index": 0,
+   "description": "当 arg0 处的 mutex 已被持有时返回 true"}
+]
+```
+
+**CLI 用法**：在 `path-feasible` 或 `path-guards` 后传 `--profile /path/to/profile.json`。运行时守卫分析输出会包含 `profile_bindings`，列出从 profile 声明的守卫推导出的绑定（如 `{"sb_type": "blkdev"}`）。
+
+---
+
+### 3.16 `io_classification`（I/O 关键字） — 可选
+
+| 属性 | 值 |
+|------|-----|
+| 类型 | `{io_main_keywords: string[], io_side_keywords: string[]}` |
+| 默认值 | `{"io_main_keywords": [], "io_side_keywords": []}` |
+| 作用 | 将函数分类为 I/O-side（存储/网络/IO 后端）或 I/O-main（前端 handler）的关键字。`io-path` 命令使用。auto-profile 通过分析 I/O 相关源目录中的函数名自动检测项目专属术语。 |
+
+---
+
+### 3.17 `dispatch_tuning`（分发启发式） — 可选
+
+调优 vtable 分发精度。所有子字段有合理默认值；仅当分发检测出现假阳/假阴时才覆盖。
+
+| 子字段 | 类型 | 默认值 | 作用 |
+|--------|------|--------|------|
+| `max_vtable_dispatch_per_call` | int | `50` | 每个调用点的最大 vtable 分发目标数。内核 `file_operations` 中某些字段有 >50 个注册，需调高。 |
+| `max_vtable_dispatch_per_field` | `{field: int}` | `{}` | 按字段覆盖，如 `{"write_iter": 100, "read_iter": 100}`。 |
+| `inline_wrapper_patterns` | string[] | `[r"^(?:__)?(?:call\|invoke)_(\\w+)$"]` | 匹配内联包装函数名的正则。第一个捕获组是底层字段名。 |
+| `macro_bridge_patterns` | `{pattern, impl}[]` | `[{"pattern": "^(\\w+)$", "impl": "__{1}"}]` | 宏名正则 → 实现名模板（用 `{1}` 表示捕获组）。 |
+| `macro_bridge_require_same_domain` | bool | `true` | 是否要求宏桥接在同域内。内核中头文件和实现有时位于不同子目录，需设为 `false`。 |
+| `fn_ptr_call_require_evidence` | bool | `false` | 为 `true` 时，只有同一函数内存在 `&func` 取址或结构体赋值证据，才把被调函数当作 `fn_ptr_call`。为 `false` 时用旧式名字后缀启发式。 |
+
+---
+
+### 3.18 `project_boundaries`（路径过滤） — 可选
+
+标记代码为非-API / 测试 / 厂商 / 外部的源路径子串。这些是通用跨项目约定，一般无需覆盖。
+
+| 子字段 | 类型 | 默认值 | 作用 |
+|--------|------|--------|------|
+| `non_api_paths` | string[] | `[]` | 标记非 API 代码的源路径子串（如 `tools/`、`scripts/`、`selftests/`）。`source_file` 含任意一项的函数不会被标为 `API_entry`。 |
+| `test_path_patterns` | string[] | （通用） | 标记测试代码的源路径子串。 |
+| `test_file_suffixes` | string[] | （通用） | `_is_test_source` 使用的测试文件后缀。 |
+| `test_domain_segments` | string[] | （通用） | 标记测试/单元域的域段。 |
+| `vendor_domain_prefixes` | string[] | `[]` | 标记厂商/外部代码的域前缀。默认空 — auto-profile 会检测项目专属厂商前缀。 |
+| `external_dir_prefixes` | string[] | （通用） | 常见外部目录名（`vendor`、`third_party` 等）。 |
+
+---
+
+### 3.19 `phases`（阶段跟踪）
 
 | 字段 | 默认值 | 说明 |
 |------|--------|------|

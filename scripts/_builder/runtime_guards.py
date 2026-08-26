@@ -440,12 +440,107 @@ def check_runtime_guards(conditions: List[str]) -> Dict[str, Any]:
             confidence: 'EXTRACTED' / 'INFERRED' / 'AMBIGUOUS'
             reason: str (when infeasible)
     """
+    return check_runtime_guards_with_profile(conditions, guard_functions=None)
+
+
+def _detect_profile_guards(
+    conditions: List[str],
+    guard_functions: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Detect guard functions declared in the project profile.
+
+    Each profile entry has the form:
+        {"function": "<name>", "kind": <kind>, "effect": <effect>,
+         "arg_index": <int>, "description": <str>}
+
+    kind ∈ {"type_predicate", "identity_predicate", "lock_state",
+            "acquire", "release"}.
+
+    Returns a list of guard descriptors mirroring the structure produced
+    by `detect_runtime_guards` so the two can be merged by the caller.
+    """
+    if not guard_functions:
+        return []
+    # Build a regex per declared function — match `name(...)` allowing
+    # optional `!` prefix for negated forms (type_predicate only).
+    compiled = []
+    for entry in guard_functions:
+        name = entry.get("function", "")
+        if not name:
+            continue
+        kind = entry.get("kind", "")
+        # Escape the function name for regex safety.
+        esc = re.escape(name)
+        if kind == "type_predicate":
+            # Match both `name(...)` and `!name(...)`.
+            pat = re.compile(rf'(!?)\b{esc}\s*\(([^)]*)\)')
+        else:
+            # acquire / release / lock_state / identity_predicate — bare call.
+            pat = re.compile(rf'\b{esc}\s*\(([^)]*)\)')
+        compiled.append((entry, pat))
+
+    results = []
+    for cond in conditions:
+        inner = _strip_condition_wrapper(cond)
+        for entry, pat in compiled:
+            for m in pat.finditer(inner):
+                negated = False
+                arg_str = m.group(m.lastindex)
+                if entry.get("kind") == "type_predicate":
+                    negated = m.group(1) == "!"
+                # Extract the arg_index-th argument from the call.
+                arg = ""
+                if arg_str:
+                    parts = [p.strip() for p in arg_str.split(",")]
+                    ai = entry.get("arg_index", 0)
+                    if 0 <= ai < len(parts):
+                        arg = parts[ai]
+                guard_desc = {
+                    "kind": entry.get("kind", ""),
+                    "function": entry.get("function", ""),
+                    "arg": arg,
+                    "negated": negated,
+                    "condition": cond,
+                    "description": entry.get("description", ""),
+                    "source": "profile",
+                }
+                if entry.get("effect"):
+                    guard_desc["effect"] = entry["effect"]
+                results.append(guard_desc)
+    return results
+
+
+def check_runtime_guards_with_profile(
+    conditions: List[str],
+    guard_functions: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Check runtime guards, optionally augmented by profile-declared guards.
+
+    When `guard_functions` is provided (list of dicts from the project profile),
+    those declarations are matched against the path's conditions in addition
+    to the hardcoded regex patterns. Profile-declared guards produce
+    `inferred_bindings` and `contradictions` just like the built-in predicates.
+
+    Args:
+        conditions: list of `call_condition` strings from the path's edges.
+        guard_functions: optional list of profile entries, e.g.:
+            [{"function": "sb_is_blkdev_sb", "kind": "type_predicate",
+              "effect": "blkdev", "arg_index": 0,
+              "description": "returns true when arg0 is a block-device superblock"}]
+
+    Returns: same shape as `check_runtime_guards`, with two additions:
+        - `guards` entries may carry `source: "profile"` for profile-declared
+          guards (built-in regex matches have no `source` key).
+        - `profile_bindings` lists bindings inferred specifically from
+          profile-declared type predicates (e.g., `{"sb_type": "blkdev"}`).
+    """
     detection = detect_runtime_guards(conditions)
     guards = detection["guards"]
     analysis = detection["acquire_release"]["analysis"]
 
     contradictions: List[Dict[str, Any]] = []
     inferred_bindings: Dict[str, Any] = {}
+    profile_bindings: Dict[str, Any] = {}
 
     # Identity-predicate contradictions
     for a, b in _find_identity_contradictions(detection["identity_predicates"]):
@@ -484,6 +579,42 @@ def check_runtime_guards(conditions: List[str]) -> Dict[str, Any]:
         elif ip["op"] == "!=":
             inferred_bindings[f"{ip['var']}_ne"] = ip["value"]
 
+    # Phase D (Fix #6): profile-declared guard functions.
+    profile_guards = _detect_profile_guards(conditions, guard_functions or [])
+    if profile_guards:
+        for pg in profile_guards:
+            guards.append(pg)
+            kind = pg.get("kind", "")
+            arg = pg.get("arg", "")
+            effect = pg.get("effect", "")
+            negated = pg.get("negated", False)
+            if kind == "type_predicate" and arg and effect:
+                key = f"{arg}_type"
+                if negated:
+                    profile_bindings[key] = f"!{effect}"
+                    inferred_bindings[key] = f"!{effect}"
+                else:
+                    profile_bindings[key] = effect
+                    inferred_bindings[key] = effect
+            elif kind == "identity_predicate" and arg and effect:
+                # effect encodes the comparison value (e.g., "sb" for bd_holder == sb)
+                profile_bindings[arg] = effect
+                inferred_bindings[arg] = effect
+            elif kind in ("acquire", "release") and arg:
+                # Track lock state — arg is the lock object.
+                profile_bindings.setdefault("lock_objects", set()).add(arg)
+                inferred_bindings.setdefault("lock_objects", set()).add(arg)
+            elif kind == "lock_state" and arg:
+                profile_bindings.setdefault("queried_locks", set()).add(arg)
+                inferred_bindings.setdefault("queried_locks", set()).add(arg)
+        # Convert sets to sorted lists for JSON serializability.
+        for k, v in profile_bindings.items():
+            if isinstance(v, set):
+                profile_bindings[k] = sorted(v)
+        for k, v in inferred_bindings.items():
+            if isinstance(v, set):
+                inferred_bindings[k] = sorted(v)
+
     # Determine feasibility
     feasible = True
     reason = ""
@@ -514,6 +645,7 @@ def check_runtime_guards(conditions: List[str]) -> Dict[str, Any]:
         "held_at_end": analysis["held_at_end"],
         "max_lock_depth": analysis["max_depth"],
         "inferred_bindings": inferred_bindings,
+        "profile_bindings": profile_bindings,
         "confidence": confidence,
         "reason": reason,
     }

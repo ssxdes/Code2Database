@@ -774,12 +774,29 @@ def cmd_path_feasible(args):
         path-feasible --graph <dir> --conditions "mode==1,flag,x>0"
         path-feasible --graph <dir> --node <id> --max-depth 5
         path-feasible --graph <dir> --node <id> --with-configs "CONFIG_X=true,CONFIG_Y=false"
+        path-feasible --graph <dir> --node <id> --profile /path/to/profile.json
     """
     import json
 
     graph_dir = args.graph
     with_configs_spec = getattr(args, "with_configs", "") or ""
     macro_bindings = parse_macro_bindings(with_configs_spec) if with_configs_spec else {}
+
+    # Phase D (Fix #6): load profile-declared guard_functions if --profile given.
+    guard_functions = None
+    profile_path = getattr(args, "profile", "") or ""
+    if profile_path:
+        try:
+            try:
+                from _profile.schema import ProfileSchema
+            except ImportError:
+                sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+                from _profile.schema import ProfileSchema
+            profile = ProfileSchema.load(profile_path)
+            guard_functions = profile.to_builder_config().get("guard_functions", [])
+        except Exception as e:
+            print(f"Warning: failed to load profile '{profile_path}': {e}",
+                  file=sys.stderr)
 
     if getattr(args, "conditions", ""):
         # Direct condition list mode
@@ -789,6 +806,14 @@ def cmd_path_feasible(args):
         if macro_bindings:
             cfg_result = check_config_feasible(conds, macro_bindings)
             result["config_feasibility"] = cfg_result
+        # Phase D (Fix #6): attach runtime guard analysis (with profile if given)
+        try:
+            from _builder.runtime_guards import check_runtime_guards_with_profile
+            if conds:
+                result["runtime_guards"] = check_runtime_guards_with_profile(
+                    conds, guard_functions=guard_functions)
+        except ImportError:
+            pass
         print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
         return
 
@@ -852,8 +877,10 @@ def cmd_path_feasible(args):
         _walk(node_id, [node_id], [], [], 0)
         # RPT-KERNEL-D13: runtime guard analysis (bd_prepare_to_claim / sb_is_blkdev_sb /
         # bd_holder != / mutex_is_locked) — complements compile-time #ifdef analysis.
+        # Phase D (Fix #6): use check_runtime_guards_with_profile so profile-declared
+        # guard_functions augment the hardcoded regex patterns.
         try:
-            from _builder.runtime_guards import check_runtime_guards
+            from _builder.runtime_guards import check_runtime_guards_with_profile
             _runtime_guards_available = True
         except ImportError:
             _runtime_guards_available = False
@@ -878,7 +905,8 @@ def cmd_path_feasible(args):
                     }
             # RPT-KERNEL-D13: attach runtime guard analysis
             if _runtime_guards_available and conds:
-                entry["runtime_guards"] = check_runtime_guards(conds)
+                entry["runtime_guards"] = check_runtime_guards_with_profile(
+                    conds, guard_functions=guard_functions)
             results.append(entry)
         if cgdb_store is not None:
             try:

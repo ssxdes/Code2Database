@@ -223,6 +223,95 @@ def _same_thread_context(ndata_a, ndata_b):
 
 
 # ---------------------------------------------------------------------------
+# TOCTOU detection
+# ---------------------------------------------------------------------------
+
+def _detect_toctou_patterns(G, target_func=None, profile=None):
+    """Detect TOCTOU (time-of-check time-of-use) race patterns.
+
+    A TOCTOU race exists when a function reads a struct field inside a
+    lock-held region and the same field is written by another function
+    that does NOT hold the same lock. This is a check-then-act
+    vulnerability — the reader's check may be stale by the time the
+    writer acts.
+    """
+    toctou = []
+    cp = (profile or {}).get("concurrency_patterns", {}) if profile else {}
+    acquire_patterns = cp.get("lock_acquire_patterns", [])
+    release_patterns = cp.get("lock_release_patterns", [])
+    if not acquire_patterns:
+        return toctou
+
+    field_writers = defaultdict(list)
+    for nid, nd in G.nodes(data=True):
+        if nd.get("is_empty", False):
+            continue
+        for fw in (nd.get("fields_written") or []):
+            fname = fw.get("field_name", "")
+            if not fname:
+                continue
+            body = nd.get("body_text", "") or ""
+            locks = set()
+            for pat in acquire_patterns:
+                for m in re.finditer(re.escape(pat) + r'\s*\(\s*&?\s*([^,)]+)', body):
+                    locks.add(m.group(1).strip())
+            for pat in release_patterns:
+                for m in re.finditer(re.escape(pat) + r'\s*\(\s*&?\s*([^,)]+)', body):
+                    locks.discard(m.group(1).strip())
+            field_writers[fname].append((nid, locks, nd.get("name", nid)))
+
+    for nid, nd in G.nodes(data=True):
+        if nd.get("is_empty", False):
+            continue
+        if target_func and nd.get("name", "") != target_func:
+            continue
+        body = nd.get("body_text", "") or ""
+        reader_locks = set()
+        for pat in acquire_patterns:
+            for m in re.finditer(re.escape(pat) + r'\s*\(\s*&?\s*([^,)]+)', body):
+                reader_locks.add(m.group(1).strip())
+        for pat in release_patterns:
+            for m in re.finditer(re.escape(pat) + r'\s*\(\s*&?\s*([^,)]+)', body):
+                reader_locks.discard(m.group(1).strip())
+
+        for fr in (nd.get("fields_read") or []):
+            fname = fr.get("field_name", "")
+            if not fname:
+                continue
+            for (writer_id, writer_locks, writer_name) in field_writers.get(fname, []):
+                if writer_id == nid:
+                    continue
+                if reader_locks and not (reader_locks & writer_locks):
+                    toctou.append({
+                        "type": "toctou_race",
+                        "severity": "high",
+                        "confidence": "medium",
+                        "shared_resource": {
+                            "type": "struct_field",
+                            "name": fname,
+                            "struct_chain": fr.get("struct_chain", ""),
+                        },
+                        "reader": {
+                            "function": nd.get("name", nid),
+                            "node_id": nid,
+                            "locks_held": sorted(reader_locks),
+                        },
+                        "writer": {
+                            "function": writer_name,
+                            "node_id": writer_id,
+                            "locks_held": sorted(writer_locks),
+                        },
+                        "description": (
+                            f"TOCTOU: {nd.get('name', nid)} reads "
+                            f"{fname} under lock {sorted(reader_locks)} "
+                            f"but {writer_name} writes {fname} without "
+                            f"that lock"
+                        ),
+                    })
+    return toctou
+
+
+# ---------------------------------------------------------------------------
 # Core: detect_data_races
 # ---------------------------------------------------------------------------
 
@@ -408,6 +497,11 @@ def detect_data_races(G, target_func=None, profile=None):
         0 if r["confidence"] == "high" else 1,
         r["shared_resource"]["name"],
     ))
+
+    # TOCTOU detection: same function reads field inside lock, writer
+    # writes without that lock — check-then-act vulnerability.
+    toctou_races = _detect_toctou_patterns(G, target_func, profile)
+    races.extend(toctou_races)
 
     return races
 

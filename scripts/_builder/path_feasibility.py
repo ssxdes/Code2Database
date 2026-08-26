@@ -767,6 +767,40 @@ def parse_macro_bindings(spec: str) -> Dict[str, bool]:
 # CLI command
 # ---------------------------------------------------------------------------
 
+def _analyze_holder_edges(G, paths):
+    """Check HOLDER edges along each path for exclusive-hold impact.
+
+    If a node on the path holds an exclusive lock on a resource (HOLDER
+    edge with kind=acquire), concurrent paths to the same resource are
+    blocked. Annotates each path with holder info so the user can
+    reason about reachability.
+    """
+    results = []
+    for path, conds, cfg_preds in paths:
+        holders = []
+        for nid in path:
+            for _, _, ed in G.in_edges(nid, data=True):
+                if ed.get("relation") == "HOLDER":
+                    holders.append({
+                        "holder_node": nid,
+                        "lock_function": ed.get("lock_function", ""),
+                        "lock_variable": ed.get("lock_variable", ""),
+                        "protected_object": ed.get("protected_object", ""),
+                        "kind": ed.get("kind", "acquire"),
+                    })
+            for _, succ, ed in G.out_edges(nid, data=True):
+                if ed.get("relation") == "HOLDER":
+                    holders.append({
+                        "holder_node": nid,
+                        "lock_function": ed.get("lock_function", ""),
+                        "lock_variable": ed.get("lock_variable", ""),
+                        "protected_object": ed.get("protected_object", ""),
+                        "kind": ed.get("kind", "acquire"),
+                    })
+        results.append(holders if holders else None)
+    return results
+
+
 def cmd_path_feasible(args):
     """Check feasibility of a path's conditions.
 
@@ -908,6 +942,16 @@ def cmd_path_feasible(args):
                 entry["runtime_guards"] = check_runtime_guards_with_profile(
                     conds, guard_functions=guard_functions)
             results.append(entry)
+
+        # HOLDER edge analysis: check if any node on each path holds
+        # an exclusive lock on a resource, making concurrent paths to
+        # the same resource unreachable.
+        holder_analysis = _analyze_holder_edges(G, paths[:50])
+        if holder_analysis:
+            for i, entry in enumerate(results):
+                if i < len(holder_analysis) and holder_analysis[i]:
+                    entry["exclusive_holds"] = holder_analysis[i]
+
         if cgdb_store is not None:
             try:
                 cgdb_store.close()

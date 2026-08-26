@@ -810,8 +810,17 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
 
 def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
                               jobs: int = 0,
-                              max_workers: int = 0) -> None:
+                              max_workers: int = 0,
+                              parallel_mode: str = "thread") -> None:
     """Extract shared state access info for all non-empty nodes in the graph.
+
+    When parallel_mode='process', uses ProcessPoolExecutor with fork()
+    to bypass the GIL. On Linux (default fork start method), child
+    processes inherit the parent's memory via copy-on-write — the graph,
+    globals_data, and field_assignments are available without pickling.
+    Only the small result dict per node is sent back via pipe.
+    This gives TRUE multi-core parallelism for the regex + dict
+    construction work that dominates _extract_state_access.
 
     Sets node attributes: globals_read, globals_written, fields_read, fields_written.
     Called during build after graph construction, before freeing extraction data.
@@ -892,6 +901,48 @@ def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
                 for k, v in res.items():
                     G.nodes[nid][k] = v
         return
+
+    # When parallel_mode='process', use ProcessPoolExecutor to bypass
+    # the GIL. On Linux, fork() gives copy-on-write — child processes
+    # share the parent's graph/globals/field_assignments without
+    # pickling. Only the small result dict per node is sent back.
+    if parallel_mode == "process" and len(candidates) > 100:
+        try:
+            from concurrent.futures import ProcessPoolExecutor
+            import multiprocessing as _mp
+            # Use fork (default on Linux) for COW — no pickling of
+            # the large graph/globals data needed.
+            ctx = _mp.get_context("fork")
+            # The work function must be top-level for pickling.
+            # _extract_state_access is already top-level. We pack the
+            # per-node args into a tuple the worker can unpack.
+            _cached = _cached_globals  # from the enclosing scope
+            def _proc_work(args):
+                nid, ndata = args
+                return nid, _extract_state_access(
+                    ndata.get("body_text", ""),
+                    ndata.get("local_vars", []),
+                    ndata.get("params", []),
+                    globals_data=None,
+                    field_assignments=field_assignments,
+                    node_name=ndata.get("name", ""),
+                    _cached_globals=_cached,
+                )
+            chunk_size = max(1, len(candidates) // (workers * 4))
+            with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as pool:
+                results = list(pool.map(
+                    _proc_work,
+                    [(nid, G.nodes[nid]) for nid, _ in candidates],
+                    chunksize=chunk_size,
+                ))
+            for nid, res in results:
+                if res:
+                    for k, v in res.items():
+                        if v:
+                            G.nodes[nid][k] = v
+            return
+        except (ImportError, OSError, BrokenPipeError):
+            pass  # fall back to ThreadPoolExecutor
 
     from _builder.parallel import merge_node_attributes
     merge_node_attributes(G, candidates, _work, jobs=workers,
@@ -6939,7 +6990,8 @@ def cmd_build(args):
     # Shared state access extraction
     tracker.begin("extract_state_access")
     _extract_state_access_all(G, data, jobs=getattr(args, 'jobs', 0) or 0,
-                              max_workers=getattr(args, 'max_workers', 0) or 0)
+                              max_workers=getattr(args, 'max_workers', 0) or 0,
+                              parallel_mode=getattr(args, 'parallel_mode', 'thread'))
     state_count = sum(1 for _, nd in G.nodes(data=True)
                       if nd.get("globals_read") or nd.get("globals_written")
                       or nd.get("fields_read") or nd.get("fields_written"))

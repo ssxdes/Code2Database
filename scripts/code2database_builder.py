@@ -572,6 +572,12 @@ def main():
                               "set this to your core count for maximum "
                               "throughput. Only large graphs (>200K nodes) "
                               "are further capped to 4/6 to bound memory.")
+    p_build.add_argument("--parallel-mode", choices=["thread", "process"], default="thread",
+                         help="Parallelism model: 'thread' (default, GIL-limited but "
+                              "zero overhead) or 'process' (true multi-core via fork, "
+                              "bypasses GIL for Python-heavy work like state_access "
+                              "extraction). Use 'process' on 4+ core machines for "
+                              "significant speedup on large graphs (>1000 functions).")
 
     # load
     p_load = sub.add_parser("load", help="Load and summarize the invocation graph")
@@ -605,7 +611,7 @@ def main():
     p_desc.add_argument("--fill-requests", action="store_true", default=False,
                         help="Include auto_fill_request in output (default: hidden to save tokens)")
     p_desc.add_argument("--no-cache", dest="no_cache", action="store_true",
-                        help="Bypass query result cache (Fix #15). Forces a fresh computation; result is also not written back to cache.")
+                        help="Bypass query result cache . Forces a fresh computation; result is also not written back to cache.")
 
     # resolve-chain
     p_resolve = sub.add_parser("resolve-chain",
@@ -677,7 +683,7 @@ def main():
     p_path.add_argument("--vtable-bind", dest="vtable_bind", default="",
                         help="Bind specific vtable type to a single implementation (e.g., 'super_operations=ext4_evict_inode,address_space_operations=ext4_write_end'). Only dispatches to the bound impl are followed.")
     p_path.add_argument("--no-cache", dest="no_cache", action="store_true",
-                        help="Bypass query result cache (Fix #15). Forces a fresh computation; result is also not written back to cache.")
+                        help="Bypass query result cache . Forces a fresh computation; result is also not written back to cache.")
     p_path.add_argument("--json", action="store_true", help="Output as JSON")
 
     # impact
@@ -1168,7 +1174,7 @@ def main():
     p_explore.add_argument("--focus-domain", dest="focus_domain", default=None,
                             help="Restrict search to a specific architecture domain (e.g., 'lib.bdev')")
     p_explore.add_argument("--no-cache", dest="no_cache", action="store_true",
-                            help="Bypass query result cache (Fix #15). Forces a fresh computation; result is also not written back to cache.")
+                            help="Bypass query result cache . Forces a fresh computation; result is also not written back to cache.")
 
     # key-paths
     p_kp = sub.add_parser("key-paths",
@@ -1195,7 +1201,7 @@ def main():
     p_trace.add_argument("--annotate", action="store_true", help="Include signature/condition/concurrency per step")
     p_trace.add_argument("--json", action="store_true", help="Output as JSON")
     p_trace.add_argument("--no-cache", dest="no_cache", action="store_true",
-                         help="Bypass query result cache (Fix #15). Forces a fresh computation; result is also not written back to cache.")
+                         help="Bypass query result cache . Forces a fresh computation; result is also not written back to cache.")
 
     # reverse-trace
     p_rtrace = sub.add_parser("reverse-trace",
@@ -1222,7 +1228,7 @@ def main():
                                "(e.g., 'bh' matches bh->field). Optional; requires --suspect-field.")
     p_rtrace.add_argument("--json", action="store_true", help="Output as JSON")
     p_rtrace.add_argument("--no-cache", dest="no_cache", action="store_true",
-                          help="Bypass query result cache (Fix #15). Forces a fresh computation; result is also not written back to cache.")
+                          help="Bypass query result cache . Forces a fresh computation; result is also not written back to cache.")
 
     # diff-chains
     p_diff = sub.add_parser("diff-chains",
@@ -1598,7 +1604,7 @@ def main():
                            "(e.g., 'CONFIG_X=true,CONFIG_Y=false')")
     p_pf.add_argument("--profile", default="",
                       help="Path to project profile JSON — enables profile-declared "
-                           "guard_functions (Fix #6). When provided, runtime guard "
+                           "guard_functions . When provided, runtime guard "
                            "analysis uses project-specific type/identity/lock "
                            "predicates in addition to the built-in regex patterns.")
 
@@ -1620,7 +1626,7 @@ def main():
                            "(e.g., 'CONFIG_X=true,CONFIG_Y=false')")
     p_pg.add_argument("--profile", default="",
                       help="Path to project profile JSON — enables profile-declared "
-                           "guard_functions (Fix #6). When provided, runtime guard "
+                           "guard_functions . When provided, runtime guard "
                            "analysis uses project-specific type/identity/lock "
                            "predicates in addition to the built-in regex patterns.")
 

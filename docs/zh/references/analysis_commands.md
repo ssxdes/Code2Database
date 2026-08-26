@@ -42,7 +42,7 @@ python3 scripts/code2database_builder.py detect-races \
 
 输出：竞争对列表，含变量、访问函数、线程模型、锁状态、证据（源码字符位置）。
 
-**HOLDER 边标注（Fix #10）**：当项目 profile 声明了 `lock_semantics`（见 PROFILE_MANUAL.md §3.17）且 `build` 时带 `--profile`，竞争证据会包含 `lock_held_context`，显示锁函数和受保护对象（如 `{"lock_function": "mutex_lock", "lock_variable": "sb->s_lock", "protected_object": "sb"}`）。这让你能证明 writer 被特定锁在特定对象上保护——把软性的 "锁状态：持有" 变成硬的、边可追溯的证明。
+**HOLDER 边标注（）**：当项目 profile 声明了 `lock_semantics`（见 PROFILE_MANUAL.md §3.17）且 `build` 时带 `--profile`，竞争证据会包含 `lock_held_context`，显示锁函数和受保护对象（如 `{"lock_function": "mutex_lock", "lock_variable": "sb->s_lock", "protected_object": "sb"}`）。这让你能证明 writer 被特定锁在特定对象上保护——把软性的 "锁状态：持有" 变成硬的、边可追溯的证明。
 
 ### `lock-coverage`
 
@@ -219,7 +219,7 @@ python3 scripts/code2database_builder.py path \
   [--max-depth N] [--json] [--no-cache]
 ```
 
-**查询结果缓存（Fix #15）**：`path` 结果会被缓存（TTL 600 秒，每图最多 256 条）。缓存失效条件：(a) TTL 到期，(b) 图 SQLite 文件 mtime 变化（覆盖守护事务、手动 sqlite3 编辑、patcher 写入），(c) `update-node`/`patch-from-diff` 触及的节点版本号递增。传 `--no-cache` 跳过缓存——结果重新计算且不写回缓存。`describe-node`、`trace-chain`、`reverse-trace`、`explore-flow` 同样适用此缓存机制。
+**查询结果缓存（）**：`path` 结果会被缓存（TTL 600 秒，每图最多 256 条）。缓存失效条件：(a) TTL 到期，(b) 图 SQLite 文件 mtime 变化（覆盖守护事务、手动 sqlite3 编辑、patcher 写入），(c) `update-node`/`patch-from-diff` 触及的节点版本号递增。传 `--no-cache` 跳过缓存——结果重新计算且不写回缓存。`describe-node`、`trace-chain`、`reverse-trace`、`explore-flow` 同样适用此缓存机制。
 
 ### `reverse-trace`
 
@@ -555,7 +555,7 @@ python3 scripts/code2database_builder.py field-access \
 
 输出：读/写该字段的函数列表，含位置和上下文。
 
-**对象来源标注（Fix #7）**：当项目 profile 声明了 `allocation_sites`（见 PROFILE_MANUAL.md §3.16）且 `build` 时带 `--profile`，每个 writer/reader 条目会带 `object_origin` 字段，显示变量在哪里被初始化（如 `"alloc_buffer_head(...):buffer_head"` vs `"jh->bh"`）。这让你能区分"同类型不同实例"的对象——对证明两个 writer 操作不同对象、不会竞争至关重要。
+**对象来源标注（）**：当项目 profile 声明了 `allocation_sites`（见 PROFILE_MANUAL.md §3.16）且 `build` 时带 `--profile`，每个 writer/reader 条目会带 `object_origin` 字段，显示变量在哪里被初始化（如 `"alloc_buffer_head(...):buffer_head"` vs `"jh->bh"`）。这让你能区分"同类型不同实例"的对象——对证明两个 writer 操作不同对象、不会竞争至关重要。
 
 ## 审计
 

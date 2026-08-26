@@ -3247,7 +3247,7 @@ def cmd_reverse_trace(args):
             summary = result.get("field_write_suspects_summary", {})
             lines.append("")
             lines.append(
-                f"Field write suspects (Fix #1, field={summary.get('field', '')},"
+                f"Field write suspects (, field={summary.get('field', '')},"
                 f"value_filter={summary.get('value_filter', '') or 'none'},"
                 f"struct_filter={summary.get('struct_filter', '') or 'none'}):"
             )

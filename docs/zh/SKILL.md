@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "将代码库转为可查询的代码数据库。扫描一次，永久查询——不再需要 grep/glob/Read。支持 C/C++/Go/Python/Java/Rust/ASM，调用图、条件路径、并发分析、数据流、FFI 追踪、19 个 cgdb 语义表。53 个 MCP 工具 + 212 个 CLI 命令。当代码问题涉及结构、调用链、影响面、并发或数据流时使用 /Code2Database。"
+description: "将代码库转为可查询的代码数据库。扫描一次，永久查询——不再需要 grep/glob/Read。支持 C/C++/Go/Python/Java/Rust/ASM，调用图、条件路径、并发分析、数据流、FFI 追踪、19 个 cgdb 语义表。53 个 MCP 工具 + 213 个 CLI 命令。当代码问题涉及结构、调用链、影响面、并发或数据流时使用 /Code2Database。"
 trigger: /Code2Database
 ---
 
@@ -75,7 +75,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP 服�
 | `daemon` | 后台自动同步 | Ops |
 | `health` | 图谱新鲜度 + profile 健康 | — |
 
-全部 212 个 CLI 命令仍可访问；上述 24 个覆盖 ~95% 的 agent 工作流。
+全部 213 个 CLI 命令仍可访问；上述 24 个覆盖 ~95% 的 agent 工作流。
 
 ## 支持语言
 

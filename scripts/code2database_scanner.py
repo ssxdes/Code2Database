@@ -174,6 +174,111 @@ def get_scanner(lang: str, api_prefixes: list = None, export_macros: list = None
     return scanner
 
 
+# ---------------------------------------------------------------------------
+# ProcessPoolExecutor worker — module-level so it can be pickled.
+#
+# scan_directory()'s _scan_one is a closure (captures scanner_factories,
+# _tls, profile, macro_bindings, etc.) so it cannot be submitted to a
+# ProcessPoolExecutor. We mirror the _proc_state_access pattern from
+# _builder/graph_build.py: a top-level worker that reads its config from
+# a module-level dict set by the parent before the pool is created.
+#
+# On Linux (default fork start method), child processes inherit the
+# parent's memory via copy-on-write — _PROC_SCAN_CONFIG is available
+# without being pickled across the process boundary. Each child builds
+# its own thread-local scanner instance (tree-sitter Parser.parse() is
+# not thread-safe).
+# ---------------------------------------------------------------------------
+
+# Set by scan_directory() before creating a ProcessPoolExecutor. Read
+# by _proc_get_scanner / _proc_scan_one in the forked children.
+_PROC_SCAN_CONFIG = None
+_PROC_TLS = None  # thread-local scanner cache, lazily created per child
+
+
+def _proc_get_scanner(file_lang):
+    """Build (or fetch from thread-local cache) a scanner instance.
+
+    Mirrors the in-process _get_scanner() closure but reads configuration
+    from the module-level _PROC_SCAN_CONFIG dict. Each forked child has
+    its own _PROC_TLS so tree-sitter parsers are never shared between
+    processes.
+    """
+    global _PROC_TLS
+    if _PROC_TLS is None:
+        import threading
+        _PROC_TLS = threading.local()
+    if not hasattr(_PROC_TLS, 'scanners'):
+        _PROC_TLS.scanners = {}
+    if file_lang not in _PROC_TLS.scanners:
+        cfg = _PROC_SCAN_CONFIG or {}
+        scanner = None
+        try:
+            scanner = get_scanner(
+                file_lang,
+                api_prefixes=cfg.get('api_prefixes'),
+                export_macros=cfg.get('export_macros'),
+                callback_patterns=cfg.get('callback_patterns'),
+                struct_op_types=cfg.get('struct_op_types'),
+                macro_dispatch_patterns=cfg.get('macro_dispatch_patterns'),
+                profile=cfg.get('profile'),
+                extraction_backend=cfg.get('extraction_backend'),
+                compile_commands_path=cfg.get('compile_commands_path'),
+                clang_args=cfg.get('clang_args'),
+            )
+        except (ValueError, ImportError):
+            if file_lang in ("c", "cpp"):
+                from _vendor._regex_c_scanner import scan_c_file
+                scanner = ("regex_fallback", scan_c_file)
+            else:
+                scanner = None
+        _PROC_TLS.scanners[file_lang] = scanner
+    return _PROC_TLS.scanners[file_lang]
+
+
+def _proc_scan_one(item):
+    """Module-level scan worker for ProcessPoolExecutor.
+
+    Args:
+        item: ``(file_path, file_lang)`` tuple.
+
+    Returns:
+        Scanner result dict (functions, edges, globals, ...) or ``None``
+        on failure. The dict is plain JSON-serializable data, so it
+        crosses the process boundary via pickle without issue.
+
+    All scanner configuration is read from the module-level
+    _PROC_SCAN_CONFIG, which is set by the parent process before fork().
+    """
+    fpath, file_lang = item
+    cfg = _PROC_SCAN_CONFIG or {}
+    source_root = cfg.get('source_root', '')
+    api_prefixes = cfg.get('api_prefixes')
+    profile = cfg.get('profile')
+    macro_bindings = cfg.get('macro_bindings')
+
+    _old_limit = sys.getrecursionlimit()
+    if _old_limit < 5000:
+        sys.setrecursionlimit(5000)
+    try:
+        scanner = _proc_get_scanner(file_lang)
+        if scanner is None:
+            return None
+        if isinstance(scanner, tuple) and scanner[0] == "regex_fallback":
+            return scanner[1](fpath, source_root,
+                             api_prefixes=api_prefixes, profile=profile)
+        return scanner.scan_file(fpath, source_root,
+                                 macro_bindings=macro_bindings)
+    except RecursionError:
+        sys.setrecursionlimit(_old_limit)
+        return None
+    except MemoryError:
+        sys.setrecursionlimit(_old_limit)
+        return None
+    except Exception:
+        return None
+
+
 def detect_language(filepath: str) -> str:
     """Detect language from file extension."""
     ext = Path(filepath).suffix.lower()
@@ -381,7 +486,8 @@ def scan_directory(source_root: str, lang: str = "auto",
                    extraction_backend: str = None,
                    compile_commands_path: str = None,
                    clang_args: list = None,
-                   scan_subsystems: list = None) -> dict:
+                   scan_subsystems: list = None,
+                   parallel_mode: str = "thread") -> dict:
     """Scan all source files in a directory tree.
 
     Args:
@@ -407,6 +513,19 @@ def scan_directory(source_root: str, lang: str = "auto",
                          source_root) starts with `<subsystem>/` are kept;
                          all others are filtered out. None or empty list =
                          scan everything (default behavior).
+        parallel_mode: 'thread' (default, ThreadPoolExecutor — GIL-limited but
+                        zero pickling overhead; tree-sitter releases the GIL
+                        during parse so C/C++ scans see real speedup) or
+                        'process' (ProcessPoolExecutor with fork COW — each
+                        child gets its own interpreter and tree-sitter parser,
+                        bypassing the GIL for Python-heavy post-processing).
+                        Use 'process' for CPU-bound workloads where
+                        post-processing dominates. Children do not accumulate
+                        results (each result is pickled back to the parent
+                        and released), so memory stays bounded at
+                        ~500MB/child for the Python + module baseline.
+                        Falls back to threads if process mode is unavailable
+                        (non-Linux, BrokenPipeError, etc.).
     """
     # Default to sequential scanning if memory guard indicates critical memory
     _force_sequential = False
@@ -897,10 +1016,56 @@ def scan_directory(source_root: str, lang: str = "auto",
             return None
 
     if workers > 1:
-        # Multi-threaded scanning — each thread gets its own tree-sitter
-        # parser instance via _get_scanner() for thread-safety.
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        with ThreadPoolExecutor(max_workers=workers) as pool:
+        # Decide pool type. ProcessPoolExecutor bypasses the GIL for
+        # Python-heavy post-processing (regex matching, dict construction,
+        # AST walking) — children inherit _PROC_SCAN_CONFIG via fork COW
+        # and build their own thread-local tree-sitter parsers. Falls
+        # back to ThreadPoolExecutor when fork is unavailable or when
+        # the project is too small to amortize process startup cost.
+        _use_process_pool = (
+            parallel_mode == "process"
+            and len(file_list) > 100
+            and not _force_sequential
+        )
+        _work_fn = _scan_one
+        _pool_obj = None
+        if _use_process_pool:
+            global _PROC_SCAN_CONFIG
+            _PROC_SCAN_CONFIG = {
+                'source_root': source_root,
+                'api_prefixes': api_prefixes,
+                'macro_bindings': macro_bindings,
+                'export_macros': _export_macros,
+                'callback_patterns': _callback_patterns,
+                'struct_op_types': _struct_op_types,
+                'macro_dispatch_patterns': _macro_dispatch_patterns,
+                'profile': profile,
+                'extraction_backend': extraction_backend,
+                'compile_commands_path': compile_commands_path,
+                'clang_args': clang_args,
+            }
+            try:
+                from concurrent.futures import ProcessPoolExecutor
+                import multiprocessing as _mp
+                _ctx = _mp.get_context("fork")
+                _pool_obj = ProcessPoolExecutor(
+                    max_workers=workers, mp_context=_ctx)
+                _work_fn = _proc_scan_one
+                if not quiet:
+                    print(f"[scan] ProcessPoolExecutor (fork, {workers} workers) "
+                          f"— true multi-core scanning (bypasses GIL)",
+                          file=sys.stderr)
+            except (ImportError, OSError, ValueError) as _e:
+                if not quiet:
+                    print(f"[scan] ProcessPoolExecutor unavailable ({_e}), "
+                          f"falling back to ThreadPoolExecutor",
+                          file=sys.stderr)
+                _pool_obj = None
+                _PROC_SCAN_CONFIG = None
+        if _pool_obj is None:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            _pool_obj = ThreadPoolExecutor(max_workers=workers)
+        with _pool_obj as pool:
             # Submit futures in batches to avoid holding all 709K Future objects at once
             _total_files = len(file_list)
             _par_processed = 0
@@ -914,7 +1079,7 @@ def scan_directory(source_root: str, lang: str = "auto",
                     _batch_end = min(_file_idx + _BATCH_SUBMIT_SIZE, _total_files)
                     while _file_idx < _batch_end:
                         item = file_list[_file_idx]
-                        fut = pool.submit(_scan_one, item)
+                        fut = pool.submit(_work_fn, item)
                         _active_futures[fut] = item
                         _file_idx += 1
 
@@ -2282,7 +2447,8 @@ def cmd_scan(args):
                                 extraction_backend=getattr(args, 'extraction_backend', 'auto'),
                                 compile_commands_path=getattr(args, 'compile_commands', '') or None,
                                 clang_args=_parse_clang_args(getattr(args, 'clang_args', '')),
-                                scan_subsystems=_scan_subsystems_list)
+                                scan_subsystems=_scan_subsystems_list,
+                                parallel_mode=getattr(args, 'parallel_mode', 'thread'))
     _streamed = result.get("_streamed_to") is not None
     _split_dir = result.get("_split_dir")
 
@@ -2767,6 +2933,19 @@ def main():
                               "env var). On high-core machines (64+ cores, 250GB+ "
                               "RAM), set this to your core count for maximum "
                               "throughput.")
+    p_scan.add_argument("--parallel-mode", choices=["thread", "process"], default="thread",
+                         help="Parallelism model for multi-worker scans: 'thread' "
+                              "(default, GIL-limited but zero overhead — tree-sitter "
+                              "releases the GIL during parse, but per-node Python "
+                              "post-processing serializes) or 'process' (true multi-core "
+                              "via fork, each child gets its own Python interpreter "
+                              "and tree-sitter parser; bypasses the GIL for CPU-bound "
+                              "scan workloads on 4+ core machines). Use 'process' for "
+                              "large C/C++ codebases (>1000 files) where post-processing "
+                              "dominates. Child processes inherit memory via "
+                              "copy-on-write, so memory cost is bounded (~500MB/child "
+                              "for the Python + module baseline; results do not "
+                              "accumulate in children).")
     p_scan.add_argument("--api-prefixes", default="",
                          help="Comma-separated public API prefixes for entry detection (e.g., 'mylib_,api_')")
     p_scan.add_argument("--profile", default="",

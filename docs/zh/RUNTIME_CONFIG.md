@@ -21,6 +21,7 @@
 | 字段 | 类型 | 默认值 | CLI 覆盖 | 说明 |
 |------|------|--------|----------|------|
 | `workers` | int | `0` | `--workers` | 并行扫描工作线程数。`0` = 自动（取 CPU 核心数与 8 的较小值）。`1` = 顺序执行（无并行）。在多核机器上增大此值可加快扫描速度；内存紧张时减小此值。 |
+| `parallel_mode` | string | `"thread"` | `--parallel-mode` | 多工作线程扫描的并行模型：`"thread"`（ThreadPoolExecutor — 受 GIL 约束但无 pickle 开销；tree-sitter 在解析期间释放 GIL，因此 C/C++ 扫描可获得真实加速）或 `"process"`（ProcessPoolExecutor + fork COW — 每个子进程拥有独立的解释器和 tree-sitter 解析器，绕过 GIL 进行 Python 密集型后处理）。当代码库 >1000 个文件且每个文件工作量较大时，使用 `"process"` 可获得显著加速。子进程通过写时复制继承内存，内存开销有界（每个子进程约 500MB 的 Python + 模块基线；结果不会在子进程中累积）。在 fork 不可用的平台（非 Linux）上回退到线程模式。 |
 | `max_file_size_kb` | int | `1024` | — | 扫描的最大文件大小（单位：KB）。超过此大小的文件将被跳过。如果需要包含大型生成文件则增大此值；若要跳过庞大的自动生成代码则减小此值。 |
 | `skip_dirs` | string[] | `[".git", "__pycache__", "node_modules", "build", ".cache"]` | — | 扫描时跳过的目录名（按目录名匹配，非路径）。这些值与扫描器内置的跳过集合（`__pycache__`、`node_modules`、`.git`、`build`、`dist`、`out`、`bin`、`obj`、`venv`、`.venv`、`.tox`、`.cache`、`third_party`、`vendor` 等）**合并**。添加需要排除的项目特定目录（如 `["generated", "vendor"]`）。 |
 

@@ -272,7 +272,7 @@ def cmd_kb_global_import(args):
 
 
 def cmd_build_multi(args):
-    """Phase 1: build unified C2D from multi-project manifest."""
+    """Build unified C2D from multi-project manifest."""
     from _builder.build_multi import build_multi
     summary = build_multi(
         manifest_path=args.manifest,
@@ -285,6 +285,143 @@ def cmd_build_multi(args):
         verbose=True,
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def cmd_references_of(args):
+    """List ALL source locations where a symbol is referenced."""
+    from _builder.code_intelligence import references_of
+    result = references_of(args.graph, args.node, limit=getattr(args, "limit", 100))
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
+def cmd_traverse_graph(args):
+    """Free-form BFS/DFS traversal."""
+    from _builder.code_intelligence import traverse_graph
+    result = traverse_graph(
+        args.graph, args.start,
+        mode=getattr(args, "mode", "bfs"),
+        max_depth=getattr(args, "max_depth", 5),
+        max_nodes=getattr(args, "max_nodes", 100),
+        max_tokens=getattr(args, "max_tokens", 4000),
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
+def cmd_hub_nodes(args):
+    """Most connected nodes."""
+    from _builder.code_intelligence import hub_nodes
+    result = hub_nodes(args.graph, top_n=getattr(args, "top", 20))
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
+def cmd_bridge_nodes(args):
+    """Bridge nodes (betweenness centrality)."""
+    from _builder.code_intelligence import bridge_nodes
+    result = bridge_nodes(args.graph, top_n=getattr(args, "top", 20))
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
+def cmd_graph_diff(args):
+    """Compare two graph builds."""
+    from _builder.graph_diff import graph_diff
+    result = graph_diff(args.before, args.after, detail=getattr(args, "detail", "summary"))
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
+def cmd_hybrid_search(args):
+    """Hybrid search: FTS5 + optional embedding + RRF."""
+    from _builder.hybrid_search import hybrid_search
+    result = hybrid_search(
+        graph_dir=args.graph, query=args.query, top_n=getattr(args, "top", 20),
+        semantic=getattr(args, "no_semantic", False) is False,
+        reranker=getattr(args, "reranker", "") or "",
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
+def cmd_co_change(args):
+    """Mine git log for co-change coupling edges."""
+    from _builder.co_change import extract_co_change_edges
+    edges = extract_co_change_edges(
+        source_root=args.source, graph_dir=args.graph,
+        min_co_changes=getattr(args, "min_co_changes", 3),
+        max_commits=getattr(args, "max_commits", 5000),
+    )
+    print(json.dumps({"source": args.source, "total_edges": len(edges), "edges": edges},
+                     ensure_ascii=False, indent=2))
+
+
+def cmd_ast_search(args):
+    """Structural code search with metavariables."""
+    from _builder.ast_pattern import search_pattern
+    results = search_pattern(args.graph, args.pattern, limit=getattr(args, "limit", 50))
+    print(json.dumps({"pattern": args.pattern, "matches": len(results),
+                       "results": results}, ensure_ascii=False, indent=2, default=str))
+
+
+def cmd_taint_analysis(args):
+    """Taint analysis: source/sink/sanitizer propagation."""
+    from _builder.taint_analysis import taint_analysis
+    sources = [s.strip() for s in args.sources.split(",") if s.strip()]
+    sinks = [s.strip() for s in args.sinks.split(",") if s.strip()]
+    sanitizers = []
+    if getattr(args, "sanitizers", ""):
+        sanitizers = [s.strip() for s in args.sanitizers.split(",") if s.strip()]
+    result = taint_analysis(args.graph, sources, sinks, sanitizers,
+                           max_depth=getattr(args, "max_depth", 10))
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
+def cmd_semantic_search(args):
+    """Neural semantic search."""
+    from _builder.neural_embed import semantic_search
+    result = semantic_search(args.graph, args.query, top_n=getattr(args, "top", 20))
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
+def cmd_code_slice(args):
+    """Code slicing: data-flow or usage slice."""
+    from _builder.code_slice import data_flow_slice, usage_slice
+    slice_type = getattr(args, "type", "data-flow")
+    if slice_type == "data-flow":
+        result = data_flow_slice(args.graph, args.node,
+                                max_depth=getattr(args, "max_depth", 8),
+                                max_nodes=getattr(args, "max_nodes", 50))
+    elif slice_type == "usage":
+        result = usage_slice(args.graph, args.node,
+                            max_depth=getattr(args, "max_depth", 3),
+                            max_nodes=getattr(args, "max_nodes", 30))
+    else:
+        result = {"error": f"unknown slice type: {slice_type}"}
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
+def cmd_sarif_export(args):
+    """Export to SARIF 2.1.0."""
+    from _builder.sarif_output import results_to_sarif, races_to_sarif, taint_to_sarif
+    input_path = getattr(args, "input", "")
+    if not input_path or not os.path.exists(input_path):
+        print("Usage: sarif-export --input <results.json> [--type races|taint|generic]")
+        return
+    with open(input_path) as f:
+        data = json.load(f)
+    sarif_type = getattr(args, "type", "generic")
+    if sarif_type == "races":
+        races = data.get("races", [data] if isinstance(data, dict) else data)
+        sarif = races_to_sarif(races)
+    elif sarif_type == "taint":
+        flows = data.get("flows", [data] if isinstance(data, dict) else data)
+        sarif = taint_to_sarif(flows)
+    else:
+        findings = data if isinstance(data, list) else [data]
+        sarif = results_to_sarif(findings)
+    output = getattr(args, "output", "")
+    if output:
+        with open(output, "w", encoding="utf-8") as f:
+            json.dump(sarif, f, ensure_ascii=False, indent=2)
+        print(f"SARIF written to {output}")
+    else:
+        print(json.dumps(sarif, ensure_ascii=False, indent=2))
 
 
 def cmd_c2d_add_foreign(args):
@@ -1044,11 +1181,11 @@ def main():
     p_bn.add_argument("--graph", required=True)
     p_bn.add_argument("--top", type=int, default=20)
 
-    p_gd = sub.add_parser("graph-diff",
+    p_gd2 = sub.add_parser("build-diff",
                           help="Compare two graph builds: added/removed/changed nodes+edges+communities")
-    p_gd.add_argument("--before", required=True, help="Previous build directory")
-    p_gd.add_argument("--after", required=True, help="Current build directory")
-    p_gd.add_argument("--detail", choices=["summary", "full"], default="summary")
+    p_gd2.add_argument("--before", required=True, help="Previous build directory")
+    p_gd2.add_argument("--after", required=True, help="Current build directory")
+    p_gd2.add_argument("--detail", choices=["summary", "full"], default="summary")
 
     p_hs = sub.add_parser("hybrid-search",
                           help="Hybrid search: FTS5 BM25 + optional embedding + RRF fusion")
@@ -2388,7 +2525,7 @@ def main():
         "traverse-graph": cmd_traverse_graph,
         "hub-nodes": cmd_hub_nodes,
         "bridge-nodes": cmd_bridge_nodes,
-        "graph-diff": cmd_graph_diff,
+        "build-diff": cmd_graph_diff,
         "hybrid-search": cmd_hybrid_search,
         "co-change": cmd_co_change,
         "ast-search": cmd_ast_search,

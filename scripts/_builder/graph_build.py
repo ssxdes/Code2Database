@@ -2081,6 +2081,49 @@ def _validate_stats_consistency(G: nx.DiGraph, pipeline_node_count: int) -> dict
     }
 
 
+def _compile_dispatch_patterns(inline_wrapper_patterns_cfg: list,
+                                macro_bridge_patterns_cfg: list):
+    """Pre-compile inline wrapper (O5) and macro bridge (O6) regex patterns.
+
+    Extracted from build_graph() so the compilation logic can be unit-tested
+    in isolation. Invalid patterns are skipped with a stderr warning rather
+    than aborting the build (a single bad pattern should not poison the
+    entire dispatch pipeline).
+
+    Args:
+        inline_wrapper_patterns_cfg: List of regex pattern strings for
+            inline-wrapper detection (e.g. ``[r"^(?:__)?(?:call|invoke)_(\\w+)$"]``).
+        macro_bridge_patterns_cfg: List of dicts ``{"pattern": str, "impl": str}``
+            for macro-bridge detection. Entries missing pattern or impl are skipped.
+
+    Returns:
+        Tuple ``(inline_wrapper_regexes, macro_bridge_compiled)``:
+        - ``inline_wrapper_regexes``: list of compiled ``re.Pattern`` objects
+        - ``macro_bridge_compiled``: list of ``(compiled_pattern, impl_string)`` tuples
+    """
+    inline_wrapper_regexes = []
+    for _pat in inline_wrapper_patterns_cfg:
+        try:
+            inline_wrapper_regexes.append(re.compile(_pat))
+        except re.error as _e:
+            print(f"[build] Warning: invalid inline_wrapper_pattern {_pat!r}: {_e}",
+                  file=sys.stderr)
+
+    macro_bridge_compiled = []
+    for _mb in macro_bridge_patterns_cfg:
+        _pat = _mb.get("pattern") if isinstance(_mb, dict) else None
+        _impl = _mb.get("impl") if isinstance(_mb, dict) else None
+        if not _pat or not _impl:
+            continue
+        try:
+            macro_bridge_compiled.append((re.compile(_pat), _impl))
+        except re.error as _e:
+            print(f"[build] Warning: invalid macro_bridge_pattern {_pat!r}: {_e}",
+                  file=sys.stderr)
+
+    return inline_wrapper_regexes, macro_bridge_compiled
+
+
 def build_graph(extraction: dict, profile: dict = None,
                 graph=None) -> nx.DiGraph:
     """Build a networkx DiGraph from extraction data.
@@ -2148,6 +2191,12 @@ def build_graph(extraction: dict, profile: dict = None,
     _fn_ptr_call_require_evidence = bool(_dispatch_tuning.get(
         "fn_ptr_call_require_evidence", False))
 
+    # Pre-compile inline wrapper patterns (O5) and macro bridge patterns (O6).
+    # Extraction into a named helper so the compilation logic is testable
+    # without driving a full build_graph() invocation.
+    _inline_wrapper_regexes, _macro_bridge_compiled = _compile_dispatch_patterns(
+        _inline_wrapper_patterns_cfg, _macro_bridge_patterns_cfg)
+
     def _effective_vtable_cap(field_name: str) -> int:
         """Return the dispatch cap for a given vtable field.
 
@@ -2165,28 +2214,6 @@ def build_graph(extraction: dict, profile: dict = None,
                 return int(v)
         return _MAX_VTABLE_DISPATCH_PER_CALL
 
-    # Pre-compile inline wrapper patterns (O5).
-    _inline_wrapper_regexes = []
-    for _pat in _inline_wrapper_patterns_cfg:
-        try:
-            _inline_wrapper_regexes.append(re.compile(_pat))
-        except re.error as _e:
-            print(f"[build] Warning: invalid inline_wrapper_pattern {_pat!r}: {_e}",
-                  file=sys.stderr)
-
-    # Pre-compile macro bridge patterns (O6).
-    _macro_bridge_compiled = []
-    for _mb in _macro_bridge_patterns_cfg:
-        _pat = _mb.get("pattern") if isinstance(_mb, dict) else None
-        _impl = _mb.get("impl") if isinstance(_mb, dict) else None
-        if not _pat or not _impl:
-            continue
-        try:
-            _macro_bridge_compiled.append((re.compile(_pat), _impl))
-        except re.error as _e:
-            print(f"[build] Warning: invalid macro_bridge_pattern {_pat!r}: {_e}",
-                  file=sys.stderr)
-
     G = graph if graph is not None else nx.DiGraph()
     functions = extraction.get("functions", [])
     raw_edges = extraction.get("edges", [])
@@ -2194,482 +2221,92 @@ def build_graph(extraction: dict, profile: dict = None,
     print(f"[build] Building graph... ({len(functions)} nodes, {len(raw_edges)} edges)",
           file=sys.stderr)
 
-    # Derive project name from extraction or first source file
-    project_name = extraction.get("project", "")
-    if not project_name and functions:
-        first_file = functions[0].get("source_file", "")
-        if first_file:
-            project_name = os.path.basename(os.path.dirname(first_file)) or "project"
+    # Phase 1: derive project name from extraction or first source file
+    from _builder.build_phases import (
+        _derive_project_name, _build_id_registry, _filter_noise_nodes,
+        _enable_streaming_deferred,
+    )
+    project_name = _derive_project_name(extraction, functions)
 
-    # Build ID registry for name resolution
-    id_registry = {}
-    for func in functions:
-        fid = func["id"]
-        id_registry[fid] = func
-        # Compute FQN
-        fqn = _compute_fqn(func, project_name)
-        G.add_node(fid,
-                   name=func.get("name", ""),
-                   fqn=fqn,
-                   source_file=func.get("source_file", ""),
-                   line=func.get("line", 0),
-                   domain=func.get("domain", "root"),
-                   labels=func.get("labels", []),
-                   labels_source=func.get("labels_source", {}),
-                   is_empty=func.get("is_empty", False),
-                   condition=func.get("condition", ""),
-                   api_constraints=func.get("api_constraints", ""),
-                   external_desc=func.get("external_desc", ""),
-                   semantic_desc=func.get("semantic_desc", ""),
-                   body_text=func.get("body_text", ""),
-                   signature=func.get("signature", ""),
-                   params=func.get("params", []),
-                   local_vars=func.get("local_vars", []),
-                   callee_args=func.get("callee_args", []),
-                   condition_vars=func.get("condition_vars", []),
-                   preproc_alive=func.get("preproc_alive", True),
-                   language=func.get("language", ""),
-                   reg_transfers=func.get("reg_transfers", []),
-                   reg_state_final=func.get("reg_state_final", {}),
-                   goto_jumps=func.get("goto_jumps", []),
-                   goto_labels=func.get("goto_labels", []),
-                   globals_read=func.get("globals_read", []),
-                   globals_written=func.get("globals_written", []),
-                   fields_read=func.get("fields_read", []),
-                   fields_written=func.get("fields_written", []),
-                   thread_model=func.get("thread_model"),
-                   thread_entry=func.get("thread_entry", False),
-                   thread_model_inherited=func.get("thread_model_inherited"),
-                   node_type=func.get("node_type", ""))
+    # Phase 2: build id_registry and add function nodes to the graph
+    id_registry = _build_id_registry(functions, G, project_name)
 
     # Build suffix index for O(1) callee resolution (vs O(N) scan)
     from _builder.utils import _build_suffix_index
     from _builder.import_resolve import _multi_strategy_resolve, _build_resolve_lookups
     suffix_index = _build_suffix_index(id_registry)
 
-    # Remove nodes that are clearly function pointer parameter names, not
-    # real functions. The scanner sometimes extracts parameter names as
-    # functions when they're used in callback registration calls.
-    # Key indicator: name is a very common param name AND has no body_text
-    # AND has no source_file (not extracted from any file).
-    _PARAM_ONLY_NAMES = frozenset({
-        'cb', 'fn', 'func', 'handler', 'callback', 'op', 'action', 'proc',
-        'routine', 'init', 'fini', 'usage', 'done', 'cpl', 'arg', 'ctx',
-        'data', 'result', 'rc', 'err', 'len', 'size', 'count', 'buf',
-    })
-    # C++ artifact patterns: names that are struct member variables or
-    # operator overloads, not real functions. These appear when the C
-    # scanner processes C++ source files and misidentifies struct members.
-    _CPP_SOURCE_EXTS = frozenset({'.cpp', '.cc', '.cxx', '.hpp'})
-    nodes_to_remove = []
-    for nid, ndata in G.nodes(data=True):
-        if ndata.get("is_empty", False):
-            continue
-        name = ndata.get("name", "")
-        # Remove parameter-name-only nodes (no body, no source file)
-        if (name in _PARAM_ONLY_NAMES
-                and not ndata.get("body_text", "")
-                and not ndata.get("source_file", "")):
-            nodes_to_remove.append(nid)
-            continue
-        # Remove C++ struct member variables / operator overloads
-        # Only when: empty body_text AND C++ source file AND name is:
-        # - starts with _ (private member convention), OR
-        # - is exactly "operator" or "operator<something>" (C++ overload)
-        src_file = ndata.get("source_file", "")
-        src_ext = ""
-        if "." in src_file:
-            src_ext = "." + src_file.rsplit(".", 1)[-1]
-        if (not ndata.get("body_text", "")
-                and src_ext in _CPP_SOURCE_EXTS
-                and (name.startswith("_") or name.startswith("operator"))
-                and not any(name.startswith(p) for p in _keep_prefixes)):  # Keep project API functions
-            nodes_to_remove.append(nid)
-    if nodes_to_remove:
-        for nid in nodes_to_remove:
-            G.remove_node(nid)
-            id_registry.pop(nid, None)
-        # Rebuild suffix index after removal
-        suffix_index = _build_suffix_index(id_registry)
-        param_count = sum(1 for nid in nodes_to_remove
-                          if G is not None)  # all removed nodes count
-        print(f"Removed {len(nodes_to_remove)} noise nodes (param-name-only + C++ artifacts)")
-        # Diag: list removed C++ artifacts for verification
-        for nid in nodes_to_remove:
-            nd = id_registry.get(nid, {})
-            name = nd.get("name", nid) if isinstance(nd, dict) else nid
-            # Only print C++ artifacts (not param-only names)
-            if name not in _PARAM_ONLY_NAMES:
-                print(f"  C++ artifact removed: {nid}")
+    # Phase 3: filter noise nodes (param-name-only + C++ artifacts)
+    _filter_noise_nodes(G, id_registry, _keep_prefixes)
+    # Rebuild suffix index after node removal (filter may have popped entries)
+    suffix_index = _build_suffix_index(id_registry)
 
     # Pre-build lookup structures for multi-strategy resolve (avoid O(N) rebuild per edge)
     # Always build lookups — _build_resolve_lookups() is O(N) once, then each
     # _multi_strategy_resolve() call is O(1) amortized via pre-built indices.
     _ms_lookups = _build_resolve_lookups(G)
 
-    # Enable deferred mode for StreamingGraph during edge processing.
-    # This avoids storing full edge attribute dicts in _edge_data (saves ~590MB
-    # for 5.4M edges), keeping only lightweight edge keys in _edge_set.
-    # Edge attributes are stored in _edge_batch for close() to write directly.
-    _using_streaming = isinstance(G, StreamingGraph)
-    if _using_streaming:
-        G.set_deferred(True)
+    # Phase 4: enable deferred mode for StreamingGraph during edge processing
+    _using_streaming = _enable_streaming_deferred(G)
 
-    # Process edges - create empty nodes and resolve callee IDs
-    # Track empty nodes that need to be added
-    empty_nodes_needed = set()
-    # Build index: target → edge for O(1) condition lookup (avoids O(n²) scan)
-    _edge_target_index = {}
-    for edge in raw_edges:
-        tgt = edge.get("target", "")
-        if tgt and tgt not in _edge_target_index:
-            _edge_target_index[tgt] = edge
-        if edge.get("is_cond_child") and edge.get("source", "") not in G:
-            empty_nodes_needed.add(edge["source"])
+    # Phase 5: process edges — create empty conditional placeholder nodes
+    # and build the target→first-edge index used by downstream condition lookup
+    from _builder.build_phases import _create_empty_conditional_nodes
+    _edge_target_index = _create_empty_conditional_nodes(G, raw_edges, id_registry)
 
-    # Add empty nodes
-    for enid in empty_nodes_needed:
-        # Derive domain from the parent caller (extract from empty node id pattern)
-        # Pattern: invoker_id__cond_N
-        parts = enid.rsplit("__cond_", 1)
-        parent_id = parts[0] if len(parts) > 1 else ""
-        parent_domain = "root"
-        if parent_id in id_registry:
-            parent_domain = id_registry[parent_id].get("domain", "root")
+    # Phase 6: build vtable field-name set + struct_type→{field→[func]} index
+    from _builder.build_phases import (
+        _build_vtable_field_index, _build_name_domain_index,
+        _process_asm_aliases, _label_export_symbol_functions,
+        _label_struct_op_types, _emit_ops_bind_edges,
+        _build_field_dispatch_map,
+    )
+    _vtable_field_names, _vtable_type_fields = _build_vtable_field_index(
+        extraction, profile)
 
-        cond_text = ""
-        # O(1) lookup via pre-built index instead of O(n) scan of raw_edges
-        cond_edge = _edge_target_index.get(enid)
-        if cond_edge and cond_edge.get("call_condition"):
-            cond_text = cond_edge["call_condition"]
+    # Phase 7: build name→domain + name→nid lookup indexes
+    _name_to_domain, _name_to_nid = _build_name_domain_index(G, extraction)
 
-        G.add_node(enid,
-                   name=f"<conditional:{cond_text}>",
-                   source_file="",
-                   line=0,
-                   domain=parent_domain,
-                   labels=[],
-                   is_empty=True,
-                   condition=cond_text)
-        id_registry[enid] = {"id": enid, "domain": parent_domain, "name": f"<cond:{cond_text}>"}
-
-    # Build set of vtable field names for FN_PTR edge classification.
-    # FN_PTR edges whose targets match vtable field names are handled by
-    # vtable dispatch (INFERRED edges) and should not be resolved individually.
-    _vtable_field_names = set()
-    # Also build struct_type → {field → [func_name]} for chain-tail vtable matching
-    _vtable_type_fields = defaultdict(lambda: defaultdict(list))
-    for vtable in extraction.get("vtable_registrations", []):
-        # Skip malformed vtable entries (e.g., Rust IMPLEMENTS without struct_type)
-        if "struct_type" not in vtable:
-            continue
-        # Skip vtable_registrations from test source files — they pollute
-        # _vtable_field_names with fields that are not vtable operations
-        # (e.g., a test file setting req.cb_fn = test_cb causes cb_fn to
-        # be classified as a vtable field, making ALL cb_fn fn_ptr_calls
-        # resolve as vtable_dispatch instead of field_dispatch).
-        vtable_src = vtable.get("source_file", "")
-        if _is_test_source(vtable_src, profile):
-            continue
-        stype = vtable.get("struct_type", "")
-        for reg in vtable.get("registrations", []):
-            _vtable_field_names.add(reg["field"])
-            if stype:
-                _vtable_type_fields[stype][reg["field"]].append(reg.get("func_name", ""))
-
-    # Build name→domain index for fast caller domain lookup
-    # Also build name→nid index for API_entry labeling
-    # Must be built BEFORE struct_op_types labeling below.
-    _name_to_domain = {}
-    _name_to_nid = {}
-    for func in extraction.get("functions", []):
-        fname = func.get("name", "")
-        fdomain = func.get("domain", "")
-        fnid = func.get("id", "")
-        if fname and fdomain:
-            _name_to_domain[fname] = fdomain
-        if fname and fnid:
-            # When same name exists from multiple sources (C + ASM),
-            # prefer non-extern (complete definition) over extern declaration
-            if fname in _name_to_nid:
-                existing_nid = _name_to_nid[fname]
-                existing_node = G.nodes.get(existing_nid, {})
-                new_node = G.nodes.get(fnid, {})
-                # Prefer: has body (not extern) > no body (extern)
-                if (not existing_node.get("is_empty", True) and
-                        new_node.get("is_empty", True)):
-                    continue  # Keep existing (has body)
-            _name_to_nid[fname] = fnid
-
-    # Handle ASM aliases: SYM_FUNC_ALIAS(alias, original)
-    # Create alias mapping edges: alias → original
+    # Phase 8: process ASM aliases (SYM_FUNC_ALIAS alias→original edges)
     _asm_aliases = extraction.get("asm_aliases", [])
-    _asm_alias_map = {}  # alias_name → original_name
-    for alias_info in _asm_aliases:
-        alias_name = alias_info.get("alias", "")
-        original_name = alias_info.get("original", "")
-        if alias_name and original_name:
-            _asm_alias_map[alias_name] = original_name
-            alias_nid = _name_to_nid.get(alias_name)
-            original_nid = _name_to_nid.get(original_name)
-            if alias_nid and original_nid and alias_nid != original_nid:
-                if not G.has_edge(alias_nid, original_nid):
-                    G.add_edge(alias_nid, original_nid,
-                               call_order=0,
-                               call_condition="",
-                               confidence="EXTRACTED",
-                               source="asm_alias",
-                               confidence_score=1.0)
+    _asm_alias_map = _process_asm_aliases(extraction, G, _name_to_nid)
 
-    # Label EXPORT_SYMBOL functions as API_entry
-    # Skip functions in non-API paths from profile.project_boundaries.non_api_paths
-    # (project-agnostic: empty by default; auto-profile / reference profiles
-    # populate project-specific paths like kernel's tools/, scripts/, selftests/).
+    # Phase 9: label EXPORT_SYMBOL functions as API_entry
+    # (project_boundaries.non_api_paths filters out tools/scripts/selftests)
     _NON_API_PATHS = tuple(
         (profile or {}).get("project_boundaries", {}).get("non_api_paths", [])
         if isinstance(profile, dict) else []
     )
-    _export_symbols = extraction.get("export_symbols", [])
-    for exp in _export_symbols:
-        exp_name = exp.get("name", "")
-        if exp_name and exp_name in _name_to_nid:
-            exp_nid = _name_to_nid[exp_name]
-            if exp_nid in G.nodes:
-                # Check source_file for non-API paths
-                src = G.nodes[exp_nid].get("source_file", "").replace(os.sep, '/')
-                if any(p in src for p in _NON_API_PATHS):
-                    continue
-                labels = list(G.nodes[exp_nid].get("labels", []))
-                if "API_entry" not in labels:
-                    labels.append("API_entry")
-                    G.nodes[exp_nid]["labels"] = labels
+    _label_export_symbol_functions(
+        G, extraction, _name_to_nid, _NON_API_PATHS)
 
-    # Label functions registered in struct_op_types (VFS ops) as API_entry.
-    # These are kernel/framework API surface — called through function pointer
-    # dispatch by the framework, making them entry points into the module.
-    # Skip functions in non-API paths from profile.project_boundaries.non_api_paths.
-    _struct_op_types = set(profile.get("struct_op_types", [])) if profile else set()
-    if _struct_op_types:
-        for vtable in extraction.get("vtable_registrations", []):
-            stype = vtable.get("struct_type", "")
-            if stype not in _struct_op_types:
-                continue
-            for reg in vtable.get("registrations", []):
-                fn_name = reg.get("func_name", "")
-                if not fn_name or fn_name not in _name_to_nid:
-                    continue
-                fn_nid = _name_to_nid[fn_name]
-                if fn_nid in G.nodes:
-                    src = G.nodes[fn_nid].get("source_file", "").replace(os.sep, '/')
-                    if any(p in src for p in _NON_API_PATHS):
-                        continue
-                    labels = list(G.nodes[fn_nid].get("labels", []))
-                    if "API_entry" not in labels:
-                        labels.append("API_entry")
-                        G.nodes[fn_nid]["labels"] = labels
+    # Phase 10: label functions registered in struct_op_types (VFS ops) as API_entry
+    _label_struct_op_types(
+        G, extraction, profile, _name_to_nid, _NON_API_PATHS)
 
-    # C1 (backport from cdb report 5.4.1): emit explicit OPS_BIND edges
-    # for each vtable registration. Unlike the in-memory vtable_index used
-    # for fn_ptr dispatch resolution, these edges are persisted in the graph
-    # so queries can find "all functions bound to file_operations.read_iter"
-    # without recomputing the index.
-    for vtable in extraction.get("vtable_registrations", []):
-        vtable_src = vtable.get("source_file", "")
-        if _is_test_source(vtable_src, profile):
-            continue
-        stype = vtable.get("struct_type", "")
-        var_name = vtable.get("var_name", "")
-        vtable_cond = vtable.get("condition", "")
-        for reg in vtable.get("registrations", []):
-            fn_name = reg.get("func_name", "")
-            field_name = reg.get("field", "")
-            if not fn_name or fn_name not in _name_to_nid:
-                continue
-            fn_nid = _name_to_nid[fn_name]
-            if fn_nid not in G.nodes:
-                continue
-            # Use the vtable var_name as the source node id (synthetic).
-            # If the var is also a graph node, prefer that; otherwise use
-            # a synthetic "<domain>.<var_name>" id.
-            vtable_nid = f"vtable::{var_name}" if var_name else f"vtable::{stype}"
-            if vtable_nid not in G.nodes:
-                G.add_node(vtable_nid,
-                            name=var_name or stype,
-                            kind="vtable",
-                            struct_type=stype,
-                            source_file=vtable_src,
-                            labels=[],
-                            domain="")
-            G.add_edge(vtable_nid, fn_nid,
-                        relation="OPS_BIND",
-                        field_name=field_name,
-                        struct_type=stype,
-                        call_condition=vtable_cond,
-                        confidence="EXTRACTED",
-                        source_tag="vtable_registration",
-                        confidence_score=1.0,
-                        preproc_condition=vtable_cond,
-                        preproc_alive=True,
-                        evidence=f"vtable_registration: {stype}.{field_name} = {fn_name} (var={var_name}, condition={vtable_cond or 'none'})")
+    # Phase 11: emit explicit OPS_BIND edges for vtable registrations
+    _emit_ops_bind_edges(G, extraction, profile, _name_to_nid)
 
-    # Build field dispatch map from struct field assignments.
-    # Two-level map: field_name → struct_chain → {target_func_name, ...}
-    # Also flat map for fallback when struct_chain is unknown.
-    # Also domain-scoped map: field_name → domain → {target_func_name, ...}
-    # Used to resolve FN_PTR calls like ctx->cb_fn() → actual callback targets.
-    _field_dispatch_map = {}  # field_name → {struct_chain → {target_func_name, ...}}
-    _field_dispatch_flat = {}  # field_name → {target_func_name, ...} (all targets, no struct context)
-    _field_dispatch_by_domain = {}  # field_name → domain → {target_func_name, ...}
-    _field_dispatch_by_target_domain = {}  # field_name → target_domain → {target_func_name, ...}
+    # Phase 12: build field dispatch map (4 indexes + param-bridged FA dict)
+    (_field_dispatch_map, _field_dispatch_flat,
+     _field_dispatch_by_domain, _field_dispatch_by_target_domain,
+     _param_bridged_fa) = _build_field_dispatch_map(
+        extraction, _name_to_domain)
 
-    # Param-bridged field_assignments: when a struct field is assigned a
-    # function-pointer parameter (e.g., ctx->cb_fn = cb_fn where cb_fn is a
-    # parameter), we can't resolve the target directly. Instead, we record
-    # the mapping and resolve it by finding what callers pass for that param.
-    _param_bridged_fa = {}  # (field_name, struct_chain_norm) → [(caller_name, param_name, param_index)]
+    # Phase 13: build caller→struct_chain lookup from fn_ptr_calls
+    from _builder.build_phases import (
+        _build_fn_ptr_struct_lookup, _build_struct_embedding_index,
+        _identify_polymorphic_callback_fields,
+    )
+    _fn_ptr_struct_lookup = _build_fn_ptr_struct_lookup(extraction)
 
-    for fa in extraction.get("field_assignments", []):
-        field_name = fa.get("field_name", "")
-        target_func = fa.get("target_func", "")
-        struct_chain = fa.get("struct_chain", "")
-        caller_name = fa.get("caller", "")
-        is_param = fa.get("is_param", False)
-        param_index = fa.get("param_index", -1)
+    # Phase 14: build struct embedding index (inner_type → embedding entries)
+    _embedding_index, _known_struct_types = _build_struct_embedding_index(
+        extraction, profile)
 
-        if not field_name or not target_func:
-            continue
-
-        if is_param:
-            # Record param-bridged FA for later resolution
-            sc_norm = struct_chain.replace("->", ".")
-            key = (field_name, sc_norm)
-            _param_bridged_fa.setdefault(key, []).append(
-                (caller_name, target_func, param_index))
-            # Also index under original struct_chain
-            if sc_norm != struct_chain:
-                key2 = (field_name, struct_chain)
-                _param_bridged_fa.setdefault(key2, []).append(
-                    (caller_name, target_func, param_index))
-            continue
-
-        # Normal (non-param) field_assignment
-        # Normalize struct_chain: treat -> and . as equivalent
-        # (e.g., "req->payload" and "req.payload" map to same key)
-        sc_norm = struct_chain.replace("->", ".")
-        _field_dispatch_map.setdefault(field_name, {}).setdefault(sc_norm, set()).add(target_func)
-        # Also index under original key for backward compatibility
-        if sc_norm != struct_chain:
-            _field_dispatch_map.setdefault(field_name, {}).setdefault(struct_chain, set()).add(target_func)
-        _field_dispatch_flat.setdefault(field_name, set()).add(target_func)
-        # Derive domain from caller function
-        caller_domain = _name_to_domain.get(caller_name, "")
-        if caller_domain:
-            _field_dispatch_by_domain.setdefault(field_name, {}).setdefault(caller_domain, set()).add(target_func)
-        # Also index by target function's domain for cross-module dispatch
-        target_domain = _name_to_domain.get(target_func, "")
-        if target_domain:
-            _field_dispatch_by_target_domain.setdefault(field_name, {}).setdefault(target_domain, set()).add(target_func)
-            _field_dispatch_by_domain.setdefault(field_name, {}).setdefault(caller_domain, set()).add(target_func)
-
-    # Build caller→struct_chain lookup from fn_ptr_calls for context-aware dispatch.
-    # fn_ptr_calls format: {caller_name: [{field_name, struct_chain}, ...]}
-    _fn_ptr_struct_lookup = {}  # (caller_name, field_name) → struct_chain
-    for caller_name, calls in extraction.get("fn_ptr_calls", {}).items():
-        for call in calls:
-            fn_field = call.get("field_name", "")
-            fn_struct = call.get("struct_chain", "")
-            if fn_field and fn_struct:
-                _fn_ptr_struct_lookup[(caller_name, fn_field)] = fn_struct
-
-    # Build struct embedding index from extraction data + profile.
-    # Maps inner_type → [{outer_type, member, domain_hint}]
-    # Used for improved vtable dispatch disambiguation and module_hint.
-    _embedding_index = {}
-    # 1. From struct_defs: field_type/field_name pairs where field_type is a known struct
-    _known_struct_types = set()
-    for sd in extraction.get("struct_defs", []):
-        stype = sd.get("struct_type", "")
-        if stype:
-            _known_struct_types.add(stype)
-    for sd in extraction.get("struct_defs", []):
-        stype = sd.get("struct_type", "")
-        if not stype:
-            continue
-        for field in sd.get("fields", []):
-            ftype = field.get("field_type", "")
-            fname = field.get("field_name", "")
-            if ftype and fname and ftype in _known_struct_types:
-                _embedding_index.setdefault(ftype, []).append({
-                    "outer_type": stype,
-                    "member": fname,
-                    "domain_hint": "",
-                })
-    # 2. From container_of_usages: add inner_type→outer_type (inner_type may be unknown)
-    for co in extraction.get("container_of_usages", []):
-        outer = co.get("outer_type", "")
-        member = co.get("member", "")
-        inner = co.get("inner_type", "")
-        if outer and member:
-            key = inner if inner else member  # fallback to member if inner unknown
-            _embedding_index.setdefault(key, []).append({
-                "outer_type": outer,
-                "member": member,
-                "domain_hint": "",
-            })
-    # 3. From conversion_funcs: add inner_type→outer_type with member
-    for cf in extraction.get("conversion_funcs", []):
-        outer = cf.get("outer_type", "")
-        inner = cf.get("inner_type", "")
-        member = cf.get("member", "")
-        if outer and inner:
-            _embedding_index.setdefault(inner, []).append({
-                "outer_type": outer,
-                "member": member,
-                "domain_hint": "",
-            })
-    # 4. From profile manual_entries (highest priority — explicit overrides)
-    se_config = profile.get("struct_embeddings", {}) if profile else {}
-    for entry in se_config.get("manual_entries", []):
-        inner = entry.get("inner_type", "")
-        outer = entry.get("outer_type", "")
-        member = entry.get("member", "")
-        hint = entry.get("domain_hint", "")
-        if inner and outer and member:
-            _embedding_index.setdefault(inner, []).append({
-                "outer_type": outer,
-                "member": member,
-                "domain_hint": hint,
-            })
-    # Deduplicate embedding entries
-    for key in _embedding_index:
-        seen = set()
-        unique = []
-        for entry in _embedding_index[key]:
-            ekey = (entry["outer_type"], entry["member"])
-            if ekey not in seen:
-                seen.add(ekey)
-                unique.append(entry)
-        _embedding_index[key] = unique
-
-    # Identify polymorphic callback fields: fields with many different
-    # struct_chains in field_assignments indicate a generic callback field
-    # (like cb_fn, cb_func) used across unrelated contexts. For these fields,
-    # domain_fallback and target_domain_hier strategies produce massive
-    # over-dispatch and should be skipped.
-    _POLYMORPHIC_FIELD_THRESHOLD = 5  # >=5 struct_chains = polymorphic
-    _polymorphic_fields = set()
-    for field_name, chain_map in _field_dispatch_map.items():
-        if len(chain_map) >= _POLYMORPHIC_FIELD_THRESHOLD:
-            _polymorphic_fields.add(field_name)
-    # Also count param-bridged FA struct_chains toward polymorphic detection
-    _param_bridged_struct_chains = {}  # field_name → set of struct_chains
-    for (field_name, sc_norm), entries in _param_bridged_fa.items():
-        _param_bridged_struct_chains.setdefault(field_name, set()).add(sc_norm)
-    for field_name, chains in _param_bridged_struct_chains.items():
-        existing = len(_field_dispatch_map.get(field_name, {}))
-        total = existing + len(chains)
-        if total >= _POLYMORPHIC_FIELD_THRESHOLD:
-            _polymorphic_fields.add(field_name)
+    # Phase 15: identify polymorphic callback fields (cb_fn, cb_func, etc.)
+    _polymorphic_fields = _identify_polymorphic_callback_fields(
+        _field_dispatch_map, _param_bridged_fa)
 
     # Add edges with resolved IDs
     _edge_progress_milestone = 0

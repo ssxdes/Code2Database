@@ -1300,4 +1300,98 @@ __all__ += [
     "_refine_domains",
     "_reclassify_external_domains",
     "_prune_isolated_file_nodes",
+    "_annotate_call_edges_with_goto",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Phase 30: annotate call edges with goto control flow information
+# ---------------------------------------------------------------------------
+
+def _annotate_call_edges_with_goto(G) -> int:
+    """Annotate call edges with goto control flow information.
+
+    For functions with goto_jumps, this phase adds a call_condition
+    annotation to edges whose call_order falls within a goto's control
+    flow range:
+
+    - **Backward goto (loop)**: calls between the label (earlier line)
+      and the goto (later line) may repeat. Annotated with
+      ``goto_loop:<label_name>``.
+    - **Forward goto (skip)**: calls between the goto (earlier line)
+      and the target label (later line) may be skipped. Annotated with
+      ``goto_skip:<label_name>``.
+
+    Uses callee_args line info for precise line-based range matching.
+    When a callee_arg has no explicit line, the function's start line
+    is used as an approximation: ``func_line + call_order``.
+
+    Args:
+        G: NetworkX DiGraph. Mutated in place — call_condition attribute
+            may be appended on edges from goto-bearing caller nodes.
+
+    Returns:
+        Number of call edges annotated with a goto control flow tag.
+    """
+    goto_annotated = 0
+    for nid, ndata in G.nodes(data=True):
+        goto_jumps = ndata.get("goto_jumps", [])
+        goto_labels = ndata.get("goto_labels", [])
+        if not goto_jumps:
+            continue
+        # Build label_name → line_number map
+        label_line_map = {lbl["label"]: lbl["line"] for lbl in goto_labels}
+        # Build call_order → line map from callee_args
+        callee_args = ndata.get("callee_args", [])
+        if not callee_args:
+            continue
+        # Collect call_order values with their line numbers.
+        # callee_args may have "line" from scanner, otherwise approximate from order
+        func_line = ndata.get("line", 0)
+        co_lines: Dict[int, int] = {}
+        for ca in callee_args:
+            _co = ca.get("call_order")
+            _ca_line = ca.get("line", 0)
+            if _co is not None:
+                co_lines[_co] = _ca_line if _ca_line else (func_line + _co)
+        # For each goto jump, determine affected call_orders and annotate edges
+        for gj in goto_jumps:
+            label_name = gj["label"]
+            goto_line = gj["line"]
+            direction = gj.get("direction", "unknown")
+            target_line = label_line_map.get(label_name)
+            if target_line is None or direction == "unknown":
+                continue
+            # Determine the affected line range
+            if direction == "backward":
+                # Loop: calls between label (earlier line) and goto (later line)
+                range_start = target_line
+                range_end = goto_line
+            else:  # forward
+                # Skip: calls between goto (earlier line) and target label (later line)
+                range_start = goto_line
+                range_end = target_line
+            # Find call edges from this function whose line falls in range
+            for succ in G.successors(nid):
+                try:
+                    edge_data = G[nid][succ]
+                except KeyError:
+                    continue
+                co = edge_data.get("call_order")
+                if co is None or co not in co_lines:
+                    continue
+                call_line = co_lines[co]
+                if range_start <= call_line <= range_end:
+                    existing_cond = edge_data.get("call_condition", "")
+                    goto_tag = (f"goto_loop:{label_name}" if direction == "backward"
+                                else f"goto_skip:{label_name}")
+                    if existing_cond:
+                        new_cond = f"{existing_cond} && {goto_tag}"
+                    else:
+                        new_cond = goto_tag
+                    edge_data["call_condition"] = new_cond
+                    goto_annotated += 1
+    if goto_annotated > 0:
+        print(f"[build] Annotated {goto_annotated} call edges with goto "
+              f"control flow", file=sys.stderr)
+    return goto_annotated

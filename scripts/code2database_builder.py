@@ -38,8 +38,7 @@ from _builder.key_paths import cmd_key_paths
 from _builder.update_sync import cmd_merge, cmd_update, cmd_sync
 from _builder.semantics import cmd_classify_endpoints, cmd_extract_semantics, cmd_apply_semantics, cmd_think_chain, cmd_extract_signals
 from _builder.memory_cmd import cmd_save_memory, cmd_search_memory, cmd_validate_memory
-from _builder.export import cmd_export_obsidian
-from _builder.visualizer import cmd_export_html
+from _builder.export import cmd_export_obsidian, cmd_export_html
 from _builder.watcher import cmd_watch
 from _builder.plugins import cmd_plugins, cmd_validate_plugin
 from _builder.concurrency import cmd_concurrency_risks, cmd_data_lifecycle

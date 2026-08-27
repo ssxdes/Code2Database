@@ -132,6 +132,7 @@ def write_coverage_report(graph_dir: str) -> Optional[str]:
         "graph_dir": graph_dir,
         "total_files": total_files,
         "subsystem_count": len(subsystem_files),
+        "scanned_subsystems": sorted(subsystem_files.keys()),
         "subsystems": [
             {
                 "name": sub,
@@ -367,26 +368,24 @@ def query_coverage(
                 (function_name, f"%{function_name}",
                  f"%{function_name}%")
             ).fetchall()
+            matches = [
+                {
+                    "id": r[0], "name": r[1], "fqn": r[2], "file_id": r[3],
+                    "line": r[4], "file_path": r[5], "kind": r[6],
+                    "source_layer": r[7],
+                }
+                for r in rows
+            ]
+            result["match_count"] = len(matches)
+            result["matches"] = matches
             result["function_query"] = {
                 "query": function_name,
-                "match_count": len(rows),
-                "matches": [
-                    {
-                        "id": r[0],
-                        "name": r[1],
-                        "fqn": r[2],
-                        "file_id": r[3],
-                        "line": r[4],
-                        "file_path": r[5],
-                        "kind": r[6],
-                        "source_layer": r[7],
-                    }
-                    for r in rows
-                ],
+                "match_count": len(matches),
+                "matches": matches,
             }
-            if not rows:
-                # No match — fall back to subsystem hint
+            if not matches:
                 hints = _guess_subsystem_for_name(function_name)
+                result["subsystem_hints"] = hints
                 result["function_query"]["subsystem_hints"] = hints
                 result["function_query"]["suggestion"] = (
                     f"function '{function_name}' not in graph; "
@@ -396,7 +395,6 @@ def query_coverage(
                 )
 
         if file_path:
-            # Match by exact path, then by path suffix
             rows = conn.execute(
                 "SELECT id, path, language, line_count, byte_count, "
                 "commit_hash FROM cgdb_files "
@@ -412,13 +410,13 @@ def query_coverage(
                 }
                 for r in rows
             ]
+            result["scanned"] = len(scanned_files) > 0
             result["file_query"] = {
                 "query": file_path,
                 "scanned": len(scanned_files) > 0,
                 "matches": scanned_files,
             }
             if scanned_files:
-                # List functions defined in the first matching file
                 file_id = scanned_files[0]["id"]
                 fn_rows = conn.execute(
                     "SELECT name, fqn, line, kind FROM cgdb_nodes "
@@ -427,6 +425,7 @@ def query_coverage(
                     "ORDER BY line LIMIT 200",
                     (file_id,)
                 ).fetchall()
+                result["function_count"] = len(fn_rows)
                 result["file_query"]["functions_in_file"] = [
                     {"name": r[0], "fqn": r[1], "line": r[2], "kind": r[3]}
                     for r in fn_rows
@@ -434,7 +433,6 @@ def query_coverage(
                 result["file_query"]["function_count"] = len(fn_rows)
 
         if not function_name and not file_path:
-            # No query — return subsystem summary
             file_rows = conn.execute(
                 "SELECT path FROM cgdb_files"
             ).fetchall()
@@ -445,20 +443,21 @@ def query_coverage(
                 s for s in _KERNEL_SUBSYSTEMS
                 if s not in scanned and s != "root"
             ]
+            result["scanned_subsystems"] = scanned
             result["summary"] = {
                 "scanned_subsystems": scanned,
                 "missing_common_subsystems": missing_common,
                 "total_files": len(file_rows),
                 "coverage_report_path": (
                     os.path.join(graph_dir,
-                                 ".code2database_coverage_report.json")
+                                ".code2database_coverage_report.json")
                     if os.path.exists(os.path.join(
                         graph_dir, ".code2database_coverage_report.json"))
                     else None
                 ),
                 "file_coverage_path": (
                     os.path.join(graph_dir,
-                                 ".code2database_file_coverage.json")
+                                ".code2database_file_coverage.json")
                     if os.path.exists(os.path.join(
                         graph_dir, ".code2database_file_coverage.json"))
                     else None

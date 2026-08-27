@@ -2002,12 +2002,12 @@ TOOLS = {
 }
 
 # ============================================================================
-# Merge in 27 design-report MCP tools (render_source / verify_consistency /
+# Merge in 28 design-report MCP tools (render_source / verify_consistency /
 # edit_token / ... / commit_db_transaction / rollback_db_transaction /
 # insert_node_after / delete_node / add_function).
-# These implement design-report appendix B (27 tools: 8 L1 + 8 L2 + 7 L3 +
+# These implement design-report appendix B (28 tools: 8 L1 + 8 L2 + 7 L3 +
 # 2 writeback + 3 advanced-edit). They are imported from mcp_report_tools
-# so mcp_server.py stays under 2000 lines. Total tool count: 48 + 27 = 75.
+# so mcp_server.py stays under 2000 lines. Total tool count: 53 + 28 = 81.
 # ============================================================================
 try:
     from _builder.mcp_report_tools import TOOLS_REPORT

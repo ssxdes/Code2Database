@@ -63,7 +63,7 @@ When the question type matches one of these, use the listed command sequence. Re
 | **Who allocates / frees this resource?** | `who-allocates` → `who-frees` → `unbalanced-alloc-free` → `add-semantic-edges` |
 | **Query cgdb tables directly (clang backend)** | use the 19 `cgdb_*` MCP tools — see "cgdb MCP Tools" section below |
 
-## cgdb MCP Tools (clang backend — 18 tools)
+## cgdb MCP Tools (clang backend — 19 tools)
 
 When the user wants to query the cgdb layer directly (clang-derived semantic tables), use these MCP tools. They are accessible regardless of sub-skill activation — MCP is separate from the skill layer.
 
@@ -131,7 +131,7 @@ When you detect a question about **simple browsing, scanning, building, or gener
 
 | Document | Content |
 |----------|---------|
-| `references/analysis_commands.md` | Full syntax for all 50 analysis commands + 19 cgdb_* MCP tools |
+| `references/analysis_commands.md` | Full syntax for all 48 analysis commands + 19 cgdb_* MCP tools |
 | `references/data_model.md` | Node/edge attributes, context pack tiers, cgdb table schemas |
 | `references/semantic_enhancement.md` | Semantic extraction and enhancement details |
 | `references/endpoint_pipeline.md` | Endpoint classification pipeline |

@@ -52,11 +52,11 @@ C/C++ 提取后端有两种模式，服务于不同需求：
 
 skill 以 3 个子 skill 形式发布（`/Code2Database` 核心、`/Code2Database-analysis` 深度分析、`/Code2Database-ops` 运维），让 LLM 代理只加载与当前问题相关的命令：
 
-- **核心（15 个 Tier-1 命令）**——常驻加载。构建、浏览、基础查询（scan、build、explore-flow、describe-node、trace-chain、neighbors、path、search、key-paths 等）。
+- **核心（24 个 Tier-1 命令）**——常驻加载。构建、浏览、基础查询（scan、build、explore-flow、describe-node、trace-chain、neighbors、path、search、key-paths 等）。
 - **分析（13 个 Tier-1 + 19 个 cgdb_* MCP 工具）**——按需加载。并发、数据流、不变量、FFI、路径可行性、来源、cgdb 表。
-- **运维（14 个 Tier-1 命令）**——按需加载。事务、守护进程、profile 健康、文档-代码对齐、导出、插件、记忆、嵌入。
+- **运维（23 个 Tier-1 命令）**——按需加载。事务、守护进程、profile 健康、文档-代码对齐、导出、插件、记忆、嵌入。
 
-全部 213 个 CLI 命令都通过共享的 `scripts/code2database_builder.py` 可访问，无论哪个子 skill 激活。这个拆分纯粹是为了 LLM 上下文经济：4K-token 的核心 skill 总是有用；20K-token 的分析 skill 只应在用户问及竞争或不变量时加载。
+全部 222 个 CLI 命令都通过共享的 `scripts/code2database_builder.py` 可访问，无论哪个子 skill 激活。这个拆分纯粹是为了 LLM 上下文经济：4K-token 的核心 skill 总是有用；20K-token 的分析 skill 只应在用户问及竞争或不变量时加载。
 
 ### 为什么是 micro → lite → local 查询模式
 
@@ -194,7 +194,7 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 │        cgdb_sync.py, sqlite_store.py, sqlite_postprocess.py,        │
 │        memory_manager.py, knowledge_manager.py, semantics.py,       │
 │        auto_enhance.py, web_ui.py, bug_benchmark.py 等              │
-│  CLI：scripts/code2database_builder.py（146 个子命令）                │
+│  CLI：scripts/code2database_builder.py（214 个子命令）                │
 └──────────────────────────────┬───────────────────────────────────────┘
                                │
                                ▼  （可选）
@@ -387,7 +387,7 @@ Code2Database 在 `scripts/` 下组织成 5 个包，外加 CLI 入口层。总�
 
 ```
 scripts/
-├── code2database_builder.py      ← CLI 入口（146 个子命令，argparse 路由）
+├── code2database_builder.py      ← CLI 入口（214 个子命令，argparse 路由）
 ├── code2database_scanner.py      ← 扫描器 CLI 入口（8 个子命令）
 ├── setup.sh                      ← 依赖安装器（支持按语言安装）
 ├── requirements.txt              ← 锁定依赖
@@ -636,7 +636,7 @@ ASM（.s .S .asm）用正则扫描——无需 tree-sitter 语法。
 
 | 组件 | 用途 |
 |------|------|
-| **MCP（Model Context Protocol）stdio 传输** | `serve` 命令通过 JSON-RPC 暴露 53 个工具（31 个 `code2database_*` + 19 个 `cgdb_*`），带 Content-Length 帧 |
+| **MCP（Model Context Protocol）stdio 传输** | `serve` 命令通过 JSON-RPC 暴露 53 个工具（34 个 `code2database_*` + 19 个 `cgdb_*`），带 Content-Length 帧 |
 | **分层上下文包** | micro（~200 token） → lite（~500） → standard（~1500） → full——最小化 LLM token 成本 |
 | **懒加载模块导入** | `_builder/__init__.py` 延迟模块加载到首次访问，降低启动时间 |
 
@@ -790,7 +790,7 @@ inotify 等待 → debounce 500ms → 批窗口 1000ms → transaction() {
 
 `serve` 通过 stdio JSON-RPC 暴露 53 个工具，带 Content-Length 帧：
 
-- 31 个 `code2database_*` 工具（load、search、describe、explore、trace、impact、key_paths、concurrency、data_lifecycle、domain、knowledge_query、memory_search、semantic_status 等）
+- 34 个 `code2database_*` 工具（load、search、describe、explore、trace、impact、key_paths、concurrency、data_lifecycle、domain、knowledge_query、memory_search、semantic_status 等）
 - 19 个 `cgdb_*` 工具（cgdb_search_symbols、cgdb_find_invokers、cgdb_find_invoked、cgdb_get_definition、cgdb_get_function_body、cgdb_get_struct_layout、cgdb_find_type_definition、cgdb_find_ops_impls、cgdb_find_cfg_paths、cgdb_find_data_flow、cgdb_find_aliases、cgdb_find_lock_held_calls、cgdb_check_race_condition、cgdb_find_configs_for、cgdb_find_nodes_under_config、cgdb_index_status、cgdb_time_travel_query、cgdb_list_versions）
 
 MCP 服务器无论哪个子 skill 激活都可访问；子 skill 纯粹是 LLM 上下文经济机制。
@@ -832,7 +832,7 @@ Code2Database 当前能力，按类别组织：
 - 值流（DATA_FLOW 边）+ 跨函数数据依赖（DATA_DEP 边）
 
 ### 查询与分析
-- 146 个 CLI 子命令（3 个子 skill：核心 15、分析 13、运维 14 个 Tier-1）
+- 214 个 CLI 子命令（3 个子 skill：核心 24、分析 13、运维 23 个 Tier-1）
 - 53 个 MCP 工具（34 code2database_* + 19 cgdb_*）
 - Cypher 子集查询语言（MATCH/WHERE/RETURN）
 - Z3 SMT 路径可行性（启发式回退）

@@ -1,7 +1,7 @@
 {
   "name": "Code2Database",
   "version": "1.3.0",
-  "description": "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, 19 cgdb semantic tables. 53 MCP tools + 213 CLI commands (27 core). Query priority: Memory then Knowledge then Graph then Source. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow.",
+  "description": "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, 19 cgdb semantic tables. 53 MCP tools + 222 CLI commands (27 core). Query priority: Memory then Knowledge then Graph then Source. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow.",
   "trigger": "/Code2Database",
   "languages": [
     "C",
@@ -263,7 +263,7 @@
   ],
   "cgdb_schema_version": 4,
   "query_priority_chain": "Memory (recall) -> Knowledge (know) -> Graph (query/describe/trace) -> Source (describe --code)",
-  "total_commands": 213,
-  "core_commands": 20,
+  "total_commands": 222,
+  "core_commands": 27,
   "sqlite_schema_version": 13
 }

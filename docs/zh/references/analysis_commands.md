@@ -1,6 +1,6 @@
 # 分析命令参考（Tier 2）
 
-本文档覆盖 `/Code2Database-analysis` 子技能暴露的 50 个分析命令和 19 个 `cgdb_*` MCP 工具的完整语法。**按需读取**——除非需要某命令的详细语法，否则不要加载到 agent 上下文。
+本文档覆盖 `/Code2Database-analysis` 子技能暴露的 48 个分析命令和 19 个 `cgdb_*` MCP 工具的完整语法。**按需读取**——除非需要某命令的详细语法，否则不要加载到 agent 上下文。
 
 命令按问题类型分组，与 `SKILL_analysis.md` 中的路由表对应。
 
@@ -669,7 +669,7 @@ python3 scripts/code2database_builder.py knowledge-query --graph code2db-out/ --
 python3 scripts/code2database_builder.py knowledge-validate --graph code2db-out/ --topic TOPIC [--json]
 ```
 
-## cgdb MCP 工具（18 个，clang 后端）
+## cgdb MCP 工具（19 个，clang 后端）
 
 这些工具直接查询 cgdb（代码图谱数据库）层。需要 clang 提取后端（`--extraction-backend clang` 或 auto 下已安装 libclang）。在 tree-sitter-only 模式下返回空结果。
 

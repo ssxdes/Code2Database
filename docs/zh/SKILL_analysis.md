@@ -63,7 +63,7 @@ parent_skill: Code2Database
 | **谁分配 / 释放了这个资源？** | `who-allocates` → `who-frees` → `unbalanced-alloc-free` → `add-semantic-edges` |
 | **直接查询 cgdb 表（clang 后端）** | 使用 19 个 `cgdb_*` MCP 工具——见下方"cgdb MCP 工具"节 |
 
-## cgdb MCP 工具（clang 后端 — 18 个工具）
+## cgdb MCP 工具（clang 后端 — 19 个工具）
 
 当用户想直接查询 cgdb 层（clang 衍生的语义表）时，使用这些 MCP 工具。无论子技能是否激活，它们都可访问——MCP 与技能层分离。
 
@@ -131,7 +131,7 @@ parent_skill: Code2Database
 
 | 文档 | 内容 |
 |------|------|
-| `references/analysis_commands.md` | 50 个分析命令 + 19 个 cgdb_* MCP 工具的完整语法 |
+| `references/analysis_commands.md` | 48 个分析命令 + 19 个 cgdb_* MCP 工具的完整语法 |
 | `references/data_model.md` | 节点/边属性、上下文包层级、cgdb 表 schema |
 | `references/semantic_enhancement.md` | 语义提取和增强详情 |
 | `references/endpoint_pipeline.md` | 端点分类流水线 |

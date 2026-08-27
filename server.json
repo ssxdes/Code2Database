@@ -7,12 +7,12 @@
     "url": "https://github.com/your-org/code2database",
     "source": "github"
   },
-  "version": "1.0.0",
+  "version": "1.3.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "code2database",
-      "version": "1.0.0",
+      "version": "1.3.0",
       "runtimeHint": "python3",
       "transport": {
         "type": "stdio"

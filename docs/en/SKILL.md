@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, and 19 cgdb semantic tables. 53 MCP tools + 213 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
+description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, and 19 cgdb semantic tables. 53 MCP tools + 222 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
 trigger: /Code2Database
 ---
 
@@ -75,7 +75,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP serve
 | `daemon` | Background auto-sync | Ops |
 | `health` | Graph freshness + profile health | — |
 
-All 213 CLI commands remain accessible; the 24 above cover ~95% of agent workflows.
+All 222 CLI commands remain accessible; the 24 above cover ~95% of agent workflows.
 
 ## Supported Languages
 

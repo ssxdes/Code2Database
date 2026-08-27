@@ -1,6 +1,6 @@
 # Analysis Commands Reference (Tier 2)
 
-This document covers the full syntax for all 50 analysis commands and 19 `cgdb_*` MCP tools exposed by the `/Code2Database-analysis` sub-skill. **Read on demand only** — do not load this file into agent context unless you need detailed syntax for a specific command.
+This document covers the full syntax for all 48 analysis commands and 19 `cgdb_*` MCP tools exposed by the `/Code2Database-analysis` sub-skill. **Read on demand only** — do not load this file into agent context unless you need detailed syntax for a specific command.
 
 The commands are grouped by question type, mirroring the routing table in `SKILL_analysis.md`.
 
@@ -669,7 +669,7 @@ python3 scripts/code2database_builder.py knowledge-query --graph code2db-out/ --
 python3 scripts/code2database_builder.py knowledge-validate --graph code2db-out/ --topic TOPIC [--json]
 ```
 
-## cgdb MCP Tools (18 tools, clang backend)
+## cgdb MCP Tools (19 tools, clang backend)
 
 These tools query the cgdb (code graph database) layer directly. They require the clang extraction backend (`--extraction-backend clang` or auto with libclang installed). In tree-sitter-only mode, they return empty results.
 

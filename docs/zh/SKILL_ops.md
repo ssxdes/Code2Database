@@ -141,7 +141,7 @@ LLM 执行任何修改 code graph database的命令时，**必须先获得用户
 - **文档-代码对齐**：`describe-node`（父技能）暴露 `doc_code_mismatches`——若非空，`semantic_desc` 可能不可靠；查阅 `body_text` 并考虑 `doc-mark-stale` 直到文档重新提取
 - **profile 演化**：`profile-evolve --apply` 只应用 EXTRACTED 置信度建议；INFERRED **需用户确认**。演化后运行 `profile-bind-version` 绑定 git/svn HEAD
 - **记忆管理**：`manage-memory --action add/correct/reshape/promote/refine` 需用户确认；`save-memory` 需用户确认
-- **MCP 服务器**：`serve` 暴露 53 个工具（31 个 `code2database_*` + 19 个 `cgdb_*`）；无论子技能是否激活，全部可访问
+- **MCP 服务器**：`serve` 暴露 53 个工具（34 个 `code2database_*` + 19 个 `cgdb_*`）；无论子技能是否激活，全部可访问
 - **禁止预加载** `references/ops_commands.md`——仅在需要某命令的详细语法时按需读取
 - **守护进程日志**位于 `~/.code2database/daemon-<project>.log`；守护进程状态位于 `<graph_dir>/.daemon_status.json`
 

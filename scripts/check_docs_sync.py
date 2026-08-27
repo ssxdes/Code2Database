@@ -28,7 +28,11 @@ def extract_structure(text: str) -> dict:
     Returns a dict with:
       - headings: list of heading texts (without # prefix)
       - code_blocks: count of ``` fenced blocks
-      - cli_commands: set of `callgraph_*` command names mentioned
+      - cli_commands: set of CLI command names mentioned. Catches
+        ``code2database_*`` / ``cgdb_*`` MCP tool names (snake_case)
+        AND ``code2database-*`` / ``cgdb-*`` CLI subcommand names
+        (kebab-case). The legacy ``callgraph_*`` prefix is no longer
+        used by this skill — replaced by code2database_* in v1.0.
       - sections: list of (level, title) tuples
     """
     headings = []
@@ -36,6 +40,12 @@ def extract_structure(text: str) -> dict:
     code_blocks = 0
     cli_commands = set()
     in_code = False
+    # Match both snake_case (MCP tools: code2database_load, cgdb_find_invoked)
+    # and kebab-case (CLI subcommands: code2database-builder has subcommands
+    # like kb-query, blast-radius, cgdb-time-travel).
+    _CLI_NAME_RE = re.compile(
+        r"\b((?:code2database|cgdb)[_\-][a-z][a-z0-9_\-]*)(?![\w])"
+    )
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith("```"):
@@ -49,10 +59,8 @@ def extract_structure(text: str) -> dict:
             title = stripped.lstrip("#").strip()
             headings.append(title)
             sections.append((level, title))
-        for m in re.finditer(r"\b(callgraph_\w+)(?:\s+(\w+))?", line):
+        for m in _CLI_NAME_RE.finditer(line):
             cli_commands.add(m.group(1))
-            if m.group(2):
-                cli_commands.add(f"{m.group(1)} {m.group(2)}")
     return {
         "headings": headings,
         "sections": sections,

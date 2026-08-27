@@ -10,7 +10,7 @@ Code2Database scans C/C++/Go/Python/Java/Rust/ASM codebases and generates direct
 
 Capabilities: dual clang + tree-sitter extraction backend (auto/clang/tree-sitter via `--extraction-backend`; libclang recommended but NOT required — tree-sitter-only mode is fully functional), cgdb (code graph database) layer with semantic tables (AST nodes, types, config predicates, CFG, data flow, alias, ops_bindings, sync primitives, happens-before, provenance, time-travel versions) exposed via 19 `cgdb_*` MCP tools, commit-based provenance with git hash verification, Cypher-subset queries, value flow / DATA_FLOW edges, lock-held region analysis, Z3 path feasibility, cross-function data dependencies, invariant extraction, LLM auto-semantic enhancement, transactional updates (WAL + snapshots), cross-language FFI tracing, interactive Web UI, BUG benchmark, profile health + auto-evolution, doc-code dual-source truth alignment, and a background daemon for real-time auto-sync.
 
-Distributed as a Python-based skill with 3 sub-skills: `/Code2Database` (core, always loaded — 15 Tier-1 commands), `/Code2Database-analysis` (deep semantic analysis, on-demand), `/Code2Database-ops` (graph editing + ops, on-demand). 213 CLI commands total, 53 MCP tools (34 `code2database_*` + 19 `cgdb_*`). CLI entry points: `scripts/code2database_builder.py`, `scripts/code2database_scanner.py`. Daemon entry point: `daemon-start`.
+Distributed as a Python-based skill with 3 sub-skills: `/Code2Database` (core, always loaded — 24 Tier-1 commands), `/Code2Database-analysis` (deep semantic analysis, on-demand), `/Code2Database-ops` (graph editing + ops, on-demand). 222 CLI commands total, 53 MCP tools (34 `code2database_*` + 19 `cgdb_*`). CLI entry points: `scripts/code2database_builder.py`, `scripts/code2database_scanner.py`. Daemon entry point: `daemon-start`.
 
 ## Architecture: Profile → Scan → Build
 
@@ -67,13 +67,13 @@ python3 scripts/code2database_builder.py daemon-start \
 
 ## Skill Activation
 
-The skill is split into **3 sub-skills** to keep LLM context lean. Each sub-skill has its own `SKILL.md` exposing only the commands relevant to its layer. The CLI (`scripts/code2database_builder.py`) is shared — all 213 commands are accessible regardless of which sub-skill is active.
+The skill is split into **3 sub-skills** to keep LLM context lean. Each sub-skill has its own `SKILL.md` exposing only the commands relevant to its layer. The CLI (`scripts/code2database_builder.py`) is shared — all 222 commands are accessible regardless of which sub-skill is active.
 
 | Sub-skill | Trigger | Purpose | Tier-1 commands |
 |-----------|---------|---------|-----------------|
-| `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded | 15 high-weight commands (scan, build, explore-flow, describe-node, trace-chain, etc.) |
+| `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded | 24 high-weight commands (scan, build, explore-flow, describe-node, trace-chain, etc.) |
 | `Code2Database-analysis` | `/Code2Database-analysis` | Deep semantic analysis (concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb tables) | 13 high-weight commands (concurrency-analyze, value-flow, path-feasible, find-invariants, ffi-trace, blame-node, etc.) + 19 `cgdb_*` MCP tools |
-| `Code2Database-ops` | `/Code2Database-ops` | Graph editing, transactions, daemon, profile/doc-code, exports, plugins, memory, embeddings | 14 high-weight commands (tx-begin/commit/rollback, daemon-start/stop/wait-sync, profile-health, doc-code-check, etc.) |
+| `Code2Database-ops` | `/Code2Database-ops` | Graph editing, transactions, daemon, profile/doc-code, exports, plugins, memory, embeddings | 23 high-weight commands (tx-begin/commit/rollback, daemon-start/stop/wait-sync, profile-health, doc-code-check, etc.) |
 
 The main skill instructions are in `docs/<lang>/SKILL.md` (lang = en or zh). When installed, the appropriate language version is placed as `SKILL.md` at each sub-skill root.
 
@@ -103,7 +103,7 @@ python3 scripts/code2database_scanner.py scan --source /path --extraction-backen
 | Directory | Purpose |
 |-----------|---------|
 | `scripts/code2database_scanner.py` | Scanner CLI entry point |
-| `scripts/code2database_builder.py` | Builder CLI entry point (main command hub, 213 commands organized into 3 sub-skills: `/Code2Database` core, `/Code2Database-analysis`, `/Code2Database-ops`) |
+| `scripts/code2database_builder.py` | Builder CLI entry point (main command hub, 222 commands organized into 3 sub-skills: `/Code2Database` core, `/Code2Database-analysis`, `/Code2Database-ops`) |
 | `scripts/_scanner/` | Language-specific AST scanners (C, Go, Python, Java, Rust) |
 | `scripts/_builder/` | Graph building, query, export, memory, knowledge modules |
 | `scripts/_builder/invariants.py` | Invariant extraction (preconditions/postconditions/loop_invariants/state_machine) |

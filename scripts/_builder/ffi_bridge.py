@@ -939,6 +939,11 @@ def persist_ffi_to_sqlite(conn, ffi_edges: List[Dict],
         source_file_rel = edge.get("source_file", "")
         evidence = edge.get("evidence", "")
 
+        # Skip edges with empty caller (can't resolve to a node)
+        if not caller_id_str:
+            stats["skipped"] += 1
+            continue
+
         # Resolve caller and callee to cgdb_nodes.id integers
         from_symbol_id = _resolve_or_create_symbol(conn, caller_id_str)
         to_symbol_id = _resolve_or_create_symbol(conn, callee_id_str)
@@ -973,8 +978,8 @@ def persist_ffi_to_sqlite(conn, ffi_edges: List[Dict],
 
         # Insert type_mappings rows (one per {from, to, lossy} entry)
         for tm in edge.get("type_mapping", []) or []:
-            from_type = str(tm.get("from", "") or "")
-            to_type = str(tm.get("to", "") or "")
+            from_type = str(tm.get("from_type", tm.get("from", "")) or "")
+            to_type = str(tm.get("to_type", tm.get("to", "")) or "")
             lossy = bool(tm.get("lossy", False))
             if not from_type and not to_type:
                 continue

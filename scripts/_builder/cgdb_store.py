@@ -763,7 +763,21 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             for sr in site_rows:
                 invoked_id = sr[0]
                 dispatch_candidates_json = sr[1] or '[]'
-                # First: if dispatch_candidates is populated, use it
+                # The invoked field node itself is also an indirect invoke target
+                # — it represents what's being dispatched through.
+                if invoked_id and invoked_id not in seen_ids:
+                    node_row = conn.execute(
+                        "SELECT id, kind, name, fqn, line FROM cgdb_nodes WHERE id = ?",
+                        (invoked_id,)
+                    ).fetchone()
+                    if node_row:
+                        indirect_invoked.append({
+                            "id": node_row[0], "kind": node_row[1],
+                            "name": node_row[2], "fqn": node_row[3],
+                            "line": node_row[4], "via_dispatch": True,
+                        })
+                        seen_ids.add(invoked_id)
+                # Next: if dispatch_candidates is populated, use it
                 # directly — it's the scanner's best guess at the
                 # possible impl functions.
                 try:

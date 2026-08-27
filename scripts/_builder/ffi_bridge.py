@@ -818,9 +818,12 @@ def _parse_ffi_symbol_id(symbol_id: str) -> Dict[str, str]:
     result = {"language": "", "file_path": "", "function_name": ""}
     if len(parts) >= 1 and parts[0]:
         result["language"] = parts[0]
-    if len(parts) >= 2:
-        result["file_path"] = parts[1]
+    if len(parts) == 2:
+        # 2-segment form (e.g., 'c:foo' or 'python:bar'): the 2nd segment
+        # is the function name, not the file path.
+        result["function_name"] = parts[1]
     if len(parts) >= 3:
+        result["file_path"] = parts[1]
         result["function_name"] = parts[2]
     return result
 

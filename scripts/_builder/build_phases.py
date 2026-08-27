@@ -929,3 +929,375 @@ def _identify_polymorphic_callback_fields(field_dispatch_map: dict,
         if total >= _POLYMORPHIC_FIELD_THRESHOLD:
             polymorphic_fields.add(field_name)
     return polymorphic_fields
+
+
+# ---------------------------------------------------------------------------
+# Phase 23: add CONTAINS edges (file → function containment)
+# ---------------------------------------------------------------------------
+
+def _add_contains_edges(G, project_name: str) -> dict:
+    """Add CONTAINS edges from synthetic file nodes to function nodes.
+
+    Group graph nodes by source_file, create a synthetic
+    ``file:<source_file>`` node for each file (if not already present),
+    and emit an EXTRACTED-CONFIDENCE CONTAINS edge from the file node
+    to each function defined in that file. This lets queries traverse
+    file→function containment (e.g., "what functions does foo.c define?").
+
+    Args:
+        G: NetworkX DiGraph. Mutated in place — file nodes + CONTAINS
+            edges added.
+        project_name: Project name string used to derive file FQN
+            (e.g., ``linux_kernel.src.foo``).
+
+    Returns:
+        file_nodes: dict[source_file, file_node_id] — used downstream
+            by the IMPORTS edges phase (which adds IMPORTS edges
+            between file nodes) and the prune phase (which removes
+            isolated file nodes that have no edges).
+    """
+    file_nodes: Dict[str, str] = {}
+    for nid, ndata in list(G.nodes(data=True)):
+        sf = ndata.get("source_file", "")
+        if not sf:
+            continue
+        if sf not in file_nodes:
+            # Create a synthetic file node if not already present
+            file_id = f"file:{sf}"
+            if file_id not in G:
+                G.add_node(
+                    file_id,
+                    name=os.path.basename(sf),
+                    fqn=f"{project_name}.{sf.replace(os.sep, '.').replace('/', '.')}",
+                    source_file=sf,
+                    domain=ndata.get("domain", "root"),
+                    labels=["file"],
+                    is_empty=False,
+                    node_type="file",
+                )
+            file_nodes[sf] = file_id
+
+        # Add CONTAINS edge from file node to this function
+        fid = file_nodes[sf]
+        if fid != nid and not G.has_edge(fid, nid):
+            G.add_edge(
+                fid, nid,
+                relation="CONTAINS",
+                concurrency="contains",
+                confidence="EXTRACTED",
+                source="ast",
+                evidence="contains: file contains function definition",
+            )
+    return file_nodes
+
+
+# ---------------------------------------------------------------------------
+# Phase 24: add IMPORTS edges (#include relationships between file nodes)
+# ---------------------------------------------------------------------------
+
+# Regex for #include directives — module-level so it's compiled once
+# per Python process, not once per call.
+_INCLUDE_RE = re.compile(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]', re.MULTILINE)
+
+
+def _add_imports_edges(G, file_nodes: dict) -> None:
+    """Add IMPORTS edges between file nodes for #include relationships.
+
+    For each non-file, non-empty function node that has body_text,
+    parse ``#include <header>`` directives from its body and add
+    IMPORTS edges from the function's file node to the included
+    header's file node. Cross-domain imports only — same-domain
+    imports are skipped (CONTAINS already covers traversal within a
+    domain).
+
+    Header resolution: tries the literal ``file:<header>`` id first,
+    then falls back to suffix / basename match against existing file
+    nodes (so ``#include <linux/foo.h>`` resolves to ``file:foo.h``
+    when only that short form is present).
+
+    Args:
+        G: NetworkX DiGraph. Mutated in place — IMPORTS edges added.
+        file_nodes: dict[source_file, file_node_id] from
+            _add_contains_edges.
+    """
+    for nid, ndata in G.nodes(data=True):
+        if ndata.get("is_empty", False) or ndata.get("node_type") == "file":
+            continue
+        body = ndata.get("body_text", "")
+        if not body:
+            continue
+        sf = ndata.get("source_file", "")
+        if sf not in file_nodes:
+            continue
+        fid = file_nodes[sf]
+
+        for m in _INCLUDE_RE.finditer(body):
+            header = m.group(1)
+            # Find the file node for the included header
+            header_id = f"file:{header}"
+            # Also try to find by matching existing file nodes
+            if header_id not in G:
+                # Try relative path matching
+                for existing_sf, existing_id in file_nodes.items():
+                    if existing_sf.endswith(header) or os.path.basename(existing_sf) == os.path.basename(header):
+                        header_id = existing_id
+                        break
+            if header_id in G and header_id != fid and not G.has_edge(fid, header_id):
+                # Skip same-domain IMPORTS — they add no traversal value
+                # beyond what CONTAINS already provides
+                src_domain = G.nodes[fid].get("domain", "") if fid in G else ""
+                tgt_domain = G.nodes[header_id].get("domain", "") if header_id in G else ""
+                if src_domain and tgt_domain and src_domain == tgt_domain:
+                    continue
+                G.add_edge(
+                    fid, header_id,
+                    relation="IMPORTS",
+                    concurrency="imports",
+                    confidence="EXTRACTED",
+                    source="ast",
+                    import_path=header,
+                )
+
+
+# ---------------------------------------------------------------------------
+# Phase 25: label callback functions (CALLBACK_ARG targets)
+# ---------------------------------------------------------------------------
+
+def _label_callback_functions(G) -> int:
+    """Label callback functions (CALLBACK_ARG edge targets) as callback_func.
+
+    A function that is the target of a CALLBACK_ARG edge (passed as a
+    callback to a registration function like pthread_create) gets the
+    ``callback_func`` label. Without this, worker_thread-style functions
+    that don't match naming heuristics would only get leaf_func and
+    their callback role would be invisible to queries that filter by
+    label.
+
+    Skips:
+    - file nodes and external_endpoint nodes
+    - auto-created bare-name nodes in the external domain (placeholder
+      callees that the scanner couldn't attribute to a real source
+      definition — marking them callback_func would trigger a
+      validation warning "callback_func in external domain").
+
+    Args:
+        G: NetworkX DiGraph. Mutated in place — labels may be appended.
+
+    Returns:
+        Number of nodes newly labeled callback_func.
+    """
+    labeled = 0
+    for nid in G.nodes():
+        ndata = G.nodes[nid]
+        if ndata.get("node_type") in ("file", "external_endpoint"):
+            continue
+        if ndata.get("auto_created") and ndata.get("domain") == "external":
+            continue
+        for _, _, d in G.in_edges(nid, data=True):
+            if d.get("confidence") == "CALLBACK_ARG":
+                labels = list(ndata.get("labels", []))
+                if "callback_func" not in labels:
+                    labels.append("callback_func")
+                    ndata["labels"] = labels
+                    labeled += 1
+                break  # one CALLBACK_ARG edge is enough
+    return labeled
+
+
+# ---------------------------------------------------------------------------
+# Phase 26: label entry/exit points (in_end / out_end / leaf_func)
+# ---------------------------------------------------------------------------
+
+def _label_entry_exit_points(G) -> None:
+    """Label entry/exit point functions: in_end, out_end, leaf_func.
+
+    Classification rules:
+    - ``in_end``: function with no non-contains/non-imports in-edges
+      (entry point — called from external code, dispatch, or not at all).
+    - ``out_end``: function with no non-contains/non-imports out-edges
+      AND that is an external endpoint (in external domain or has no
+      source_file). These represent calls into external code.
+    - ``leaf_func``: function with no non-contains/non-imports out-edges
+      AND that is internal (has source_file, non-external domain).
+      These are simply leaves in the invocation graph, not external
+      endpoints.
+
+    Skips file nodes and external_endpoint nodes (these have their own
+    node_type and shouldn't receive function labels).
+
+    Args:
+        G: NetworkX DiGraph. Mutated in place — labels may be appended.
+    """
+    for nid in G.nodes():
+        ndata = G.nodes[nid]
+        if ndata.get("node_type") == "file" or ndata.get("node_type") == "external_endpoint":
+            continue
+        has_non_contains_in = any(
+            d.get("relation") not in ("CONTAINS", "IMPORTS")
+            for _, _, d in G.in_edges(nid, data=True))
+        has_non_contains_out = any(
+            d.get("relation") not in ("CONTAINS", "IMPORTS")
+            for _, _, d in G.out_edges(nid, data=True))
+        labels = list(ndata.get("labels", []))
+        if not has_non_contains_in and "in_end" not in labels:
+            labels.append("in_end")
+        if not has_non_contains_out:
+            dom = ndata.get("domain", "")
+            has_src = bool(ndata.get("source_file", ""))
+            is_external = dom == "external" or dom.startswith("external_")
+            if is_external or not has_src:
+                if "out_end" not in labels:
+                    labels.append("out_end")
+            else:
+                # Internal leaf function — not an external endpoint
+                if "leaf_func" not in labels:
+                    labels.append("leaf_func")
+        if labels != ndata.get("labels", []):
+            ndata["labels"] = labels
+
+
+# ---------------------------------------------------------------------------
+# Phase 27: refine domains via profile domain_rules
+# ---------------------------------------------------------------------------
+
+def _refine_domains(G, profile) -> int:
+    """Refine node domains via profile.domain_rules pattern→suffix rules.
+
+    When all files are in the same directory (e.g., Linux kernel
+    ``fs/ext4/``), path-based domain classification puts everything in
+    "root". Domain rules refine domains by function name prefix
+    patterns. E.g., ``{"pattern": "ext4_mb_.*", "domain_suffix":
+    "mballoc"}`` turns domain ``root`` into ``root.mballoc`` for
+    matching functions.
+
+    The pattern is matched against the function's name (not its id).
+    The suffix is appended to the existing domain with a dot
+    separator. The first matching rule wins (per-function).
+
+    Args:
+        G: NetworkX DiGraph. Mutated in place — domain attribute may
+            be updated on matching nodes.
+        profile: Builder config dict. Reads profile.domain_rules
+            (list of dicts with "pattern" and "domain_suffix" keys).
+
+    Returns:
+        Number of nodes whose domain was refined.
+    """
+    domain_rules = profile.get("domain_rules", []) if profile else []
+    if not domain_rules:
+        return 0
+    refined = 0
+    for nid, ndata in G.nodes(data=True):
+        if ndata.get("is_empty", False):
+            continue
+        name = ndata.get("name", "")
+        domain = ndata.get("domain", "")
+        if not name or not domain:
+            continue
+        for rule in domain_rules:
+            pattern = rule.get("pattern", "")
+            suffix = rule.get("domain_suffix", "")
+            if pattern and suffix and re.match(pattern, name):
+                ndata["domain"] = f"{domain}.{suffix}" if domain else suffix
+                refined += 1
+                break
+    if refined:
+        print(f"  Domain rules refined {refined} nodes", file=sys.stderr)
+    return refined
+
+
+# ---------------------------------------------------------------------------
+# Phase 28: reclassify external / third-party domains
+# ---------------------------------------------------------------------------
+
+def _reclassify_external_domains(G, profile) -> int:
+    """Mark external/third-party domains and prefix them with "external_".
+
+    External domains (vendor/, third_party/, huawei.*, external_*, etc.)
+    are tagged with ``is_external=True`` and their domain names are
+    prefixed with "external_" so they are separated from project
+    domains in queries and graph summaries.
+
+    The check is performed by the module-level helper
+    ``_is_external_domain(domain, profile)`` which considers both
+    built-in patterns and profile-supplied external_domain_patterns.
+
+    Args:
+        G: NetworkX DiGraph. Mutated in place — is_external flag set
+            and domain attribute may be renamed.
+        profile: Builder config dict. Reads
+            profile.external_domain_patterns (list of substrings).
+
+    Returns:
+        Number of nodes reclassified into external domains.
+    """
+    # Lazy import to avoid cycle
+    from _builder.graph_build import _is_external_domain
+    reclassed = 0
+    for nid, ndata in G.nodes(data=True):
+        if ndata.get("is_empty", False):
+            continue
+        domain = ndata.get("domain", "")
+        if _is_external_domain(domain, profile):
+            ndata["is_external"] = True
+            # Prefix domain with "external_" unless already prefixed
+            if not domain.startswith("external_") and domain != "external":
+                new_domain = f"external_{domain}"
+                ndata["domain"] = new_domain
+                reclassed += 1
+    if reclassed:
+        print(f"  Reclassified {reclassed} nodes into external domains",
+              file=sys.stderr)
+    return reclassed
+
+
+# ---------------------------------------------------------------------------
+# Phase 29: prune isolated file nodes
+# ---------------------------------------------------------------------------
+
+def _prune_isolated_file_nodes(G, file_nodes: dict) -> int:
+    """Remove file nodes that have no edges (degree 0).
+
+    These are created for #include targets that have no extracted
+    functions, or for headers referenced by IMPORTS but not containing
+    any graph nodes. Removing them keeps the graph clean for query
+    traversal (no orphan file nodes that contribute nothing).
+
+    Mutates both G (removes nodes) and file_nodes (pops entries that
+    pointed to pruned nodes) in place.
+
+    Args:
+        G: NetworkX DiGraph. Mutated in place — isolated file nodes
+            removed.
+        file_nodes: dict[source_file, file_node_id]. Mutated — entries
+            pointing to pruned nodes are popped.
+
+    Returns:
+        Number of file nodes pruned.
+    """
+    pruned = 0
+    for nid in list(G.nodes()):
+        ndata = G.nodes[nid]
+        if ndata.get("node_type") != "file":
+            continue
+        if G.degree(nid) == 0:
+            G.remove_node(nid)
+            # Remove from file_nodes mapping
+            sf = ndata.get("source_file", "")
+            if sf in file_nodes and file_nodes[sf] == nid:
+                del file_nodes[sf]
+            pruned += 1
+    if pruned:
+        print(f"  Pruned isolated file nodes: {pruned}", file=sys.stderr)
+    return pruned
+
+
+__all__ += [
+    "_add_contains_edges",
+    "_add_imports_edges",
+    "_label_callback_functions",
+    "_label_entry_exit_points",
+    "_refine_domains",
+    "_reclassify_external_domains",
+    "_prune_isolated_file_nodes",
+]

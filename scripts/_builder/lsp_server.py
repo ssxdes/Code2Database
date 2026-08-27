@@ -1,9 +1,9 @@
 """LSP (Language Server Protocol) server — exposes Code2Database graph to IDEs.
 
-Phase 3 long-term: exposes the pre-built C2D graph as an LSP server,
-allowing any LSP-aware editor (VS Code, Vim/Neovim, Emacs, Helix, etc.)
-to use pre-computed go-to-definition / find-references / callHierarchy
-without re-parsing the codebase.
+Exposes the pre-built C2D graph as an LSP server, allowing any LSP-aware
+editor (VS Code, Vim/Neovim, Emacs, Helix, etc.) to use pre-computed
+go-to-definition / find-references / callHierarchy without re-parsing the
+codebase.
 
 Architecture:
 - JSON-RPC over stdio with Content-Length framing (LSP base protocol)
@@ -12,8 +12,10 @@ Architecture:
 - Methods: definition, references, callHierarchy/incomingCalls+outgoingCalls,
   hover, documentSymbol, workspaceSymbol, moniker
 
-Implementation status: STUB — architecture designed, transport loop
-implemented, methods need to be wired to GraphCache.
+All methods are wired to GraphCache (the same in-memory graph cache used by
+the Web UI). Start with: `code2database_builder.py lsp-server --graph
+/path/to/graph` and configure your editor to spawn it as a language
+server for the codebase's language.
 
 Unique value vs standard LSP servers:
 - Condition-aware navigation (outgoingCalls carry call_condition)

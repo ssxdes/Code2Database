@@ -1,9 +1,8 @@
 """LSP backend — consume existing LSP servers as extraction backends.
 
-Phase 3 long-term: uses gopls / rust-analyzer / clangd / pylsp / jdtls
-as a third extraction backend (alongside tree-sitter and clang) to get
-authoritative call edges, references, type hierarchies, and stable
-monikers.
+Uses gopls / rust-analyzer / clangd / pylsp / jdtls as a third extraction
+backend (alongside tree-sitter and clang) to get authoritative call edges,
+references, type hierarchies, and stable monikers.
 
 Architecture:
 - Spawns target LSP server as a subprocess
@@ -13,9 +12,18 @@ Architecture:
 - Uses moniker for stable cross-project symbol IDs
 - Merges with tree-sitter/clang via DualBackendScanner
 
-Implementation status: STUB — architecture designed, not yet wired
-into scan_directory(). The hybrid model: LSP for high-precision edges
-+ identifiers, tree-sitter for condition/concurrency/field facts.
+Note: This is the extraction-side consumer of LSP (drives clangd/gopls/
+etc. to populate the C2D graph). The serve-side is `lsp_server.py`, which
+exposes a pre-built C2D graph AS an LSP server for editors. They are
+dual roles — one consumes LSP at scan time, the other provides LSP at
+query time.
+
+Status: architecture implemented, transport and callHierarchy driver
+working. Not yet auto-selected by scan_directory() — wire in by
+calling `LSPBackend.extract_call_edges()` from the scanner when
+`--extraction-backend lsp` is requested. The hybrid model: LSP for
+high-precision edges + identifiers, tree-sitter for condition/
+concurrency/field facts.
 """
 from __future__ import annotations
 

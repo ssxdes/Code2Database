@@ -58,6 +58,7 @@ from _builder.memory_manager import cmd_manage_memory, cmd_memory_health
 from _builder.knowledge_manager import cmd_extract_knowledge, cmd_apply_knowledge, cmd_knowledge_query, cmd_knowledge_validate
 from _builder.kb_index import rebuild_kb_index as cmd_kb_rebuild_index_impl
 from _builder.patcher import cmd_patch_from_diff, cmd_patch_from_git, cmd_light_scan
+from _builder.lsp_server import cmd_lsp_server
 from _builder.changelog_update import cmd_quick_update, cmd_export_changes, cmd_merge_changes, cmd_semantic_status
 from _builder.update_cmd import cmd_update_node, cmd_update_edge, cmd_patch_profile
 from _builder.cgdb_commands import (
@@ -1385,6 +1386,22 @@ def main():
     p_lscan.add_argument("--graph", required=True, help="Call graph output directory")
     p_lscan.add_argument("--files", default="", help="Comma-separated files to scan (auto-detect from git if omitted)")
 
+    # lsp-server — start Code2Database as a read-only LSP server on stdio
+    # so any LSP-aware editor (VS Code, Neovim, Helix, etc.) can use the
+    # pre-computed graph for go-to-definition / find-references /
+    # callHierarchy without re-parsing the codebase.
+    p_lsp = sub.add_parser("lsp-server",
+                            help="Start Code2Database as a read-only LSP server on stdio "
+                                 "(JSON-RPC over stdio with Content-Length framing). "
+                                 "Editor launches this as a language server process: "
+                                 "'code2database_builder.py lsp-server --graph /path/to/graph'. "
+                                 "Supports: textDocument/definition, textDocument/references, "
+                                 "textDocument/hover, textDocument/moniker, "
+                                 "callHierarchy/incomingCalls+outgoingCalls. "
+                                 "Condition-aware: outgoingCalls carry call_condition; "
+                                 "FFI-aware: cross-language navigation via FFI_BRIDGE edges.")
+    p_lsp.add_argument("--graph", required=True, help="Call graph output directory")
+
     # explore-flow
     p_explore = sub.add_parser("explore-flow",
                                 help="One-shot context retrieval: query → nodes + paths + conditions")
@@ -2554,6 +2571,7 @@ def main():
         "patch-from-diff": cmd_patch_from_diff,
         "patch-from-git": cmd_patch_from_git,
         "light-scan": cmd_light_scan,
+        "lsp-server": cmd_lsp_server,
         "explore-flow": cmd_explore_flow,
         "key-paths": cmd_key_paths,
         "quick-update": cmd_quick_update,

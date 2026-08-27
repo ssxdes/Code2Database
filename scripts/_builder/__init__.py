@@ -146,6 +146,9 @@ _LAZY_IMPORTS = {
     "get_semantic_update_status": ("_builder.changelog_update", "get_semantic_update_status"),
     # mcp_server
     "cmd_serve": ("_builder.mcp_server", "cmd_serve"),
+    # lsp_server
+    "cmd_lsp_server": ("_builder.lsp_server", "cmd_lsp_server"),
+    "LSPServer": ("_builder.lsp_server", "LSPServer"),
 }
 
 _CACHE = {}

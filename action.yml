@@ -15,6 +15,14 @@ inputs:
     description: 'Maximum blast-radius affected count before warning (default 50)'
     required: false
     default: '50'
+  repository:
+    description: 'Code2Database git repository to clone (use your fork or the public mirror). Required because the action ships no vendored install.'
+    required: false
+    default: 'https://github.com/anomalyco/Code2Database.git'
+  ref:
+    description: 'Branch / tag / commit SHA to checkout (default: main)'
+    required: false
+    default: 'main'
 
 runs:
   using: 'composite'
@@ -23,42 +31,67 @@ runs:
       shell: bash
       run: |
         pip install tree-sitter tree-sitter-c tree-sitter-cpp tree-sitter-go tree-sitter-python
-        # Install Code2Database skill
-        git clone https://github.com/USER/Code2Database.git /opt/code2database
+        # Install Code2Database skill from the configured repository
+        git clone --depth 1 --branch ${{ inputs.ref }} ${{ inputs.repository }} /opt/code2database
         echo "C2D_DIR=/opt/code2database" >> $GITHUB_ENV
+        echo "PYTHONPATH=/opt/code2database/scripts" >> $GITHUB_ENV
 
     - name: Run blast-radius on changed files
       shell: bash
+      env:
+        C2D_GRAPH: ${{ inputs.graph-dir }}
       run: |
-        CHANGED=$(git diff --name-only origin/${{ github.base_ref }}..HEAD | tr '\n' ',' | sed 's/,$//')
-        for func in $(python3 $C2D_DIR/scripts/code2database_builder.py search --graph ${{ inputs.graph-dir }} --query "$CHANGED" --json | python3 -c "import sys,json; [print(r['id']) for r in json.load(sys.stdin).get('results',[])]"); do
+        # Extract changed file paths from the PR diff and resolve them to
+        # node IDs via `search --keywords` (the canonical search CLI flag).
+        CHANGED=$(git diff --name-only origin/${{ github.base_ref }}..HEAD | tr '\n' ' ')
+        if [ -z "$CHANGED" ]; then
+          echo "No changed files detected; skipping blast-radius."
+          exit 0
+        fi
+        # search --keywords takes space-separated keywords; we pass the changed
+        # file basenames (without extension) so the search hits function names
+        # that match the changed source file.
+        KEYWORDS=$(echo "$CHANGED" | xargs -n1 basename -a | sed 's/\.[^.]*$//' | tr '\n' ' ')
+        echo "::group::Searching for nodes matching changed files"
+        SEARCH_JSON=$(python3 $C2D_DIR/scripts/code2database_builder.py search \
+          --graph "$C2D_GRAPH" --keywords "$KEYWORDS" --json --top 50)
+        echo "::endgroup::"
+        for func in $(echo "$SEARCH_JSON" | python3 -c "import sys,json; [print(r['id']) for r in json.load(sys.stdin).get('results',[])]"); do
           echo "::group::Blast radius for $func"
-          python3 $C2D_DIR/scripts/code2database_builder.py blast-radius --graph ${{ inputs.graph-dir }} --node $func --json
+          python3 $C2D_DIR/scripts/code2database_builder.py blast-radius --graph "$C2D_GRAPH" --node $func --json
           echo "::endgroup::"
         done
 
     - name: Run race detection
       shell: bash
+      env:
+        C2D_GRAPH: ${{ inputs.graph-dir }}
+        FAIL_ON_RISK: ${{ inputs.fail-on-risk }}
       run: |
-        python3 $C2D_DIR/scripts/code2database_builder.py detect-races --graph ${{ inputs.graph-dir }} --json > /tmp/races.json
+        python3 $C2D_DIR/scripts/code2database_builder.py detect-races --graph "$C2D_GRAPH" --json > /tmp/races.json
+        # detect-races JSON output has 'high_severity' (integer count of high-severity races)
         HIGH=$(python3 -c "import json; d=json.load(open('/tmp/races.json')); print(d.get('high_severity',0))")
         if [ "$HIGH" -gt 0 ]; then
           echo "::warning::$HIGH high-severity races detected"
-          if [ "${{ inputs.fail-on-risk }}" == "true" ]; then
+          if [ "$FAIL_ON_RISK" == "true" ]; then
             exit 1
           fi
         fi
 
     - name: Run hub-nodes analysis
       shell: bash
+      env:
+        C2D_GRAPH: ${{ inputs.graph-dir }}
       run: |
         echo "::group::Hub nodes (most connected)"
-        python3 $C2D_DIR/scripts/code2database_builder.py hub-nodes --graph ${{ inputs.graph-dir }} --top 10 --json
+        python3 $C2D_DIR/scripts/code2database_builder.py hub-nodes --graph "$C2D_GRAPH" --top 10 --json
         echo "::endgroup::"
 
     - name: Run bridge-nodes analysis
       shell: bash
+      env:
+        C2D_GRAPH: ${{ inputs.graph-dir }}
       run: |
         echo "::group::Bridge nodes (chokepoints)"
-        python3 $C2D_DIR/scripts/code2database_builder.py bridge-nodes --graph ${{ inputs.graph-dir }} --top 10 --json
+        python3 $C2D_DIR/scripts/code2database_builder.py bridge-nodes --graph "$C2D_GRAPH" --top 10 --json
         echo "::endgroup::"

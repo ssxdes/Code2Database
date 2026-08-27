@@ -1175,11 +1175,13 @@ def main():
                            help="Most connected nodes (highest in+out degree)")
     p_hn.add_argument("--graph", required=True)
     p_hn.add_argument("--top", type=int, default=20)
+    p_hn.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_bn = sub.add_parser("bridge-nodes",
                           help="Bridge nodes with high betweenness centrality (chokepoints)")
     p_bn.add_argument("--graph", required=True)
     p_bn.add_argument("--top", type=int, default=20)
+    p_bn.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_gd2 = sub.add_parser("build-diff",
                           help="Compare two graph builds: added/removed/changed nodes+edges+communities")

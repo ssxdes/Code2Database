@@ -145,7 +145,7 @@ def cosine_similarity(a: List[float], b: List[float]) -> float:
         return 0.0
     dot = sum(x * y for x, y in zip(a, b))
     na = sum(x * x for x in a) ** 0.5
-    nb = sum(x * y for x, y in zip(a, b)) ** 0.5  # wait, should be b
+    nb = sum(y * y for y in b) ** 0.5
     if na == 0 or nb == 0:
         return 0.0
     return max(0.0, dot / (na * nb))

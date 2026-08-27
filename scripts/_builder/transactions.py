@@ -42,7 +42,6 @@ CLI:
     tx-replay-wal --graph <dir>            # replay an unfinished WAL
 """
 
-import fcntl
 import json
 import os
 import shutil
@@ -52,6 +51,28 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Iterator
+
+# Cross-platform file locking. Linux/macOS use fcntl.flock; Windows uses
+# msvcrt.locking (LK_NBLCK / LK_UNLCK). If neither is available (rare —
+# embedded interpreters, restricted sandboxes), fall back to a no-op lock
+# that warns on stderr. The no-op path means transactions lose their
+# cross-process safety; intra-process transactions still work via the
+# in-memory tx-state guard.
+try:
+    import fcntl as _fcntl
+    _LOCK_BACKEND = "fcntl"
+except ImportError:
+    try:
+        import msvcrt as _msvcrt
+        _LOCK_BACKEND = "msvcrt"
+    except ImportError:
+        _LOCK_BACKEND = "none"
+        _fcntl = None
+        _msvcrt = None
+        print("[transactions] Warning: neither fcntl nor msvcrt available — "
+              "cross-process file locking disabled (transactions are not "
+              "safe across processes in this environment)",
+              file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -127,24 +148,64 @@ class GraphLock:
         import time as _time
         path = _lock_path(self.graph_dir)
         deadline = _time.time() + timeout
+        # Open the lock file. If anything fails between open and the lock
+        # call below, the fd must be closed — wrap in try/except to avoid
+        # leaking file descriptors on partial-failure paths.
         fd = open(path, "w")
-        op = fcntl.LOCK_EX if mode == "w" else fcntl.LOCK_SH
-        while True:
-            try:
-                fcntl.flock(fd, op | fcntl.LOCK_NB)
-                self._lock_fd = fd
-                self._mode = mode
-                return True
-            except (BlockingIOError, OSError):
-                if _time.time() >= deadline:
-                    fd.close()
-                    return False
-                _time.sleep(0.05)
+        try:
+            while True:
+                try:
+                    if _LOCK_BACKEND == "fcntl":
+                        op = _fcntl.LOCK_EX if mode == "w" else _fcntl.LOCK_SH
+                        _fcntl.flock(fd, op | _fcntl.LOCK_NB)
+                    elif _LOCK_BACKEND == "msvcrt":
+                        # msvcrt.locking: LK_NBLCK / LK_NBLCKSH (non-blocking
+                        # exclusive / shared) for write / read respectively.
+                        op = _msvcrt.LK_NBLCK if mode == "w" else _msvcrt.LK_NBLCKSH
+                        try:
+                            _msvcrt.locking(fd.fileno(), op, 1)
+                        except OSError:
+                            # Translate msvcrt's "already-locked" OSError
+                            # into the same BlockingIOError the fcntl path
+                            # raises, so the retry loop below handles it.
+                            raise BlockingIOError()
+                    else:
+                        # No-op backend: trivially "succeed" but emit a
+                        # one-shot warning so users know locks aren't real.
+                        if not getattr(self, "_warned_noop", False):
+                            print("[transactions] Warning: file locking "
+                                  "unavailable — transaction isolation "
+                                  "is not enforced", file=sys.stderr)
+                            self._warned_noop = True
+                    self._lock_fd = fd
+                    self._mode = mode
+                    return True
+                except (BlockingIOError, OSError):
+                    if _time.time() >= deadline:
+                        fd.close()
+                        return False
+                    _time.sleep(0.05)
+        except Exception:
+            # Any unexpected exception (e.g. OSError on flock itself)
+            # must release the fd before propagating, otherwise callers
+            # cannot distinguish "lock failed cleanly" from "lock leaked
+            # an fd and also failed".
+            fd.close()
+            raise
 
     def release(self):
         if self._lock_fd is not None:
             try:
-                fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
+                if _LOCK_BACKEND == "fcntl":
+                    _fcntl.flock(self._lock_fd, _fcntl.LOCK_UN)
+                elif _LOCK_BACKEND == "msvcrt":
+                    # Seek back to the locked byte and release.
+                    self._lock_fd.seek(0)
+                    try:
+                        _msvcrt.locking(self._lock_fd.fileno(), _msvcrt.LK_UNLCK, 1)
+                    except OSError:
+                        pass
+                # 'none' backend: no-op
             except OSError:
                 pass
             self._lock_fd.close()

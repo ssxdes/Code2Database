@@ -20,6 +20,7 @@ import json
 import os
 import sys
 import time
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 from _builder.kb_index import _kb_connect, _fts5_escape, query_kb

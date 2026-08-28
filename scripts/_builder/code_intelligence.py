@@ -126,7 +126,11 @@ def traverse_graph(graph_dir: str, start: str, mode: str = "bfs",
         queue = deque([(node_id, 0)])
         while queue and len(nodes) < max_nodes:
             cur, depth = queue.popleft()
-            if depth >= max_depth:
+            # Depth check: skip nodes DEEPER than max_depth (not >=).
+            # This makes max_depth=N visit nodes at depth 0..N (inclusive),
+            # matching taint_analysis's semantics. Previously used >=
+            # which was off-by-one (max_depth=2 visited only depth 0,1).
+            if depth > max_depth:
                 continue
             nd = G.nodes[cur]
             nodes.append({
@@ -163,7 +167,7 @@ def traverse_graph(graph_dir: str, start: str, mode: str = "bfs",
         stack = [(node_id, 0)]
         while stack and len(nodes) < max_nodes:
             cur, depth = stack.pop()
-            if depth >= max_depth:
+            if depth > max_depth:  # see bfs comment: > not >=
                 continue
             nd = G.nodes[cur]
             nodes.append({

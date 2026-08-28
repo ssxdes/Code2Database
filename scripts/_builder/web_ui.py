@@ -528,6 +528,28 @@ class WebUIHandler(BaseHTTPRequestHandler):
             if path == "/" or path == "/index.html":
                 self._send_html(_HTML_UI)
                 return
+            # Serve cytoscape.min.js locally for offline/air-gapped use.
+            # Falls back to CDN if the local file is missing (e.g.,
+            # the static/ directory wasn't installed).
+            if path == "/static/cytoscape.min.js":
+                _cy_path = os.path.join(
+                    os.path.dirname(__file__), "static", "cytoscape.min.js")
+                if os.path.exists(_cy_path):
+                    self.send_response(200)
+                    self.send_header("Content-Type",
+                                     "application/javascript; charset=utf-8")
+                    self.send_header("Cache-Control", "public, max-age=86400")
+                    self.end_headers()
+                    with open(_cy_path, "rb") as f:
+                        self.wfile.write(f.read())
+                    return
+                # Local file missing — redirect to CDN
+                self.send_response(302)
+                self.send_header(
+                    "Location",
+                    "https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js")
+                self.end_headers()
+                return
             if path == "/api/graph/summary":
                 self._send_json(200, self.cache.summary())
                 return
@@ -854,11 +876,17 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
     <p style="text-align:center;margin-top:12px"><button class="action-btn" onclick="document.getElementById('help-modal').style.display='none'">Close</button></p>
   </div>
 </div>
-<!-- Cytoscape.js 3.28.1 (CDN with SRI + offline fallback comment) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"
-  integrity="sha384-AB4EyiK0j5QkK2aQFwAbGkE5e5F5U5pG5pV5W5W5W5W5W5W5W5W5W5W5W5W5W5W"
-  crossorigin="anonymous"></script>
-<!-- For offline/air-gapped use: replace above with inlined cytoscape.min.js from `npm pack cytoscape@3.28.1` -->
+<!-- Cytoscape.js 3.28.1 — served locally for offline/air-gapped use.
+     Falls back to CDN if /static/cytoscape.min.js returns 302 redirect. -->
+<script src="/static/cytoscape.min.js"></script>
+<script>
+// CDN fallback: if local cytoscape.min.js failed to load (302 redirect
+// or file missing), load from CDN. This enables both offline-first
+// and always-available operation.
+if (typeof cytoscape === 'undefined') {
+  document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"><\/script>');
+}
+</script>
 <script>
 let cy = null;
 let cache = { nodes: [], edges: [], focus: null };

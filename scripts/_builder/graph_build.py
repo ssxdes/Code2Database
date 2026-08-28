@@ -987,6 +987,41 @@ def _proc_state_access(args):
     return nid, result
 
 
+# Module-level globals for the pre-strip ProcessPoolExecutor path.
+# Set by cmd_build before fork(); read by _proc_pre_strip_state_access
+# in child processes via copy-on-write inheritance.
+_PRE_STRIP_GLOBALS = None
+_PRE_STRIP_FIELD_ASSIGNMENTS = None
+_PRE_STRIP_CACHED = None
+
+
+def _proc_pre_strip_state_access(item):
+    """Module-level worker for pre-strip state_access extraction via ProcessPoolExecutor.
+
+    Receives: (index, function_dict) tuple from the pre-strip candidate list.
+    Returns: (index, access_info_dict) — caller merges results back.
+
+    Reads module-level _PRE_STRIP_* globals (set by cmd_build before fork).
+    On Linux (default fork start method), child processes inherit these
+    via copy-on-write — the 30K-branch pre-compiled regex is available
+    without being pickled across the process boundary.
+    """
+    _idx, _func = item
+    _body = _func.get("body_text", "")
+    if not _body:
+        return _idx, None
+    _access_info = _extract_state_access(
+        _body,
+        _func.get("local_vars", []),
+        _func.get("params", []),
+        _PRE_STRIP_GLOBALS,
+        _PRE_STRIP_FIELD_ASSIGNMENTS,
+        _func.get("name", ""),
+        _cached_globals=_PRE_STRIP_CACHED,
+    )
+    return _idx, _access_info
+
+
 def _detect_build_system(source_root: str, build_config_arg: str,
                          macros_arg: str) -> tuple:
     """Detect build system and resolve macro bindings.
@@ -5981,28 +6016,96 @@ def cmd_build(args):
         }
     _sa_extracted_count = 0
     _sa_candidate_count = 0
-    for _func in data.get("functions", []):
-        _body = _func.get("body_text", "")
-        if not _body:
-            continue
-        _sa_candidate_count += 1
-        _access_info = _extract_state_access(
-            _body,
-            _func.get("local_vars", []),
-            _func.get("params", []),
-            _globals_data_sa,
-            _field_assignments_sa,
-            _func.get("name", ""),
-            _cached_globals=_cached_globals_sa)
-        _had_any = False
-        for _ak in ("globals_read", "globals_written",
-                    "fields_read", "fields_written"):
-            _av = _access_info.get(_ak, [])
-            if _av:
-                _func[_ak] = _av
-                _had_any = True
-        if _had_any:
-            _sa_extracted_count += 1
+    # Build the list of candidates (functions with body_text) once.
+    _sa_candidates = [(i, _func) for i, _func in enumerate(data.get("functions", []))
+                       if _func.get("body_text", "")]
+
+    # Decide sequential vs parallel for pre-strip state_access extraction.
+    # This loop runs on ALL functions (1.5M on kernel) BEFORE graph
+    # construction. It's a serial for-loop bottleneck when --jobs > 1.
+    # When parallel_mode='process', use ProcessPoolExecutor with fork COW
+    # (child processes inherit _cached_globals_sa without pickling).
+    # Otherwise, fall back to ThreadPoolExecutor (re.finditer releases GIL
+    # during matching, giving modest speedup) or sequential.
+    try:
+        from _builder.parallel import resolve_jobs, cap_for_graph
+        _sa_workers = cap_for_graph(resolve_jobs(getattr(args, 'jobs', 0),
+                                                  max_workers_cap=getattr(args, 'max_workers', 0)),
+                                      len(_sa_candidates))
+    except ImportError:
+        _sa_workers = 1
+
+    _sa_parallel_mode = getattr(args, 'parallel_mode', 'thread')
+    _use_sa_process = (_sa_parallel_mode == "process" and
+                        _sa_workers > 1 and len(_sa_candidates) > 1000)
+
+    if _use_sa_process:
+        # ProcessPoolExecutor path: module-level _proc_pre_strip_state_access
+        # worker (defined below _extract_state_access_all). Children inherit
+        # _cached_globals_sa via fork COW — no pickling needed for the
+        # 30K-branch regex.
+        try:
+            from concurrent.futures import ProcessPoolExecutor
+            import multiprocessing as _mp
+            # Set module-level globals for the fork COW worker.
+            # These are read by _proc_pre_strip_state_access.
+            global _PRE_STRIP_GLOBALS, _PRE_STRIP_FIELD_ASSIGNMENTS, _PRE_STRIP_CACHED
+            _PRE_STRIP_GLOBALS = _globals_data_sa
+            _PRE_STRIP_FIELD_ASSIGNMENTS = _field_assignments_sa
+            _PRE_STRIP_CACHED = _cached_globals_sa
+            _ctx = _mp.get_context("fork")
+            with ProcessPoolExecutor(max_workers=_sa_workers, mp_context=_ctx) as _pool:
+                _sa_results = list(_pool.map(
+                    _proc_pre_strip_state_access,
+                    _sa_candidates,
+                    chunksize=max(1, len(_sa_candidates) // (_sa_workers * 4)),
+                ))
+            # Merge results back into data["functions"]
+            for _idx, _access_info in _sa_results:
+                if _access_info is None:
+                    continue
+                _func = data["functions"][_idx]
+                _had_any = False
+                for _ak in ("globals_read", "globals_written",
+                            "fields_read", "fields_written"):
+                    _av = _access_info.get(_ak, [])
+                    if _av:
+                        _func[_ak] = _av
+                        _had_any = True
+                if _had_any:
+                    _sa_extracted_count += 1
+            _sa_candidate_count = len(_sa_candidates)
+            # Clean up module-level globals
+            _PRE_STRIP_GLOBALS = None
+            _PRE_STRIP_FIELD_ASSIGNMENTS = None
+            _PRE_STRIP_CACHED = None
+        except (ImportError, OSError, BrokenPipeError):
+            _use_sa_process = False  # fall through to sequential
+
+    if not _use_sa_process:
+        # Sequential path (or ThreadPool fallback)
+        for _idx, _func in _sa_candidates:
+            _body = _func.get("body_text", "")
+            if not _body:
+                continue
+            _sa_candidate_count += 1
+            _access_info = _extract_state_access(
+                _body,
+                _func.get("local_vars", []),
+                _func.get("params", []),
+                _globals_data_sa,
+                _field_assignments_sa,
+                _func.get("name", ""),
+                _cached_globals=_cached_globals_sa)
+            _had_any = False
+            for _ak in ("globals_read", "globals_written",
+                        "fields_read", "fields_written"):
+                _av = _access_info.get(_ak, [])
+                if _av:
+                    _func[_ak] = _av
+                    _had_any = True
+            if _had_any:
+                _sa_extracted_count += 1
     if _sa_candidate_count:
         print(f"[build] Pre-strip state_access: extracted from "
               f"{_sa_extracted_count}/{_sa_candidate_count} function(s) "

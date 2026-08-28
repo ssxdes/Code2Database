@@ -14,6 +14,35 @@ from _detector.build_detector import BuildDetector
 from _detector.community_detector import detect_communities, CommunityResult
 from _builder.utils import _resolve_invoked_id
 import _builder.utils as _utils
+
+# ---------------------------------------------------------------------------
+# Module-level compiled regexes — avoid recompiling on every call to
+# _extract_state_access (called 1.5M+ times on kernel-scale projects).
+# ---------------------------------------------------------------------------
+
+# Match: identifier->identifier or identifier.identifier
+# Exclude: function calls (identifier(...)), common C keywords
+_FIELD_ACCESS_RE = re.compile(
+    r'(\b[A-Za-z_]\w*)\s*(?:->|\.)\s*([A-Za-z_]\w*)\b'
+)
+
+# Write pattern: the field access is followed by assignment operator.
+# Capture the assigned RHS expression (truncated to ~60 chars) so callers
+# can distinguish "bh->b_bdev = NULL" from "bh->b_bdev = bdev" — this is
+# critical for null-pointer-deref analysis where only the NULL writers
+# are suspects.
+_FIELD_WRITE_RE = re.compile(
+    r'(\b[A-Za-z_]\w*)\s*(?:->|\.)\s*([A-Za-z_]\w*)\s*(\+|-|\*|\/|\||\&|\^|\%|<<|>>)?=\s*([^;,\n]{1,80})'
+)
+
+# Static regex: matches callback/function-pointer parameter names.
+# Used in build_graph's edge processing loop (5.4M edges on kernel).
+# Was recompiled per-edge before this fix — ~27 seconds wasted on kernel.
+_FN_PTR_PARAM_RE = re.compile(
+    r'^(cb_fn|cpl_cb|cb|fn|func|handler|callback|op|action|proc|'
+    r'routine|build_io_fn|disconnected_qpair_cb)$|'
+    r'_cb$|_fn$|_handler$|_callback$|_routine$'
+)
 from _builder.sqlite_postprocess import (
     _build_indexes_from_sqlite,
     _build_callgraph_summary_md_from_sqlite,
@@ -593,16 +622,20 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
         if local_names:
             shadowed = local_names & global_var_names_keys
             if shadowed:
+                # Don't recompile the massive regex! Instead, use the
+                # pre-compiled _ASSIGN_OPS and filter out shadowed names
+                # from the match results. This changes the cost from
+                # O(N_shadowed * re.compile(30K_branches)) — ~30s per
+                # call × 7500 calls = ~62 hours — to O(N_matches * 1
+                # dict lookup) — milliseconds per call.
+                #
+                # The pre-compiled regex will match shadowed names too,
+                # but we skip them in the write-detection loop below.
                 global_var_names = {k: v for k, v in global_var_names_full.items()
                                     if k not in shadowed}
-                # Re-compile assign-ops without shadowed names. Rare path.
-                if global_var_names:
-                    _ASSIGN_OPS = re.compile(
-                        r'\b(' + '|'.join(re.escape(gn) for gn in
-                                          sorted(global_var_names.keys(),
-                                                 key=len, reverse=True))
-                        + r')\s*(\+|-|\*|\/|\||\&|\^|\%|<<|>>)?=\s*[^=]'
-                    )
+                # Keep _ASSIGN_OPS as the pre-compiled version; the
+                # write-detection loop checks `if vname in global_var_names`
+                # which automatically excludes shadowed names.
             else:
                 global_var_names = global_var_names_full
         else:
@@ -715,20 +748,8 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
     # 2. From body_text: scan for struct field dereference patterns
     # Read patterns: obj->field, obj.field (not on LHS of assignment)
     # Write patterns: obj->field =, obj.field = (on LHS of assignment)
-
-    # Match: identifier->identifier or identifier.identifier
-    # Exclude: function calls (identifier(...)), common C keywords
-    _FIELD_ACCESS_RE = re.compile(
-        r'(\b[A-Za-z_]\w*)\s*(?:->|\.)\s*([A-Za-z_]\w*)\b'
-    )
-    # Write pattern: the field access is followed by assignment operator.
-    # Capture the assigned RHS expression (truncated to ~60 chars) so callers
-    # can distinguish "bh->b_bdev = NULL" from "bh->b_bdev = bdev" — this is
-    # critical for null-pointer-deref analysis where only the NULL writers
-    # are suspects.
-    _FIELD_WRITE_RE = re.compile(
-        r'(\b[A-Za-z_]\w*)\s*(?:->|\.)\s*([A-Za-z_]\w*)\s*(\+|-|\*|\/|\||\&|\^|\%|<<|>>)?=\s*([^;,\n]{1,80})'
-    )
+    # Regexes are module-level (_FIELD_ACCESS_RE, _FIELD_WRITE_RE) to
+    # avoid recompiling on every call (1.5M+ calls on kernel-scale).
 
     written_field_keys = set()  # (obj, field) pairs that are written
     seen_written_keys = set()  # for O(1) dedup of fields_written entries
@@ -3026,13 +3047,9 @@ def build_graph(extraction: dict, profile: dict = None,
         # extracted as callees but are not real functions. They appear when
         # code calls through a function pointer parameter, e.g., cb_fn(arg).
         # Detect by: unresolved name (no domain prefix) that matches common
-        # fn_ptr parameter patterns.
+        # fn_ptr parameter patterns. Regex is module-level (_FN_PTR_PARAM_RE)
+        # to avoid recompiling on every edge (5.4M edges on kernel).
         if target_id == target_name and '.' not in target_id:
-            _FN_PTR_PARAM_RE = re.compile(
-                r'^(cb_fn|cpl_cb|cb|fn|func|handler|callback|op|action|proc|'
-                r'routine|build_io_fn|disconnected_qpair_cb)$|'
-                r'_cb$|_fn$|_handler$|_callback$|_routine$'
-            )
             if _FN_PTR_PARAM_RE.match(target_id):
                 continue
 

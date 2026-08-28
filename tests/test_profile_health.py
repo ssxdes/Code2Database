@@ -57,16 +57,20 @@ class TestProfileHealthScoring(unittest.TestCase):
     def test_score_in_range(self):
         """Score should be in [0, 100]."""
         try:
-            from _builder.profile_health import ProfileHealth
+            from _builder.profile_health import compute_profile_health
         except ImportError:
-            self.skipTest("ProfileHealth not importable")
+            self.skipTest("compute_profile_health not importable")
         profile = self._make_minimal_profile()
         try:
-            result = ProfileHealth(profile).compute()
+            result = compute_profile_health(profile, source_root="/tmp")
             if isinstance(result, (int, float)):
                 score = result
-            else:
+            elif hasattr(result, "total_score"):
+                score = result.total_score
+            elif isinstance(result, dict):
                 score = result.get("score", result.get("total_score", 0))
+            else:
+                score = 0
             self.assertGreaterEqual(score, 0)
             self.assertLessEqual(score, 100)
         except Exception as exc:
@@ -75,9 +79,9 @@ class TestProfileHealthScoring(unittest.TestCase):
     def test_categories_documented(self):
         """The 7 documented categories should be present in breakdown."""
         try:
-            from _builder.profile_health import ProfileHealth
+            from _builder.profile_health import compute_profile_health
         except ImportError:
-            self.skipTest("ProfileHealth not importable")
+            self.skipTest("compute_profile_health not importable")
         documented = {
             "callback_patterns", "skip_names", "vtable_types",
             "api_prefixes", "domain_keywords", "macro_definitions",
@@ -85,19 +89,18 @@ class TestProfileHealthScoring(unittest.TestCase):
         }
         profile = self._make_minimal_profile()
         try:
-            result = ProfileHealth(profile).compute()
-            if isinstance(result, dict):
-                # Look for either categories dict or per-category score keys
-                if "categories" in result:
-                    found = set(result["categories"].keys())
-                else:
-                    found = {k for k in result.keys() if k in documented}
-                # At least one documented category should be present
-                intersection = found & documented
-                self.assertGreater(
-                    len(intersection), 0,
-                    f"Should report at least one documented category, got {found}"
-                )
+            result = compute_profile_health(profile, source_root="/tmp")
+            if hasattr(result, "categories"):
+                found = {c.name for c in result.categories}
+            elif isinstance(result, dict) and "categories" in result:
+                found = set(result["categories"].keys())
+            else:
+                found = set()
+            intersection = found & documented
+            self.assertGreater(
+                len(intersection), 0,
+                f"Should report at least one documented category, got {found}"
+            )
         except Exception as exc:
             self.skipTest(f"ProfileHealth.compute() not runnable: {exc}")
 

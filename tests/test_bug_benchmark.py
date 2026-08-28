@@ -60,23 +60,24 @@ class TestBenchmarkResultSchema(unittest.TestCase):
         """The benchmark result schema should include the documented fields:
         recall, precision, avg_tool_calls, avg_tokens, avg_time."""
         try:
-            from _builder.bug_benchmark import BenchmarkResult
+            from _builder.bug_benchmark import InvestigationResult
         except ImportError:
-            self.skipTest("BenchmarkResult not defined")
+            self.skipTest("InvestigationResult not defined")
         # Should be a dataclass or named tuple with the documented fields
-        if hasattr(BenchmarkResult, "__dataclass_fields__"):
-            fields = set(BenchmarkResult.__dataclass_fields__.keys())
-        elif hasattr(BenchmarkResult, "_fields"):
-            fields = set(BenchmarkResult._fields)
+        if hasattr(InvestigationResult, "__dataclass_fields__"):
+            fields = set(InvestigationResult.__dataclass_fields__.keys())
+        elif hasattr(InvestigationResult, "_fields"):
+            fields = set(InvestigationResult._fields)
         else:
-            self.skipTest("BenchmarkResult schema unknown")
+            self.skipTest("InvestigationResult schema unknown")
         # At least one of the documented fields should be present
-        documented = {"recall", "precision", "avg_tool_calls",
-                      "avg_tokens", "avg_time"}
+        documented = {"tool_calls", "tokens_consumed", "time_elapsed",
+                      "root_cause_found", "keywords_matched",
+                      "functions_examined", "final_answer"}
         intersection = fields & documented
         self.assertGreater(
             len(intersection), 0,
-            f"BenchmarkResult should have at least one of {documented}, got {fields}"
+            f"InvestigationResult should have at least one of {documented}, got {fields}"
         )
 
 

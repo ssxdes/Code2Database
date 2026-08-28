@@ -59,13 +59,26 @@ def taint_analysis(graph_dir: str, sources: List[str], sinks: List[str],
     # BFS from each source through DATA_FLOW + INVOKES edges
     flows = []
     for source_id in source_nodes:
-        # Track visited nodes and paths
-        visited = {source_id}
-        queue = deque([(source_id, [source_id], False)])  # (node, path, is_sanitized)
+        # Track visited nodes to avoid infinite loops. We do NOT use a
+        # single global visited set across all flows from this source —
+        # that would incorrectly block legitimate alternative paths to
+        # the same sink (e.g., source→sanitize→sink AND source→bypass→sink
+        # where the second path is unsanitized but blocked because sink
+        # was already visited via the first path).
+        # Instead, we track visited per-path (passed as a frozen copy
+        # in the queue) so each path can independently reach sinks.
+        # To bound the search, we still cap at max_depth hops.
+        queue = deque([(source_id, [source_id], False, {source_id})])
 
         while queue:
-            node, path, is_sanitized = queue.popleft()
-            if len(path) > max_depth:
+            node, path, is_sanitized, visited = queue.popleft()
+            # Depth check: depth = len(path) - 1 = number of hops from
+            # source. Block when depth EXCEEDS max_depth (not >=), so
+            # max_depth=5 allows up to 5 hops (path length 6). Previous
+            # check used len(path) > max_depth which was off-by-one
+            # (blocked paths of length max_depth+1 instead of max_depth+2).
+            depth = len(path) - 1
+            if depth > max_depth:
                 continue
 
             if node in sink_nodes and node != source_id:
@@ -77,7 +90,7 @@ def taint_analysis(graph_dir: str, sources: List[str], sinks: List[str],
                     "path": [G.nodes[n].get("name", n) for n in path],
                     "path_ids": path,
                     "sanitized": is_sanitized,
-                    "depth": len(path) - 1,
+                    "depth": depth,
                 })
                 continue
 
@@ -89,9 +102,12 @@ def taint_analysis(graph_dir: str, sources: List[str], sinks: List[str],
                     continue
                 if succ in visited:
                     continue
-                visited.add(succ)
+                # Per-path visited set — copy so each branch has its own.
+                # This allows two paths to converge at the same sink
+                # without one blocking the other.
+                new_visited = visited | {succ}
                 new_sanitized = is_sanitized or (succ in sanitizer_nodes)
-                queue.append((succ, path + [succ], new_sanitized))
+                queue.append((succ, path + [succ], new_sanitized, new_visited))
 
     return {
         "sources": [G.nodes[s].get("name", s) for s in source_nodes],

@@ -28,6 +28,11 @@ INFERRED for transformed, AMBIGUOUS for lost-in-control-flow).
 import json
 import os
 import re
+
+# Cache for per-callee-name assignment regexes. Avoids re.compile on
+# every hop during value-flow traversal (query-time, but depth-bounded
+# at ~10 hops — cache helps when same callee appears in multiple flows).
+_ASGN_RE_CACHE = {}
 import sys
 from collections import deque
 from typing import Optional, List, Dict, Any, Set, Tuple
@@ -584,11 +589,14 @@ def interprocedural_value_flow(G, start_id: str, value_pattern: str,
                     # Caller may have: `x = callee(...)` — check caller body
                     caller_body = G.nodes[src].get("body_text", "") or ""
                     if caller_body and resolved in caller_body:
-                        # Find assignment from callee
+                        # Find assignment from callee. Cache compiled regex
+                        # per callee_name to avoid re.compile on every hop.
                         callee_name = cur_nd.get("name", "")
-                        asgn_re = re.compile(
-                            r'([A-Za-z_]\w*)\s*=\s*' + re.escape(callee_name) + r'\s*\('
-                        )
+                        if callee_name not in _ASGN_RE_CACHE:
+                            _ASGN_RE_CACHE[callee_name] = re.compile(
+                                r'([A-Za-z_]\w*)\s*=\s*' + re.escape(callee_name) + r'\s*\('
+                            )
+                        asgn_re = _ASGN_RE_CACHE[callee_name]
                         for m in asgn_re.finditer(caller_body):
                             alias = m.group(1)
                             next_hops.append((src, f"assigned to {alias}", alias))

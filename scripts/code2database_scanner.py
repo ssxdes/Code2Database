@@ -637,9 +637,12 @@ def scan_directory(source_root: str, lang: str = "auto",
                       f"kept {len(file_list)} / {len(file_list) + _filtered_count} "
                       f"files (dropped {_filtered_count})", file=sys.stderr)
 
-    # Auto-detect large project: if > 10000 source files, treat as large.
+    # Auto-detect large project: if > 5000 source files, treat as large.
     # This auto-enables split-output for better memory management.
-    _auto_large = len(file_list) > 10000
+    # Threshold lowered from 10000 to 5000 (Finding 10 fix) to protect
+    # memory on medium-sized projects (5K-10K files) that accumulate
+    # ~500MB+ in all_functions list without split-output.
+    _auto_large = len(file_list) > 5000
     if _auto_large and not split_output:
         split_output = True
         print(f"[scan] Auto-detected large project ({len(file_list)} source files), "

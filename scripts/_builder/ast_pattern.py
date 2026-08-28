@@ -44,10 +44,18 @@ def _is_ellipsis(token: str) -> bool:
 
 
 def _tokenize_pattern(pattern: str) -> List[str]:
-    """Split a pattern string into tokens (identifiers, operators, metavars)."""
-    # Replace newlines with spaces, then split on non-word chars but keep $vars
+    """Split a pattern string into tokens (identifiers, operators, metavars).
+
+    Tokenization must match _tokenize_source's so that pattern tokens align
+    with source tokens for _match_tokens. Multi-char operators (==, !=, ->,
+    &&, ||, etc.) are recognized as single tokens here — without this, a
+    pattern like '$X == $X' tokenizes to ['$', '=', '=', '$'] and never
+    matches source 'a == a' (which tokenizes to ['a', '==', 'a']).
+    """
+    # Multi-char operators (must match the list in _tokenize_source).
+    _MULTICHAR_OPS = ['==', '!=', '<=', '>=', '&&', '||', '->', '++', '--',
+                      '+=', '-=', '*=', '/=']
     tokens = []
-    # First extract string literals and metavariables
     pos = 0
     while pos < len(pattern):
         # Skip whitespace
@@ -70,6 +78,19 @@ def _tokenize_pattern(pattern: str) -> List[str]:
         if pattern[pos:pos+3] == _ELLIPSIS:
             tokens.append(_ELLIPSIS)
             pos += 3
+            continue
+        # Check for multi-char operators BEFORE single-char fallback.
+        # This is the fix: previously, '==' fell through to the single-char
+        # case and was tokenized as two '=' tokens, breaking patterns with
+        # any comparison / compound-assignment operator.
+        matched_op = False
+        for op in _MULTICHAR_OPS:
+            if pattern[pos:pos+len(op)] == op:
+                tokens.append(op)
+                pos += len(op)
+                matched_op = True
+                break
+        if matched_op:
             continue
         # Check for identifier
         m = re.match(r'[A-Za-z_]\w*', pattern[pos:])
@@ -197,13 +218,22 @@ def _tokenize_source(text: str) -> List[str]:
 def search_pattern(graph_dir: str, pattern: str, limit: int = 50) -> List[Dict]:
     """Search all function bodies for a pattern match.
 
+    The pattern is matched at every starting position within each
+    function's body (sliding-window match), not just at the function's
+    first token. This means a pattern like ``$X == $X`` will find
+    self-comparisons anywhere in the body, not only when the body
+    starts with the comparison.
+
     Args:
         graph_dir: C2D graph directory.
         pattern: Code pattern with $metavars and ... ellipsis.
         limit: Max results.
 
     Returns:
-        List of {function, file, line, bindings} matches.
+        List of {function, file, line, bindings} matches. If a single
+        function matches multiple times, only the first match is kept
+        (to bound output size and avoid one noisy function flooding
+        results).
     """
     from _builder.graph_build import _load_full_graph
     G = _load_full_graph(graph_dir)
@@ -223,7 +253,21 @@ def search_pattern(graph_dir: str, pattern: str, limit: int = 50) -> List[Dict]:
         if not body:
             continue
         source_tokens = _tokenize_source(body)
-        bindings = _match_tokens(pattern_tokens, source_tokens)
+        # Sliding-window match: try matching the pattern at every
+        # starting position. Empty pattern matches once (at position 0).
+        if not pattern_tokens:
+            bindings = {}
+        else:
+            bindings = None
+            for start in range(len(source_tokens) + 1):
+                # _match_tokens matches pattern_tokens against
+                # source_tokens[start:]; pass a slice to anchor the
+                # matching engine at the desired offset.
+                candidate = _match_tokens(
+                    pattern_tokens, source_tokens[start:])
+                if candidate is not None:
+                    bindings = candidate
+                    break
         if bindings is not None:
             results.append({
                 "function": nd.get("name", nid),

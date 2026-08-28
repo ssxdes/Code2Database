@@ -6,6 +6,10 @@ from collections import defaultdict
 import networkx as nx
 import logging
 
+# Module-level compiled regex (hoisted from _resolve_imports)
+_ASM_EXTERN_RE = re.compile(
+    r'^\s*(?:extern|\.globl|\.global)\s+([a-zA-Z_]\w*)', re.MULTILINE)
+
 # Cache for file-level includes (path → set of includes)
 _file_includes_cache = {}
 
@@ -60,8 +64,6 @@ def _resolve_imports(G, source_root: str) -> int:
         # #include in .S files (preprocessed by cpp)
         asm_ext = os.path.splitext(source_file)[1].lower()
         if asm_ext in ('.s', '.asm'):
-            _ASM_EXTERN_RE = re.compile(
-                r'^\s*(?:extern|\.globl|\.global)\s+([a-zA-Z_]\w*)', re.MULTILINE)
             for m in _ASM_EXTERN_RE.finditer(content):
                 file_includes.append(("asm_extern", m.group(1)))
             # .S files also support #include (preprocessed by cpp) —

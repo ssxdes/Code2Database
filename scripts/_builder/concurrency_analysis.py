@@ -245,6 +245,15 @@ def _detect_toctou_patterns(G, target_func=None, profile=None):
     if not acquire_patterns:
         return toctou
 
+    # Pre-compile lock patterns with capture group ONCE per profile.
+    # Without this, re.finditer(re.escape(pat) + ...) recompiles the
+    # regex on every (node, pattern) pair — 1.5M nodes × ~20 patterns
+    # = ~30M re.compile calls (~50 minutes on kernel).
+    _acquire_res = [re.compile(re.escape(p) + r'\s*\(\s*&?\s*([^,)]+)')
+                    for p in acquire_patterns]
+    _release_res = [re.compile(re.escape(p) + r'\s*\(\s*&?\s*([^,)]+)')
+                    for p in release_patterns]
+
     field_writers = defaultdict(list)
     for nid, nd in G.nodes(data=True):
         if nd.get("is_empty", False):
@@ -255,11 +264,11 @@ def _detect_toctou_patterns(G, target_func=None, profile=None):
                 continue
             body = nd.get("body_text", "") or ""
             locks = set()
-            for pat in acquire_patterns:
-                for m in re.finditer(re.escape(pat) + r'\s*\(\s*&?\s*([^,)]+)', body):
+            for _re in _acquire_res:
+                for m in _re.finditer(body):
                     locks.add(m.group(1).strip())
-            for pat in release_patterns:
-                for m in re.finditer(re.escape(pat) + r'\s*\(\s*&?\s*([^,)]+)', body):
+            for _re in _release_res:
+                for m in _re.finditer(body):
                     locks.discard(m.group(1).strip())
             field_writers[fname].append((nid, locks, nd.get("name", nid)))
 
@@ -270,11 +279,11 @@ def _detect_toctou_patterns(G, target_func=None, profile=None):
             continue
         body = nd.get("body_text", "") or ""
         reader_locks = set()
-        for pat in acquire_patterns:
-            for m in re.finditer(re.escape(pat) + r'\s*\(\s*&?\s*([^,)]+)', body):
+        for _re in _acquire_res:
+            for m in _re.finditer(body):
                 reader_locks.add(m.group(1).strip())
-        for pat in release_patterns:
-            for m in re.finditer(re.escape(pat) + r'\s*\(\s*&?\s*([^,)]+)', body):
+        for _re in _release_res:
+            for m in _re.finditer(body):
                 reader_locks.discard(m.group(1).strip())
 
         for fr in (nd.get("fields_read") or []):
@@ -417,82 +426,100 @@ def detect_data_races(G, target_func=None, profile=None):
             if not has_target:
                 continue
 
-        for i in range(len(accessors)):
-            for j in range(i + 1, len(accessors)):
-                nid_a, access_a = accessors[i]
-                nid_b, access_b = accessors[j]
+        # Partition accessors by thread context to avoid O(M²) pair
+        # comparison. For hot kernel globals (jiffies, current, printk)
+        # accessed by 50K-100K+ functions, the original O(M²) loop
+        # would run ~5 billion iterations per global. By partitioning
+        # into thread-context groups first (O(M)), we only compare
+        # across DIFFERENT groups — typically O(M × K) where K is the
+        # number of distinct thread contexts (small, ~5-20).
+        _ctx_groups = defaultdict(list)
+        for nid, access_type in accessors:
+            ndata = G.nodes[nid]
+            model, entry = _get_thread_context(ndata)
+            ctx_key = (model, entry)
+            _ctx_groups[ctx_key].append((nid, access_type))
 
-                # Order the pair consistently for dedup
-                if nid_a > nid_b:
-                    nid_a, nid_b = nid_b, nid_a
-                    access_a, access_b = access_b, access_a
-
-                pair_key = (nid_a, nid_b, rtype, rname)
-                if pair_key in seen_pairs:
+        # Only compare across DIFFERENT thread contexts
+        _ctx_keys = list(_ctx_groups.keys())
+        for ci in range(len(_ctx_keys)):
+            for cj in range(ci + 1, len(_ctx_keys)):
+                ctx_a = _ctx_keys[ci]
+                ctx_b = _ctx_keys[cj]
+                # Skip if same context (same model + same entry)
+                if _same_thread_context(
+                    {"thread_model": ctx_a[0], "thread_entry": ctx_a[1] is not None,
+                     "name": ctx_a[1] or ""},
+                    {"thread_model": ctx_b[0], "thread_entry": ctx_b[1] is not None,
+                     "name": ctx_b[1] or ""}):
                     continue
+                for nid_a, access_a in _ctx_groups[ctx_a]:
+                    for nid_b, access_b in _ctx_groups[ctx_b]:
+                        # Order the pair consistently for dedup
+                        if nid_a > nid_b:
+                            nid_a, nid_b = nid_b, nid_a
+                            access_a, access_b = access_b, access_a
 
-                ndata_a = G.nodes[nid_a]
-                ndata_b = G.nodes[nid_b]
+                        pair_key = (nid_a, nid_b, rtype, rname)
+                        if pair_key in seen_pairs:
+                            continue
 
-                # Skip if same thread context
-                if _same_thread_context(ndata_a, ndata_b):
-                    continue
+                        ndata_a = G.nodes[nid_a]
+                        ndata_b = G.nodes[nid_b]
 
-                # If target_func specified, one must be the target
-                if target_nid and nid_a != target_nid and nid_b != target_nid:
-                    continue
+                        # If target_func specified, one must be the target
+                        if target_nid and nid_a != target_nid and nid_b != target_nid:
+                            continue
 
-                seen_pairs.add(pair_key)
+                        seen_pairs.add(pair_key)
 
-                # Determine severity
-                if access_a == "write" or access_b == "write":
-                    severity = "high"
-                else:
-                    severity = "low"
+                        # Determine severity
+                        if access_a == "write" or access_b == "write":
+                            severity = "high"
+                        else:
+                            severity = "low"
 
-                # Determine protection: if both functions hold the same
-                # mutex, the race is likely protected
-                locks_a = func_locks.get(nid_a, set())
-                locks_b = func_locks.get(nid_b, set())
-                common_locks = locks_a & locks_b
-                protection = "none"
-                if common_locks:
-                    # Use the first common lock name as representative
-                    protection = sorted(common_locks)[0]
+                        # Determine protection
+                        locks_a = func_locks.get(nid_a, set())
+                        locks_b = func_locks.get(nid_b, set())
+                        common_locks = locks_a & locks_b
+                        protection = "none"
+                        if common_locks:
+                            protection = sorted(common_locks)[0]
 
-                # Determine confidence
-                model_a, entry_a = _get_thread_context(ndata_a)
-                model_b, entry_b = _get_thread_context(ndata_b)
+                        # Determine confidence
+                        model_a, entry_a = _get_thread_context(ndata_a)
+                        model_b, entry_b = _get_thread_context(ndata_b)
 
-                if (entry_a and entry_b and entry_a != entry_b
-                        and (access_a == "write" or access_b == "write")):
-                    confidence = "high"
-                else:
-                    confidence = "medium"
+                        if (entry_a and entry_b and entry_a != entry_b
+                                and (access_a == "write" or access_b == "write")):
+                            confidence = "high"
+                        else:
+                            confidence = "medium"
 
-                race_counter += 1
-                races.append({
-                    "race_id": f"race_{race_counter}",
-                    "thread_a": {
-                        "function": ndata_a.get("name", nid_a),
-                        "thread_model": model_a or "unknown",
-                        "thread_entry": entry_a or "unknown",
-                    },
-                    "thread_b": {
-                        "function": ndata_b.get("name", nid_b),
-                        "thread_model": model_b or "unknown",
-                        "thread_entry": entry_b or "unknown",
-                    },
-                    "shared_resource": {
-                        "name": rname,
-                        "type": rtype,
-                        "access_a": access_a,
-                        "access_b": access_b,
-                    },
-                    "protection": protection,
-                    "severity": severity,
-                    "confidence": confidence,
-                })
+                        race_counter += 1
+                        races.append({
+                            "race_id": f"race_{race_counter}",
+                            "thread_a": {
+                                "function": ndata_a.get("name", nid_a),
+                                "thread_model": model_a or "unknown",
+                                "thread_entry": entry_a or "unknown",
+                            },
+                            "thread_b": {
+                                "function": ndata_b.get("name", nid_b),
+                                "thread_model": model_b or "unknown",
+                                "thread_entry": entry_b or "unknown",
+                            },
+                            "shared_resource": {
+                                "name": rname,
+                                "type": rtype,
+                                "access_a": access_a,
+                                "access_b": access_b,
+                            },
+                            "protection": protection,
+                            "severity": severity,
+                            "confidence": confidence,
+                        })
 
     # Sort: high severity first, then high confidence, then by resource name
     races.sort(key=lambda r: (

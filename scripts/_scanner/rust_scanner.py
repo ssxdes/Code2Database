@@ -5,6 +5,13 @@ import os
 import re
 from _scanner.base import BaseScanner
 
+# Module-level compiled regex (hoisted from _detect_api_entry)
+_STD_CONTAINER_RE = re.compile(
+    r'^(?:Arc|Box|Vec|VecDeque|HashMap|HashSet|BTreeMap|BTreeSet|'
+    r'Option|Result|Cow|Rc|Pin|Cell|RefCell|Mutex|RWLock|'
+    r'ARef|Weak|NonNull|ManuallyDrop|MaybeUninit)'
+    r'(?:<[^>]*>)?::')
+
 try:
     import tree_sitter_rust as tsrust
     from tree_sitter import Language, Parser
@@ -462,11 +469,6 @@ class RustTreeSitterScanner(BaseScanner):
         # Exclusion: generic impl methods (e.g., Arc<T>::method, Box<T, A>::method)
         # These are standard library patterns that look pub but are not project APIs.
         # Match Name<T...>:: or Name<T, A>:: where Name is a known std type.
-        _STD_CONTAINER_RE = re.compile(
-            r'^(?:Arc|Box|Vec|VecDeque|HashMap|HashSet|BTreeMap|BTreeSet|'
-            r'Option|Result|Cow|Rc|Pin|Cell|RefCell|Mutex|RWLock|'
-            r'ARef|Weak|NonNull|ManuallyDrop|MaybeUninit)'
-            r'(?:<[^>]*>)?::')
         if _STD_CONTAINER_RE.match(func_name):
             return False, ""
 

@@ -7,6 +7,29 @@ from _scanner.base import BaseScanner
 from _detector.build_detector import evaluate_pp_condition
 import logging
 
+# Module-level compiled regexes (hoisted from function bodies)
+_MACRO_ASM_RE = re.compile(
+    r'__asm__\s*(?:__volatile__\s*)?\(|'
+    r'asm\s+(?:inline\s+)?(?:volatile\s+)?\(|'
+    r'asm\s*\(',
+    re.IGNORECASE
+)
+_REG_DECL_RE = re.compile(
+    r'\bregister\s+\w+\s+\*?\s*'
+    r'(\w+)\s+'
+    r'__asm__\s*\(\s*"([xw]\d+|[a-z]{2,4}\d*)"\s*\)'
+    r'\s*=\s*'
+    r'(\([^)]*\)\s*)?'
+    r'(\w+)',
+)
+_STATIC_ARRAY_RE = re.compile(
+    r'\bstatic\s+(?:const\s+)?'
+    r'\w+\s+\*?\s*(?:const\s+)?'
+    r'(\w+)\s*\[\s*\]\s*=\s*\{([^}]+)\}',
+    re.MULTILINE
+)
+
+
 try:
     import tree_sitter_c as tsc
     import tree_sitter_cpp as tscpp
@@ -631,12 +654,7 @@ class CTreeSitterScanner(BaseScanner):
         # tree-sitter does not expand macros, so asm calls inside #define bodies
         # are invisible to the normal gnu_asm_expression path. We scan
         # preproc_function_def and preproc_def nodes for asm patterns.
-        _MACRO_ASM_RE = re.compile(
-            r'__asm__\s*(?:__volatile__\s*)?\(|'
-            r'asm\s+(?:inline\s+)?(?:volatile\s+)?\(|'
-            r'asm\s*\(',
-            re.IGNORECASE
-        )
+        # (hoisted to module level as _MACRO_ASM_RE)
         _macro_asm_edges = []  # (macro_name, edge_dict)
         _macro_asm_funcs = {}  # macro_name → synthetic function entry
 
@@ -2381,13 +2399,8 @@ class CTreeSitterScanner(BaseScanner):
         """
         arrays = {}
         # Match: static [const] type [*] [const] name[] = { func1, func2, ... };
-        array_re = re.compile(
-            r'\bstatic\s+(?:const\s+)?'
-            r'\w+\s+\*?\s*(?:const\s+)?'
-            r'(\w+)\s*\[\s*\]\s*=\s*\{([^}]+)\}',
-            re.MULTILINE
-        )
-        for m in array_re.finditer(source_text):
+        # (hoisted to module level as _STATIC_ARRAY_RE)
+        for m in _STATIC_ARRAY_RE.finditer(source_text):
             arr_name = m.group(1)
             init_list = m.group(2)
             # Extract identifiers from the initializer list
@@ -2431,7 +2444,7 @@ class CTreeSitterScanner(BaseScanner):
         # Regex to match: register [type] [*]name __asm__("reg") = [(cast)] value;
         # Group 1: variable name, Group 2: register, Group 3: cast (if any), Group 4: value
         # Supports both ARM (x0-x30, w0-w30) and x86 (rax, rdi, rsi, etc.) register names
-        reg_decl_re = re.compile(
+        _REG_DECL_RE = re.compile(
             r'\bregister\s+\w+\s+\*?\s*'
             r'(\w+)\s+'                                    # variable name
             r'__asm__\s*\(\s*"([xw]\d+|[a-z]{2,4}\d*)"\s*\)'  # __asm__("x9") or __asm__("rax")
@@ -2441,7 +2454,7 @@ class CTreeSitterScanner(BaseScanner):
             re.MULTILINE
         )
 
-        for m in reg_decl_re.finditer(body_text):
+        for m in _REG_DECL_RE.finditer(body_text):
             var_name = m.group(1)
             asm_reg = m.group(2)
             cast = m.group(3)  # None if no cast

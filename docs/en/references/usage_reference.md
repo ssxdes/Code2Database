@@ -783,3 +783,234 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 # Analyze missing edges and misclassified endpoints in extraction
 # Parse LLM response with parse_result_check_response()
 ```
+
+---
+
+## Complete CLI Command Reference (222 commands)
+
+All 222 CLI subparsers across `code2database_builder.py` (214) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
+
+| Command | Description |
+|---------|-------------|
+| `add-function` | Add a new function to the graph |
+| `add-semantic-edges` | Walk graph and add ALLOCATES/FREES/LOCKS/UNLOCKS edges from body text |
+| `apply-invariants` | Apply LLM-enhanced invariants from .code2database_invariants.json back to the graph |
+| `apply-knowledge` | Apply LLM knowledge to knowledge directory |
+| `apply-semantics` | Apply LLM semantic descriptions to graph |
+| `ast-search` | Structural code search: write patterns AS code with $metavars and ... ellipsis |
+| `audit-log` | Query the audit log (who edited what, when, why) |
+| `auto-enhance` | Auto-enhance a node with LLM-supplied attributes (auto-writes EXTRACTED, prompts INFERRED) |
+| `auto-profile` | Auto-detect project type and generate/recommend profile |
+| `batch-confirm` | Batch-confirm pending supplements (accept-all / reject-all / per-item / apply) |
+| `blame-node` | Attribute a node to its introducing/last-modifying commit |
+| `blast-radius` | Show blast radius: affected tests/APIs for a function change |
+| `bridge-nodes` | Bridge nodes with high betweenness centrality (chokepoints) |
+| `bug-benchmark` | Run BUG benchmark (graph vs grep) and report recall/precision/tool-call/token efficiency |
+| `build` | Build invocation graph from extraction JSON |
+| `build-diff` | Compare two graph builds: added/removed/changed nodes+edges+communities |
+| `build-multi` | Build a unified C2D from a multi-project manifest |
+| `c2d-add-foreign` | Register a foreign C2D and resolve cross-project refs |
+| `c2d-add-foreign-stub` | Register a vendor SDK stub C2D (signatures only) |
+| `c2d-check-compat` | Check if B's foreign_refs still valid against new A version |
+| `c2d-list-foreign` | List watched foreign C2Ds with sync status |
+| `c2d-pin-foreign` | Pin a foreign_ref so it won't auto-update |
+| `c2d-prune-foreign` | Remove old deleted/orphaned foreign_refs |
+| `c2d-remove-foreign` | Unregister a foreign C2D |
+| `c2d-resolve-foreign` | Force re-resolve stale/deleted foreign_refs by name |
+| `c2d-sync-foreign` | Sync foreign_refs with updated foreign C2Ds |
+| `c2d-unpin-foreign` | Unpin a pinned foreign_ref |
+| `cgdb-cfg-paths` | Enumerate CFG paths through a function (entry → exit blocks) |
+| `cgdb-compare` | Compare two graph directories (e.g., main vs feature branch) |
+| `cgdb-configs-for` | List config_predicate text_form(s) that gate a given node |
+| `cgdb-coverage` | Query graph coverage: --function NAME | --file PATH |
+| `cgdb-data-flow` | Show data_flow entries (def-use chains) for a variable node |
+| `cgdb-definition` | Find definition nodes (function/var/field/typedef) by name |
+| `cgdb-find-invoked` | Find callees (forward closure) of a node via recursive CTE |
+| `cgdb-find-invokers` | Find callers (reverse closure) of a node via recursive CTE |
+| `cgdb-freshness` | Check if the code graph is stale  |
+| `cgdb-function-body` | Return a function's body source text |
+| `cgdb-get-source` | Get source text for a node with byte-precise attribution |
+| `cgdb-index-status` | Overall cgdb index statistics: node/edge counts by kind, file count |
+| `cgdb-layer-summary` | Generate cgdb_layer_summary.md report for all 13 cgdb tables |
+| `cgdb-merge-knowledge` | Merge knowledge/memory from another branch's graph  |
+| `cgdb-nodes-under-config` | Find all nodes gated by a given config predicate |
+| `cgdb-ops-impls` | Find ops_bind implementations for a given field name |
+| `cgdb-path` | Find a call path from src to dst via recursive CTE |
+| `cgdb-path-feasible` | Check feasibility of a CFG path through blocks (uses Z3 if available) |
+| `cgdb-query` | Generic cgdb query: FTS5 symbol search or get_node by id |
+| `cgdb-race-check` | Heuristic race-condition check for a function |
+| `cgdb-schema-version` | Report current cgdb schema version and available migrations |
+| `cgdb-sql` | Run arbitrary read-only SQL against the cgdb database (cross-table joins, ad-hoc analysis) |
+| `cgdb-struct-layout` | Return a struct/union's field layout |
+| `cgdb-suggest` | Analyze the graph and suggest improvements  |
+| `cgdb-time-travel` | Query node state at a past version (by commit_hash or version_id) |
+| `cgdb-tour` | Generate a guided codebase tour markdown  |
+| `cgdb-type-definition` | Find type definitions (struct/union/enum/typedef/class) by name |
+| `cgdb-versions` | List graph_versions rows (newest first), or diff two versions |
+| `cgdb-views` | List/run predefined analysis views (hub functions, sync hotspots, doc coverage, etc.) |
+| `cgdb-write-coverage` | Rewrite coverage reports |
+| `classify-endpoints` | Apply LLM endpoint classification to the graph |
+| `co-change` | Mine git log for co-change coupling edges |
+| `code-slice` | Extract minimal context: data-flow slice or usage slice for LLM |
+| `commit-db-transaction` | Commit a write-back transaction (render+compile+lint+sha256+git) |
+| `composite-query` | Query across local + foreign C2Ds via SQLite ATTACH |
+| `concurrency-analyze` | Analyze concurrency safety between two call chains or a function and its concurrent peers |
+| `concurrency-risks` | List all concurrency risk points sorted by risk level |
+| `coverage-cross-c2d` | Compute which functions in target_c2d are called by test_c2d |
+| `daemon-force-refresh` | Force daemon to re-scan a specific file immediately |
+| `daemon-list-projects` | List all projects with daemon state/log files on this machine |
+| `daemon-logs` | Show daemon log file (last N lines, or --follow for streaming) |
+| `daemon-pause` | Pause daemon (e.g., before manual updates to avoid conflicts) |
+| `daemon-reload` | Reload daemon config (sends SIGHUP; daemon re-reads profile) |
+| `daemon-resume` | Resume daemon after pause |
+| `daemon-start` | Start long-running daemon (foreground; blocks). Monitors source files and auto-updates graph. |
+| `daemon-status` | Get daemon status: pid, last_sync, pending events, stale nodes |
+| `daemon-stop` | Stop a running daemon (sends SIGTERM) |
+| `daemon-wait-sync` | Block until daemon finishes current sync (LLM agents call before important queries) |
+| `data-dep` | Cross-function data dependencies (globals/fields as nodes, mod-read chains, dead writers) |
+| `data-lifecycle` | Trace resource allocation→usage→release paths |
+| `delete-node` | Soft-delete an AST node by ID |
+| `delete-token` | Delete a token by token_id |
+| `describe-commit` | Show which nodes/edges a commit affected |
+| `describe-node` | Get info about a node. Use --detail brief|standard|full to control output size |
+| `detect-changes` | Detect changed files since last manifest |
+| `detect-races` | Detect data races between different thread contexts |
+| `diff-chains` | Compare execution paths under two different bindings |
+| `discover` | Discover macro-based registration dispatch patterns from headers |
+| `doc-alignment-report` | Generate full Markdown report of doc-code alignment issues |
+| `doc-code-check` | Check doc-code alignment: detect mismatches between semantic_desc (from docs) and body_text (from code) |
+| `doc-mark-stale` | Mark a node's doc as stale (e.g., after code change detected by daemon) |
+| `doc-signature-diff` | Detect signature changes between two graph versions (old vs new) |
+| `domain` | List all nodes/edges in a domain |
+| `edit-token` | Edit a token's spelling by token_id |
+| `embeddings-build` | Build TF-IDF char n-gram embeddings for semantic search |
+| `embeddings-search` | Cosine-similarity search over node embeddings |
+| `explain-label` | Explain why a node has a given label (dead_code, API_entry, race_risk, etc.) |
+| `explore-flow` | One-shot context retrieval: query → nodes + paths + conditions |
+| `export-changes` | Export change graph from git/svn changelog |
+| `export-html` | Export invocation graph as interactive HTML |
+| `export-mermaid` | Export call chains as Mermaid flowchart diagrams |
+| `export-obsidian` | Export invocation graph as Obsidian vault with [[links]] = calls |
+| `extract-invariants` | Extract preconditions/postconditions/loop_invariants + state machines from function bodies |
+| `extract-invariants-llm` | Extract invariants with LLM consensus and continuous confidence |
+| `extract-knowledge` | Extract knowledge from docs and graph |
+| `extract-semantics` | Export nodes for LLM semantic description |
+| `extract-signals` | Extract #ifdef condition→affected edges map |
+| `ffi-auto-link` | Auto-link FFI bindings to watched foreign C2Ds |
+| `ffi-detect` | Detect FFI boundaries (Python ctypes, Go cgo, Rust extern \ |
+| `ffi-list` | List all FFI edges in the graph |
+| `ffi-persist` | Persist FFI edges into SQLite bridge tables |
+| `ffi-trace` | Trace the FFI call chain from a node |
+| `ffi-types` | Find FFI type mappings matching patterns |
+| `field-access` | Find which functions read/write a struct field or global variable |
+| `field-flow` | Trace field writes + their call chains (combines field-access + reverse-trace) |
+| `fill-request` | List empty fields on a node that the LLM should fill (auto-fill request) |
+| `find-commits` | Find commits that recently modified a function |
+| `find-invariants` | Find functions guaranteeing a given invariant (e.g., 'ctx->state == READY' after return) |
+| `find-macros` | Find macro definitions and invocations |
+| `get-code-snippet` | Extract source code snippet around a node |
+| `get-pp-branches` | Get #ifdef branch tree for a file |
+| `get-string-literals` | Find string literals with optional pattern |
+| `graph-diff` | Diff two graph versions |
+| `graph-history` | List graph versions or show history of a specific node |
+| `graph-provenance` | Show which commit the current graph corresponds to |
+| `graph-record-version` | Manually record a graph version |
+| `happens-before` | Check happens-before between a writer and reader via locks, RCU, or memory barriers |
+| `heuristic-enhance` | Generate heuristic supplements for empty fields — no LLM required (always-works fallback) |
+| `hub-nodes` | Most connected nodes (highest in+out degree) |
+| `hybrid-search` | Hybrid search: FTS5 BM25 + optional embedding + RRF fusion |
+| `impact` | Impact analysis for a node |
+| `import-foreign-knowledge` | Copy foreign C2D's knowledge/*.md into local knowledge/ |
+| `insert-node-after` | Insert a new AST node after an anchor |
+| `insert-token` | Insert tokens after a given anchor token_id |
+| `install-hook` | Install git post-commit hook for auto quick-update |
+| `intent-query` | Classify a natural-language question and route to a CLI command |
+| `io-path` | Trace IO path from a function, auto-detecting vtable dispatch options |
+| `kb-audit` | Audit KB: counts, stale, low-confidence, citations |
+| `kb-cluster` | Cluster kb_paragraphs by FTS5 similarity + link principles |
+| `kb-conflict` | Detect contradictory items in the same cluster |
+| `kb-forget` | Immediately delete a kb_paragraph (no decay) |
+| `kb-global-add` | Add an entry to the cross-project global KB |
+| `kb-global-import` | Import a shared global KB JSON file |
+| `kb-global-search` | Search the cross-project global KB |
+| `kb-global-share` | Export global KB to a portable JSON file |
+| `kb-known-unknowns` | List queries that returned no matches (Phase 9) |
+| `kb-migrate` | Migrate kb_paragraphs rows into kb_items (fact-level) |
+| `kb-query` | Unified FTS5+BM25 query across memory and knowledge |
+| `kb-rebuild-index` | Rebuild the unified kb_paragraphs FTS5 index  |
+| `kb-rollback` | Restore a kb_item to a prior version |
+| `key-paths` | Extract key execution paths from entry points automatically |
+| `knowledge-query` | Query knowledge by topic |
+| `knowledge-validate` | Validate knowledge against current graph |
+| `light-scan` | Lightweight scan of changed files (no LLM) |
+| `load` | Load and summarize the invocation graph |
+| `lock-coverage` | Analyze lock-held regions and per-access locksets (replaces over-approximation) |
+| `lsp-server` | Start Code2Database as a read-only LSP server on stdio  |
+| `manage-memory` | Manage persistent memory (add/correct/reshape/decay/promote/refine/query/pack/consolidate/export/import/scratch-*) |
+| `manifest` | Save file fingerprint manifest |
+| `memory-health` | Report memory system health statistics |
+| `memory-ordering` | Show RCU/memory-barrier/atomic primitives used by a function |
+| `merge` | Merge new extraction into existing graph |
+| `merge-changes` | Merge change graph JSON into existing graph |
+| `neighbors` | Get neighbors of a node |
+| `node-history` | Show commit history for a node |
+| `null-source` | Find all writers of NULL to a struct field (alias: field-flow --value NULL) |
+| `param-flow` | Trace parameter flow through the call chain (cross-function) |
+| `patch-from-diff` | Patch graph from unified diff text |
+| `patch-from-git` | Patch graph from git diff |
+| `patch-profile` | LLM-driven incremental calibration of auto-profile (non-destructive, requires user confirmation) |
+| `path` | Find shortest call path between two nodes |
+| `path-feasible` | Auto-solve path feasibility (no manual bindings needed) |
+| `path-guards` | Prove writer reachability from entry using guard conditions |
+| `plugins` | List available callgraph plugins |
+| `profile` | Generate project profile by scanning source directories |
+| `profile-bind-version` | Bind profile to current git/svn HEAD commit so stale profiles can be detected |
+| `profile-evolve` | Detect new callback patterns in source and suggest profile additions; optionally apply EXTRACTED-confidence suggestions |
+| `profile-health` | Compute 0-100 health score for a project profile (callback patterns, skip_names, vtable_types, etc.) |
+| `query` | Run a Cypher-subset query against the graph (unified query language) |
+| `quick-update` | One-click: patch + light-scan, no LLM needed |
+| `references-of` | List ALL source locations where a symbol is referenced (declaration+calls+reads+writes) |
+| `render-source` | Render source from DB tokens |
+| `resolve-chain` | Trace call chain from a node with variable bindings to prune dead branches |
+| `reverse-trace` | Reverse trace from crash point through callers with condition/concurrency annotation |
+| `rollback` | Rollback supplement writes (revert to previous value) |
+| `rollback-db-transaction` | Roll back a write-back transaction |
+| `runtime-guards` | Detect runtime guard patterns in path conditions |
+| `sarif-export` | Export analysis results to SARIF 2.1.0 format for CI/IDE |
+| `save-memory` | Save Q&A memory with call chains |
+| `scan` | Scan source files for invocation graph extraction |
+| `scan-rpc` | Scan source for RPC client calls (HTTP/gRPC) + create stub edges |
+| `search` | Search nodes by keywords |
+| `search-memory` | Search memory for similar questions |
+| `semantic-search` | Neural semantic search: FTS5 BM25 + neural embedding + RRF fusion |
+| `semantic-status` | Check if semantic update is recommended |
+| `serve` | Start MCP server for LLM agent queries (stdio transport) |
+| `sync` | Sync local code2db-out with git-tracked version (local wins) |
+| `taint-analysis` | Taint analysis: source/sink/sanitizer propagation through DATA_FLOW edges |
+| `think-chain` | Generate complete call chains for structured analysis |
+| `trace-chain` | One-shot trace from --from to --to with full annotation |
+| `traverse-graph` | Free-form BFS/DFS traversal with depth and token budget |
+| `tx-begin` | Begin a graph transaction (snapshot + WAL + write lock) |
+| `tx-commit` | Commit the current transaction (clears WAL) |
+| `tx-list-snapshots` | List all available snapshots |
+| `tx-replay-wal` | Replay or rollback an unfinished WAL (crash recovery) |
+| `tx-restore` | Restore graph state from a specific snapshot |
+| `tx-rollback` | Rollback the current transaction (restores snapshot) |
+| `tx-snapshot` | Take a manual snapshot (without starting a transaction) |
+| `tx-status` | Show current transaction state and WAL status |
+| `unbalanced-alloc-free` | Find functions that alloc without free (or vice versa) |
+| `update` | Incremental update: re-scan changed files and merge |
+| `update-edge` | LLM-driven incremental supplement of edge attributes (non-destructive, requires user confirmation) |
+| `update-node` | LLM-driven incremental supplement of node attributes (non-destructive, requires user confirmation) |
+| `validate` | Validate build output files for correctness |
+| `validate-memory` | Validate memory against current graph; invalidate stale → experience |
+| `validate-plugin` | Validate a plugin file for interface compliance |
+| `validate-profile` | Validate a profile JSON against coverage metrics |
+| `value-flow` | Build and query value-flow edges (where does this value come from / go to?) |
+| `verify-consistency` | Verify DB render matches disk sha256 |
+| `watch` | Auto-sync: watch source directory and update incrementally |
+| `web-ui` | Start interactive Web UI server for graph browsing, path highlighting, LOD rendering |
+| `who-allocates` | Find functions that allocate a resource (ALLOCATES edges) |
+| `who-frees` | Find functions that free a resource (FREES edges) |
+| `who-locks` | Find functions that acquire a lock (LOCKS edges) |
+| `why-ambiguous` | Explain why an edge is marked AMBIGUOUS (fn_ptr dispatch, dead #ifdef, etc.) |

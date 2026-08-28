@@ -6,9 +6,7 @@ entry point scores and betweenness centrality. No manual --from/--to needed.
 
 import json
 import os
-import sys
 from pathlib import Path
-from collections import defaultdict
 import networkx as nx
 from _builder.graph_build import _load_full_graph
 from _builder.token_budget import estimate_tokens

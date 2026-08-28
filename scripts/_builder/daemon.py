@@ -43,14 +43,12 @@ import json
 import os
 import signal
 import socket
-import stat
 import sys
-import tempfile
 import threading
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Set, Callable
+from typing import Optional, List, Dict, Set, Callable
 
 
 # Linux inotify event bit-flags (see <sys/inotify.h>). Used as named

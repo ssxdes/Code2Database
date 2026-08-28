@@ -16,7 +16,7 @@ import os
 import re
 import sqlite3
 from collections import Counter
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 
 # Common Linux kernel subsystems — used to suggest "you scanned fs/ but

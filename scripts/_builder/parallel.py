@@ -50,7 +50,7 @@ from __future__ import annotations
 import multiprocessing
 import os
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 def map_files_processpool(

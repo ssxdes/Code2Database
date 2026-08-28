@@ -9,10 +9,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-import sys
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from _builder.c2d_foreign import _connect, _foreign_db_path, _escape_sql_path
 

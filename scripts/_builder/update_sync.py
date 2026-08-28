@@ -3,9 +3,7 @@
 import os
 import json
 import sys
-import re
 from pathlib import Path
-from collections import defaultdict
 
 # Ensure _vendor/networkx shim and parent dirs are found
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "_vendor"))
@@ -14,7 +12,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import networkx as nx
 import subprocess
 import shutil
-from _builder.utils import _output_result, _print_structured, _find_node_id, _parse_bindings, _load_globals, _is_condition_alive
 from _builder.graph_build import _load_full_graph, build_graph, split_by_domain
 from _builder.index_pack import _build_indexes, _mark_endpoint_nodes
 from _builder.memory_cmd import _auto_validate_memory

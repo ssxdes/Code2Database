@@ -18,11 +18,9 @@ Usage:
 from __future__ import annotations
 
 import json
-import os
 import re
-import sys
-from collections import deque, defaultdict
-from typing import Any, Dict, List, Optional, Set, Tuple
+from collections import deque
+from typing import Any, Dict, List
 
 
 def taint_analysis(graph_dir: str, sources: List[str], sinks: List[str],

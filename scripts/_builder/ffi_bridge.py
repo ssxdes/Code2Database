@@ -47,9 +47,8 @@ import os
 import re
 import sys
 from collections import defaultdict
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Set, Tuple
+from typing import Optional, List, Dict
 
 from _builder.line_utils import build_line_starts, line_for_offset
 

@@ -9,7 +9,6 @@ Adapted for Code2Database's networkx DiGraph model.
 """
 
 import gc
-import json
 import os
 import re
 import sys

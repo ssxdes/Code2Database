@@ -35,7 +35,7 @@ import json
 import os
 import re
 import sys
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
 
 # ---------------------------------------------------------------------------

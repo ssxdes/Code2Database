@@ -16,7 +16,6 @@ with bit-range prefix to keep AST nodes < 0x8000_0000_0000_0000.
 """
 import hashlib
 import os
-import sys
 
 from _scanner.base import BaseScanner
 

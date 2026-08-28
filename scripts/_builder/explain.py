@@ -11,13 +11,12 @@ The evidence chain is built from the node/edge attributes themselves — no
 external reasoning needed. This gives LLM users a way to ask "why is X
 classified as Y?" without reading the source of the classification logic.
 """
-import os
 import sys
 import json
-from typing import Dict, List, Optional
+from typing import Dict
 
 from _builder.graph_build import _load_full_graph
-from _builder.utils import _find_node_id, _get_body_text
+from _builder.utils import _find_node_id
 
 
 # ---------------------------------------------------------------------------

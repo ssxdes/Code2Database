@@ -20,7 +20,7 @@ from __future__ import annotations
 import sqlite3
 import hashlib
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional
 
 
 @dataclass

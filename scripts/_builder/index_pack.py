@@ -7,7 +7,6 @@ import re
 from pathlib import Path
 from collections import Counter, defaultdict
 import networkx as nx
-from _builder.utils import _output_result, _print_structured, _find_node_id, _parse_bindings, _load_globals, _is_condition_alive
 from _builder.query import _resolve_detailed_chain, _trace_simple_chain
 from _builder.token_budget import estimate_tokens
 

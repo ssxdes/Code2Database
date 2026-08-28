@@ -22,7 +22,7 @@ import hashlib
 import os
 import re
 import sqlite3
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Set
 
 try:
     from _builder.import_resolve import _get_file_includes

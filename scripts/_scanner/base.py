@@ -11,10 +11,9 @@ import bisect
 import hashlib
 import os
 import re
-import sys
 from abc import ABC, abstractmethod
 
-from _scanner.utils import classify_domain, check_python_version
+from _scanner.utils import classify_domain
 
 
 # ---------------------------------------------------------------------------

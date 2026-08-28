@@ -41,13 +41,12 @@ from __future__ import annotations
 import os
 import sqlite3
 import subprocess
-import shutil
 import time
 import hashlib
 from dataclasses import dataclass, field
-from typing import Optional, Callable
+from typing import Optional
 
-from _builder.source_renderer import SourceRenderer, RenderResult, ConsistencyResult
+from _builder.source_renderer import SourceRenderer
 
 
 @dataclass

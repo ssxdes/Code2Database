@@ -10,7 +10,7 @@ import json
 import os
 import sqlite3
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from _builder.cgdb_store import SQLiteCGDBStore
 from _builder.cgdb_versions import VersionController

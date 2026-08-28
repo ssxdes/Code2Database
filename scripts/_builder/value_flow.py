@@ -29,7 +29,7 @@ import json
 import os
 import re
 import sys
-from collections import defaultdict, deque
+from collections import deque
 from typing import Optional, List, Dict, Any, Set, Tuple
 
 

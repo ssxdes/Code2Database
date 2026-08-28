@@ -36,7 +36,7 @@ from __future__ import annotations
 import os
 import re
 import sys
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Set, Tuple
 
 # Constant: parameter-only names that are almost certainly callback
 # parameter names extracted by the scanner as fake functions.

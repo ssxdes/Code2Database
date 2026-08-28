@@ -1,15 +1,9 @@
 """callgraph builder module: entry_scoring."""
 
-import os
-import json
-import sys
 import re
-from pathlib import Path
 from collections import defaultdict
-import networkx as nx
 from collections import deque
-from _detector.framework_detector import get_entry_multiplier, FrameworkHint, detect_frameworks_for_project
-from _builder.utils import _output_result, _print_structured, _find_node_id, _parse_bindings, _load_globals, _is_condition_alive
+from _detector.framework_detector import get_entry_multiplier, detect_frameworks_for_project
 
 
 def _calculate_entry_point_score(name: str, is_api_entry: bool,

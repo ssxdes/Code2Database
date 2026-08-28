@@ -16,10 +16,9 @@ Memory budget for 1.4M nodes / 4.35M edges (deferred mode):
 """
 
 import gc
-import os
 import sys
 import time
-from typing import Optional, Dict, List, Any, Tuple, Set
+from typing import Dict, List, Tuple, Set
 
 
 class _StreamingNodeView:

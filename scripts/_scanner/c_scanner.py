@@ -4,7 +4,6 @@
 import os
 import re
 from _scanner.base import BaseScanner
-from _scanner.utils import check_python_version
 from _detector.build_detector import evaluate_pp_condition
 
 try:

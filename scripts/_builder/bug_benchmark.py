@@ -39,10 +39,9 @@ import re
 import subprocess
 import sys
 import time
-from collections import defaultdict
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Set, Tuple
+from typing import List, Dict, Tuple
 
 
 # ---------------------------------------------------------------------------

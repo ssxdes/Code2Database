@@ -23,7 +23,7 @@ This is the MVP path. The production C++ plugin would use clang's
 AnalysisManager for proper memory model analysis.
 """
 import re
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from _builder.cgdb_records import SyncPrimitiveRecord, HappensBeforeRecord
 

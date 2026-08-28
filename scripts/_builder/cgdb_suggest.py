@@ -21,8 +21,7 @@ from __future__ import annotations
 
 import json
 import os
-import sys
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 
 def analyze_and_suggest(graph_dir: str, top_n: int = 20) -> List[Dict[str, Any]]:

@@ -19,7 +19,6 @@ extraction) and returns a list of records (BasicBlockRecord, CFGEdgeRecord,
 DataFlowRecord) for the IngestBatch.
 """
 import hashlib
-import os
 import re
 import subprocess
 from typing import Dict, List, Optional, Tuple

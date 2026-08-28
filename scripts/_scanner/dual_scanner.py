@@ -18,8 +18,6 @@ Coexists with the existing get_scanner() factory in code2database_scanner.py,
 which now returns DualBackendScanner when extraction_backend='auto' or 'clang'
 and lang is c/cpp.
 """
-import os
-from typing import Optional
 
 from _scanner.base import BaseScanner
 

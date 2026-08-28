@@ -8,7 +8,6 @@
 """
 import hashlib
 import os
-from typing import Dict, Optional
 
 from _builder.cgdb_records import (
     IngestBatch, NodeRecord, EdgeRecord, TypeRecord, FileRecord,

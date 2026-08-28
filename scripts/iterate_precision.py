@@ -14,7 +14,6 @@ import os
 import re
 import sys
 from collections import Counter, defaultdict
-from pathlib import Path
 
 
 def load_extraction(path):

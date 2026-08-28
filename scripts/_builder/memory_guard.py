@@ -15,8 +15,7 @@ import threading
 import time
 import json
 from pathlib import Path
-from collections import deque
-from typing import Optional, Callable, Any, List, Dict, Generator
+from typing import Optional, Callable, Any, List, Dict
 
 
 class MemoryGuard:

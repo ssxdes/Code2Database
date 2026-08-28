@@ -8,13 +8,11 @@ multi-step context_pack → describe-node → resolve-chain workflow.
 import json
 import os
 import re
-import sys
-from pathlib import Path
 from collections import defaultdict, deque
 import networkx as nx
 from _builder.graph_build import _load_full_graph
 from _builder.query_cache import cached_query
-from _builder.utils import _find_node_id, _is_condition_alive, _parse_bindings, _load_globals, _normalize_id
+from _builder.utils import _find_node_id, _normalize_id
 from _builder.token_budget import estimate_tokens, truncate_to_tokens
 
 

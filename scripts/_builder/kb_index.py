@@ -20,7 +20,6 @@ import sqlite3
 import sys
 from _builder.c2d_foreign import _escape_sql_path
 from datetime import datetime
-from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 

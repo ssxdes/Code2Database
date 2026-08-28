@@ -10,10 +10,8 @@ Two slice types:
 from __future__ import annotations
 
 import json
-import os
-import sys
 from collections import deque
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 
 def data_flow_slice(graph_dir: str, sink: str, max_depth: int = 8,

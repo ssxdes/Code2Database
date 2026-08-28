@@ -3,11 +3,9 @@
 import os
 import json
 import sys
-import re
 from pathlib import Path
 from collections import defaultdict
 import networkx as nx
-from _builder.utils import _find_node_id, _load_globals
 from _builder.graph_build import _load_full_graph
 from _builder.query_cache import cached_query
 

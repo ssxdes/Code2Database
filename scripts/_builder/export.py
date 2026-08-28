@@ -2,12 +2,10 @@
 
 import os
 import json
-import sys
 import re
 from pathlib import Path
 from collections import defaultdict
 import networkx as nx
-from _builder.utils import _output_result
 from _builder.graph_build import _load_full_graph
 
 

@@ -23,7 +23,6 @@ Usage:
 
 import json
 import os
-import re
 import sqlite3
 import zlib
 from typing import Optional, List, Dict, Any

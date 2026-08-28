@@ -42,7 +42,6 @@ bump has a migration function that ALTERs existing tables in-place, preserving
 data.
 """
 import sqlite3
-import json
 
 CGDB_SCHEMA_VERSION = 4
 

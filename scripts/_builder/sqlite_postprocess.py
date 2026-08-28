@@ -15,8 +15,7 @@ import os
 import re
 import sys
 import sqlite3
-import time
-from collections import Counter, defaultdict
+from collections import defaultdict
 from pathlib import Path
 
 

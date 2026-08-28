@@ -30,8 +30,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 
 # Known language server commands

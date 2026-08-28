@@ -11,7 +11,6 @@ Guidelines for writing migrations:
 - Bump CGDB_SCHEMA_VERSION in cgdb_schema.py when adding a migration here.
 """
 import sqlite3
-import json
 from typing import Callable, List, Tuple
 
 

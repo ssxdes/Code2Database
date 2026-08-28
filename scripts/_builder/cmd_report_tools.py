@@ -34,7 +34,6 @@ Convention: <graph_dir>/code2database.db (same as MCP server and cgdb_commands).
 """
 import json
 import os
-import sys
 from typing import Any
 
 from _builder.mcp_report_tools import (

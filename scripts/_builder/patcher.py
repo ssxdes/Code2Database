@@ -15,12 +15,10 @@ Can be used standalone or via code2database_builder.py commands:
   patch-from-diff, patch-from-git, light-scan
 """
 
-import json
 import os
 import re
 import subprocess
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 from _builder.graph_build import _load_full_graph, split_by_domain

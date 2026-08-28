@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List
+from typing import Dict, List
 
 
 def results_to_sarif(results: List[Dict], tool_name: str = "Code2Database",

@@ -17,13 +17,10 @@ are optional (imported lazily, caught if missing).
 from __future__ import annotations
 
 import json
-import os
-import sys
-import time
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from _builder.kb_index import _kb_connect, _fts5_escape, query_kb
+from _builder.kb_index import _kb_connect, query_kb
 
 # RRF constant (industry standard, from Cormack et al. 2009)
 RRF_K = 60

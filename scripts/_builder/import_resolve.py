@@ -1,10 +1,7 @@
 """callgraph builder module: import_resolve."""
 
 import os
-import json
-import sys
 import re
-from pathlib import Path
 from collections import defaultdict
 import networkx as nx
 

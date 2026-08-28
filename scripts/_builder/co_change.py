@@ -12,11 +12,9 @@ edge but are coupled by shared maintenance concerns.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
-import sys
-from collections import defaultdict, Counter
-from typing import Any, Dict, List, Set, Tuple
+from collections import Counter
+from typing import Dict, List, Set
 
 
 def extract_co_change_edges(source_root: str, graph_dir: str,

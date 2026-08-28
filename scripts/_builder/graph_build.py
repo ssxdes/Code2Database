@@ -9,9 +9,8 @@ import time
 from pathlib import Path
 from collections import defaultdict, Counter
 import networkx as nx
-from _detector.build_detector import BuildDetector, evaluate_pp_condition
+from _detector.build_detector import BuildDetector
 from _detector.community_detector import detect_communities, CommunityResult
-from _detector.framework_detector import detect_frameworks_for_project, get_entry_multiplier
 from _builder.utils import _resolve_invoked_id
 import _builder.utils as _utils
 from _builder.sqlite_postprocess import (

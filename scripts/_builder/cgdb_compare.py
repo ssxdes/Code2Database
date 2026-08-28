@@ -14,8 +14,7 @@ from __future__ import annotations
 
 import json
 import os
-import sys
-from typing import Dict, List, Any, Tuple, Set
+from typing import Dict, List, Any
 
 
 def compare_graphs(

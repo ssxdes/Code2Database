@@ -19,7 +19,6 @@ import math
 import os
 import sys
 import time
-from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 

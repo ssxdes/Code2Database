@@ -7,13 +7,10 @@ SocratiCode, emerge, codecharta, codeseek).
 from __future__ import annotations
 
 import json
-import os
-import sys
-import time
 from collections import deque, defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
-from _builder.utils import _find_node_id, _get_body_text
+from _builder.utils import _find_node_id
 
 
 def references_of(graph_dir: str, symbol: str, limit: int = 100) -> Dict[str, Any]:

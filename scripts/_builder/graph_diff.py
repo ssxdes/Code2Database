@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 
 def graph_diff(before_dir: str, after_dir: str, detail: str = "summary") -> Dict[str, Any]:

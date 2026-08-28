@@ -10,12 +10,9 @@ scratch. Safe to call repeatedly.
 """
 from __future__ import annotations
 
-import json
-import os
 import sqlite3
 import sys
-from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict
 
 from _builder.kb_index import _kb_connect, _fts5_escape
 import re as _re

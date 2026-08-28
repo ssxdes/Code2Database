@@ -3,11 +3,9 @@
 import os
 import json
 import sys
-import re
 from pathlib import Path
-from collections import defaultdict
 import networkx as nx
-from _builder.utils import _output_result, _print_structured, _find_node_id, _parse_bindings, _load_globals, _is_condition_alive, _ensure_mutable_graph
+from _builder.utils import _ensure_mutable_graph
 from _builder.graph_build import _load_full_graph, split_by_domain
 
 

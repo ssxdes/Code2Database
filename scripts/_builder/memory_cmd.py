@@ -3,10 +3,8 @@
 import os
 import json
 import sys
-import re
 from datetime import datetime
 from pathlib import Path
-from collections import defaultdict
 import networkx as nx
 from _builder.utils import _experience_dir, _extract_chain_node_ids, _memory_dir, _similarity_score, _simple_tokenize
 from _builder.graph_build import _load_full_graph

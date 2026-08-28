@@ -20,7 +20,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from _builder.utils import _get_body_text
 from _builder.graph_build import _load_full_graph

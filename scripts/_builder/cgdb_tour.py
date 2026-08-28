@@ -18,10 +18,8 @@ guide to the codebase.
 """
 from __future__ import annotations
 
-import json
 import os
-import sys
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 
 
 def generate_tour(

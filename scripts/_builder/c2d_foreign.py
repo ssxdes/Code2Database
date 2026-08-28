@@ -28,7 +28,6 @@ import os
 import sqlite3
 import sys
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 def _escape_sql_path(path: str) -> str:

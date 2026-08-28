@@ -18,11 +18,10 @@ supplements.
 import os
 import sys
 import json
-import re
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
-from _builder.utils import _find_node_id, _output_result
+from _builder.utils import _find_node_id
 
 
 # ---------------------------------------------------------------------------

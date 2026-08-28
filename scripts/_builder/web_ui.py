@@ -37,14 +37,12 @@ API endpoints:
 
 import json
 import os
-import re
 import sys
 import threading
 import urllib.parse
 import webbrowser
 from collections import defaultdict, deque
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from pathlib import Path
 from typing import Optional, List, Dict, Any, Set, Tuple
 
 

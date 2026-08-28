@@ -29,10 +29,9 @@ Usage:
             ...
 """
 
-import json
 import os
 import sys
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 
 
 def _db_path_for(graph_dir: str) -> str:

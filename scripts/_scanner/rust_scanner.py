@@ -4,7 +4,6 @@
 import os
 import re
 from _scanner.base import BaseScanner
-from _scanner.utils import check_python_version
 
 try:
     import tree_sitter_rust as tsrust

@@ -36,6 +36,7 @@ import os
 import re
 import sys
 from typing import Dict, List, Optional, Set
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -484,6 +485,7 @@ def cmd_add_semantic_edges(args):
             with open(profile_path) as f:
                 profile = json.load(f)
         except (OSError, json.JSONDecodeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     added = add_semantic_edges_to_graph(G, profile)
     # Persist

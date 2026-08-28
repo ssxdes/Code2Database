@@ -41,6 +41,7 @@ import re
 import sqlite3
 import hashlib
 from typing import Optional
+import logging
 
 # libclang TokenKind names — only load if libclang is available
 try:
@@ -712,6 +713,7 @@ def _is_macro_function_like(cursor, source_bytes: bytes) -> bool:
             after = chunk[idx + len(name):idx + len(name) + 1]
             return after == "("
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return False
 
@@ -735,6 +737,7 @@ def _extract_macro_params_and_body(cursor, source_bytes: bytes) -> tuple[list, s
                 return params, body
             return [], body
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return [], ""
 

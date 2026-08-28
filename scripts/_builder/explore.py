@@ -14,6 +14,7 @@ from _builder.graph_build import _load_full_graph
 from _builder.query_cache import cached_query
 from _builder.utils import _find_node_id, _normalize_id
 from _builder.token_budget import estimate_tokens, truncate_to_tokens
+import logging
 
 
 def _bfs_invoke_path(G, start: str, end: str, max_depth: int = 15) -> list:
@@ -414,9 +415,8 @@ def _find_relevant_nodes(G: nx.DiGraph, query_tokens: list, top_n: int = 20,
                     if norm_t in disk_index:
                         candidate_ids.update(disk_index[norm_t])
             except (json.JSONDecodeError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
-    # Fast path: SQL-backed candidate search for LazySQLiteGraph.
     # Uses idx_functions_name index — avoids iterating 1.5M nodes.
     cls_name = type(G).__name__
     if not candidate_ids and cls_name == "LazySQLiteGraph":
@@ -753,6 +753,7 @@ def _extract_key_paths(G: nx.DiGraph, seed_nodes: list, max_paths: int = 5) -> l
             try:
                 pred_map = nx.predecessor(call_G, api_id, cutoff=15)
             except (nx.NetworkXNoPath, nx.NodeNotFound):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
             for end_id in end_lookup:
                 if len(paths) >= max_paths:
@@ -799,8 +800,8 @@ def _extract_key_paths(G: nx.DiGraph, seed_nodes: list, max_paths: int = 5) -> l
                     if not path:
                         continue
                 except (nx.NetworkXNoPath, nx.NodeNotFound):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     continue
-                # Check if any seed node is on this path
                 if seed_ids & set(path):
                     steps = []
                     for i, nid in enumerate(path):
@@ -1041,7 +1042,7 @@ def cmd_explore_flow(args):
                 if last_brace > 0:
                     result = json.loads(truncated[:last_brace+1])
             except json.JSONDecodeError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
     result["_token_count"] = estimate_tokens(json.dumps(result, ensure_ascii=False))
     print(json.dumps(result, ensure_ascii=False, indent=2))

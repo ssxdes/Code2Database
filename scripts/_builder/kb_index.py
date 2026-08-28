@@ -21,6 +21,7 @@ import sys
 from _builder.c2d_foreign import _escape_sql_path
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+import logging
 
 
 def _kb_db_path(graph_dir: str) -> str:
@@ -229,6 +230,7 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
             );
         """)
     except sqlite3.OperationalError:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return conn
 
@@ -250,9 +252,8 @@ def _record_query_log(conn: sqlite3.Connection, query: str,
         )
         conn.commit()
     except sqlite3.Error:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
-
 def get_known_unknowns(graph_dir: str, top_n: int = 20,
                       min_occurrences: int = 2) -> List[Dict[str, Any]]:
     """Phase 9: aggregate unmatched queries into 'known unknowns'.
@@ -369,8 +370,8 @@ def _load_memory_entries(graph_dir: str) -> List[dict]:
                     entry["_source_prefix"] = prefix
                     entries.append(entry)
             except (OSError, json.JSONDecodeError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-    # Fallback: old flat memory_<id>.json files
     for fname in sorted(os.listdir(memory_dir)):
         if not fname.startswith("memory_") or not fname.endswith(".json"):
             continue
@@ -386,6 +387,7 @@ def _load_memory_entries(graph_dir: str) -> List[dict]:
                 entry["_source_prefix"] = "memory_"
                 entries.append(entry)
         except (OSError, json.JSONDecodeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
     return entries
 
@@ -406,8 +408,8 @@ def _load_knowledge_paragraphs(graph_dir: str) -> List[dict]:
             with open(fpath, "r", encoding="utf-8") as f:
                 content = f.read()
         except (OSError, UnicodeDecodeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
-        # Determine kind from filename
         if fname.startswith("principles"):
             kind = "principle"
         elif fname.startswith("glossary"):
@@ -461,7 +463,8 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
         try:
             conn.execute("INSERT INTO kb_paragraphs_fts(kb_paragraphs_fts) VALUES ('deleteall')")
         except sqlite3.OperationalError:
-            pass  # FTS5 table might not exist yet
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
         # Drop existing rows
         conn.execute("DELETE FROM kb_paragraphs")
         # Build batch
@@ -512,8 +515,8 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
         try:
             conn.execute("INSERT INTO kb_paragraphs_fts(kb_paragraphs_fts) VALUES ('rebuild')")
         except sqlite3.OperationalError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-        # Stats
         cur = conn.execute(
             "SELECT source_kind, COUNT(*) FROM kb_paragraphs GROUP BY source_kind"
         )
@@ -707,8 +710,8 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
                 )
             conn.commit()
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-        # Phase 9: log query
         if log_query:
             top_score = results[0]["score"] if results else 0.0
             _record_query_log(conn, query, len(results), top_score)
@@ -721,7 +724,8 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
                                                   min_weight, max_tokens)
                 results.extend(foreign_hits)
             except Exception:
-                pass  # best-effort; foreign queries must not fail local
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                pass
         return results
     finally:
         conn.close()
@@ -795,6 +799,7 @@ def _query_foreign_kb(conn: sqlite3.Connection, query: str, top_n: int,
             try:
                 conn.execute(f"DETACH DATABASE {alias}")
             except sqlite3.Error:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             continue
     return foreign_results

@@ -7,6 +7,7 @@ from pathlib import Path
 import networkx as nx
 from _builder.utils import _ensure_mutable_graph
 from _builder.graph_build import _load_full_graph, split_by_domain
+import logging
 
 
 def cmd_apply_semantics(args):
@@ -260,9 +261,8 @@ def cmd_think_chain(args):
                         "conclusion": "",  # LLM fills
                     })
             except (nx.NetworkXNoPath, nx.NodeNotFound):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-
-    # Also find chains from API_entry to other API_entry (internal flows)
     # and standalone chains (API_entry with no path to endpoint)
     api_set = set(api_entries)
     ep_set = set(endpoints)
@@ -276,6 +276,7 @@ def cmd_think_chain(args):
             reachable = nx.descendants(call_G, api_id)
             has_endpoint_path = bool(reachable & ep_set)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         if not has_endpoint_path:
             # Generate partial chain: API_entry → deepest reachable nodes
@@ -313,8 +314,8 @@ def cmd_think_chain(args):
                                 "conclusion": "",
                             })
                     except (nx.NetworkXNoPath, nx.NodeNotFound):
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         continue
-
     Path(out_path).write_text(
         json.dumps({
             "total_chains": len(chains),

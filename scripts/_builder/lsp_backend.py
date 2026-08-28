@@ -31,6 +31,7 @@ import json
 import os
 import subprocess
 from typing import Any, Dict, List, Optional
+import logging
 
 
 # Known language server commands
@@ -83,6 +84,7 @@ class LSPBackend:
                 self._request("shutdown", {})
                 self._notify("exit", {})
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             self._proc.terminate()
             self._proc.wait(timeout=5)

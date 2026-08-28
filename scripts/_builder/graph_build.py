@@ -49,6 +49,7 @@ _CGDB_WIPE_TABLES = (
 
 def _wipe_cgdb_data(conn) -> None:
     """Delete all rows from cgdb tables except graph_versions (preserved for
+import logging
     time-travel). Called at the start of each build so rebuilds don't
     accumulate duplicates. Safe to call on a fresh DB — missing tables are
     skipped silently.
@@ -57,18 +58,19 @@ def _wipe_cgdb_data(conn) -> None:
     try:
         conn.commit()
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     for tbl in _CGDB_WIPE_TABLES:
         try:
             conn.execute(f"DELETE FROM {tbl}")
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     try:
         conn.commit()
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
-
 def _detect_commit_hash(source_root: str) -> str:
     """Detect the current commit hash of a source root.
 
@@ -88,8 +90,8 @@ def _detect_commit_hash(source_root: str) -> str:
         if result.returncode == 0:
             return result.stdout.strip()
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-    # Try svn
     try:
         result = subprocess.run(
             ['svn', 'info', '--show-item', 'revision', source_root],
@@ -98,8 +100,8 @@ def _detect_commit_hash(source_root: str) -> str:
         if result.returncode == 0 and result.stdout.strip():
             return f'svn:r{result.stdout.strip()}'
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-    # Fallback: synthetic timestamp-based hash
     import time
     return f'build:{int(time.time())}'
 
@@ -119,6 +121,7 @@ def _detect_commit_subject(source_root: str) -> str:
         if result.returncode == 0:
             return result.stdout.strip()
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return ''
 
@@ -935,7 +938,8 @@ def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
                             G.nodes[nid][k] = v
             return
         except (ImportError, OSError, BrokenPipeError):
-            pass  # fall back to ThreadPoolExecutor
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
 
     from _builder.parallel import merge_node_attributes
     merge_node_attributes(G, candidates, _work, jobs=workers,
@@ -1436,8 +1440,8 @@ def _load_full_graph_from_sqlite(db_path: str) -> nx.DiGraph:
                 try:
                     extra = json.loads(extra_raw)
                 except (json.JSONDecodeError, TypeError):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-            # Merge `_supplemented` keys back into the canonical attribute
             # so describe-node and other consumers see the supplemented
             # value rather than the empty original.
             for supp_key, supp_val in list(extra.items()):
@@ -1513,6 +1517,7 @@ def _load_full_graph_from_sqlite(db_path: str) -> nx.DiGraph:
                     try:
                         callee_args = json.loads(ca_raw)
                     except (json.JSONDecodeError, TypeError):
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 reg_args = None
                 ra_raw = row_dict.get("reg_args_json")
@@ -1520,6 +1525,7 @@ def _load_full_graph_from_sqlite(db_path: str) -> nx.DiGraph:
                     try:
                         reg_args = json.loads(ra_raw)
                     except (json.JSONDecodeError, TypeError):
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 evidence = []
                 ev_raw = row_dict.get("evidence")
@@ -1581,6 +1587,7 @@ def _load_node_from_sqlite(db_path: str, node_id: str) -> dict:
             try:
                 extra = json.loads(extra_raw)
             except (json.JSONDecodeError, TypeError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         body_text = ""
         body_blob = row_dict.get("body_text_compressed")
@@ -1654,6 +1661,7 @@ def _load_neighbors_from_sqlite(db_path: str, node_id: str):
                 try:
                     evidence = json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
                 except (json.JSONDecodeError, TypeError):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
             attrs = dict(
                 call_order=row_dict.get("call_order"),
@@ -1679,6 +1687,7 @@ def _load_neighbors_from_sqlite(db_path: str, node_id: str):
                 try:
                     evidence = json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
                 except (json.JSONDecodeError, TypeError):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
             attrs = dict(
                 call_order=row_dict.get("call_order"),
@@ -4355,8 +4364,8 @@ def build_graph(extraction: dict, profile: dict = None,
                 try:
                     arg_idx = int(arg_str)
                 except ValueError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-
             if callee_name:
                 _cbarg_by_callee.setdefault(callee_name, []).append(
                     (u, v, arg_idx))
@@ -4679,6 +4688,7 @@ def build_graph(extraction: dict, profile: dict = None,
             try:
                 du_name = _mb_impl.format(*_groups)
             except (IndexError, KeyError) as _mb_err:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
             if not du_name or du_name == node_name:
                 continue
@@ -5787,6 +5797,7 @@ def _post_build_auto_enhance(args, outdir: str) -> None:
                     _master = _json.load(_mf)
                     _post_source_root = _master.get("source_root", "") or ""
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         post_enhance_hash = _detect_commit_hash(_post_source_root) or "unknown"
         vid = vc.record_version(
@@ -6068,6 +6079,7 @@ def cmd_build(args):
                         try:
                             os.remove(macros_from_path)
                         except OSError:
+                            logging.getLogger(__name__).debug("silent exception", exc_info=True)
                             pass
                     macros_from_path = None
                     scan_cmd_macros = ["--macros", macros_str]
@@ -6090,11 +6102,13 @@ def cmd_build(args):
                     try:
                         os.remove(macros_from_path)
                     except OSError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 if macros_from_fd and macros_from_fd != -1:
                     try:
                         os.close(macros_from_fd)
                     except OSError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
             if scan_result.returncode == 0:
                 data = json.loads(Path(re_scan).read_text(encoding="utf-8"))
@@ -7516,7 +7530,8 @@ def cmd_build(args):
             if _fcov:
                 print(f"[coverage] Wrote {_fcov}", file=sys.stderr)
         except Exception:
-            pass  # Best-effort; never block build
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
 
         return  # Early return — all work done via SQLite path
     # Re-write with the reconciliation section included (JSON path)
@@ -7569,6 +7584,7 @@ def cmd_build(args):
         if _fcov:
             print(f"[coverage] Wrote {_fcov}", file=sys.stderr)
     except Exception:
-        pass  # Best-effort; never block build
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        pass
 
 

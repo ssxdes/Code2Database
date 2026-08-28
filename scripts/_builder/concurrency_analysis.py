@@ -13,6 +13,7 @@ from collections import defaultdict
 
 from _builder.utils import _output_result, _find_node_id, _get_body_text
 from _builder.graph_build import _load_full_graph
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -55,12 +56,14 @@ def _compile_lock_patterns(profile):
         try:
             acquire.append(re.compile(pat_str))
         except re.error:
-            pass  # Skip invalid patterns silently — profile validation should catch these
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
     release = []
     for pat_str in release_strs:
         try:
             release.append(re.compile(pat_str))
         except re.error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     _LOCK_PATTERN_CACHE[cache_key] = (acquire, release)
     return acquire, release

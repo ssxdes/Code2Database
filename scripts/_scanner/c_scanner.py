@@ -5,6 +5,7 @@ import os
 import re
 from _scanner.base import BaseScanner
 from _detector.build_detector import evaluate_pp_condition
+import logging
 
 try:
     import tree_sitter_c as tsc
@@ -2767,6 +2768,7 @@ class CTreeSitterScanner(BaseScanner):
                     syscall_name = _SYSCALL_NAMES.get(nr, f"syscall_{nr}")
                     syscall_target = f"syscall_{syscall_name}"
                 except (ValueError, ImportError):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
             edges.append({
                 "source": invoker_id,
@@ -2790,6 +2792,7 @@ class CTreeSitterScanner(BaseScanner):
                     svc_name = _AARCH64_SYSCALL_NAMES.get(nr, f"svc_{nr}")
                     svc_target = f"syscall_{svc_name}"
                 except (ValueError, ImportError):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
             edges.append({
                 "source": invoker_id,
@@ -2816,6 +2819,7 @@ class CTreeSitterScanner(BaseScanner):
                     ecall_name = _RISCV_SYSCALL_NAMES.get(nr, f"ecall_{nr}")
                     ecall_target = f"syscall_{ecall_name}"
                 except (ValueError, ImportError):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
             edges.append({
                 "source": invoker_id,

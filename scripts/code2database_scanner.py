@@ -36,6 +36,7 @@ from _scanner.python_scanner import PythonTreeSitterScanner
 from _scanner.java_scanner import JavaTreeSitterScanner
 from _scanner.rust_scanner import RustTreeSitterScanner
 from _scanner.asm_scanner import AsmRegexScanner
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +110,8 @@ def get_scanner(lang: str, api_prefixes: list = None, export_macros: list = None
             else:
                 scanner = DualBackendScanner(scanner, clang_scanner)
         except ImportError:
-            pass  # fall back to tree-sitter scanner already in `scanner`
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
     # Set C-specific API prefixes for entry detection
     if api_prefixes and lang in ("c", "cpp") and hasattr(scanner, '_api_prefixes'):
         scanner._api_prefixes = api_prefixes
@@ -375,9 +377,8 @@ def _remove_checkpoint(checkpoint_path: str) -> None:
         if checkpoint_path and os.path.exists(checkpoint_path):
             os.remove(checkpoint_path)
     except OSError:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
-
 def _extract_state_access_then_drop_body_text(functions: list,
                                               globals_data: dict,
                                               field_assignments: list) -> int:
@@ -878,9 +879,8 @@ def scan_directory(source_root: str, lang: str = "auto",
                 # Default to 80% of total RAM
                 memory_limit_gb = info["total_mb"] / 1024 * 0.80
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-    # Pre-scan: collect function-like macro names from all header files.
     # Macros like #define ftl_bug(cond) expand inline and should NOT create
     # INVOKES edges. We must collect these BEFORE the main scan so that
     # effective_skip in scan_c_file can filter them out.
@@ -908,17 +908,16 @@ def scan_directory(source_root: str, lang: str = "auto",
                         _PROJECT_FUNC_MACROS.add(mname)
                         _macro_count += 1
             except (IOError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-            # Periodic memory check during header pre-scan
             if _macro_count > 0 and _macro_count % 10000 == 0 and memory_guard:
                 memory_guard.maybe_gc(force=False)
         if _macro_count:
             import sys as _sys
             _sys.stdout.write(f"  Pre-scanned headers: found {_macro_count} function-like macros\n")
     except ImportError:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
-    # Pre-create scanner FACTORIES (not instances) for thread-safety.
     # tree-sitter Parser.parse() is NOT thread-safe — sharing one parser
     # across threads corrupts internal state.  Each worker must get its
     # own scanner instance.
@@ -1103,14 +1102,15 @@ def scan_directory(source_root: str, lang: str = "auto",
                             return_when=concurrent.futures.FIRST_COMPLETED)
                         _done_futures = done
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         continue
-
                 for future in _done_futures:
                     del _active_futures[future]
                     _par_processed += 1
                     try:
                         result = future.result()
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         continue
                     if progress_callback and _par_processed % _report_interval == 0:
                         item = _active_futures.get(future, file_list[_par_processed - 1])
@@ -1924,6 +1924,7 @@ def _parse_macros_file(path: str) -> dict:
                 else:
                     macros[line] = ""
     except OSError:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return macros
 
@@ -2021,8 +2022,8 @@ def _prompt_for_compile_commands(source_root: str) -> str:
                     print(f"File not found: {path}", file=sys.stderr)
                 return ''
         except ValueError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-        # Fallback: treat as path
         if os.path.isfile(choice):
             return choice
         print(f"Invalid choice: {choice}", file=sys.stderr)
@@ -2261,8 +2262,8 @@ def cmd_scan(args):
                     source_bytes += os.path.getsize(fpath)
                     source_files += 1
                 except OSError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-
     tracker.begin("scan", metadata={
         "source_files": source_files,
         "source_bytes": source_bytes,
@@ -2792,8 +2793,8 @@ def _detect_project_type(source_root: str) -> str:
                 if "obj-$(CONFIG" in f.read():
                     has_config_make = True
         except OSError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-    # Check for kernel directory structure
     has_kernel_dirs = any(os.path.isdir(os.path.join(source_root, d))
                           for d in ("drivers", "fs", "kernel", "net", "mm"))
     if (kbuild or kconfig or has_config_make) and has_kernel_dirs:

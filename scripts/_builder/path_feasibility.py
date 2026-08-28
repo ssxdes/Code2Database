@@ -31,6 +31,7 @@ import os
 import re
 import sys
 from typing import Optional, List, Dict, Any, Tuple
+import logging
 
 # Try to import Z3 (optional dependency)
 try:
@@ -349,8 +350,8 @@ def _merge_range_constraint(existing: Any, op: str, val: Any) -> Tuple[Optional[
             try:
                 ex_val = int(ex_val_s, 0) if ex_val_s.startswith('0x') else int(ex_val_s)
             except ValueError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-            # Lower bound (op or ex_op is > or >=) vs upper bound (< or <=)
             new_is_lower = op in ('>', '>=')
             ex_is_lower = ex_op in ('>', '>=')
             new_is_upper = op in ('<', '<=')
@@ -678,6 +679,7 @@ def check_config_feasible(config_predicates: List[str],
             results["reason"] = "combined predicate set is undecidable"
             results["confidence"] = combined.get("confidence", "AMBIGUOUS")
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return results
 
@@ -847,6 +849,7 @@ def cmd_path_feasible(args):
                 result["runtime_guards"] = check_runtime_guards_with_profile(
                     conds, guard_functions=guard_functions)
         except ImportError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
         return
@@ -883,9 +886,8 @@ def cmd_path_feasible(args):
                 except Exception:
                     cgdb_store = None
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-        # DFS collecting paths, their conditions, and config predicates
         paths = []
         def _walk(nid, path, conds, cfg_preds, depth):
             if depth >= max_depth:
@@ -956,6 +958,7 @@ def cmd_path_feasible(args):
             try:
                 cgdb_store.close()
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         print(json.dumps({
             "start": G.nodes[node_id].get("name", node_id),

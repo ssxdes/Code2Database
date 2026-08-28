@@ -47,6 +47,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from _builder.source_renderer import SourceRenderer
+import logging
 
 
 @dataclass
@@ -255,9 +256,8 @@ class WritebackPipeline:
                 try:
                     result.disk_sha256_after = hashlib.sha256(content).hexdigest()
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-
-            # ---- Gate 6: sha256 consistency (post-write) ----
             # After write, the disk file should match the rendered content
             # exactly (because we wrote what we rendered).
             if result.disk_sha256_after and result.rendered_sha256:
@@ -368,6 +368,7 @@ class WritebackPipeline:
             if proc.returncode == 0 and proc.stdout:
                 return proc.stdout
         except (FileNotFoundError, subprocess.TimeoutExpired):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         return None  # clang-format not available — skip silently
 
@@ -401,8 +402,8 @@ class WritebackPipeline:
             try:
                 os.unlink(tmp_path)
             except OSError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
     def _run_lint(
         self, file_path: str, content: bytes,
         tool: Optional[str] = None
@@ -439,8 +440,8 @@ class WritebackPipeline:
             try:
                 os.unlink(tmp_path)
             except OSError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
     def _atomic_write(self, path: str, content: bytes) -> tuple[bool, str]:
         """Atomic write: write to .tmp + rename. Returns (ok, msg)."""
         tmp_path = path + ".c2d_writeback.tmp"
@@ -459,6 +460,7 @@ class WritebackPipeline:
             try:
                 os.unlink(tmp_path)
             except OSError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             return False, f"atomic write failed: {exc}"
 
@@ -534,14 +536,14 @@ class WritebackPipeline:
                     try:
                         os.unlink(path + suffix)
                     except OSError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
-
-        # Try to use legacy transactions.py snapshot restore if available
         try:
             from _builder.transactions import restore_latest_snapshot
             restore_latest_snapshot(self.graph_dir)
         except Exception:
-            pass  # no snapshot to restore — best effort
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
 
         # Clear tx state
         self.conn.execute(

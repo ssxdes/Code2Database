@@ -32,6 +32,7 @@ import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
 from _builder.cgdb_records import ConfigPredicateRecord
+import logging
 
 
 # Regex for preprocessor conditionals (matches #if, #ifdef, #ifndef, #elif, #else, #endif)
@@ -260,8 +261,8 @@ def evaluate_predicate(text_form: str, macro_bindings: Dict[str, bool]) -> Optio
             return False
         return None
     except ImportError:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-    # Fallback: Python eval
     try:
         py_expr = _text_form_to_python_expr_simple(text_form, macro_bindings)
         if py_expr is None:

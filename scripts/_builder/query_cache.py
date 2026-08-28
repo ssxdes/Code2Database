@@ -36,6 +36,7 @@ import hashlib
 import threading
 from collections import OrderedDict
 from typing import Any, Callable, Dict, Optional, Tuple
+import logging
 
 
 # Per-graph-dir cache store. Each graph_dir has its own LRU + node-version map.
@@ -248,6 +249,7 @@ def cached_query(command: str, ttl: int = 600,
                     try:
                         cache.put(key, captured, snapshot, touched)
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 return captured
             else:
@@ -256,6 +258,7 @@ def cached_query(command: str, ttl: int = 600,
                     try:
                         cache.put(key, result, snapshot, touched)
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 return result
         wrapper.__name__ = fn.__name__

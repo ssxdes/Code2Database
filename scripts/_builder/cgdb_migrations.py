@@ -12,6 +12,7 @@ Guidelines for writing migrations:
 """
 import sqlite3
 from typing import Callable, List, Tuple
+import logging
 
 
 def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
@@ -37,7 +38,8 @@ def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
         if "source_snippet" not in edge_cols:
             conn.execute("ALTER TABLE cgdb_edges ADD COLUMN source_snippet TEXT")
     except sqlite3.OperationalError:
-        pass  # cgdb_edges table doesn't exist — fresh-ish db, DDL will create it
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        pass
 
     # Add index for description search
     conn.execute(
@@ -102,7 +104,8 @@ def _migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
             if column not in cols:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
         except sqlite3.OperationalError:
-            pass  # table doesn't exist — fresh-ish db, DDL will create it
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
 
     # alias_sets: report expects function_id, ssa_value_id, alias_ssa_value_id, analysis
     _add_column("alias_sets", "function_id", "INTEGER REFERENCES ir_functions(id)")

@@ -21,6 +21,7 @@ The libclang AST shape for `.field = function`:
 The OpsBindDeriver walks this structure and emits OpsBindingRecord entries
 plus the corresponding cgdb_edges (OPS_BIND) for the IngestBatch.
 """
+import logging
 from typing import List, Optional, Tuple
 
 from _builder.cgdb_records import (
@@ -82,6 +83,7 @@ def _find_field_decl_by_name(struct_cursor, field_name: str):
             if ck == 'FIELD_DECL' and child.spelling == field_name:
                 return child
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return None
 
@@ -165,6 +167,7 @@ def _walk_init_list_for_ops_binds(init_list_cursor, ops_table_id: int,
                     elif sk == 'DECL_REF_EXPR' and func_decl_ref is None:
                         func_decl_ref = sub
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
             if field_ref is None or func_decl_ref is None:
                 continue
@@ -220,6 +223,7 @@ def _walk_init_list_for_ops_binds(init_list_cursor, ops_table_id: int,
             })
             count += 1
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return count
 
@@ -279,8 +283,8 @@ class OpsBindDeriver:
                     if not _struct_has_function_pointer_fields(type_decl):
                         continue
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     continue
-                # Find the INIT_LIST_EXPR child (the initializer)
                 init_list = None
                 try:
                     for child in top.get_children():
@@ -289,6 +293,7 @@ class OpsBindDeriver:
                             init_list = child
                             break
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
                 if init_list is None:
                     continue
@@ -304,6 +309,7 @@ class OpsBindDeriver:
                     commit_hash=commit_hash, version_id=version_id,
                 )
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         return count
 
@@ -352,6 +358,7 @@ class OpsBindDeriver:
                 if ops_table_id and impl_function_id and field_name:
                     field_to_impl[(ops_table_id, field_name)] = impl_function_id
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
         if not field_to_impl:
             return 0
@@ -432,7 +439,9 @@ class OpsBindDeriver:
                         })
                         count += 1
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         return count

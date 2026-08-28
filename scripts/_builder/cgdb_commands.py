@@ -14,6 +14,7 @@ from typing import Any, Optional
 
 from _builder.cgdb_store import SQLiteCGDBStore
 from _builder.cgdb_versions import VersionController
+import logging
 
 
 def _open_store(graph_dir: str) -> Optional[SQLiteCGDBStore]:
@@ -88,8 +89,8 @@ def _resolve_node_id(store: SQLiteCGDBStore, name_or_id: str,
             if row:
                 return int(row[0])
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-    # 2c. FQN-as-name fallback: when the user passes a legacy_function_id
     # (e.g., 'root_discard_buffer') that was stored as fqn, but the *real*
     # node (the one edges reference) has fqn=name='discard_buffer'. Try
     # stripping the domain prefix to get the function name, then match by
@@ -112,8 +113,8 @@ def _resolve_node_id(store: SQLiteCGDBStore, name_or_id: str,
             if rows:
                 return int(rows[0][0])
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-    # 4. Exact FQN match without edge requirement (fallback for leaf nodes)
     try:
         row = conn.execute(
             "SELECT id FROM cgdb_nodes WHERE fqn = ? LIMIT 1",
@@ -122,8 +123,8 @@ def _resolve_node_id(store: SQLiteCGDBStore, name_or_id: str,
         if row:
             return int(row[0])
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-    # 5. FTS5 search fallback
     rows = store.search_symbols(name_or_id, limit=1)
     if not rows:
         return None
@@ -603,7 +604,8 @@ def cmd_cgdb_path(args):
                         file=sys.stderr,
                     )
             except Exception:
-                pass  # Hints are best-effort; never block the error path
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                pass
             sys.exit(1)
         _print_json(store.invoke_path(src_id, dst_id, max_len=args.max_len))
     finally:

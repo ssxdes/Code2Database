@@ -11,6 +11,7 @@ import networkx as nx
 
 def _ensure_mutable_graph(G, command_name: str = "this command"):
     """Detect LazySQLiteGraph (read-only SQLite view) early and exit with
+import logging
     a clear, actionable error.
 
     Used by commands that mutate the graph (nx.compose, G.nodes[nid][...] = ...).
@@ -149,8 +150,10 @@ def _streaming_json_has_keys(json_path: str, keys: list) -> dict:
             for k in keys:
                 result[k] = k in data
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return result
 
@@ -335,8 +338,8 @@ def _is_condition_alive(condition: str, bindings: dict, globals_map: dict) -> bo
                         result = False
                     return not result if is_negated else result
                 except (ValueError, TypeError):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-            # != check
             ne_match = re.search(rf'\b{re.escape(var_name)}\s*!=\s*(\w+)', cond)
             if ne_match:
                 rhs = ne_match.group(1)
@@ -348,8 +351,8 @@ def _is_condition_alive(condition: str, bindings: dict, globals_map: dict) -> bo
                         result = True
                     return not result if is_negated else result
                 except (ValueError, TypeError):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-    # Conservative: can't determine, keep the branch
     return True
 
 
@@ -665,9 +668,8 @@ def _resolve_invoked_id(callee_name: str, domain: str, id_registry: dict,
         if callee_name in _SKIP_NAMES:
             return ""
     except ImportError:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
-    # Check names matching external library prefixes (if configured from profile).
     # These are external dependencies (configured via profile) that are not
     # part of the scanned project. Return a special "ext:" prefixed marker so
     # the builder can create endpoint nodes instead of unresolved call edges.

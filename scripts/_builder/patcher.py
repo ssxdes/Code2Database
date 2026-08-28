@@ -23,6 +23,7 @@ from pathlib import Path
 
 from _builder.graph_build import _load_full_graph, split_by_domain
 from _builder.utils import _normalize_id, _detect_language_from_path, _resolve_invoked_id, _build_suffix_index
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -240,8 +241,8 @@ def patch_from_diff(graph_dir: str, diff_text: str, source_root: str = ""):
             if added_nodes > 0 or removed_nodes > 0:
                 invalidate_all(graph_dir)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-        # Audit log: record this patch operation
         try:
             from _builder.audit_log import log_audit, new_tx_id
             tx_id = new_tx_id()
@@ -274,6 +275,7 @@ def patch_from_diff(graph_dir: str, diff_text: str, source_root: str = ""):
                           reason=f"diff-patch removed {removed_nodes} node(s)",
                           tx_id=tx_id)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     else:
         print("No graph changes needed from this diff")

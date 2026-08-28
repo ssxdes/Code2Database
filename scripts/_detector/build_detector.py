@@ -12,6 +12,7 @@ import os
 import re
 import sys
 from typing import Optional
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -86,9 +87,8 @@ class _CMakeDetector:
                 with open(cf, 'r', errors='replace') as f:
                     text = f.read()
             except (IOError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-
-            # Extract -D definitions
             for m in self._DEFINE_RE.finditer(text):
                 defn = m.group(2).strip()
                 if '=' in defn:
@@ -171,8 +171,8 @@ class _MakeDetector:
                 with open(cf, 'r', errors='replace') as f:
                     text = f.read()
             except (IOError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-
             for m in self._DEFINE_RE.finditer(text):
                 for dm in self._D_FLAG_RE.finditer(m.group(1)):
                     defn = dm.group(1)
@@ -237,9 +237,8 @@ class _SpecDetector:
                 with open(cf, 'r', errors='replace') as f:
                     text = f.read()
             except (IOError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-
-            # Extract %define / %global
             for m in self._DEFINE_RE.finditer(text):
                 k, v = m.group(1), m.group(2).strip()
                 info.macros[k] = v
@@ -298,8 +297,8 @@ class _MesonDetector:
                 with open(cf, 'r', errors='replace') as f:
                     text = f.read()
             except (IOError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-
             for m in self._DEF_RE.finditer(text):
                 defn = m.group(2).strip()
                 if '=' in defn:
@@ -353,8 +352,8 @@ class _AutotoolsDetector:
                 with open(cf, 'r', errors='replace') as f:
                     text = f.read()
             except (IOError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-
             for m in self._AC_DEFINE_RE.finditer(text):
                 k = m.group(1)
                 v = m.group(2).strip('[]')
@@ -406,6 +405,7 @@ class _KconfigDetector:
                 with open(cf, 'r', errors='replace') as f:
                     text = f.read()
             except (IOError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
             for m in self._CONFIG_RE.finditer(text):
                 info.macros[f"CONFIG_{m.group(1)}"] = ""
@@ -442,8 +442,8 @@ class _BazelDetector:
                 with open(cf, 'r', errors='replace') as f:
                     text = f.read()
             except (IOError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-
             for m in self._COPTS_RE.finditer(text):
                 for dm in self._D_FLAG_RE.finditer(m.group(1)):
                     defn = dm.group(1)
@@ -485,9 +485,8 @@ def _parse_config_h(path: str, macros: dict):
                     if m:
                         macros.pop(m.group(1), None)
     except (IOError, OSError):
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
-
 def _parse_dot_config(path: str, macros: dict):
     """Parse Linux kernel .config file for CONFIG_* options."""
     try:
@@ -502,10 +501,8 @@ def _parse_dot_config(path: str, macros: dict):
                         # Disabled option: # CONFIG_FOO is not set
                         pass
     except (IOError, OSError):
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
-
-# ---------------------------------------------------------------------------
 # Main detector class
 # ---------------------------------------------------------------------------
 

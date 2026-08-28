@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 from _builder.kb_index import _fts5_escape
+import logging
 
 
 def _global_kb_dir() -> str:
@@ -155,6 +156,7 @@ def global_search(query: str, top_n: int = 10, kinds: Optional[List[str]] = None
                 )
             conn.commit()
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         return results
     finally:

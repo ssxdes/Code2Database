@@ -51,6 +51,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Iterator
+import logging
 
 # Cross-platform file locking. Linux/macOS use fcntl.flock; Windows uses
 # msvcrt.locking (LK_NBLCK / LK_UNLCK). If neither is available (rare —
@@ -204,9 +205,10 @@ class GraphLock:
                     try:
                         _msvcrt.locking(self._lock_fd.fileno(), _msvcrt.LK_UNLCK, 1)
                     except OSError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
-                # 'none' backend: no-op
             except OSError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             self._lock_fd.close()
             self._lock_fd = None
@@ -316,6 +318,7 @@ def list_snapshots(graph_dir: str, limit: int = 50) -> List[Snapshot]:
                 total_size=meta.get("total_size", 0),
             ))
         except (json.JSONDecodeError, KeyError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         if len(snaps) >= limit:
             break
@@ -405,8 +408,8 @@ def _read_wal_seq_counter(graph_dir: str) -> int:
         with open(seq_path, "r", encoding="utf-8") as f:
             return int(f.read().strip() or "1")
     except (FileNotFoundError, ValueError):
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-    # Slow path: scan the WAL once to find the highest seq, then persist.
     next_seq = 1
     if os.path.exists(wal_path):
         try:
@@ -419,8 +422,10 @@ def _read_wal_seq_counter(graph_dir: str) -> int:
                         if isinstance(entry, dict) and "seq" in entry:
                             next_seq = max(next_seq, int(entry["seq"]) + 1)
                     except (json.JSONDecodeError, ValueError, TypeError):
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
         except OSError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     _write_wal_seq_counter(graph_dir, next_seq)
     return next_seq
@@ -496,6 +501,7 @@ def read_wal(graph_dir: str, only_unapplied: bool = False) -> List[Dict]:
                         continue
                     entries.append(entry)
                 except json.JSONDecodeError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
     return entries
 
@@ -511,10 +517,8 @@ def clear_wal(graph_dir: str):
         try:
             os.remove(seq_path)
         except OSError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-
-# ---------------------------------------------------------------------------
 # Transaction state
 # ---------------------------------------------------------------------------
 

@@ -24,6 +24,7 @@ from typing import Dict, List, Optional, Tuple
 
 from _builder.utils import _get_body_text
 from _builder.graph_build import _load_full_graph
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -424,8 +425,8 @@ def cmd_happens_before(args):
             with open(profile_path, "r", encoding="utf-8") as f:
                 profile = json.load(f)
         except (IOError, OSError, ValueError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
     result = happens_before_analysis(
         G, writer_id, reader_id, variable, profile=profile, max_depth=max_depth)
 

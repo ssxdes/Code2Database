@@ -14,6 +14,7 @@ import os
 import re
 import sys
 from collections import Counter, defaultdict
+import logging
 
 
 def load_extraction(path):
@@ -76,8 +77,8 @@ def analyze_unresolved_callees(data, source_root, external_prefixes=None):
                 with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
                     _source_files[fpath] = f.read()
             except (IOError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-
     for callee, callers in sorted(unresolved.items()):
         found_in_source = False
         found_type = None
@@ -216,8 +217,8 @@ def analyze_empty_functions(data, source_root):
                                 'description': f'Function "{name}" has empty body_text but source file has a body — extraction missed it',
                             })
                 except (IOError, OSError):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-
     return findings[:50]  # Limit to first 50
 
 

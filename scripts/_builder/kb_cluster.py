@@ -16,6 +16,7 @@ from typing import Dict
 
 from _builder.kb_index import _kb_connect, _fts5_escape
 import re as _re
+import logging
 
 
 # Threshold for Jaccard similarity — two items with Jaccard >= this
@@ -126,8 +127,8 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
                     if sim >= threshold:
                         uf.union(iid, cand_id)
             except sqlite3.Error:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-        # Assign scope_id = root of each item's union-find tree
         scope_map: Dict[int, int] = {}
         next_scope_id = 1
         for iid, *_ in items:
@@ -181,6 +182,7 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
                     )
                     principle_refs_linked += 1
             except sqlite3.Error:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
         conn.commit()
         cluster_count = len(scope_map)

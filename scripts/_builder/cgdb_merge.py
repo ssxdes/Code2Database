@@ -39,6 +39,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Tuple
+import logging
 
 
 @dataclass
@@ -98,6 +99,7 @@ def _load_graph_functions(graph_dir: str) -> Dict[str, dict]:
                         try:
                             extra = json.loads(row["extra_json"])
                         except (json.JSONDecodeError, TypeError):
+                            logging.getLogger(__name__).debug("silent exception", exc_info=True)
                             pass
                     funcs[row["id"]] = {
                         "name": row["name"],
@@ -106,6 +108,7 @@ def _load_graph_functions(graph_dir: str) -> Dict[str, dict]:
                         "signature": row["signature"] or extra.get("signature", ""),
                     }
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             finally:
                 conn.close()
@@ -131,6 +134,7 @@ def _load_graph_functions(graph_dir: str) -> Dict[str, dict]:
             with open(domain_path, "r", encoding="utf-8") as f:
                 domain_data = json.load(f)
         except (OSError, json.JSONDecodeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         for func in domain_data.get("functions", []):
             fid = func.get("id", "")
@@ -167,8 +171,8 @@ def _load_knowledge(graph_dir: str) -> List[dict]:
             with open(fpath, "r", encoding="utf-8") as f:
                 content = f.read()
         except (OSError, UnicodeDecodeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
-        # Extract top-level ## headings as topics for matching
         headings = re.findall(r'^##\s+(.+)$', content, re.MULTILINE)
         entries.append({
             "id": fname,
@@ -221,6 +225,7 @@ def _load_memory(graph_dir: str) -> List[dict]:
                         entries.append(entry)
                         break
                 except (OSError, json.JSONDecodeError):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     continue
         else:
             # Fallback: old flat path
@@ -232,6 +237,7 @@ def _load_memory(graph_dir: str) -> List[dict]:
                     if isinstance(entry, dict):
                         entries.append(entry)
                 except (OSError, json.JSONDecodeError):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
     return entries
 
@@ -337,6 +343,7 @@ def _save_merged_knowledge(
                 f.write(merge_header + body)
             saved += 1
         except OSError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     return saved
 
@@ -377,8 +384,8 @@ def _save_merged_memory(
                 existing_index.setdefault("next_id", 1)
                 existing_index.setdefault("roots", [])
         except (OSError, json.JSONDecodeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
     next_id = existing_index.get("next_id", 1)
     saved = 0
     for entry in entries:
@@ -412,13 +419,14 @@ def _save_merged_memory(
             })
             saved += 1
         except OSError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
     existing_index["next_id"] = next_id
     try:
         with open(index_path, "w", encoding="utf-8") as f:
             json.dump(existing_index, f, ensure_ascii=False, indent=2)
     except OSError:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return saved
 
@@ -471,9 +479,8 @@ def merge_cross_graph(
         if proc.returncode == 0:
             source_branch = proc.stdout.strip()
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
-    # Load target function names for matching
     target_functions = _load_graph_functions(target_graph_dir)
     if not target_functions:
         result.errors.append(

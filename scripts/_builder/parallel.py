@@ -51,6 +51,7 @@ import multiprocessing
 import os
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, Optional, Tuple
+import logging
 
 
 def map_files_processpool(
@@ -161,8 +162,8 @@ def _get_max_workers_cap(cli_override: int = 0) -> int:
         try:
             return max(1, int(env))
         except ValueError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-    # Default: min(cpu_count, 16) — never oversubscribe by default
     try:
         cpu = multiprocessing.cpu_count()
     except (NotImplementedError, OSError):

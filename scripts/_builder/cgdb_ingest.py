@@ -6,6 +6,7 @@
 - Computes file_id via SHA-256 of the absolute path (stable across runs)
 - Maps scan-result node IDs (already USR-hashed by ClangScanner) to NodeRecord.id
 """
+import logging
 import hashlib
 import os
 
@@ -303,6 +304,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             invoker_id = int(cs.get('invoker_id') or cs.get('caller_id') or 0)
             invoked_id = int(cs.get('invoked_id') or cs.get('callee_id') or 0)
         except (KeyError, ValueError, TypeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         if not invoker_id or not invoked_id:
             continue
@@ -338,6 +340,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
         try:
             pred_id = int(p['id'])
         except (KeyError, ValueError, TypeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         if pred_id in seen_pred_ids:
             continue
@@ -366,6 +369,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
         try:
             cid = int(c['id'])
         except (KeyError, ValueError, TypeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         if cid in seen_cond_ids:
             continue
@@ -405,6 +409,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             field_node_id = int(b['field_node_id'])
             impl_function_id = int(b['impl_function_id'])
         except (KeyError, ValueError, TypeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         if edge_id in seen_opbind_edge_ids:
             continue
@@ -426,6 +431,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             func_id = int(b['function_id'])
             block_index = int(b['block_index'])
         except (KeyError, ValueError, TypeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         if bb_id in seen_bb_ids:
             continue
@@ -450,6 +456,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             kind = e['kind']
             func_id = int(e['function_id'])
         except (KeyError, ValueError, TypeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         key = (src_block_id, dst_block_id, kind)
         if key in seen_cfg_edges:
@@ -476,6 +483,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             func_id = int(d['function_id'])
             kind = d.get('kind', 'use')
         except (KeyError, ValueError, TypeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         key = (var_id, def_stmt_id, use_stmt_id, kind)
         if key in seen_df_keys:
@@ -500,6 +508,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             func_id = int(s['function_id'])
             kind = s['kind']
         except (KeyError, ValueError, TypeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         sync_var_id = s.get('sync_var_id')
         sync_var_id = int(sync_var_id) if sync_var_id is not None else None
@@ -531,6 +540,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             read_event_id = int(h['read_event_id'])
             reason = h.get('reason', 'program_order')
         except (KeyError, ValueError, TypeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         key = (write_event_id, read_event_id, reason)
         if key in seen_hb_keys:
@@ -559,6 +569,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             ptr2 = int(a['ptr2_node_id'])
             kind = a.get('kind', 'may_alias')
         except (KeyError, ValueError, TypeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         key = (ptr1, ptr2, kind)
         if key in seen_alias_keys:
@@ -581,6 +592,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
         try:
             node_id = int(d['node_id'])
         except (KeyError, ValueError, TypeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         try:
             tags = d.get('tags', {})
@@ -612,6 +624,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             target_kind = str(m.get('target_kind', 'node') or 'node')
             key = str(m.get('key', '') or '')
         except (KeyError, ValueError, TypeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         if not key:
             continue
@@ -638,6 +651,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             source_file_id = int(inc['source_file_id'])
             included_path = str(inc.get('included_path', '') or '')
         except (KeyError, ValueError, TypeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         if not included_path:
             continue

@@ -26,6 +26,7 @@ import re
 from typing import Dict, List, Optional, Tuple
 
 from _builder.cgdb_records import SyncPrimitiveRecord, HappensBeforeRecord
+import logging
 
 
 # Patterns matching sync primitive function names.
@@ -175,6 +176,7 @@ class SyncPrimitiveWriter:
                     if sub_id is not None:
                         return sub_id
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             return None
         # UNEXPOSED_EXPR / MACRO_EXPANSION — walk into children
@@ -185,6 +187,7 @@ class SyncPrimitiveWriter:
                     if sub_id is not None:
                         return sub_id
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             return None
         # UnaryOperator & — walk into operand
@@ -195,6 +198,7 @@ class SyncPrimitiveWriter:
                     if sub_id is not None:
                         return sub_id
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             return None
         return None
@@ -209,13 +213,14 @@ class SyncPrimitiveWriter:
             try:
                 callback(cursor, None)  # parent unknown in walk_preorder
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         try:
             for child in cursor.get_children():
                 self._walk_for_call_expr(child, callback)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
     def extract_from_function(self, func_cursor, func_node_id: int,
                               add_node_fn) -> Tuple[List[SyncPrimitiveRecord],
                                                     List[HappensBeforeRecord]]:
@@ -255,6 +260,7 @@ class SyncPrimitiveWriter:
                         if ref is not None:
                             callee_name = ref.spelling or ''
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 match = _match_sync_pattern(callee_name)
                 if match is None:
@@ -333,6 +339,7 @@ class SyncPrimitiveWriter:
                     ))
                 records.append(rec)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         return records, happens_before
 

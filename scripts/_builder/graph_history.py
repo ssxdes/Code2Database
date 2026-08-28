@@ -17,6 +17,7 @@ import json
 import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
+import logging
 
 # Try sqlite_store for connection helper
 try:
@@ -134,12 +135,14 @@ def _count_graph(graph_dir: str) -> Tuple[int, int]:
                         "SELECT COUNT(*) FROM functions"
                     ).fetchone()[0]
                 except sqlite3.OperationalError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
                 try:
                     edge_count = conn.execute(
                         "SELECT COUNT(*) FROM edges"
                     ).fetchone()[0]
                 except sqlite3.OperationalError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
                 if node_count == 0:
                     try:
@@ -147,6 +150,7 @@ def _count_graph(graph_dir: str) -> Tuple[int, int]:
                             "SELECT COUNT(*) FROM cgdb_nodes"
                         ).fetchone()[0]
                     except sqlite3.OperationalError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 if edge_count == 0:
                     try:
@@ -154,15 +158,15 @@ def _count_graph(graph_dir: str) -> Tuple[int, int]:
                             "SELECT COUNT(*) FROM cgdb_edges"
                         ).fetchone()[0]
                     except sqlite3.OperationalError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 if node_count > 0 or edge_count > 0:
                     return node_count, edge_count
             finally:
                 conn.close()
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-    # Fast path 2: master.json summary field.
     if os.path.exists(master_path):
         try:
             import json
@@ -173,9 +177,8 @@ def _count_graph(graph_dir: str) -> Tuple[int, int]:
             if nc or ec:
                 return int(nc), int(ec)
         except (OSError, ValueError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-    # Fallback: legacy JSON-only output without summary field.
     try:
         from _builder.graph_build import _load_full_graph
         G = _load_full_graph(graph_dir)
@@ -293,8 +296,8 @@ def _load_node_from_snapshot(snap_path: str,
                     if n.get("id") == node_id:
                         return n
         except (json.JSONDecodeError, OSError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-    # Try SQLite snapshot
     db_path = os.path.join(snap_path, "code2database.db")
     if os.path.exists(db_path):
         try:
@@ -309,6 +312,7 @@ def _load_node_from_snapshot(snap_path: str,
             finally:
                 conn.close()
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     return None
 
@@ -332,6 +336,7 @@ def _load_nodes_from_dir(graph_dir: str) -> Dict[str, Dict[str, Any]]:
                     if nid:
                         nodes[nid] = n
         except (json.JSONDecodeError, OSError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     db_path = os.path.join(graph_dir, "code2database.db")
     if os.path.exists(db_path):
@@ -348,6 +353,7 @@ def _load_nodes_from_dir(graph_dir: str) -> Dict[str, Dict[str, Any]]:
             finally:
                 conn.close()
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     return nodes
 
@@ -369,6 +375,7 @@ def _load_edges_from_dir(graph_dir: str) -> List[Dict[str, Any]]:
                 for e in dom.get("edges", []):
                     edges.append(e)
         except (json.JSONDecodeError, OSError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     db_path = os.path.join(graph_dir, "code2database.db")
     if os.path.exists(db_path):
@@ -383,6 +390,7 @@ def _load_edges_from_dir(graph_dir: str) -> List[Dict[str, Any]]:
             finally:
                 conn.close()
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     return edges
 

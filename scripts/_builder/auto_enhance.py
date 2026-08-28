@@ -39,6 +39,7 @@ import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +67,7 @@ def _append_rollback_entry(graph_dir: str, entry: Dict) -> int:
                         if isinstance(last, dict) and "id" in last:
                             next_id = max(next_id, last["id"] + 1)
                     except json.JSONDecodeError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
     entry = {"id": next_id, "timestamp": time.time(), **entry}
     with open(log_path, "a", encoding="utf-8") as f:
@@ -85,8 +87,8 @@ def list_rollback_entries(graph_dir: str, limit: int = 50) -> List[Dict]:
                 try:
                     entries.append(json.loads(line))
                 except json.JSONDecodeError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-    # Newest first, capped
     return list(reversed(entries[-limit:]))
 
 
@@ -109,8 +111,8 @@ def rollback_to_entry(graph_dir: str, entry_id: int) -> Dict:
                         target = entry
                         break
                 except json.JSONDecodeError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-
     if not target:
         return {"rolled_back": False, "reason": f"entry {entry_id} not found"}
 
@@ -499,6 +501,7 @@ def generate_heuristic_description(node_data: Dict) -> Dict[str, Any]:
                     pname = p.get("name", "") if isinstance(p, dict) else str(p)
                     ptype = p.get("type", "") if isinstance(p, dict) else ""
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     continue
                 if not pname:
                     continue
@@ -678,9 +681,8 @@ def apply_heuristic_enhancement_batch(graph_dir: str,
                             "UPDATE cgdb_nodes SET description=? WHERE fqn=?",
                             (sem, nid))
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
-
-            # Also write other heuristic-generated fields (external_desc,
             # api_constraints, preconditions, postconditions) to the node
             # so they're persisted in the JSON side and SQLite attrs.
             for field_name, field_val in generated.items():
@@ -770,6 +772,7 @@ def apply_heuristic_enhancement_batch(graph_dir: str,
                         applied += 1
                         processed += 1
             except Exception as _e:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
     finally:
         if conn is not None:
@@ -784,8 +787,8 @@ def apply_heuristic_enhancement_batch(graph_dir: str,
             source_root = master.get("source_root", "")
             split_by_domain(G, graph_dir, source_root)
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
     return {
         "processed": processed,
         "applied": applied,
@@ -882,8 +885,8 @@ class BatchConfirmSession:
                 if item.id >= self._next_id:
                     self._next_id = item.id + 1
         except (json.JSONDecodeError, TypeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
     def save(self):
         data = {
             "items": [asdict(i) for i in self.items],
@@ -1046,13 +1049,14 @@ def _apply_supplement(graph_dir: str, item: BatchItem) -> bool:
                           after_value=item.value,
                           reason=f"llm_supplement (confidence={item.confidence})")
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-            # Invalidate query cache entries that touched this node so the
             # next describe-node / explore-flow sees the supplemented value.
             try:
                 from _builder.query_cache import invalidate_node
                 invalidate_node(graph_dir, item.node_id)
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         return bool(ok)
     except Exception as exc:
@@ -1404,6 +1408,7 @@ def cmd_heuristic_enhance(args):
             G = _load_full_graph(graph_dir)
             _write_review_checklist(graph_dir, G)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         try:
             import os as _os
@@ -1425,6 +1430,7 @@ def cmd_heuristic_enhance(args):
                     build_info=None,
                 )
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         print(json.dumps({
             "mode": "write",

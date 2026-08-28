@@ -20,6 +20,7 @@ cross-team knowledge sharing.
 """
 from __future__ import annotations
 
+import logging
 import json
 import os
 import re
@@ -68,6 +69,7 @@ def add_foreign_stub(graph_dir: str, stub_c2d_path: str,
         try:
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         conn.commit()
         # ATTACH first, then query signature through the alias — avoids
@@ -150,6 +152,7 @@ def add_foreign_stub(graph_dir: str, stub_c2d_path: str,
         try:
             conn.execute("DETACH DATABASE stub_db")
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     finally:
         conn.close()
@@ -205,6 +208,7 @@ def auto_link_ffi_to_foreign(graph_dir: str, verbose: bool = True) -> Dict[str, 
                     f"ATTACH DATABASE 'file:{_escape_sql_path(fdb_path)}?mode=ro' AS ffi_foreign"
                 )
             except sqlite3.Error:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
             project_name = w["project_name"] or ""
             for edge in ffi_edges:
@@ -239,6 +243,7 @@ def auto_link_ffi_to_foreign(graph_dir: str, verbose: bool = True) -> Dict[str, 
             try:
                 conn.execute("DETACH DATABASE ffi_foreign")
             except sqlite3.Error:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         conn.commit()
     except sqlite3.Error as e:
@@ -322,6 +327,7 @@ def scan_rpc_edges(graph_dir: str, verbose: bool = True) -> Dict[str, Any]:
                     body = zlib.decompress(blob_row["body_text_compressed"]).decode(
                         "utf-8", errors="replace")
             except (sqlite3.Error, zlib.error, TypeError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             if not body:
                 continue
@@ -369,8 +375,8 @@ def scan_rpc_edges(graph_dir: str, verbose: bool = True) -> Dict[str, Any]:
                     )
                     summary["stub_nodes_created"] += 1
                 except sqlite3.Error:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-            # Insert edge from caller to stub
             try:
                 conn.execute(
                     "INSERT OR IGNORE INTO edges "
@@ -380,8 +386,8 @@ def scan_rpc_edges(graph_dir: str, verbose: bool = True) -> Dict[str, Any]:
                     (ep["caller_id"], stub_id)
                 )
             except sqlite3.Error:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-            # Insert foreign_ref with foreign_c2d_path = URL (not file path)
             try:
                 conn.execute(
                     "INSERT OR REPLACE INTO foreign_refs "
@@ -397,6 +403,7 @@ def scan_rpc_edges(graph_dir: str, verbose: bool = True) -> Dict[str, Any]:
                 )
                 summary["foreign_refs_created"] += 1
             except sqlite3.Error:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             summary["rpc_endpoints"].append({
                 "caller": ep["caller_name"],
@@ -457,7 +464,8 @@ def import_foreign_knowledge(graph_dir: str, foreign_c2d_path: str,
                 if src_mtime <= dst_mtime:
                     continue  # dst is up-to-date
             except OSError:
-                pass  # if mtime check fails, overwrite to be safe
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                pass
         try:
             shutil.copy2(src, dst)
             copied += 1
@@ -472,6 +480,7 @@ def import_foreign_knowledge(graph_dir: str, foreign_c2d_path: str,
         try:
             os.utime(index_path, None)
         except OSError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     return summary
 

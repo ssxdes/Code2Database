@@ -4,6 +4,7 @@ import os
 import re
 from collections import defaultdict
 import networkx as nx
+import logging
 
 # Cache for file-level includes (path → set of includes)
 _file_includes_cache = {}
@@ -48,6 +49,7 @@ def _resolve_imports(G, source_root: str) -> int:
             with open(full_path, 'r', errors='replace') as f:
                 content = f.read()
         except (IOError, OSError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         file_includes = []
         for m in _INCLUDE_FILE_RE.finditer(content):
@@ -120,8 +122,8 @@ def _resolve_imports(G, source_root: str) -> int:
                 if os.path.getsize(fpath) > _MAX_HEADER_SIZE:
                     continue
             except OSError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-
             rel_path = os.path.relpath(fpath, source_root)
             # Also skip if we already scanned this header
             if rel_path in header_functions:
@@ -131,9 +133,8 @@ def _resolve_imports(G, source_root: str) -> int:
                 with open(fpath, 'r', errors='replace') as f:
                     text = f.read()
             except (IOError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-
-            # Extract function declaration names using simple non-backtracking regex
             funcs = []
             for m in _DECL_RE.finditer(text):
                 name = m.group(1)

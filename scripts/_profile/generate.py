@@ -26,6 +26,7 @@ import re
 import json
 from collections import Counter, defaultdict
 from pathlib import Path
+import logging
 
 # Built-in profile directory for loading project-type templates
 _PROFILE_DIR = Path(__file__).resolve().parent.parent / "config" / "profiles"
@@ -54,6 +55,7 @@ def _load_all_templates() -> dict:
             if ptype and "detection" in data:
                 templates[ptype] = data
         except (json.JSONDecodeError, IOError, OSError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
     return templates
 
@@ -86,6 +88,7 @@ def _load_all_templates() -> dict:
             if ptype and "detection" in data:
                 templates[ptype] = data
         except (json.JSONDecodeError, IOError, OSError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
     _template_cache = templates
     return templates
@@ -759,9 +762,8 @@ def _detect_project_name(source_root: str) -> str:
                             return ptype
                     break  # Only check the first non-empty line
         except (IOError, OSError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-    # CMakeLists.txt — check for project() directive
     cmake_path = os.path.join(source_root, "CMakeLists.txt")
     if os.path.isfile(cmake_path):
         try:
@@ -769,9 +771,8 @@ def _detect_project_name(source_root: str) -> str:
                 for m in re.finditer(r'project\s*\(\s*(\w+)', f.read()):
                     return m.group(1).lower()
         except (IOError, OSError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-    # Step 3: Fallback — strip common suffixes from root directory name
     stripped = re.sub(r'-(?:source|src|master|main)$', '', root_name)
     return stripped.lower()
 
@@ -831,9 +832,8 @@ def detect_project_type(source_root: str) -> str:
                                 if "obj-$(CONFIG" in f.read():
                                     score += 5
                         except OSError:
+                            logging.getLogger(__name__).debug("silent exception", exc_info=True)
                             pass
-
-        # Check macro_prefixes: scan headers for macro prefixes like RTE_, SPDK_
         macro_prefixes = detection.get("macro_prefixes", [])
         if macro_prefixes:
             macro_found = False
@@ -852,6 +852,7 @@ def detect_project_type(source_root: str) -> str:
                             with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
                                 content = f.read()
                         except (IOError, OSError):
+                            logging.getLogger(__name__).debug("silent exception", exc_info=True)
                             continue
                         for mpfx in macro_prefixes:
                             if re.search(r'#\s*if(?:n)?def\s+(' + re.escape(mpfx) + r'\w+)', content):
@@ -885,6 +886,7 @@ def detect_project_type(source_root: str) -> str:
                             with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
                                 content = f.read()
                         except (IOError, OSError):
+                            logging.getLogger(__name__).debug("silent exception", exc_info=True)
                             continue
                         if pattern in content:
                             hits += 1
@@ -2900,6 +2902,7 @@ def auto_detect_vtable_module_keys(source_root: str,
                 with open(abs_path, 'r', encoding='utf-8', errors='ignore') as f:
                     text = f.read()
             except (OSError, IOError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
         for key in _VTABLE_MODULE_KEY_CANDIDATES:
             # Word-boundary search to avoid false positives

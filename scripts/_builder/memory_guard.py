@@ -16,6 +16,7 @@ import time
 import json
 from pathlib import Path
 from typing import Optional, Callable, Any, List, Dict
+import logging
 
 
 class MemoryGuard:
@@ -129,9 +130,8 @@ class MemoryGuard:
                             try:
                                 meminfo[key] = int(parts[1])
                             except ValueError:
+                                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                                 pass
-
-                # Values are in kB
                 total_kb = meminfo.get("MemTotal", 0)
                 available_kb = meminfo.get("MemAvailable", meminfo.get("MemFree", 0))
                 free_kb = meminfo.get("MemFree", 0)
@@ -161,8 +161,8 @@ class MemoryGuard:
                     info["usage_percent"] = 0.5  # Unknown, assume 50%
 
         except Exception as e:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
         return info
 
     def _compute_dynamic_crit_ceiling(self) -> Optional[float]:
@@ -266,6 +266,7 @@ class MemoryGuard:
                         try:
                             callback(info)
                         except Exception:
+                            logging.getLogger(__name__).debug("silent exception", exc_info=True)
                             pass
             elif is_warn:
                 self._stats["warnings"] += 1
@@ -335,8 +336,8 @@ class MemoryGuard:
                 encoding="utf-8"
             )
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
     def start_monitoring(self, interval: float = 5.0) -> None:
         """Start background memory monitoring thread.
 
@@ -384,8 +385,8 @@ class MemoryGuard:
                         _last_log_level = _level
 
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
             time.sleep(interval)
 
     def stop_monitoring(self) -> None:
@@ -725,9 +726,8 @@ class BatchedListCollector:
                     all_items.extend(json.load(f))
                 os.remove(batch_path)
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
-        # Also include in-memory buffer
         all_items.extend(self._buffer)
 
         # Cleanup
@@ -739,8 +739,8 @@ class BatchedListCollector:
             try:
                 os.rmdir(self._temp_dir)
             except OSError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
         return all_items
 
     def __len__(self) -> int:
@@ -754,13 +754,13 @@ class BatchedListCollector:
                 try:
                     os.remove(batch_path)
                 except OSError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
             try:
                 os.rmdir(self._temp_dir)
             except OSError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
-
 def adaptive_batch_size(base_size: int, guard: MemoryGuard) -> int:
     """Calculate adaptive batch size based on memory pressure.
 

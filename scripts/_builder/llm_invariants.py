@@ -26,6 +26,7 @@ import os
 import re
 import sys
 from typing import Any, Dict, List, Optional, Tuple
+import logging
 
 
 def _normalize_condition(cond: str) -> str:
@@ -84,9 +85,8 @@ def _parse_llm_invariants(response_text: str) -> List[Dict]:
                     })
         return invariants
     except json.JSONDecodeError:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
-    # Fall back to line-based parsing
     valid_kinds = {"precondition", "postcondition", "loop_invariant"}
     for line in response_text.splitlines():
         line = line.strip()

@@ -8,6 +8,7 @@ from collections import defaultdict
 import networkx as nx
 from _builder.graph_build import _load_full_graph
 from _builder.query_cache import cached_query
+import logging
 
 
 def cmd_domain(args):
@@ -425,6 +426,7 @@ def _bfs_with_domain_preference(G, from_node, to_node, no_filter, prefer_same_do
                         try:
                             nb_name = (G.nodes[nb] or {}).get("name", "") or ""
                         except Exception:
+                            logging.getLogger(__name__).debug("silent exception", exc_info=True)
                             pass
                         if nb_name != bound_impl:
                             continue
@@ -583,6 +585,7 @@ def cmd_path(args):
             if hints.get('missing_common_subsystems'):
                 print(f"Missing common subsystems: {', '.join(hints['missing_common_subsystems'][:5])}", file=sys.stderr)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         sys.exit(1)
 
@@ -856,6 +859,7 @@ def _cmd_search_from_sqlite(db_path: str, args):
                 try:
                     extra = json.loads(extra_raw)
                 except (json.JSONDecodeError, TypeError):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
             if extra.get("is_empty", False):
                 continue

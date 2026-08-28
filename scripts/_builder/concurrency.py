@@ -4,6 +4,7 @@ import re
 import networkx as nx
 from _builder.utils import _output_result
 from _builder.graph_build import _load_full_graph
+import logging
 
 
 def cmd_concurrency_risks(args):
@@ -166,6 +167,7 @@ def cmd_data_lifecycle(args):
         try:
             pred_map = nx.predecessor(_lifecycle_call_G, aid, cutoff=15)
         except (nx.NetworkXNoPath, nx.NodeNotFound):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         for rid in release_lookup:
             if rid not in pred_map or rid == aid:

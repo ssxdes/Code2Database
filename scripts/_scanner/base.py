@@ -14,6 +14,7 @@ import re
 from abc import ABC, abstractmethod
 
 from _scanner.utils import classify_domain
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -459,8 +460,8 @@ class BaseScanner(ABC):
                     cgdb_types = cgdb_extra.get('cgdb_types', [])
                     cgdb_ops_bindings = cgdb_extra.get('cgdb_ops_bindings', [])
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
         return {"file": filepath, "domain": domain, "functions": functions,
                 "edges": edges, "globals": globals_data,
                 "vtable_registrations": vtable_registrations,
@@ -1469,6 +1470,7 @@ class BaseScanner(ABC):
                 if first_brace >= 0:
                     body = body[first_brace:]
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             seen_texts = set()
             for pat, kind_default in ((if_pat, 'atom'), (switch_pat, 'atom')):

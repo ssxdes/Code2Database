@@ -25,6 +25,7 @@ import re
 import subprocess
 import sys
 from typing import Optional, Dict, Tuple, List
+import logging
 
 
 def _run_git(args: List[str], cwd: str, timeout: int = 10) -> Optional[str]:
@@ -205,6 +206,7 @@ def query_blame_for_lines(source_root: str, file_path: str,
                     if current_line:
                         result[final_line] = current_line
                 except ValueError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
     return result
 

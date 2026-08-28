@@ -21,6 +21,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
 from _builder.kb_index import _kb_connect, query_kb
+import logging
 
 # RRF constant (industry standard, from Cormack et al. 2009)
 RRF_K = 60
@@ -214,7 +215,8 @@ def hybrid_search(graph_dir: str, query: str, top_n: int = 20,
                 channels["reranker"] = True
                 engine = "hybrid+rerank"
         except Exception:
-            pass  # Reranker optional, fall back to RRF
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
 
     return {
         "query": query,

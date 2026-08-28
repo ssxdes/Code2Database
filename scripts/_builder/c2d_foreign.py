@@ -116,9 +116,8 @@ def _ensure_foreign_tables(conn: sqlite3.Connection) -> None:
                 ON audit_log(timestamp);
         """)
     except sqlite3.OperationalError:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
-
 def _db_path(graph_dir: str) -> str:
     return os.path.join(graph_dir, "code2database.db")
 
@@ -172,7 +171,8 @@ def _get_db_signature(db_path: str) -> Dict[str, Any]:
         sig["functions_count"] = row[0] if row else 0
         conn.close()
     except sqlite3.Error:
-        pass  # foreign db may not have functions table yet
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        pass
     return sig
 
 
@@ -226,8 +226,8 @@ def _resolve_by_exact_name(foreign_conn: sqlite3.Connection,
             if row:
                 candidates.append(row)
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-    # Fall back to name match (without project prefix)
     if not candidates:
         try:
             rows = foreign_conn.execute(
@@ -237,6 +237,7 @@ def _resolve_by_exact_name(foreign_conn: sqlite3.Connection,
             ).fetchall()
             candidates.extend(rows)
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     if not candidates:
         return None
@@ -285,7 +286,8 @@ def add_foreign(graph_dir: str, foreign_c2d_path: str,
         if os.path.samefile(graph_dir, foreign_c2d_path):
             return {"error": "foreign_c2d_path is the same as graph_dir (self-reference not allowed)"}
     except OSError:
-        pass  # one or both paths don't exist yet — let the normal checks handle it
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        pass
     foreign_db = _foreign_db_path(foreign_c2d_path)
     if not os.path.exists(foreign_db):
         return {"error": f"foreign c2d db not found: {foreign_db}"}
@@ -406,6 +408,7 @@ def add_foreign(graph_dir: str, foreign_c2d_path: str,
         try:
             conn.execute("DETACH DATABASE foreign_db")
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     finally:
         conn.close()
@@ -728,8 +731,8 @@ def resolve_foreign_by_name(graph_dir: str, foreign_c2d_path: str = "",
         try:
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-        # Get watched c2ds
         if foreign_c2d_path:
             watched = conn.execute(
                 "SELECT * FROM watched_c2ds WHERE c2d_path = ?",
@@ -746,8 +749,8 @@ def resolve_foreign_by_name(graph_dir: str, foreign_c2d_path: str = "",
             try:
                 conn.execute(f"ATTACH DATABASE 'file:{_escape_sql_path(fdb)}?mode=ro' AS resolve_db")
             except sqlite3.Error:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-            # Get all non-resolved refs for this c2d
             refs = conn.execute(
                 "SELECT id, invoked_name, invoked_signature "
                 "FROM foreign_refs WHERE foreign_c2d_path = ? "
@@ -778,6 +781,7 @@ def resolve_foreign_by_name(graph_dir: str, foreign_c2d_path: str = "",
             try:
                 conn.execute("DETACH DATABASE resolve_db")
             except sqlite3.Error:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         conn.commit()
     finally:
@@ -882,6 +886,7 @@ def unpin_foreign_ref(graph_dir: str, ref_id: int,
 # ---------------------------------------------------------------------------
 
 from contextlib import contextmanager
+import logging
 
 @contextmanager
 def with_foreign_attached(conn: sqlite3.Connection, foreign_db_path: str,
@@ -905,4 +910,5 @@ def with_foreign_attached(conn: sqlite3.Connection, foreign_db_path: str,
         try:
             conn.execute(f"DETACH DATABASE {alias}")
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass

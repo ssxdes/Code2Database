@@ -42,6 +42,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any, Tuple
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -797,6 +798,7 @@ def _compute_aggregate(func: Optional[str], arg: Optional[str],
             try:
                 numeric.append(float(v))
             except ValueError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
     if func == "SUM":
         return sum(numeric) if numeric else 0
@@ -1257,8 +1259,8 @@ def cmd_query(args):
             except Exception:
                 tmp_store.close()
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
     if cgdb_store is not None:
         def _cgdb_config_lookup(node_id: int) -> List[Dict]:
             try:
@@ -1358,5 +1360,6 @@ def cmd_query(args):
                         ], ensure_ascii=False) + "\n"
                     )
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
             print(json.dumps(rows, ensure_ascii=False, indent=2, default=str))

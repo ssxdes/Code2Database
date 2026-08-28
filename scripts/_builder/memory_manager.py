@@ -29,6 +29,7 @@ except ImportError:
     _HAS_FCNTL = False
 
 from _builder.utils import _simple_tokenize, _similarity_score, _extract_chain_node_ids
+import logging
 
 
 # Decay parameters
@@ -718,8 +719,8 @@ class MemoryManager:
                     os.remove(path)
                     return {}
             except ValueError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
         return scratch
 
     def list_sessions(self) -> list:
@@ -740,6 +741,7 @@ class MemoryManager:
                     "react_phase": scratch.get("react_phase", ""),
                 })
             except (json.JSONDecodeError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
         return sessions
 
@@ -760,6 +762,7 @@ class MemoryManager:
                         os.remove(path)
                         removed += 1
             except (ValueError, json.JSONDecodeError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
         return removed
 
@@ -1010,8 +1013,8 @@ class MemoryManager:
                     exp_entry = json.loads(Path(epath).read_text(encoding="utf-8"))
                     extra_experience.append(exp_entry)
         except OSError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
         pack = {
             "index_meta": {
                 "total_entries": len(index["entries"]),
@@ -1115,8 +1118,8 @@ def cmd_memory_health(args):
                 if now > datetime.fromisoformat(exp):
                     expired_scratch += 1
             except ValueError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
     stats = {
         "total_entries": total_entries,
         "expired_entries": expired_entries,

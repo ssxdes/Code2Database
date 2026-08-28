@@ -9,6 +9,7 @@ from collections import Counter, defaultdict
 import networkx as nx
 from _builder.query import _resolve_detailed_chain, _trace_simple_chain
 from _builder.token_budget import estimate_tokens
+import logging
 
 # Import universal skip names from scanner for automatic external endpoint classification
 try:
@@ -234,6 +235,7 @@ def _build_callgraph_summary_md(G: nx.DiGraph, outdir: str, source_root: str = "
                                 if path_count >= 3:
                                     break
                     except (nx.NetworkXNoPath, nx.NodeNotFound):
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         continue
             else:
                 # Medium graph: shortest paths only
@@ -254,6 +256,7 @@ def _build_callgraph_summary_md(G: nx.DiGraph, outdir: str, source_root: str = "
                             chains.append((len(real), " → ".join(annotated), api_id, ep_id, path))
                             top_paths.append(path)
                     except (nx.NetworkXNoPath, nx.NodeNotFound):
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         continue
         del _call_G
     else:
@@ -803,10 +806,12 @@ def _build_context_pack(G: nx.DiGraph, outdir: str, source_root: str = "",
                                 if len(core_flows) >= 3:
                                     break
                             except (nx.NetworkXNoPath, nx.NodeNotFound):
+                                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                                 continue
                         if len(core_flows) >= 3:
                             break
                 except (nx.NetworkXNoPath, nx.NodeNotFound):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     continue
             if len(core_flows) >= 3:
                 break
@@ -933,6 +938,7 @@ def _build_context_pack(G: nx.DiGraph, outdir: str, source_root: str = "",
                 "hot_memories": mem_data.get("hot_memories", [])[:5],
             }
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     try:
         know_pack_path = os.path.join(outdir, ".knowledge_pack_lite.json")
@@ -945,9 +951,8 @@ def _build_context_pack(G: nx.DiGraph, outdir: str, source_root: str = "",
                                          or "")[:500],
             }
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
-    # Generate REVIEW_CHECKLIST.md
     _write_review_checklist(outdir, G)
 
     return pack_path
@@ -1478,6 +1483,7 @@ def _build_indexes(G: nx.DiGraph, outdir: str):
                         if path_count >= 5:  # max 5 paths per pair
                             break
                 except (nx.NetworkXNoPath, nx.NodeNotFound):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     continue
     else:
         # Large graph: only shortest paths for top API entries.
@@ -1496,8 +1502,8 @@ def _build_indexes(G: nx.DiGraph, outdir: str):
                 pred_map, seen = nx.predecessor(_chains_call_G, api_id,
                                                 cutoff=12, return_seen=True)
             except (nx.NetworkXNoPath, nx.NodeNotFound):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-
             def _reconstruct(target):
                 if target not in pred_map:
                     return None
@@ -1712,6 +1718,7 @@ def _build_scenarios_file(G: nx.DiGraph, outdir: str, build_info: dict = None):
                         # so downstream consistency checks compare types uniformly.
                         val = int(val) if str(val).strip().isdigit() else val
                     except (ValueError, TypeError):
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                     globals_map[member] = val
 
@@ -1967,6 +1974,7 @@ def _compute_hub_functions(G: nx.DiGraph, top_n: int = 10) -> list:
                 if len(hubs) >= top_n:
                     break
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     else:
         # Large graph: fast degree-based heuristic
@@ -2104,6 +2112,7 @@ def _compute_scenarios(G: nx.DiGraph, outdir: str) -> list:
                     try:
                         val = int(val) if str(val).strip().isdigit() else val
                     except (ValueError, TypeError):
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                     globals_map[member] = val
                     enum_vals[member] = val
@@ -2611,9 +2620,8 @@ def _mark_endpoint_nodes(G: nx.DiGraph, outdir: str, profile: dict = None) -> in
                                     "desc": f"Vtable callback: {struct_type}.{field}",
                                 })
         except (json.JSONDecodeError, IOError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-    # Heuristic API entry detection: when api_auto_detect is enabled,
     # non-static functions called from a different domain are API entry candidates.
     # This provides zeroconfig API detection for projects without EXPORT_SYMBOL.
     if profile and profile.get("api_auto_detect"):

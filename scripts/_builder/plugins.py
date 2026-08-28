@@ -4,6 +4,7 @@ import os
 import json
 import sys
 import networkx as nx
+import logging
 
 
 def _discover_plugins(source_root: str) -> list:
@@ -104,6 +105,7 @@ def cmd_plugins(args):
                                 desc = line.strip().lstrip('#').strip()
                                 break
                 except IOError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
                 found.append({"file": fname, "path": fpath, "description": desc})
 

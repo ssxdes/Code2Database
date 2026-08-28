@@ -13,6 +13,7 @@ import json
 import os
 import urllib.request
 from typing import Any, Dict, List, Optional
+import logging
 
 # Provider type
 EMBEDDING_PROVIDER = os.environ.get("C2D_EMBEDDING_PROVIDER", "auto")  # auto|ollama|st|openai|none
@@ -44,16 +45,14 @@ def _detect_provider() -> str:
             if resp.status == 200:
                 return "ollama"
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
-    # Try sentence-transformers
     try:
         import sentence_transformers
         return "st"
     except ImportError:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
-    # Try OpenAI if API key set
     if OPENAI_API_KEY:
         return "openai"
 
@@ -133,8 +132,8 @@ def get_embedding_batch(texts: List[str]) -> List[Optional[List[float]]]:
             embs = _ST_MODEL_CACHE.encode(texts, normalize_embeddings=True, batch_size=32)
             return [e.tolist() for e in embs]
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-    # Fallback: per-item
     return [get_embedding(t) for t in texts]
 
 

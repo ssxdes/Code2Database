@@ -33,6 +33,7 @@ import sqlite3
 import time
 import uuid
 from typing import Any, Dict, List, Optional
+import logging
 
 
 def new_tx_id() -> str:
@@ -269,6 +270,7 @@ def _query_audit_log_json(graph_dir: str,
                 try:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     continue
                 if target_id and rec.get("target_id") != target_id:
                     continue

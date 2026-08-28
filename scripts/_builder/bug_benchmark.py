@@ -42,6 +42,7 @@ import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import List, Dict, Tuple
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +336,7 @@ class GraphInvestigator:
                         body = filled.get("body_text", "") or ""
                         self._record(output_size=len(body) // 4)
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 for kw in case.expected_keywords:
                     if kw.lower() in body.lower():
@@ -455,6 +457,7 @@ class GrepInvestigator:
                         f, l = parts[0], int(parts[1])
                         candidates.append((f, l))
                     except (ValueError, IndexError):
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         continue
             if candidates:
                 break
@@ -533,8 +536,8 @@ def run_benchmark(graph_dir: str, benchmark_path: str,
                 master = json.loads(Path(master_path).read_text(encoding="utf-8"))
                 source_root = master.get("source_root", "")
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
     results: List[Dict] = []
     for case in cases:
         # Graph mode

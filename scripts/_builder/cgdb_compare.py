@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 from typing import Dict, List, Any
+import logging
 
 
 def compare_graphs(
@@ -142,12 +143,14 @@ def _load_functions(graph_dir: str) -> Dict[str, dict]:
                     try:
                         extra = json.loads(row["extra_json"])
                     except (json.JSONDecodeError, TypeError):
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 labels = []
                 if row["labels"]:
                     try:
                         labels = json.loads(row["labels"])
                     except (json.JSONDecodeError, TypeError):
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 funcs[row["id"]] = {
                     "name": row["name"],
@@ -158,6 +161,7 @@ def _load_functions(graph_dir: str) -> Dict[str, dict]:
                     "is_empty": extra.get("is_empty", False),
                 }
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         finally:
             conn.close()
@@ -184,6 +188,7 @@ def _load_edges(graph_dir: str) -> List[dict]:
                     "relation": row["relation"],
                 })
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         finally:
             conn.close()

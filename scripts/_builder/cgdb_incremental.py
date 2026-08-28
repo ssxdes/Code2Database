@@ -23,6 +23,7 @@ import os
 import re
 import sqlite3
 from typing import Dict, List, Set
+import logging
 
 try:
     from _builder.import_resolve import _get_file_includes
@@ -273,7 +274,8 @@ class IncrementalSync:
                 rows += cur.rowcount
             conn.commit()
         except sqlite3.OperationalError:
-            pass  # cgdb_files table doesn't exist
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
         finally:
             conn.close()
         return rows

@@ -30,6 +30,7 @@ import atexit
 from pathlib import Path
 
 from _builder.token_budget import estimate_tokens
+import logging
 
 
 # Module-level graph cache: avoid re-opening SQLite / re-loading graph for
@@ -62,6 +63,7 @@ def _close_cached_graphs():
             if callable(close):
                 close()
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     _GRAPH_CACHE.clear()
 
@@ -109,6 +111,7 @@ def _read_message():
             try:
                 content_length = int(line.split(":", 1)[1].strip())
             except ValueError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         elif ":" in line and not line.startswith("{"):
             # Looks like another header (e.g., "Content-Type: ...") — ignore.
@@ -191,7 +194,8 @@ def _tool_load(args: dict, graph_dir: str) -> dict:
                 "_source": "sqlite",
             }
         except sqlite3.Error:
-            pass  # Fall through to NetworkX path
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
     from _builder.graph_build import _load_full_graph
     G = _get_graph(graph_dir)
     api_count = sum(1 for _, d in G.nodes(data=True) if "API_entry" in d.get("labels", []))
@@ -257,7 +261,8 @@ def _tool_search(args: dict, graph_dir: str) -> list:
             results.sort(key=lambda x: -x["score"])
             return results[:top]
         except sqlite3.Error:
-            pass  # Fall through to NetworkX path
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
     from _builder.graph_build import _load_full_graph
     from _builder.utils import _simple_tokenize, _similarity_score, _find_node_id
     G = _get_graph(graph_dir)
@@ -581,6 +586,7 @@ def _tool_knowledge_query(args: dict, graph_dir: str) -> dict:
             }
         # No FTS5 hits — fall through to legacy
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     from _builder.knowledge_manager import KnowledgeManager
     km = KnowledgeManager(graph_dir)
@@ -609,6 +615,7 @@ def _tool_memory_search(args: dict, graph_dir: str) -> list:
             return results
         # Fall through to legacy
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     from _builder.memory_manager import MemoryManager
     mm = MemoryManager(graph_dir)
@@ -734,6 +741,7 @@ def _tool_get_code_snippet(args: dict, graph_dir: str) -> dict:
                 if source_root:
                     full_path = os.path.join(source_root, source_file)
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
     try:
         with open(full_path, "r", errors="replace") as f:
@@ -2032,8 +2040,8 @@ def run_mcp_server(graph_dir: str):
             Path(stats_path).write_text(
                 json.dumps(mcp_stats, indent=2) + "\n", encoding="utf-8")
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
     atexit.register(_write_mcp_stats)
 
     # Initialization

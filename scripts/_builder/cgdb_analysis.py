@@ -18,6 +18,7 @@ Each extractor takes the source file path + function name (for per-function
 extraction) and returns a list of records (BasicBlockRecord, CFGEdgeRecord,
 DataFlowRecord) for the IngestBatch.
 """
+import logging
 import hashlib
 import re
 import subprocess
@@ -181,6 +182,7 @@ class CFGExtractor:
                         func_cursor = top
                         break
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             if func_cursor is None:
                 return [], []
@@ -198,6 +200,7 @@ class CFGExtractor:
                     body = child
                     break
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         if body is None:
             return [], []
@@ -287,6 +290,7 @@ class CFGExtractor:
                             block_succs[idx].append((cidx, 'true_branch'))
                             block_succs[cidx].append((-1, 'fallthrough'))
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
                 sequential_blocks.extend(case_blocks)
                 prev_idx = None
@@ -439,6 +443,7 @@ class CFGExtractor:
                             try:
                                 cur_block_succs.append(int(s[1:]))
                             except ValueError:
+                                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                                 pass
                     i += 1
                     continue
@@ -451,6 +456,7 @@ class CFGExtractor:
                             try:
                                 cur_block_preds.append(int(p[1:]))
                             except ValueError:
+                                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                                 pass
                     i += 1
                     continue
@@ -531,6 +537,7 @@ def _cursor_text(cursor) -> str:
             try:
                 spans.append(tok.spelling)
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
         return ' '.join(spans).strip()
     except Exception:
@@ -607,18 +614,21 @@ class ConditionExtractor:
                         cond = next(stmt.get_children())
                         _emit(cond, 'comparison')
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 elif kind_name in ('WHILE_STMT', 'FOR_STMT', 'DO_STMT'):
                     try:
                         cond = next(stmt.get_children())
                         _emit(cond, 'comparison')
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 elif kind_name == 'SWITCH_STMT':
                     try:
                         cond = next(stmt.get_children())
                         _emit(cond, 'atom')
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 elif kind_name == 'CONDITIONAL_OPERATOR':
                     try:
@@ -626,8 +636,10 @@ class ConditionExtractor:
                         if children:
                             _emit(children[0], 'comparison')
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         return records
 
@@ -733,6 +745,7 @@ class DataFlowExtractor:
                         out[cur_block][cur_section].append(stripped)
                 i += 1
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         return out
 
@@ -812,8 +825,8 @@ class DataFlowExtractor:
                                children[0].referenced.spelling == decl_ref.spelling:
                                 return 'def'
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
-                # Compound assignment (+=, -=, etc.) — both def and use
                 if pk == 'COMPOUND_ASSIGNMENT_OPERATOR':
                     try:
                         children = list(parent_cursor.get_children())
@@ -822,8 +835,8 @@ class DataFlowExtractor:
                                children[0].referenced.spelling == decl_ref.spelling:
                                 return 'may_def'  # reads-then-writes
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
-                # UnaryOperator & — address taken; if passed to a call, may-def
                 if pk == 'UNARY_OPERATOR' and parent_cursor.spelling == '&':
                     return 'may_def'
                 # Inside a CALL_EXPR argument — may-use (callee may read it,
@@ -860,8 +873,8 @@ class DataFlowExtractor:
                     for child in cursor.get_children():
                         _walk_with_parent(child, cursor)
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-
             _walk_with_parent(func_cursor, None)
 
             # If we have live-vars data, attach metadata to records.
@@ -893,6 +906,7 @@ class DataFlowExtractor:
                                 kind='live_out',
                             ))
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         return records
 
@@ -949,6 +963,7 @@ class AliasExtractor:
                             param_node_id = add_node_fn(child, 'var')
                             param_ptrs[child.spelling] = param_node_id
                         except Exception:
+                            logging.getLogger(__name__).debug("silent exception", exc_info=True)
                             pass
                 elif k == 'VAR_DECL' and child.spelling:
                     type_spelling = child.type.spelling if child.type else ''
@@ -957,8 +972,8 @@ class AliasExtractor:
                     try:
                         var_node_id = add_node_fn(child, 'var')
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         continue
-                    # Determine source kind from initializer
                     init_kind, init_name = self._classify_initializer(child)
                     ptr_var_map[child.spelling] = (var_node_id, init_kind, init_name)
 
@@ -1043,6 +1058,7 @@ class AliasExtractor:
                         confidence=0.5,
                     ))
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         return records
 
@@ -1086,5 +1102,6 @@ class AliasExtractor:
                         if sub_name:
                             return ('offset', sub_name)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         return ('unknown', '')

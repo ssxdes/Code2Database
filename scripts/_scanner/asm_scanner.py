@@ -19,6 +19,7 @@ import re
 from pathlib import Path
 from _scanner.base import BaseScanner
 from _scanner.utils import classify_domain
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -781,8 +782,8 @@ class _RegisterTracker:
                 else:
                     syscall_name = _SYSCALL_NAMES.get(syscall_nr, f"syscall_{syscall_nr}")
             except ValueError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
         args = []
         for i, reg in enumerate(self.SYSCALL_ARG_REGS):
             if reg in self._regs:
@@ -1937,6 +1938,7 @@ class AsmRegexScanner(BaseScanner):
                                     nr = int(eax_val.split(':', 1)[1])
                                     int80_name = _SYSCALL_NAMES_32.get(nr, f"int80_{nr}")
                                 except ValueError:
+                                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                                     pass
                             condition = "; ".join(c[0] for c in cond_stack) if cond_stack else ""
                             edges.append({
@@ -1960,6 +1962,7 @@ class AsmRegexScanner(BaseScanner):
                                     nr = int(x8_val.split(':', 1)[1])
                                     svc_name = self._resolve_syscall("aarch64", nr, f"svc_{nr}")
                                 except ValueError:
+                                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                                     pass
                             condition = "; ".join(c[0] for c in cond_stack) if cond_stack else ""
                             edge = {
@@ -2173,6 +2176,7 @@ class AsmRegexScanner(BaseScanner):
                                     nr = int(a7_val.split(':', 1)[1])
                                     ecall_name = self._resolve_syscall("riscv64", nr, f"ecall_{nr}")
                                 except ValueError:
+                                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                                     pass
                             condition = "; ".join(c[0] for c in cond_stack) if cond_stack else ""
                             edges.append({

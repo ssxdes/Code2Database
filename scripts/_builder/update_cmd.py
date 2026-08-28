@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from _builder.utils import _find_node_id
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -213,6 +214,7 @@ def _json_update_node(graph_dir: str, node_id: str, attrs: Dict,
             finally:
                 conn.close()
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     return True
 
@@ -432,6 +434,7 @@ def _sqlite_get_node_extra(graph_dir: str, node_id: str) -> Dict:
             try:
                 extra = json.loads(d["extra_json"])
             except json.JSONDecodeError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         return extra
     finally:
@@ -464,6 +467,7 @@ def _sqlite_get_edge_attrs(graph_dir: str, invoker_id: str, invoked_id: str) -> 
                 out.update({k: v for k, v in extra.items()
                            if k != "_supplement_meta"})
             except json.JSONDecodeError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         return out
     finally:
@@ -569,8 +573,8 @@ def cmd_update_node(args):
             from _builder.query_cache import invalidate_node
             invalidate_node(graph_dir, node_id)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-        # Audit log: record this update
         try:
             from _builder.audit_log import log_audit
             for attr_name, attr_value in attrs.items():
@@ -584,6 +588,7 @@ def cmd_update_node(args):
                           after_value=attr_value,
                           reason=f"user edit (source={source}, confidence={confidence})")
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         print(f"Updated node {node_id}: {len(attrs)} attribute(s) supplemented")
         print(f"  source={source}  confidence={confidence}")
@@ -704,6 +709,7 @@ def cmd_update_edge(args):
                           after_value=attr_value,
                           reason=f"user edit (source={source}, confidence={confidence})")
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         print(f"Updated edge {invoker_id} -> {invoked_id}: {len(attrs)} attribute(s) supplemented")
         print(f"  source={source}  confidence={confidence}")

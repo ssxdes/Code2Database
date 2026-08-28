@@ -15,6 +15,7 @@ import shutil
 from _builder.graph_build import _load_full_graph, build_graph, split_by_domain
 from _builder.index_pack import _build_indexes, _mark_endpoint_nodes
 from _builder.memory_cmd import _auto_validate_memory
+import logging
 
 
 def _merge_json_union(local_path: str, git_path: str, out_path: str,
@@ -683,9 +684,9 @@ def cmd_update(args):
                                         "--no-interactive"]
                         finally:
                             try: os.close(files_list_fd2)
-                            except OSError: pass
+                            except OSError: pass  # silent
                             try: os.remove(files_list_path2)
-                            except OSError: pass
+                            except OSError: pass  # silent
                     else:
                         scan_cmd = [sys.executable, scanner_script, "scan",
                                     "--source", source, "--files", files_arg,
@@ -708,13 +709,14 @@ def cmd_update(args):
                     try:
                         os.close(files_list_fd)
                     except OSError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 if files_list_path and os.path.exists(files_list_path):
                     try:
                         os.remove(files_list_path)
                     except OSError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
-
         new_data = json.loads(Path(extraction_path).read_text(encoding="utf-8"))
         result = build_graph(new_data)
         new_G = result[0] if isinstance(result, tuple) else result

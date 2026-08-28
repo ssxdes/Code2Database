@@ -6,6 +6,7 @@ queries). SQLiteCGDBStore implements both via composition.
 Concrete backend: SQLiteCGDBStore — uses the same code2database.db connection as
 the legacy SQLiteStore (side-by-side coexistence).
 """
+import logging
 import sqlite3
 import json
 from abc import ABC, abstractmethod
@@ -418,7 +419,8 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         try:
             conn.execute("INSERT INTO nodes_fts(nodes_fts) VALUES ('rebuild')")
         except sqlite3.OperationalError:
-            pass  # rebuild may fail if table empty; non-fatal
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
         conn.commit()
 
     def record_version(self, commit_hash: str, commit_subject: str = "",
@@ -638,9 +640,8 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                         })
                         seen_ids.add(invoker_id)
         except sqlite3.OperationalError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-        # Optional transitive recursion via direct INVOKES edges from
         # each discovered indirect invoker. This lets depth>1 reach
         # callers-of-indirect-callers.
         if depth > 1 and indirect_invokers:
@@ -799,9 +800,8 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                                 })
                                 seen_ids.add(cid)
                 except (json.JSONDecodeError, TypeError):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-
-                # Second: if invoked_id points to a vtable field, look
                 # up ops_bindings to find all impl functions for that
                 # field across all ops_tables.
                 if invoked_id is not None:
@@ -827,9 +827,8 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                             })
                             seen_ids.add(impl_id)
         except sqlite3.OperationalError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-        # Optional transitive recursion via direct INVOKES edges.
         if depth > 1 and indirect_invoked:
             placeholders = ",".join("?" * len(edge_types))
             for inv in list(indirect_invoked):
@@ -1028,6 +1027,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                     try:
                         solver.add(parse_smt2_string(row[0]))
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
             result = solver.check()
             return {"feasible": (result == sat),

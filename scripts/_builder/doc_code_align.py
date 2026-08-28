@@ -42,6 +42,7 @@ import sys
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional, List, Dict, Set, Tuple
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -447,6 +448,7 @@ def _mark_doc_stale_json_fallback(graph_dir: str, node_id: str, reason: str,
         try:
             data = json.loads(Path(domain_path).read_text(encoding="utf-8"))
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         updated = False
         # Legacy format with nodes list

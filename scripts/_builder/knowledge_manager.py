@@ -30,6 +30,7 @@ import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+import logging
 
 
 class KnowledgeManager:
@@ -150,8 +151,8 @@ class KnowledgeManager:
                 try:
                     text = Path(fpath).read_text(encoding="utf-8", errors="replace")
                 except OSError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     continue
-
                 rel = os.path.relpath(fpath, source_root)
 
                 # Extract #define macros/constants
@@ -484,8 +485,8 @@ class KnowledgeManager:
             try:
                 existing_meta = json.loads(Path(meta_path).read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
         file_sources = {}
         for fname in sorted(os.listdir(self.knowledge_dir)):
             if fname.endswith(".md"):
@@ -572,9 +573,8 @@ class KnowledgeManager:
                         "tags": entry_meta.get("tags", []),
                     })
             except (json.JSONDecodeError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
-        # Build links: for each knowledge file, find related memory entries
         links = {}
         SIM_THRESHOLD = 0.15  # Low threshold — broad linking is fine
         for fname, k_tokens in knowledge_topics.items():
@@ -834,9 +834,8 @@ class KnowledgeManager:
                 return "\n".join(lines)
             # FTS5 returned no hits — fall through to legacy
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-        # Legacy: pure substring match across .md files
         topic_lower = topic.lower()
         results = []
 

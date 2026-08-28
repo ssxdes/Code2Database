@@ -12,6 +12,7 @@ import sqlite3
 from typing import Any, Dict, List
 
 from _builder.c2d_foreign import _connect, _foreign_db_path, _escape_sql_path
+import logging
 
 
 def composite_query(graph_dir: str, query: str,
@@ -65,6 +66,7 @@ def composite_query(graph_dir: str, query: str,
             try:
                 conn.execute(f"DETACH DATABASE {entry['alias']}")
             except sqlite3.Error:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
     except sqlite3.Error as e:
         summary["error"] = str(e)
@@ -101,8 +103,8 @@ def _find_callers(conn: sqlite3.Connection, callee_name: str,
                 "source_db": "local",
             })
     except sqlite3.Error:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-    # Foreign callers
     for entry in attached:
         alias = entry["alias"]
         try:
@@ -128,6 +130,7 @@ def _find_callers(conn: sqlite3.Connection, callee_name: str,
                     "source_db": entry["path"],
                 })
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     return results
 
@@ -158,6 +161,7 @@ def _find_callees(conn: sqlite3.Connection, caller_name: str,
                 "source_db": "local",
             })
     except sqlite3.Error:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return results
 
@@ -180,6 +184,7 @@ def _fts_search_all(conn: sqlite3.Connection, query: str,
                 "source_db": "local",
             })
     except sqlite3.Error:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return results
 
@@ -261,6 +266,7 @@ def check_compat(graph_dir: str, against_c2d: str,
         try:
             conn.execute("DETACH DATABASE new_a")
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     finally:
         conn.close()
@@ -329,8 +335,8 @@ def coverage_cross_c2d(test_c2d: str, target_c2d: str,
             for r in direct_rows:
                 covered_ids.add(r["id"])
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-        # Name match (for foreign_ref scenario where invoked_id differs)
         try:
             name_rows = conn.execute(
                 "SELECT DISTINCT t.id FROM target.functions t "
@@ -347,6 +353,7 @@ def coverage_cross_c2d(test_c2d: str, target_c2d: str,
             for r in name_match_rows:
                 covered_ids.add(r["id"])
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         covered = [tf for tf in target_funcs if tf["id"] in covered_ids]
         uncovered = [tf for tf in target_funcs if tf["id"] not in covered_ids]
@@ -367,6 +374,7 @@ def coverage_cross_c2d(test_c2d: str, target_c2d: str,
         try:
             conn.execute("DETACH DATABASE target")
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     finally:
         conn.close()

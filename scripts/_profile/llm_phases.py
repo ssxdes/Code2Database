@@ -16,6 +16,7 @@ Phase 6 (LLM result check):
 import json
 import os
 import re
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -81,8 +82,8 @@ def collect_key_headers(source_root: str, profile: dict = None,
             with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
                 content = f.read()
         except (IOError, OSError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
-
         size = len(content.encode('utf-8'))
         if total_bytes + size > max_bytes:
             # Truncate this header if it would exceed budget

@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 from collections import Counter, defaultdict
 from typing import List, Dict, Optional
+import logging
 
 
 class ValidationResult:
@@ -754,6 +755,7 @@ def _load_master_from_sqlite(db_path: str, outdir: str) -> dict:
                             try:
                                 row_dict[field] = json.loads(row_dict[field])
                             except (json.JSONDecodeError, TypeError):
+                                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                                 pass
                     nodes.append(row_dict)
                 # Try to load edges (table name may vary)
@@ -762,7 +764,8 @@ def _load_master_from_sqlite(db_path: str, outdir: str) -> dict:
                     for row in cur:
                         edges.append(dict(row))
                 except sqlite3.OperationalError:
-                    pass  # No edges table — skip
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                    pass
             finally:
                 conn.close()
         # Synthesize a master dict with a single "all" domain, inline so

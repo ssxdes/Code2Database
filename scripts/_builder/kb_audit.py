@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Dict, Any
 
 from _builder.kb_index import _kb_connect, query_kb
+import logging
 
 
 def audit_kb(graph_dir: str, topic: str = "") -> Dict[str, Any]:
@@ -130,6 +131,7 @@ def write_audit_log_entry(graph_dir: str, action: str,
         )
         conn.commit()
     except sqlite3.Error:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     finally:
         conn.close()

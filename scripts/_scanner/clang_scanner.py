@@ -18,6 +18,7 @@ import hashlib
 import os
 
 from _scanner.base import BaseScanner
+import logging
 
 
 # Try importing libclang; keep going if unavailable (caller handles empty output).
@@ -55,8 +56,8 @@ def _configure_libclang():
                 _ci.Config.set_library_file(path)
                 return True
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-    # Last resort: let libclang find it via LD_LIBRARY_PATH / default.
     return True
 
 
@@ -353,8 +354,8 @@ class ClangScanner(BaseScanner):
                         if existing is None or len(existing) < len(clang_args):
                             self._compile_db_dir_cache[dir_abs] = clang_args
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-
     def _lookup_compile_args(self, filepath: str) -> list:
         """Look up per-file compile args from compile_commands.json.
 
@@ -469,6 +470,7 @@ class ClangScanner(BaseScanner):
             with open(filepath, 'rb') as _f:
                 _source_bytes = _f.read()
         except (IOError, OSError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         _SNIPPET_MAX = 4096
 
@@ -507,8 +509,8 @@ class ClangScanner(BaseScanner):
                 if cursor.type and cursor.type.spelling:
                     type_spelling = cursor.type.spelling
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-            # Signature/body extraction
             signature = ''
             body_text = ''
             if kind == 'function':
@@ -615,6 +617,7 @@ class ClangScanner(BaseScanner):
                     if size_bytes < 0:
                         size_bytes = None
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
                 is_const = False
                 is_volatile = False
@@ -711,6 +714,7 @@ class ClangScanner(BaseScanner):
                 with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
                     source_text = f.read()
             except (IOError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             if source_text:
                 extractor = ConfigPredicateExtractor(
@@ -818,8 +822,8 @@ class ClangScanner(BaseScanner):
                                 'function_id': e.function_id,
                             })
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-                # L5: data flow (def-use) via AST walk
                 try:
                     df_records = df_ext.extract_from_ast(
                         func_cursor, func_node_id, add_node, filepath,
@@ -833,8 +837,8 @@ class ClangScanner(BaseScanner):
                             'kind': r.kind,
                         })
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-                # L6: alias sets via AST walk
                 try:
                     alias_records = alias_ext.extract_from_ast(
                         func_cursor, func_node_id, add_node,
@@ -847,8 +851,8 @@ class ClangScanner(BaseScanner):
                             'confidence': a.confidence,
                         })
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-                # L8: sync primitives + happens_before via AST walk
                 try:
                     sync_records, hb_records = sync_ext.extract_from_function(
                         func_cursor, func_node_id, add_node,
@@ -869,8 +873,8 @@ class ClangScanner(BaseScanner):
                             'confidence': h.confidence,
                         })
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-                # L3: conditions (Z3-reasonable boolean expressions) via AST walk
                 try:
                     cond_records = cond_ext.extract_from_ast(
                         func_cursor, func_node_id,
@@ -889,6 +893,7 @@ class ClangScanner(BaseScanner):
                             'file_path': filepath,
                         })
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
         except Exception:
             # L4-L8 extraction is best-effort; don't fail the scan.
@@ -938,8 +943,8 @@ class ClangScanner(BaseScanner):
                         'byte_end': 0,
                     })
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-            # Emit a per-file scanner_version metadata record so consumers
             # can identify which scanner version produced a given batch.
             scanner_version = self._scanner_version()
             file_node_id = 0  # file metadata uses 0 as a placeholder target_id
@@ -960,8 +965,8 @@ class ClangScanner(BaseScanner):
                 'source': 'scanner',
             })
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
         return {
             'cgdb_nodes': cgdb_nodes,
             'cgdb_types': cgdb_types,

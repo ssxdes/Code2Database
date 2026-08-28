@@ -17,6 +17,7 @@ import re
 import sqlite3
 from collections import Counter
 from typing import Dict, List, Optional
+import logging
 
 
 # Common Linux kernel subsystems — used to suggest "you scanned fs/ but
@@ -208,6 +209,7 @@ def path_not_found_hints(
             scanned = [s["name"] for s in cov.get("subsystems", [])]
             missing_common = cov.get("missing_common_subsystems", [])
         except (json.JSONDecodeError, OSError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     else:
         # Fallback: query SQLite directly
@@ -225,8 +227,8 @@ def path_not_found_hints(
                     if s not in scanned and s != "root"
                 ]
             except sqlite3.Error:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
     src_hints = _guess_subsystem_for_name(missing_src) if missing_src else []
     dst_hints = _guess_subsystem_for_name(missing_dst) if missing_dst else []
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 from typing import Dict, List, Any, Optional
+import logging
 
 
 def export_mermaid(
@@ -300,8 +301,8 @@ def export_mermaid_multi(graph_dir: str, output: str = None) -> str:
             projects[project]["functions"] += r["cnt"]
             projects[project]["domains"].add(domain)
     except sqlite3.Error:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-    # Cross-project edges
     cross_edges: Dict[str, Dict[str, int]] = {}
     try:
         rows = conn.execute(
@@ -326,6 +327,7 @@ def export_mermaid_multi(graph_dir: str, output: str = None) -> str:
                 cross_edges[caller_proj].get(callee_proj, 0) + r["edge_count"]
             )
     except sqlite3.Error:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     conn.close()
     # Build Mermaid graph

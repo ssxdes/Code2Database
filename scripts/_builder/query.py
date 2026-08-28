@@ -68,6 +68,7 @@ def _describe_node_touched(args) -> frozenset:
         if node_id:
             return frozenset({node_id})
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return frozenset()
 
@@ -410,8 +411,8 @@ def _compute_hub_info(G: nx.DiGraph, node_id: str) -> dict:
         _hub_call_G = _make_call_graph(G)
         desc = nx.descendants(_hub_call_G, node_id)
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
     end_descendants = []
     for nid in desc:
         ndata = G.nodes[nid]
@@ -518,6 +519,7 @@ def cmd_describe_node(args):
                 master = _json.loads(Path(master_path).read_text(encoding="utf-8"))
                 source_root = master.get("source_root", "")
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         filled = lazy_fill_node(G, node_id, source_root)
         if filled.get("body_text"):
@@ -794,9 +796,8 @@ def cmd_describe_node(args):
             result["knowledge_refs"] = [h for h in kb_hits
                                         if h.get("source_kind") == "knowledge"]
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
-    # F1: transparent foreign_ref fallback. If this node (or any of its
     # callees) appears in the foreign_refs table, ATTACH the foreign C2D
     # and fetch the foreign node's metadata (name, source_file, signature,
     # body_text). This lets describe-node work seamlessly across C2Ds —
@@ -804,8 +805,8 @@ def cmd_describe_node(args):
     try:
         result["foreign_refs"] = _fetch_foreign_refs_for_node(graph_dir, node_id)
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
     if nd.get("is_empty", False):
         result["condition"] = nd.get("condition", "")
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -896,8 +897,8 @@ def cmd_describe_node(args):
                     result["source_file"] = snippet_result.get("source_file", "")
                     result["line"] = snippet_result.get("line", 0)
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
     if detail == "brief":
         # Strip empty fields
         result = {k: v for k, v in result.items() if v or v is False or v == 0}
@@ -964,7 +965,8 @@ def cmd_describe_node(args):
             if fill_request:
                 result["auto_fill_request"] = fill_request
         except Exception:
-            pass  # auto_enhance is optional, don't break describe-node on failure
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
 
     # Doc-code alignment — if this node has any doc-code
     # mismatches (return value, param name, signature change, stale doc),
@@ -987,7 +989,8 @@ def cmd_describe_node(args):
         if mismatches:
             result["doc_code_mismatches"] = [m.to_dict() for m in mismatches]
     except Exception:
-        pass  # doc_code_align is optional
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        pass
 
     # Concurrency summary (standard level)
     concurrency_summary = {}
@@ -2453,6 +2456,7 @@ def cmd_field_access(args):
 # report says "who set field to NULL" but the source uses pointer-cast zero.
 
 import re as _re_null_form
+import logging
 _NULL_FORM_RE = _re_null_form.compile(
     r"^\(*\s*(?:void\s*\*|[A-Za-z_][A-Za-z0-9_ ]*\*\s*|\s*)\)*0(L?)\s*\)*$",
     _re_null_form.IGNORECASE,
@@ -2782,9 +2786,8 @@ def cmd_field_flow(args):
                         r["_node_id"] = r_nid
                         vulnerable_readers.append(r)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-        # For each reader, find concurrent writers in scene.
         # A writer is "concurrent" if in a different thread context.
         # A writer is "in scene" if reachable_in_scene == "unguarded".
         # race_window_exists = any writer is both concurrent AND in scene.
@@ -2831,6 +2834,7 @@ def _cmd_reverse_trace_touched(args) -> frozenset:
         if v:
             return frozenset({v})
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return frozenset()
 
@@ -3324,8 +3328,8 @@ def cmd_describe_commit(args):
             _output_result(result, getattr(args, 'json', False))
             return
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
     print(f"No change log found for commit {commit}. "
           f"Run a build with --track-commits to populate change_log.",
           file=sys.stderr)
@@ -3377,8 +3381,8 @@ def cmd_node_history(args):
             _output_result(result, getattr(args, 'json', False))
             return
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
     print(f"No change log found for node {node_id}.", file=sys.stderr)
     sys.exit(1)
 

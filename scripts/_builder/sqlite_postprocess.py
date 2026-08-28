@@ -17,6 +17,7 @@ import sys
 import sqlite3
 from collections import defaultdict
 from pathlib import Path
+import logging
 
 
 def _open_db(db_path):
@@ -573,8 +574,8 @@ def _build_callgraph_summary_md_from_sqlite(db_path, outdir, source_root="", bui
             for kind, cnt in cgdb_edge_kinds:
                 lines.append(f"| {kind} | {cnt:,} |")
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-
     if confidence_dist:
         lines.append(f"\n## Confidence Distribution\n")
         lines.append("| Confidence | Count |")
@@ -670,9 +671,8 @@ def _build_callgraph_summary_md_from_sqlite(db_path, outdir, source_root="", bui
                     lines.append(f"| Real-source with byte range | {real_with_byte:,} | {real_with_byte*100//real_total}% |")
                     lines.append(f"| Real-source with type_id | {real_with_type:,} | {real_with_type*100//real_total}% |")
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-    # Top API entries (skip ALL_UPPERCASE macro names)
     _SUMMARY_MACRO_RE = re.compile(r'^[A-Z][A-Z0-9_]{2,}$')
     api_rows = conn.execute(
         "SELECT name, domain, source_file FROM functions "

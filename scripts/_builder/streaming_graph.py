@@ -19,6 +19,7 @@ import gc
 import sys
 import time
 from typing import Dict, List, Tuple, Set
+import logging
 
 
 class _StreamingNodeView:
@@ -717,8 +718,8 @@ class LazySQLiteGraph:
             try:
                 extra = _json.loads(extra_raw)
             except (_json.JSONDecodeError, TypeError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-        # Merge `_supplemented` keys back into the canonical attribute so
         # describe-node and other consumers see the supplemented value.
         for supp_key, supp_val in list(extra.items()):
             if supp_key.endswith("_supplemented") and supp_val:
@@ -844,6 +845,7 @@ class LazySQLiteGraph:
             try:
                 evidence = _json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
             except (_json.JSONDecodeError, TypeError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         attrs = {
             "call_order": row_dict.get("call_order"),
@@ -922,6 +924,7 @@ class LazySQLiteGraph:
                     try:
                         evidence = _json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
                     except (_json.JSONDecodeError, TypeError):
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 attrs = {
                     "call_order": row_dict.get("call_order"),
@@ -956,6 +959,7 @@ class LazySQLiteGraph:
                     try:
                         evidence = _json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
                     except (_json.JSONDecodeError, TypeError):
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 attrs = {
                     "call_order": row_dict.get("call_order"),
@@ -990,6 +994,7 @@ class LazySQLiteGraph:
                     try:
                         evidence = _json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
                     except (_json.JSONDecodeError, TypeError):
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 attrs = {
                     "call_order": row_dict.get("call_order"),
@@ -1021,8 +1026,8 @@ class LazySQLiteGraph:
         try:
             self._conn.close()
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
     def __enter__(self):
         return self
 

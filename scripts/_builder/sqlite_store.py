@@ -28,6 +28,7 @@ import zlib
 from typing import Optional, List, Dict, Any
 
 from _builder.cgdb_schema import apply_cgdb_schema
+import logging
 
 
 class SQLiteStore:
@@ -91,8 +92,8 @@ class SQLiteStore:
                             "ON cgdb_edges(enclosing_symbol_id)"
                         )
                     except sqlite3.OperationalError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
-                # Schema v7: add assigned_value column to field_access for
                 # null-pointer-deref analysis. Tracks the RHS expression of
                 # field writes so we can filter for '= NULL' assignments
                 # specifically (e.g., bh->b_bdev = NULL).
@@ -106,8 +107,8 @@ class SQLiteStore:
                             "ON field_access(assigned_value)"
                         )
                     except sqlite3.OperationalError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
-                # Schema v8: add vtable_type and vtable_bound_module columns
                 # to edges for structured vtable dispatch metadata. Previously
                 # this info was embedded in call_condition as '#vtable_module=X'
                 # which conflated vtable type with module hint. Now we store
@@ -130,8 +131,8 @@ class SQLiteStore:
                             "ON edges(vtable_bound_module) WHERE vtable_bound_module IS NOT NULL"
                         )
                     except sqlite3.OperationalError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
-                # Schema v9: add kb_paragraphs table + FTS5 index for
                 # unified knowledge-base search across memory entries
                 # and knowledge .md paragraphs. Replaces the per-store
                 # Jaccard-token and substring searches with a single
@@ -187,8 +188,8 @@ class SQLiteStore:
                             END;
                         """)
                     except sqlite3.OperationalError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
-                # Schema v10: Phase 4 — clustering columns on kb_paragraphs.
                 # scope_id groups similar items (FTS5 BM25 > threshold);
                 # canonical_id points to the representative item of the
                 # cluster (highest weight × confidence); principle_ref
@@ -218,8 +219,8 @@ class SQLiteStore:
                             "ON kb_paragraphs(principle_ref) WHERE principle_ref IS NOT NULL"
                         )
                     except sqlite3.OperationalError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
-                # Schema v11: Phase 5 — embedding column for semantic
                 # search (optional). 384-dim float32 = 1536 bytes per
                 # row. NULL when no embedding generated (lazy / optional
                 # dependency: sentence-transformers).
@@ -308,8 +309,8 @@ class SQLiteStore:
                                 ON kb_query_log(query);
                         """)
                     except sqlite3.OperationalError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
-                # Schema v13: Phase 1 cross-C2D sync — foreign_refs +
                 # watched_c2ds tables. Lets project B's C2D reference
                 # functions in project A's C2D without merging dbs.
                 # When A updates, B can sync to detect renamed/deleted/added.
@@ -351,10 +352,12 @@ class SQLiteStore:
                             );
                         """)
                     except sqlite3.OperationalError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                 self._conn.commit()
         except sqlite3.OperationalError:
-            pass  # meta table doesn't exist yet, fresh DB
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
 
     def _add_column_if_missing(self, table: str, column: str,
                                 decl: str) -> None:
@@ -373,7 +376,8 @@ class SQLiteStore:
                     f"ALTER TABLE {table} ADD COLUMN {column} {decl}"
                 )
         except sqlite3.OperationalError:
-            pass  # table doesn't exist yet — will be created fresh
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
 
     def _create_tables(self):
         """Create database tables."""
@@ -732,8 +736,8 @@ class SQLiteStore:
                 "INSERT INTO functions_fts(functions_fts) VALUES ('rebuild')")
             self._conn.commit()
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
     def close(self):
         """Close database connection."""
         if self._conn:
@@ -1233,6 +1237,7 @@ class SQLiteStore:
                 try:
                     entry["invoked_args"] = json.loads(r[11])
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
             out.append(entry)
         return out
@@ -1261,6 +1266,7 @@ class SQLiteStore:
                 try:
                     entry["invoked_args"] = json.loads(r[10])
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
             out.append(entry)
         return out
@@ -1432,8 +1438,8 @@ class SQLiteStore:
             try:
                 func["body_text"] = zlib.decompress(row[7]).decode("utf-8")
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-        # Extra fields — these must NOT overwrite the primary columns above
         # (id, name, domain, source_file, line_number, signature, labels,
         # body_text). Filter them out before updating.
         if row[8]:
@@ -1444,8 +1450,8 @@ class SQLiteStore:
                               if k not in _primary_keys}
                 func.update(safe_extra)
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-        # Edge fields (if joined)
         if edge_offset and len(row) > edge_offset:
             func["call_order"] = row[edge_offset]
             func["call_condition"] = row[edge_offset + 1] or ""

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import logging
 """Call graph builder and query tool — CLI entry point.
 
 All implementation lives in the _builder package. This file only
@@ -187,6 +188,7 @@ def cmd_kb_migrate(args):
                 )
                 migrated += 1
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         conn.commit()
         print(json.dumps({"migrated": migrated}, ensure_ascii=False, indent=2))

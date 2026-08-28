@@ -19,6 +19,7 @@ import re
 import random
 import sys
 from collections import Counter, defaultdict
+import logging
 
 
 def load_extraction(path):
@@ -416,8 +417,8 @@ def check_ifdef_branch_calls(data, source_root, sample_size=50):
             with open(abs_path, 'r', encoding='utf-8', errors='replace') as fh:
                 lines = fh.readlines()
         except (IOError, OSError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
-
         if src_line < 1 or src_line > len(lines):
             continue
 

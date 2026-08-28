@@ -37,6 +37,7 @@ import sys
 import tempfile
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +199,7 @@ def _merge_compile_commands(project_entries: List[Dict[str, Any]],
             with open(cc_path, "r", encoding="utf-8") as f:
                 entries = json.load(f)
         except (OSError, json.JSONDecodeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         if not isinstance(entries, list):
             continue
@@ -273,8 +275,8 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
                 )
                 counts["functions_imported"] += 1
             except sqlite3.IntegrityError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-        # Import edges — need to remap source/target ids
         # Build old_id -> new_id map for edges
         id_remap: Dict[str, str] = {}
         for r in rows:
@@ -313,6 +315,7 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
                 )
                 counts["edges_imported"] += 1
             except sqlite3.IntegrityError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         conn.execute("DETACH DATABASE src")
         conn.commit()
@@ -521,6 +524,7 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
             conn.commit()
             conn.close()
         except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     summary["finished_at"] = datetime.now().isoformat()
     summary["total_functions"] = sum(p.get("functions", 0) + p.get("functions_imported", 0)
@@ -532,6 +536,7 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
         import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return summary
 

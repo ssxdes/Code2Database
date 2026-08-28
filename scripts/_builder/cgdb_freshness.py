@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 from typing import Dict
+import logging
 
 
 def check_freshness(graph_dir: str, source_root: str = "") -> Dict:
@@ -54,9 +55,8 @@ def check_freshness(graph_dir: str, source_root: str = "") -> Dict:
                 manifest = manifest_data.get("files", {})
                 result["last_scan_commit"] = manifest_data.get("source_commit", "unknown")
         except (OSError, json.JSONDecodeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-    # Check git HEAD
     current_commit = _detect_git_head(source_root or os.path.dirname(graph_dir))
     result["current_commit"] = current_commit
     if current_commit and result["last_scan_commit"] != "unknown":
@@ -79,9 +79,8 @@ def check_freshness(graph_dir: str, source_root: str = "") -> Dict:
             if freshness.get("last_sync_time"):
                 result["last_sync_time"] = freshness["last_sync_time"]
         except (OSError, json.JSONDecodeError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-    # Compare manifest with current file system
     from _scanner.changes import _ALL_SOURCE_EXTENSIONS, _SKIP_DIRS
     from pathlib import Path
 
@@ -100,9 +99,8 @@ def check_freshness(graph_dir: str, source_root: str = "") -> Dict:
                         st = os.stat(fpath)
                         current_files[rel] = f"{st.st_mtime_ns}:{st.st_size}"
                     except OSError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
-
-    # Find new, changed, and deleted files
     new_files = []
     changed_files = []
     for rel, fingerprint in current_files.items():
@@ -171,6 +169,7 @@ def _detect_git_head(source_root: str) -> str:
         if proc.returncode == 0:
             return proc.stdout.strip()[:12]  # Short hash
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return "unknown"
 

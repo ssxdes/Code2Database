@@ -7,6 +7,7 @@ from pathlib import Path
 from collections import defaultdict
 import networkx as nx
 from _builder.graph_build import _load_full_graph
+import logging
 
 
 def _build_mermaid_graph(G: nx.DiGraph) -> str:
@@ -667,9 +668,8 @@ def cmd_export_html(args):
                     if nid in G:
                         G.nodes[nid]["community_id"] = cid
         except (json.JSONDecodeError, OSError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-    # If graph is too large, split by domain
     domain_nodes = defaultdict(list)
     for nid, ndata in G.nodes(data=True):
         domain_nodes[ndata.get("domain", "root")].append((nid, ndata))

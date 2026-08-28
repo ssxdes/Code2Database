@@ -10,6 +10,7 @@ from pathlib import Path
 import networkx as nx
 from _builder.graph_build import _load_full_graph
 from _builder.token_budget import estimate_tokens
+import logging
 
 
 def _compute_entry_scores(G: nx.DiGraph) -> dict:
@@ -99,6 +100,7 @@ def _extract_key_paths_from_entries(G: nx.DiGraph, entries: dict,
         try:
             pred_map = nx.predecessor(call_G, entry_id, cutoff=24)
         except (nx.NetworkXNoPath, nx.NodeNotFound):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         if len(pred_map) <= 1:
             continue

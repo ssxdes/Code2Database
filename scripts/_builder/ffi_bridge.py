@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import Optional, List, Dict
 
 from _builder.line_utils import build_line_starts, line_for_offset
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -246,16 +247,16 @@ def _infer_py_arg_type(arg_text: str) -> str:
             float(arg_text.rstrip("f"))
             return "c_double"
         except ValueError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-    # Integer literal → c_int (small) or c_longlong (big)
     try:
         val = int(arg_text, 0)
         if -2**31 <= val < 2**31:
             return "c_int"
         return "c_longlong"
     except ValueError:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-    # ctypes explicit construction: ctypes.c_int(42) → c_int
     m = re.match(r'(?:ctypes\.)?(c_\w+)\s*\(', arg_text)
     if m:
         return m.group(1)
@@ -735,6 +736,7 @@ def detect_all_ffi(source_root: str) -> List[Dict]:
             try:
                 text = Path(fpath).read_text(encoding="utf-8", errors="replace")
             except OSError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
             rel = os.path.relpath(fpath, source_root)
             edges = handler(text, rel)

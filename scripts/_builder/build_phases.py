@@ -37,6 +37,7 @@ import os
 import re
 import sys
 from typing import Dict, List, Set, Tuple
+import logging
 
 # Constant: parameter-only names that are almost certainly callback
 # parameter names extracted by the scanner as fake functions.
@@ -1376,6 +1377,7 @@ def _annotate_call_edges_with_goto(G) -> int:
                 try:
                     edge_data = G[nid][succ]
                 except KeyError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     continue
                 co = edge_data.get("call_order")
                 if co is None or co not in co_lines:

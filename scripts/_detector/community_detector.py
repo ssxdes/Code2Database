@@ -13,6 +13,7 @@ import os
 import re
 import sys
 from collections import Counter, defaultdict
+import logging
 
 try:
     import igraph as ig
@@ -114,9 +115,8 @@ def detect_communities(G, source_root: str = "") -> CommunityResult:
             # Clean up if not selected
             del partition
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
-
-    # If no resolution gave fewer communities, fall back to cross-domain affinity
     if best_partition is None:
         del ig_graph
         gc.collect()

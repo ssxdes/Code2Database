@@ -49,6 +49,7 @@ import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional, List, Dict, Set, Callable
+import logging
 
 
 # Linux inotify event bit-flags (see <sys/inotify.h>). Used as named
@@ -201,6 +202,7 @@ class _WatchdogHandler:
         try:
             from watchdog.events import FileSystemEventHandler  # type: ignore
         except ImportError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         src = getattr(event, "src_path", "") or ""
         if not src:
@@ -280,6 +282,7 @@ class FileWatcher:
                 # os.close works on inotify fd
                 os.close(self._inotify_fd)
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             self._inotify_fd = -1
         if self._thread:
@@ -427,6 +430,7 @@ class FileWatcher:
             self._fsevents_lib = "watchdog"
             return True
         except ImportError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         try:
             # Try pyobjc FSEvents
@@ -462,6 +466,7 @@ class FileWatcher:
             self._win32_lib = "watchdog"
             return True
         except ImportError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         try:
             import win32file  # type: ignore  # noqa
@@ -536,8 +541,8 @@ class FileWatcher:
                     incremental_sync = IncrementalSync(self.source_root)
                     incremental_sync.db_path = str(db_path)
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
-
         _poll_interval = getattr(self, 'polling_interval', 2.0)
         while not self._stop:
             time.sleep(_poll_interval)
@@ -556,6 +561,7 @@ class FileWatcher:
                     try:
                         st = os.stat(full_path)
                     except OSError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         continue
                     fast_sig = f"{st.st_mtime_ns}+{st.st_size}"
                     current[full_path] = fast_sig
@@ -593,7 +599,8 @@ class FileWatcher:
                                 self._pending.add(changed_path)
                             self.state.pending_events = len(self._pending)
                 except Exception:
-                    pass  # best-effort DB-aware check
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                    pass
             self._polling_state = current
 
 
@@ -679,10 +686,12 @@ class Daemon:
                         conn.execute("SELECT 1 FROM cgdb_nodes LIMIT 1").fetchone()
                         use_content_hash = True
                     except Exception:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
                     finally:
                         conn.close()
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
         self._watcher = FileWatcher(
             self.source_root,
@@ -998,8 +1007,8 @@ class Daemon:
                     self._log(f"reload failed: {exc}")
             signal.signal(signal.SIGHUP, reload_handler)
         except (ValueError, OSError):
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
     def _on_file_change(self, path: str):
         """Called by watcher on each file change."""
         now = time.time()
@@ -1072,7 +1081,8 @@ class Daemon:
                 if db_path.exists():
                     sync.mark_clean(expanded_files, str(db_path))
             except Exception:
-                pass  # best-effort
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                pass
             # Invalidate memory entries whose node_ids no longer exist
             # (graph changed → some Q&A may reference removed nodes).
             self._invalidate_stale_memory_after_sync()
@@ -1193,6 +1203,7 @@ class Daemon:
                     )
                     conn.commit()
                 except sqlite3.Error:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
                 finally:
                     conn.close()
@@ -1303,6 +1314,7 @@ class Daemon:
                 try:
                     current_mtime = str(os.path.getmtime(fdb_path))
                 except OSError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     continue
                 if current_mtime != w["db_mtime_at_sync"]:
                     needs_sync = True
@@ -1325,8 +1337,8 @@ class Daemon:
                 try:
                     os.utime(fpath, None)
                 except OSError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-        # Write a freshness marker
         freshness = {
             "last_updated_at": time.time(),
             "source_commit": "",  # would be filled from git if available
@@ -1367,6 +1379,7 @@ class Daemon:
                 threading.Thread(target=_handle_with_sem,
                                   daemon=True).start()
             except socket.timeout:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
             except OSError:
                 break
@@ -1386,6 +1399,7 @@ class Daemon:
             try:
                 conn.sendall(json.dumps({"error": str(exc)}).encode("utf-8"))
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         finally:
             conn.close()
@@ -1447,8 +1461,8 @@ class Daemon:
             with open(log_path, "a", encoding="utf-8") as f:
                 f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
     def _cleanup(self):
         """Clean up socket and watcher on shutdown."""
         if self._watcher:
@@ -1459,11 +1473,13 @@ class Daemon:
             try:
                 self._server_socket.close()
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         if os.path.exists(self._socket_path):
             try:
                 os.unlink(self._socket_path)
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         self.state.status = STATUS_STOPPED
         self._write_state()
@@ -1531,6 +1547,7 @@ def cmd_daemon_start(args):
             profile = json.loads(Path(profile_path).read_text(encoding="utf-8"))
             config = profile.get("daemon", {}) or {}
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     daemon = Daemon(graph_dir, source_root, config=config,
                     profile_path=profile_path)
@@ -1619,6 +1636,7 @@ def cmd_daemon_logs(args):
         try:
             subprocess.run(["tail", "-f", str(log_path)])
         except KeyboardInterrupt:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     else:
         # Show last N lines

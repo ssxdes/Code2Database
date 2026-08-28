@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Dict
+import logging
 
 
 def graph_diff(before_dir: str, after_dir: str, detail: str = "summary") -> Dict[str, Any]:
@@ -48,6 +49,7 @@ def graph_diff(before_dir: str, after_dir: str, detail: str = "summary") -> Dict
                         "labels": r["labels"] or "",
                     }
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             conn.close()
             if nodes:
@@ -84,6 +86,7 @@ def graph_diff(before_dir: str, after_dir: str, detail: str = "summary") -> Dict
                 for r in rows:
                     edges.add((r[0], r[1], r[2]))
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             conn.close()
             if edges:

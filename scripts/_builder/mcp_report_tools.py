@@ -51,6 +51,7 @@ import os
 import sqlite3
 import json
 from typing import Optional
+import logging
 
 # Lazily import to avoid circular deps at module-load time
 def _get_conn(graph_dir: str) -> sqlite3.Connection:
@@ -68,10 +69,8 @@ def _close_conn(conn: Optional[sqlite3.Connection]) -> None:
         try:
             conn.close()
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-
-# ===========================================================================
 # L1 无损重建层 tools (8)
 # ===========================================================================
 

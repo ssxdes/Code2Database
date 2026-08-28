@@ -41,6 +41,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import List, Dict, Set, Tuple
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +205,7 @@ def _check_callback_patterns(patterns: List[Dict],
                 text = Path(os.path.join(dirpath, fname)).read_text(
                     encoding="utf-8", errors="replace")
             except OSError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
             for pat in patterns:
                 rf = pat.get("register_func", "")
@@ -252,6 +254,7 @@ def _check_vtable_types(vtables: List[str],
                     text_sample += Path(os.path.join(dirpath, fname)).read_text(
                         encoding="utf-8", errors="replace")
                 except OSError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
         if len(text_sample) > 1_000_000:  # cap at 1MB
             break
@@ -309,6 +312,7 @@ def detect_evolution_suggestions(profile: Dict, source_root: str) -> List[Evolut
                     text = Path(os.path.join(dirpath, fname)).read_text(
                         encoding="utf-8", errors="replace")
                 except OSError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     continue
                 for pat in _CB_REGISTER_RES:
                     for m in pat.finditer(text):
@@ -396,6 +400,7 @@ def apply_evolution_suggestions(profile: Dict,
                     if result.returncode == 0:
                         new_profile["source_commit"] = result.stdout.strip()
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
     new_profile["callback_patterns"] = cb_patterns
     new_profile["_last_evolved_at"] = str(int(__import__("time").time()))
@@ -426,8 +431,8 @@ def bind_profile_to_commit(profile: Dict, source_root: str) -> Dict:
                 new_profile["source_commit_short"] = result2.stdout.strip()
             return new_profile
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-    # Try svn
     try:
         import subprocess
         result = subprocess.run(
@@ -440,6 +445,7 @@ def bind_profile_to_commit(profile: Dict, source_root: str) -> Dict:
                     new_profile["source_commit"] = f"r{line.split(':')[1].strip()}"
                     break
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     return new_profile
 

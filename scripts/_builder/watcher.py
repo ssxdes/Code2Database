@@ -10,6 +10,7 @@ import os
 import sys
 import time
 from pathlib import Path
+import logging
 
 
 class WatchService:
@@ -117,9 +118,8 @@ class WatchService:
             for f in changed:
                 self.on_file_change(f)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
-
 class _ChangeHandler:
     """Watchdog event handler."""
 

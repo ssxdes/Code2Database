@@ -39,6 +39,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any, Set, Tuple
+import logging
 
 
 @dataclass
@@ -396,8 +397,8 @@ def cmd_lock_coverage(args):
             with open(profile_path) as _f:
                 profile = _json.load(_f)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-
     if getattr(args, "detect_races", False):
         races = detect_races_with_lock_coverage(G, profile)
         print(json.dumps({

@@ -699,25 +699,36 @@ def scan_directory(source_root: str, lang: str = "auto",
             if all_functions:
                 try:
                     from _builder.graph_build import _extract_state_access
-                    _gv_names = {}
-                    for _gv in all_globals.get("global_vars", []):
-                        _gn = _gv.get("name", "")
-                        if _gn:
-                            _gv_names[_gn] = _gv
-                    _cached_g = None
-                    if _gv_names:
-                        import re as _re
-                        _assign_ops = _re.compile(
-                            r'\b(' + '|'.join(_re.escape(gn) for gn in
-                                              sorted(_gv_names.keys(),
-                                                     key=len, reverse=True))
-                            + r')\s*(\+|-|\*|\/|\||\&|\^|\%|<<|>>)?=\s*[^=]'
-                        )
-                        _cached_g = {
-                            "var_names": _gv_names,
-                            "var_names_keys": set(_gv_names.keys()),
-                            "assign_ops_re": _assign_ops,
-                        }
+                    # Reuse the compiled regex across flushes instead of
+                    # recompiling the 30K-branch _ASSIGN_OPS every flush.
+                    # The global variable set doesn't change between
+                    # flushes (all_globals is accumulated, then cleared
+                    # after flush — but the set of unique names grows
+                    # monotonically across the entire scan).
+                    # Use a scan-level cache that persists across flushes.
+                    if not hasattr(_flush_accumulated, '_cached_globals'):
+                        _gv_names = {}
+                        for _gv in all_globals.get("global_vars", []):
+                            _gn = _gv.get("name", "")
+                            if _gn:
+                                _gv_names[_gn] = _gv
+                        _cached_g = None
+                        if _gv_names:
+                            import re as _re
+                            _assign_ops = _re.compile(
+                                r'\b(' + '|'.join(_re.escape(gn) for gn in
+                                                  sorted(_gv_names.keys(),
+                                                         key=len, reverse=True))
+                                + r')\s*(\+|-|\*|\/|\||\&|\^|\%|<<|>>)?=\s*[^=]'
+                            )
+                            _cached_g = {
+                                "var_names": _gv_names,
+                                "var_names_keys": set(_gv_names.keys()),
+                                "assign_ops_re": _assign_ops,
+                            }
+                        _flush_accumulated._cached_globals = _cached_g
+                    else:
+                        _cached_g = _flush_accumulated._cached_globals
                     _fa_list = all_field_assignments if isinstance(all_field_assignments, list) else []
                     _sa_count = 0
                     _cand_count = 0
@@ -1064,6 +1075,127 @@ def scan_directory(source_root: str, lang: str = "auto",
         if _pool_obj is None:
             from concurrent.futures import ThreadPoolExecutor, as_completed
             _pool_obj = ThreadPoolExecutor(max_workers=workers)
+
+        # Background aggregator thread: decouples result collection from
+        # result aggregation. The main loop only submits tasks and puts
+        # completed results into a queue (microsecond-level). The
+        # aggregator thread drains the queue and does the 12+ list.extend
+        # calls. Without this, the main process blocks on aggregation
+        # while all child processes sleep waiting for new tasks.
+        # (Fix for c2d_scanner_parallel_bottleneck_report.md Finding 2)
+        import queue as _queue_mod
+        import threading as _threading_mod
+        _result_queue = _queue_mod.Queue()
+        _aggregator_done = _threading_mod.Event()
+
+        def _aggregator_thread():
+            """Background thread: drain results from queue, aggregate into lists."""
+            while True:
+                try:
+                    item = _result_queue.get(timeout=0.5)
+                except _queue_mod.Empty:
+                    if _aggregator_done.is_set():
+                        break
+                    continue
+                if item is None:  # sentinel: scan done
+                    break
+                result, _item = item
+                if result is None:
+                    continue
+                if result.get("error"):
+                    all_scan_errors.append({
+                        "file": result.get("file", _item[0]),
+                        "lang": _item[1],
+                        "error": result["error"],
+                        "error_kind": result.get("error_kind", "unknown"),
+                    })
+                    continue
+                if result.get("warning"):
+                    all_scan_warnings.append({
+                        "file": result.get("file", _item[0]),
+                        "lang": _item[1],
+                        "warning": result["warning"],
+                    })
+                all_functions.extend(result.get("functions", []))
+                if no_body_text:
+                    for f in all_functions[-len(result.get("functions", [])):]:
+                        f.pop("body_text", None)
+                all_edges.extend(result.get("edges", []))
+                all_import_edges.extend(result.get("import_edges", []))
+                for key in ("enums", "constants", "typedefs", "global_vars"):
+                    all_globals[key].extend(result.get("globals", {}).get(key, []))
+                vregs = result.get("vtable_registrations", [])
+                if vregs:
+                    all_vtable_registrations.extend(vregs)
+                mregs = result.get("macro_registrations", [])
+                if mregs:
+                    all_macro_registrations.extend(mregs)
+                tpfs = result.get("token_paste_functions", [])
+                if tpfs:
+                    all_token_paste_functions.extend(tpfs)
+                co_usages = result.get("container_of_usages", [])
+                if co_usages:
+                    all_container_of_usages.extend(co_usages)
+                conv_funcs = result.get("conversion_funcs", [])
+                if conv_funcs:
+                    all_conversion_funcs.extend(conv_funcs)
+                s_defs = result.get("struct_defs", [])
+                if s_defs:
+                    all_struct_defs.extend(s_defs)
+                fnpc = result.get("fn_ptr_calls", {})
+                for caller, calls in fnpc.items():
+                    if caller not in all_fn_ptr_calls:
+                        all_fn_ptr_calls[caller] = []
+                    all_fn_ptr_calls[caller].extend(calls)
+                pt_funcs = result.get("passthrough_reg_funcs", {})
+                for func_name, info in pt_funcs.items():
+                    if func_name not in all_passthrough_reg_funcs:
+                        all_passthrough_reg_funcs[func_name] = info
+                fa = result.get("field_assignments", [])
+                if fa:
+                    all_field_assignments.extend(fa)
+                # Aggregate cgdb records
+                if result.get("cgdb_nodes"):
+                    all_cgdb_nodes.extend(result["cgdb_nodes"])
+                if result.get("cgdb_types"):
+                    all_cgdb_types.extend(result["cgdb_types"])
+                if result.get("cgdb_edges"):
+                    all_cgdb_edges.extend(result["cgdb_edges"])
+                if result.get("cgdb_invoke_sites"):
+                    all_cgdb_invoke_sites.extend(result["cgdb_invoke_sites"])
+                if result.get("cgdb_predicates"):
+                    all_cgdb_predicates.extend(result["cgdb_predicates"])
+                if result.get("cgdb_ops_bindings"):
+                    all_cgdb_ops_bindings.extend(result["cgdb_ops_bindings"])
+                if result.get("cgdb_basic_blocks"):
+                    all_cgdb_basic_blocks.extend(result["cgdb_basic_blocks"])
+                if result.get("cgdb_cfg_edges"):
+                    all_cgdb_cfg_edges.extend(result["cgdb_cfg_edges"])
+                if result.get("cgdb_data_flow"):
+                    all_cgdb_data_flow.extend(result["cgdb_data_flow"])
+                if result.get("cgdb_sync_primitives"):
+                    all_cgdb_sync_primitives.extend(result["cgdb_sync_primitives"])
+                if result.get("cgdb_happens_before"):
+                    all_cgdb_happens_before.extend(result["cgdb_happens_before"])
+                if result.get("cgdb_alias_sets"):
+                    all_cgdb_alias_sets.extend(result["cgdb_alias_sets"])
+                if result.get("cgdb_doc_comments"):
+                    all_cgdb_doc_comments.extend(result["cgdb_doc_comments"])
+                if result.get("cgdb_metadata"):
+                    all_cgdb_metadata.extend(result["cgdb_metadata"])
+                if result.get("cgdb_includes"):
+                    all_cgdb_includes.extend(result["cgdb_includes"])
+                if result.get("conditions"):
+                    all_conditions.extend(result["conditions"])
+                if result.get("cgdb_conditions"):
+                    all_conditions.extend(result["cgdb_conditions"])
+                if result.get("domain"):
+                    domains.add(result["domain"])
+                lang_stats[_item[1]] += 1
+
+        _agg_thread = _threading_mod.Thread(target=_aggregator_thread, daemon=True)
+        _agg_thread.start()
+
         with _pool_obj as pool:
             # Submit futures in batches to avoid holding all 709K Future objects at once
             _total_files = len(file_list)
@@ -1116,104 +1248,10 @@ def scan_directory(source_root: str, lang: str = "auto",
                         item = _active_futures.get(future, file_list[_par_processed - 1])
                         progress_callback(_par_processed, _total_files,
                                           os.path.relpath(item[0], source_root))
-                    if result is None:
-                        continue
-                    if result.get("error"):
-                        all_scan_errors.append({
-                            "file": result.get("file", item[0]),
-                            "lang": item[1],
-                            "error": result["error"],
-                            "error_kind": result.get("error_kind", "unknown"),
-                        })
-                        continue
-                    if result.get("warning"):
-                        all_scan_warnings.append({
-                            "file": result.get("file", item[0]),
-                            "lang": item[1],
-                            "warning": result["warning"],
-                        })
-                    all_functions.extend(result.get("functions", []))
-                    if no_body_text:
-                        for f in all_functions[-len(result.get("functions", [])):]:
-                            f.pop("body_text", None)
-                    all_edges.extend(result.get("edges", []))
-                    all_import_edges.extend(result.get("import_edges", []))
-                    for key in ("enums", "constants", "typedefs", "global_vars"):
-                        all_globals[key].extend(result.get("globals", {}).get(key, []))
-                    # Aggregate vtable registrations
-                    vregs = result.get("vtable_registrations", [])
-                    if vregs:
-                        all_vtable_registrations.extend(vregs)
-                    # Aggregate macro registrations
-                    mregs = result.get("macro_registrations", [])
-                    if mregs:
-                        all_macro_registrations.extend(mregs)
-                    tpfs = result.get("token_paste_functions", [])
-                    if tpfs:
-                        all_token_paste_functions.extend(tpfs)
-                    # Aggregate container_of usages and struct embedding data
-                    co_usages = result.get("container_of_usages", [])
-                    if co_usages:
-                        all_container_of_usages.extend(co_usages)
-                    conv_funcs = result.get("conversion_funcs", [])
-                    if conv_funcs:
-                        all_conversion_funcs.extend(conv_funcs)
-                    s_defs = result.get("struct_defs", [])
-                    if s_defs:
-                        all_struct_defs.extend(s_defs)
-                    fnpc = result.get("fn_ptr_calls", {})
-                    for caller, calls in fnpc.items():
-                        if caller not in all_fn_ptr_calls:
-                            all_fn_ptr_calls[caller] = []
-                        all_fn_ptr_calls[caller].extend(calls)
-                    # Aggregate passthrough registration functions
-                    pt_funcs = result.get("passthrough_reg_funcs", {})
-                    for func_name, info in pt_funcs.items():
-                        if func_name not in all_passthrough_reg_funcs:
-                            all_passthrough_reg_funcs[func_name] = info
-                    # Aggregate field assignments
-                    fa = result.get("field_assignments", [])
-                    if fa:
-                        all_field_assignments.extend(fa)
-                    # Aggregate cgdb records (from clang/dual scanner)
-                    if result.get("cgdb_nodes"):
-                        all_cgdb_nodes.extend(result["cgdb_nodes"])
-                    if result.get("cgdb_types"):
-                        all_cgdb_types.extend(result["cgdb_types"])
-                    if result.get("cgdb_edges"):
-                        all_cgdb_edges.extend(result["cgdb_edges"])
-                    if result.get("cgdb_invoke_sites"):
-                        all_cgdb_invoke_sites.extend(result["cgdb_invoke_sites"])
-                    if result.get("cgdb_predicates"):
-                        all_cgdb_predicates.extend(result["cgdb_predicates"])
-                    if result.get("cgdb_ops_bindings"):
-                        all_cgdb_ops_bindings.extend(result["cgdb_ops_bindings"])
-                    if result.get("cgdb_basic_blocks"):
-                        all_cgdb_basic_blocks.extend(result["cgdb_basic_blocks"])
-                    if result.get("cgdb_cfg_edges"):
-                        all_cgdb_cfg_edges.extend(result["cgdb_cfg_edges"])
-                    if result.get("cgdb_data_flow"):
-                        all_cgdb_data_flow.extend(result["cgdb_data_flow"])
-                    if result.get("cgdb_sync_primitives"):
-                        all_cgdb_sync_primitives.extend(result["cgdb_sync_primitives"])
-                    if result.get("cgdb_happens_before"):
-                        all_cgdb_happens_before.extend(result["cgdb_happens_before"])
-                    if result.get("cgdb_alias_sets"):
-                        all_cgdb_alias_sets.extend(result["cgdb_alias_sets"])
-                    if result.get("cgdb_doc_comments"):
-                        all_cgdb_doc_comments.extend(result["cgdb_doc_comments"])
-                    if result.get("cgdb_metadata"):
-                        all_cgdb_metadata.extend(result["cgdb_metadata"])
-                    if result.get("cgdb_includes"):
-                        all_cgdb_includes.extend(result["cgdb_includes"])
-                    if result.get("conditions"):
-                        all_conditions.extend(result["conditions"])
-                    if result.get("cgdb_conditions"):
-                        all_conditions.extend(result["cgdb_conditions"])
-                    if result.get("domain"):
-                        domains.add(result["domain"])
-                    item = _active_futures.get(future, file_list[_par_processed - 1])
-                    lang_stats[item[1]] += 1
+                    # Put result into queue for the background aggregator
+                    # thread (instead of doing 12+ list.extend here, which
+                    # blocks the main process and starves child processes).
+                    _result_queue.put((result, _active_futures.get(future, file_list[_par_processed - 1])))
 
                 # Periodic flush in parallel mode — keep memory bounded
                 if _use_split and _par_processed % _PAR_FLUSH_INTERVAL < len(_done_futures):
@@ -1257,6 +1295,10 @@ def scan_directory(source_root: str, lang: str = "auto",
                         _draining = True
                         pool.shutdown(wait=False, cancel_futures=True)
                         break
+        # Signal the aggregator thread to finish and wait for it.
+        _aggregator_done.set()
+        _result_queue.put(None)  # sentinel
+        _agg_thread.join(timeout=30)
     else:
         # Sequential scanning
         _total_files = len(file_list)

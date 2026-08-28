@@ -217,24 +217,37 @@ def map_nodes(
     max_workers_cap: int = 0,
     desc: str = "",
     batch_size: int = 200,
+    parallel_mode: str = "thread",
 ) -> List[Any]:
     """Apply ``work_fn(node_id, node_data)`` to each item, returning results in order.
 
     Designed for per-node loops over ``G.nodes(data=True)`` where each call
     is independent and returns a small picklable result (e.g., a dict of
-    fields to merge back into the node). Uses ThreadPoolExecutor — the
+    fields to merge back into the node).
+
+    When ``parallel_mode='thread'`` (default), uses ThreadPoolExecutor — the
     caller's ``work_fn`` can safely read/write shared state via the returned
-    dict, since merging happens sequentially on the main thread.
+    dict, since merging happens sequentially on the main thread. Best for
+    I/O-bound or GIL-releasing workloads (tree-sitter parse, re.finditer).
+
+    When ``parallel_mode='process'``, uses ProcessPoolExecutor with fork COW.
+    Best for pure-Python CPU-bound workloads (regex matching, dict
+    construction, AST walking) where the GIL serializes ThreadPool workers.
+    Requirements: ``work_fn`` must be a top-level module function (picklable),
+    and each (node_id, node_data) tuple must be picklable. On Linux (default
+    fork start method), child processes inherit the parent's memory via
+    copy-on-write — large shared state (graph, globals) is available without
+    pickling.
 
     Args:
         items: List of ``(node_id, node_data)`` tuples.
         work_fn: Top-level or local callable taking ``(node_id, node_data)``.
-        jobs: Worker count (0=auto, 1=sequential, N=N threads).
-        max_workers_cap: Override the hard cap (0=use env/default). Pass
-            through from --max-workers CLI flag so the user's explicit
-            choice isn't silently lost when resolve_jobs re-resolves.
+            For ``parallel_mode='process'``, must be top-level (picklable).
+        jobs: Worker count (0=auto, 1=sequential, N=N workers).
+        max_workers_cap: Override the hard cap (0=use env/default).
         desc: Human-readable label printed once at start.
         batch_size: Submit futures in batches of this size.
+        parallel_mode: 'thread' (default) or 'process'.
 
     Returns:
         List of results, in the same order as ``items``.
@@ -246,6 +259,27 @@ def map_nodes(
     if workers <= 1 or n < 2:
         return [work_fn(nid, nd) for nid, nd in items]
 
+    # ProcessPoolExecutor path: for pure-Python CPU-bound workloads.
+    if parallel_mode == "process" and n > 100:
+        try:
+            from concurrent.futures import ProcessPoolExecutor
+            import multiprocessing as _mp
+            ctx = _mp.get_context("fork")
+            chunk_size = max(1, n // (workers * 4))
+            with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as pool:
+                # pool.map handles batching internally; chunk_size controls
+                # how many items each worker processes before returning.
+                # work_fn must be a top-level function (picklable).
+                results = list(pool.map(
+                    lambda item: work_fn(item[0], item[1]),
+                    items,
+                    chunksize=chunk_size,
+                ))
+            return results
+        except (ImportError, OSError, BrokenPipeError, AttributeError):
+            pass  # fall back to ThreadPoolExecutor
+
+    # ThreadPoolExecutor path (default or fallback).
     results: List[Any] = [None] * n
     idx = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -282,6 +316,7 @@ def merge_node_attributes(
     max_workers_cap: int = 0,
     desc: str = "",
     batch_size: int = 200,
+    parallel_mode: str = "thread",
 ) -> int:
     """Parallel map then merge per-node results back into the graph.
 
@@ -293,7 +328,8 @@ def merge_node_attributes(
     """
     results = map_nodes(items, work_fn, jobs=jobs,
                         max_workers_cap=max_workers_cap,
-                        desc=desc, batch_size=batch_size)
+                        desc=desc, batch_size=batch_size,
+                        parallel_mode=parallel_mode)
     count = 0
     for (nid, _nd), res in zip(items, results):
         if not res:

@@ -428,7 +428,8 @@ _ALLOCATION_SITES_MAP: dict = {}
 
 
 def _trace_object_origin(body_text: str, obj_name: str, max_depth: int = 3,
-                         allocation_sites: list = None) -> str:
+                          allocation_sites: list = None,
+                          _cached_assignments: list = None) -> str:
     """Trace where `obj_name` was initialized — backward through assignments.
 
     For a field access like `bh->b_bdev`, the variable `bh` may
@@ -446,14 +447,17 @@ def _trace_object_origin(body_text: str, obj_name: str, max_depth: int = 3,
     field-flow consumers distinguish same-typed-different-instance objects
     without needing full type-flow analysis.
 
+    When `_cached_assignments` is provided (list of _OBJ_ASSIGN_RE matches),
+    uses it instead of calling finditer on body_text again. This is critical
+    for performance: _extract_state_access calls _trace_object_origin for
+    each field read/write — without caching, each call does 3 finditer
+    scans of the full body_text. With 3 fields per function × 1.5M
+    functions = 13.5B character scans. With caching: 1 finditer per
+    function, then O(N_matches) iteration per field.
+
     Returns the source expression (e.g., "jh->bh" or "mapping->private_list"
     or "alloc_buffer_head(...):buffer_head"), or "" if no assignment is found
     within max_depth hops.
-
-    Limitations: only handles simple `var = expr` assignments; doesn't handle
-    compound initializers, function parameters (which are already param
-    origin), or control-flow-dependent assignments. This is a heuristic —
-    full type-flow analysis is task #206 (KERNEL-D10).
     """
     if not obj_name or max_depth <= 0:
         return ""
@@ -472,11 +476,19 @@ def _trace_object_origin(body_text: str, obj_name: str, max_depth: int = 3,
     current = obj_name
     last_source = ""
     for _ in range(max_depth):
-        # Find the last assignment to `current` in body_text
+        # Find the last assignment to `current` in body_text.
+        # Use cached assignments if provided (avoids re-scanning body_text
+        # for every field access — _extract_state_access caches once per
+        # function and passes the list to all field lookups).
         last_match = None
-        for m in _OBJ_ASSIGN_RE.finditer(body_text):
-            if m.group(1) == current:
-                last_match = m
+        if _cached_assignments is not None:
+            for m in _cached_assignments:
+                if m.group(1) == current:
+                    last_match = m
+        else:
+            for m in _OBJ_ASSIGN_RE.finditer(body_text):
+                if m.group(1) == current:
+                    last_match = m
         if not last_match:
             break
         source = last_match.group(2).strip()
@@ -751,6 +763,12 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
     # Regexes are module-level (_FIELD_ACCESS_RE, _FIELD_WRITE_RE) to
     # avoid recompiling on every call (1.5M+ calls on kernel-scale).
 
+    # Cache all object-assignment matches in body_text so _trace_object_origin
+    # doesn't re-scan the full body for each field access. Without this cache,
+    # each field read/write triggers 3 finditer scans × 3 fields = 9 full-body
+    # scans per function × 1.5M functions = 13.5B character scans.
+    _cached_obj_assigns = list(_OBJ_ASSIGN_RE.finditer(body_text))
+
     written_field_keys = set()  # (obj, field) pairs that are written
     seen_written_keys = set()  # for O(1) dedup of fields_written entries
     for e in fields_written:
@@ -791,7 +809,7 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
         # address_space than the reader's bh, so the writer doesn't affect
         # the reader. object_origin captures the source chain (e.g.,
         # "jh->bh") so the agent can compare writer and reader origins.
-        origin = _trace_object_origin(body_text, obj_name)
+        origin = _trace_object_origin(body_text, obj_name, _cached_assignments=_cached_obj_assigns)
         if origin:
             entry["object_origin"] = origin
         fields_written.append(entry)
@@ -818,7 +836,7 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
         # compare writer's object_origin vs reader's object_origin to detect
         # when they operate on different objects (e.g., buffer_head from
         # bdev->bd_inode->i_mapping vs ext4_inode->i_mapping).
-        origin = _trace_object_origin(body_text, obj_name)
+        origin = _trace_object_origin(body_text, obj_name, _cached_assignments=_cached_obj_assigns)
         if origin:
             read_entry["object_origin"] = origin
         fields_read.append(read_entry)

@@ -185,7 +185,7 @@ memory + knowledge + global stores. 13 new kb-* CLI commands, 1 new MCP tool,
 
 ### Doc sync
 - 16 `.md` / `.json` files updated for new counts (53 MCP tools /
-  34 code2database_* / 200 CLI commands / 27 core).
+  34 code2database_* / 222 CLI commands / 27 core).
 - `docs/en/references/memory_knowledge.md` and `docs/zh/references/memory_knowledge.md`
   rewritten to match actual code schema (removed fictional `mem_xxx` /
   `topic` / `fact` / `source` / `confidence` / `related_functions` /
@@ -375,7 +375,7 @@ First public release. Code2Database scans C/C++/Go/Python/Java/Rust/ASM codebase
 
 - **Dual extraction backend**: `auto` (default — uses clang when libclang is installed, falls back to tree-sitter), `clang` (force clang, enables cgdb semantic layer; libclang 17+), `tree-sitter` (force tree-sitter, no libclang dep). Selected via `--extraction-backend` flag at scan time. **libclang is recommended, NOT required** — tree-sitter-only mode is fully functional for every supported language.
 - **cgdb semantic tables** populated when clang backend is enabled: L1 AST nodes, L2 types, L3.5 config predicates (`#ifdef CONFIG_*`), L4 CFG (basic blocks + edges), L5 data flow (def-use chains), L6 alias (stub), L7 ops_bindings (typed vtable dispatch via FieldDecl → FunctionDecl) + invoke_sites, L8 sync_primitives + happens_before, L10 provenance + time-travel versions.
-- **122 CLI commands** organized into 3 sub-skills: `/Code2Database` (core, 15 Tier-1 high-weight commands), `/Code2Database-analysis` (deep semantic analysis, 13 Tier-1 + 19 `cgdb_*` MCP tools), `/Code2Database-ops` (graph editing + ops, 14 Tier-1).
+- **222 CLI commands** organized into 3 sub-skills: `/Code2Database` (core, 24 Tier-1 high-weight commands), `/Code2Database-analysis` (deep semantic analysis, 13 Tier-1 + 19 `cgdb_*` MCP tools), `/Code2Database-ops` (graph editing + ops, 23 Tier-1).
 - **53 MCP tools** (34 `code2database_*` + 19 `cgdb_*`) exposed over stdio transport via `serve` command.
 - **Multi-language scanning** for C, C++, Go, Python, Java, Rust, ASM (regex-based for NASM x86_64 / kernel GNU as / ARM bl/blr).
 
@@ -411,7 +411,7 @@ First public release. Code2Database scans C/C++/Go/Python/Java/Rust/ASM codebase
 
 ### Distribution
 
-- **3-sub-skill split**: `Code2Database` (core, always loaded), `Code2Database-analysis` (on-demand deep analysis), `Code2Database-ops` (on-demand ops). Each sub-skill has its own `SKILL.md` exposing only the commands relevant to its layer. The CLI (`scripts/code2database_builder.py`) is shared — all 200 commands are accessible regardless of which sub-skill is active.
+- **3-sub-skill split**: `Code2Database` (core, always loaded), `Code2Database-analysis` (on-demand deep analysis), `Code2Database-ops` (on-demand ops). Each sub-skill has its own `SKILL.md` exposing only the commands relevant to its layer. The CLI (`scripts/code2database_builder.py`) is shared — all 222 commands are accessible regardless of which sub-skill is active.
 - **Bilingual documentation**: English (`docs/en/`) and Chinese (`docs/zh/`).
 - **One-click installer** (`install.sh`) with Claude Code and Codex CLI support.
 - **Partial language install**: `scripts/setup.sh --languages c,go` (or `C2D_LANGUAGES` env var) — engineers focused on a single language can install only the tree-sitter grammars they need.

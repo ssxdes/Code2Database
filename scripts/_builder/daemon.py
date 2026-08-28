@@ -53,6 +53,24 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Set, Callable
 
 
+# Linux inotify event bit-flags (see <sys/inotify.h>). Used as named
+# constants instead of raw hex masks so the watch-mask construction is
+# self-documenting. Values are stable across Linux kernel versions.
+_IN_MODIFY    = 0x00000002  # File was modified
+_IN_ATTRIB    = 0x00000004  # Metadata changed (permissions, timestamps, etc.)
+_IN_CLOSE_WRITE = 0x00000008  # Writable file was closed
+_IN_CREATE    = 0x00000100  # File/directory created in watched dir
+_IN_DELETE    = 0x00000200  # File/directory deleted in watched dir
+_IN_DELETE_SELF = 0x00000400  # Watched file/directory itself deleted
+_IN_MOVE_SELF = 0x00000800  # Watched file/directory itself moved
+_IN_MOVED_FROM = 0x00000040  # File moved from watched dir
+_IN_MOVED_TO  = 0x00000080  # File moved to watched dir
+_IN_ISDIR     = 0x40000000  # Event subject is a directory (flag, not event)
+_DEFAULT_WATCH_MASK = (_IN_MODIFY | _IN_ATTRIB | _IN_CLOSE_WRITE |
+                         _IN_CREATE | _IN_DELETE | _IN_DELETE_SELF |
+                         _IN_MOVE_SELF | _IN_MOVED_FROM | _IN_MOVED_TO)
+
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -288,8 +306,8 @@ class FileWatcher:
             self._watch_descriptors = []
             self._wd_to_path: Dict[int, str] = {}
             self._inotify_exhausted = False
-            mask = (0x2 | 0x8 | 0x100 | 0x200 | 0x40 | 0x80
-                    | 0x400 | 0x800 | 0x4)
+            mask = (_DEFAULT_WATCH_MASK
+                    )
             self._add_watch_recursive(self.source_root, mask)
             if self._inotify_exhausted:
                 self._log("inotify watch limit exhausted; falling back to polling")
@@ -368,10 +386,10 @@ class FileWatcher:
                             if not self._is_excluded(full_path):
                                 if mask & 0x1:
                                     self._wd_to_path.pop(wd, None)
-                                elif mask & 0x100 and mask & 0x40000000:
+                                elif mask & _IN_CREATE and mask & _IN_ISDIR:
                                     if not self._inotify_exhausted:
-                                        _watch_mask = (0x2 | 0x8 | 0x100 | 0x200 | 0x40 | 0x80
-                                                       | 0x400 | 0x800 | 0x4)
+                                        _watch_mask = (_DEFAULT_WATCH_MASK
+                                                       )
                                         import ctypes as _ct
                                         _wd_new = self._libc.inotify_add_watch(
                                             self._inotify_fd, full_path.encode("utf-8"), _watch_mask)

@@ -30,8 +30,15 @@ except ImportError:
     _LIBCLANG_AVAILABLE = False
 
 
-# Try to locate libclang.so.17 — distribution-dependent.
+# Try to locate libclang.so — distribution-dependent.
+# Includes both clang-17 and clang-18 paths for portability.
 _LIBCLANG_PATHS = [
+    # clang-18 (Ubuntu 24.04 / Debian 13)
+    '/usr/lib/x86_64-linux-gnu/libclang-18.so.1',
+    '/usr/lib/x86_64-linux-gnu/libclang-18.so.18',
+    '/usr/lib/llvm-18/lib/libclang.so.1',
+    '/usr/lib/llvm-18/lib/libclang-18.so.1',
+    # clang-17 (Ubuntu 24.04 / Debian 12)
     '/usr/lib64/libclang.so.17',
     '/usr/lib64/libclang.so',
     '/usr/lib/llvm/17/lib/libclang.so.17',
@@ -40,6 +47,8 @@ _LIBCLANG_PATHS = [
     '/usr/lib/aarch64-linux-gnu/libclang-17.so.1',
     '/usr/lib/libclang.so.17',
     '/usr/lib/libclang.so',
+    # Generic fallback (symlink without version)
+    '/usr/lib/x86_64-linux-gnu/libclang.so',
 ]
 
 

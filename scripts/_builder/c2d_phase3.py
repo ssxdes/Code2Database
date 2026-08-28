@@ -72,11 +72,19 @@ def add_foreign_stub(graph_dir: str, stub_c2d_path: str,
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         conn.commit()
-        # ATTACH first, then query signature through the alias — avoids
-        # WAL lock conflict from _get_db_signature opening a separate
-        # connection that hasn't released its lock before ATTACH.
+        # Switch B's journal mode to DELETE before ATTACH. A WAL-mode
+        # connection ATTACHing a non-WAL db triggers "database is locked"
+        # because SQLite tries to create a WAL file for the ATTACHed db.
+        # By temporarily switching to DELETE mode, the ATTACH succeeds
+        # without WAL recovery. Switch back to WAL after DETACH.
+        try:
+            conn.execute("PRAGMA journal_mode=DELETE")
+            conn.commit()
+        except sqlite3.Error:
+            pass
+        # ATTACH first, then query signature through the alias.
         conn.execute(
-            f"ATTACH DATABASE 'file:{_escape_sql_path(foreign_db)}?mode=ro' AS stub_db"
+            f"ATTACH DATABASE '{_escape_sql_path(foreign_db)}' AS stub_db"
         )
         # Query stub db signature through the attached alias
         try:
@@ -144,8 +152,8 @@ def add_foreign_stub(graph_dir: str, stub_c2d_path: str,
                      edge["call_order"], edge["call_condition"])
                 )
                 resolved += 1
-        conn.execute("DETACH DATABASE stub_db")
         conn.commit()
+        conn.execute("DETACH DATABASE stub_db")
         summary["resolved_count"] = resolved
     except sqlite3.Error as e:
         summary["error"] = str(e)

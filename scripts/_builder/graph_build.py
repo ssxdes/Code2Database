@@ -1,5 +1,6 @@
 """callgraph builder module: graph_build."""
 
+import logging
 import os
 import json
 import sys
@@ -49,7 +50,6 @@ _CGDB_WIPE_TABLES = (
 
 def _wipe_cgdb_data(conn) -> None:
     """Delete all rows from cgdb tables except graph_versions (preserved for
-import logging
     time-travel). Called at the start of each build so rebuilds don't
     accumulate duplicates. Safe to call on a fresh DB — missing tables are
     skipped silently.

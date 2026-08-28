@@ -23,6 +23,12 @@ from _builder.c2d_foreign import _connect  # ensures tables exist
 def _make_test_db(db_path, functions=None, edges=None):
     """Create a minimal SQLite db with functions + edges tables."""
     conn = sqlite3.connect(db_path)
+    # Force DELETE journal mode — not WAL. When add_foreign_stub ATTACHes
+    # this db in read-only mode ('mode=ro') to a WAL-mode connection,
+    # SQLite tries to create a WAL file for the ATTACHed db. With mode=ro,
+    # the WAL file can't be created → "database is locked". Setting
+    # journal_mode=DELETE here ensures no WAL file is expected.
+    conn.execute("PRAGMA journal_mode=DELETE")
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS functions (
             id TEXT PRIMARY KEY, name TEXT, domain TEXT,
@@ -54,6 +60,13 @@ def _make_test_db(db_path, functions=None, edges=None):
              e.get("relation", "CALL"), e.get("call_order", 0))
         )
     conn.commit()
+    # Checkpoint WAL before closing so ATTACH from another connection
+    # doesn't fail with "database is locked" when the WAL journal hasn't
+    # been flushed to the main db file.
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except Exception:
+        pass
     conn.close()
 
 
@@ -96,6 +109,14 @@ class TestAddForeignStub(unittest.TestCase):
             "INSERT INTO edges (invoker_id, invoked_id, relation) "
             "VALUES (?, ?, ?)", ("B_main", "external_free", "CALL"))
         conn.commit()
+        # Switch B's journal mode to DELETE before closing. This avoids
+        # "database is locked" when add_foreign_stub opens a new
+        # connection and tries to ATTACH the stub db — WAL-mode
+        # connections carry WAL state that conflicts with ATTACH.
+        try:
+            conn.execute("PRAGMA journal_mode=DELETE")
+        except Exception:
+            pass
         conn.close()
         # Create stub C2D for "glibc" SDK
         self.stub_dir = os.path.join(self.tmpdir, "glibc_stub")
@@ -115,10 +136,6 @@ class TestAddForeignStub(unittest.TestCase):
         from _builder.c2d_phase3 import add_foreign_stub
         summary = add_foreign_stub(self.b_dir, self.stub_dir,
                                     "glibc", verbose=False)
-        # If WAL lock prevented ATTACH, skip — this is a test
-        # infrastructure issue (WAL not checkpointed), not a code bug.
-        if summary.get("error", "").startswith("database"):
-            self.skipTest(f"WAL lock in test env: {summary['error']}")
         self.assertTrue(summary.get("added"))
         self.assertGreater(summary.get("resolved_count", 0), 0)
         # Verify in db

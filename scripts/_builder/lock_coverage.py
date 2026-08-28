@@ -393,7 +393,8 @@ def cmd_lock_coverage(args):
     if os.path.exists(profile_path):
         try:
             import json as _json
-            profile = _json.loads(open(profile_path).read())
+            with open(profile_path) as _f:
+                profile = _json.load(_f)
         except Exception:
             pass
 

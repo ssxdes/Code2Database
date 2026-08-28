@@ -145,11 +145,21 @@ class MemoryGuard:
                 if total_kb > 0:
                     info["usage_percent"] = (total_kb - available_kb) / total_kb
             else:
-                # Fallback for non-Linux systems
-                import resource
-                usage = resource.getrusage(resource.RUSAGE_SELF)
-                info["rss_mb"] = usage.ru_maxrss / 1024
-                info["usage_percent"] = 0.5  # Unknown, assume 50%
+                # Fallback for non-Linux systems (macOS, Windows, WSL-non-procfs).
+                # Try psutil first (cross-platform, accurate), then fall back
+                # to resource.getrusage (POSIX, RSS only), then assume 50%.
+                try:
+                    import psutil
+                    vm = psutil.virtual_memory()
+                    info["total_mb"] = vm.total / (1024 * 1024)
+                    info["available_mb"] = vm.available / (1024 * 1024)
+                    info["used_mb"] = (vm.total - vm.available) / (1024 * 1024)
+                    info["usage_percent"] = vm.percent / 100.0
+                except ImportError:
+                    import resource
+                    usage = resource.getrusage(resource.RUSAGE_SELF)
+                    info["rss_mb"] = usage.ru_maxrss / 1024
+                    info["usage_percent"] = 0.5  # Unknown, assume 50%
 
         except Exception as e:
             pass

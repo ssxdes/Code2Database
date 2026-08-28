@@ -607,7 +607,13 @@ class Daemon:
         self._last_sync_time = 0.0
         from collections import deque
         self._event_timestamps = deque()  # for circuit breaker
-        self._socket_path = f"/tmp/code2database-daemon-{Path(self.graph_dir).name}.sock"
+        # Use $TMPDIR (POSIX) if set, otherwise fall back to /tmp.
+        # Respects system conventions: macOS sets TMPDIR automatically,
+        # Linux defaults to /tmp, sandboxes/container runtimes may use
+        # a private tmpdir that the daemon MUST use (not /tmp).
+        _tmpdir = os.environ.get("TMPDIR") or "/tmp"
+        self._socket_path = os.path.join(
+            _tmpdir, f"code2database-daemon-{Path(self.graph_dir).name}.sock")
         self._socket_thread: Optional[threading.Thread] = None
         self._server_socket: Optional[socket.socket] = None
         self._stop = False
@@ -1457,7 +1463,9 @@ def daemon_query(graph_dir: str, cmd: str, **kwargs) -> Dict:
     Returns the daemon's response dict. If daemon is not running, returns
     {"error": "daemon not running"}.
     """
-    socket_path = f"/tmp/code2database-daemon-{Path(graph_dir).name}.sock"
+    _tmpdir = os.environ.get("TMPDIR") or "/tmp"
+    socket_path = os.path.join(
+        _tmpdir, f"code2database-daemon-{Path(graph_dir).name}.sock")
     if not os.path.exists(socket_path):
         # Check if daemon is supposed to be running
         state = DaemonState.read(graph_dir)
@@ -1511,8 +1519,9 @@ def cmd_daemon_start(args):
     daemon = Daemon(graph_dir, source_root, config=config,
                     profile_path=profile_path)
     print(f"[daemon] starting: graph={graph_dir} source={source_root}", file=sys.stderr)
-    print(f"[daemon] socket: /tmp/code2database-daemon-{Path(graph_dir).name}.sock",
-          file=sys.stderr)
+    _tmpdir = os.environ.get("TMPDIR") or "/tmp"
+    _sock = os.path.join(_tmpdir, f"code2database-daemon-{Path(graph_dir).name}.sock")
+    print(f"[daemon] socket: {_sock}", file=sys.stderr)
     print(f"[daemon] status file: {graph_dir}/.daemon_status.json", file=sys.stderr)
     print(f"[daemon] log file: ~/.code2database/daemon-{Path(graph_dir).name}.log",
           file=sys.stderr)

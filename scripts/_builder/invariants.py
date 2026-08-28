@@ -599,7 +599,8 @@ def cmd_extract_invariants(args):
             from _builder.graph_build import split_by_domain
             master_path = os.path.join(graph_dir, "code2database_master.json")
             if os.path.exists(master_path):
-                master = json.loads(open(master_path).read())
+                with open(master_path) as _f:
+                    master = json.load(_f)
                 source_root = master.get("source_root", "")
                 split_by_domain(G, graph_dir, source_root)
                 print("Applied invariants to graph", file=sys.stderr)
@@ -670,7 +671,8 @@ def cmd_apply_invariants(args):
         from _builder.graph_build import _load_full_graph, split_by_domain
     G = _load_full_graph(graph_dir)
 
-    data = json.loads(open(input_path).read())
+    with open(input_path) as _f:
+        data = json.load(_f)
     invariants = data.get("invariants", data)
     if not isinstance(invariants, dict):
         print("Invalid invariants file: 'invariants' must be a dict",
@@ -680,7 +682,8 @@ def cmd_apply_invariants(args):
     attach_invariants_to_graph(G, invariants)
     master_path = os.path.join(graph_dir, "code2database_master.json")
     if os.path.exists(master_path):
-        master = json.loads(open(master_path).read())
+        with open(master_path) as _f:
+            master = json.load(_f)
         source_root = master.get("source_root", "")
         split_by_domain(G, graph_dir, source_root)
 

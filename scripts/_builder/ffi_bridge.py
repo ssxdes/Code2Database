@@ -1155,7 +1155,8 @@ def cmd_ffi_detect(args):
         # Write back
         master_path = os.path.join(graph_dir, "code2database_master.json")
         if os.path.exists(master_path):
-            master = json.loads(open(master_path).read())
+            with open(master_path) as _f:
+                master = json.load(_f)
             split_by_domain(G, graph_dir, master.get("source_root", ""))
         print(f"Applied {added} FFI edges to graph", file=sys.stderr)
 

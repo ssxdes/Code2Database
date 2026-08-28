@@ -1348,17 +1348,17 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
 
     # ---- Private write helpers ----
 
-    def _write_file(self, conn: sqlite3.Connection, file: Optional[FileRecord]) -> None:
-        if file is None:
+    def _write_file(self, conn: sqlite3.Connection, file_record: Optional[FileRecord]) -> None:
+        if file_record is None:
             return
         conn.execute(
             "INSERT OR REPLACE INTO cgdb_files "
             "(id, path, is_system, language, sha256, line_count, byte_count, "
             " commit_hash, last_modified, content_hash) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (file.id, file.path, int(file.is_system), file.language,
-             file.sha256, file.line_count, file.byte_count,
-             file.commit_hash, file.last_modified, file.content_hash)
+            (file_record.id, file_record.path, int(file_record.is_system), file_record.language,
+             file_record.sha256, file_record.line_count, file_record.byte_count,
+             file_record.commit_hash, file_record.last_modified, file_record.content_hash)
         )
 
     def _write_types(self, conn: sqlite3.Connection, types: List[TypeRecord]) -> None:

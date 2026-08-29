@@ -164,6 +164,7 @@ def cmd_kb_migrate(args):
         # Clear kb_items first
         conn.execute("DELETE FROM kb_items")
         migrated = 0
+        failed = 0
         for r in rows:
             # Map source_kind → decay_class
             sk = r["kind_proxy"]
@@ -188,11 +189,13 @@ def cmd_kb_migrate(args):
                      r["access_count"] or 0)
                 )
                 migrated += 1
-            except Exception:
-                logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                pass
+            except Exception as exc:
+                failed += 1
+                logging.getLogger(__name__).warning(
+                    "kb_migrate row %s failed: %s", r["id"], exc)
         conn.commit()
-        print(json.dumps({"migrated": migrated}, ensure_ascii=False, indent=2))
+        print(json.dumps({"migrated": migrated, "failed": failed},
+                         ensure_ascii=False, indent=2))
     finally:
         conn.close()
 
@@ -1748,13 +1751,10 @@ def main():
     p_ff.add_argument("--json", action="store_true", help="Output as JSON")
 
     # null-source — convenience alias for field-flow --value NULL
-    p_ns = sub.add_parser("null-source",
-                          help="Find all writers of NULL to a struct field (alias: field-flow --value NULL)")
-    p_ns.add_argument("--graph", required=True, help="Call graph output directory")
-    p_ns.add_argument("--struct", default="", help="Struct name (e.g., buffer_head)")
-    p_ns.add_argument("--field", required=True, help="Field name (e.g., b_bdev)")
-    p_ns.add_argument("--max-depth", type=int, default=8, help="Max reverse-trace depth")
-    p_ns.add_argument("--json", action="store_true", help="Output as JSON")
+    # Inherits ALL args from field-flow via parents=[p_ff]; the handler
+    # auto-sets --value NULL when args.command == "null-source".
+    sub.add_parser("null-source", parents=[p_ff], add_help=False,
+                   help="Find all writers of NULL to a struct field (alias: field-flow --value NULL)")
 
     # watch
     p_watch = sub.add_parser("watch", help="Auto-sync: watch source directory and update incrementally")

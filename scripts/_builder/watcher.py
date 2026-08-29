@@ -85,8 +85,13 @@ class WatchService:
                 for key in ("functions", "edges", "import_edges"):
                     existing.setdefault(key, []).extend(result.get(key, []))
 
-                with open(extraction_path, "w", encoding="utf-8") as f:
+                # Atomic write: write to .tmp then rename. Prevents
+                # concurrent readers (describe-node, etc.) from reading
+                # a half-written file and crashing with JSONDecodeError.
+                tmp_path = extraction_path + ".tmp"
+                with open(tmp_path, "w", encoding="utf-8") as f:
                     json.dump(existing, f, ensure_ascii=False)
+                os.replace(tmp_path, extraction_path)
 
                 print(f"[Watch] Updated extraction: {len(existing.get('functions', []))} functions", file=sys.stderr)
             else:

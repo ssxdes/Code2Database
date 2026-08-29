@@ -5826,6 +5826,14 @@ def _post_build_auto_enhance(args, outdir: str) -> None:
     API key or Claude Code env var is set, the LLM path is also attempted
     for richer supplements.
     """
+    # Warn about low-memory + auto-enhance interaction
+    if getattr(args, 'low_memory', False):
+        print("[auto-enhance] WARNING: --low-memory strips body_text during "
+              "load. Auto-enhance heuristic reads body_text for signal "
+              "extraction — on SQLite/LazySQLiteGraph, body_text is "
+              "lazy-loaded per node. Enhancement will be slower and "
+              "body-derived signals may be incomplete for some nodes.",
+              file=sys.stderr)
     import os
     try:
         from _builder.auto_enhance import (

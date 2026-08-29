@@ -4741,7 +4741,7 @@ def build_graph(extraction: dict, profile: dict = None,
         n = ndata.get("name", "")
         if n and n.lower() not in _name_to_nid_lower:
             _name_to_nid_lower[n.lower()] = nid
-    for nid, ndata in list(G.nodes(data=True)):
+    for nid, ndata in G.nodes(data=True):
         if not isinstance(nid, str):
             continue  # Skip non-string node IDs
         node_name = ndata.get("name", "")

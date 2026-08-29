@@ -3031,7 +3031,11 @@ def main():
                               "approaching this limit (0=auto from system).")
     p_scan.add_argument("--no-body-text", action="store_true",
                          help="Skip body_text extraction to save memory. "
-                              "Body text can be re-read from source files at query time.")
+                              "Body text can be re-read from source files at query time. "
+                              "WARNING: this also disables state_access extraction "
+                              "(globals_read/written, fields_read/written) — "
+                              "detect-races, data-dep, lock-coverage will produce "
+                              "no findings.")
     p_scan.add_argument("--max-functions", type=int, default=0,
                          help="Maximum number of functions to extract (0=no limit). "
                               "Use for very large projects where full extraction is not needed.")

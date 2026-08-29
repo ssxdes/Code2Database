@@ -1031,7 +1031,8 @@ class Daemon:
             self._last_state_write = now
 
     def _prune_old_events(self, now: float):
-        cutoff = now - 60.0
+        window = self.config.get("circuit_breaker_window_sec", 60.0)
+        cutoff = now - window
         while self._event_timestamps and self._event_timestamps[0] < cutoff:
             self._event_timestamps.popleft()
 

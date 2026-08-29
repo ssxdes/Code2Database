@@ -10,6 +10,15 @@ import logging
 _ASM_EXTERN_RE = re.compile(
     r'^\s*(?:extern|\.globl|\.global)\s+([a-zA-Z_]\w*)', re.MULTILINE)
 
+# Hoisted static regexes for per-file import scanning (Finding 25).
+# These were bare-string re.finditer calls compiled 30K+ times on kernel.
+_INCLUDE_RE = re.compile(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]', re.MULTILINE)
+_PY_IMPORT_PAREN_RE = re.compile(r'\bimport\s+(?:\(([^)]*)\)|"([^"]+)")')
+_PY_INNER_STR_RE = re.compile(r'"([^"]+)"')
+_PY_FROM_IMPORT_RE = re.compile(r'^\s*(?:from\s+(\S+)\s+import|import\s+(\S+))', re.MULTILINE)
+_RUST_USE_RE = re.compile(r'^\s*use\s+([\w:]+)', re.MULTILINE)
+_RUST_IMPORT_SEMI_RE = re.compile(r'^\s*import\s+([\w.]+)\s*;', re.MULTILINE)
+
 # Cache for file-level includes (path → set of includes)
 _file_includes_cache = {}
 
@@ -303,23 +312,23 @@ def _get_file_includes(source_file: str, source_root: str) -> set:
         return includes
 
     # C/C++: #include <header> or #include "header"
-    for m in re.finditer(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]', content, re.MULTILINE):
+    for m in _INCLUDE_RE.finditer(content):
         includes.add(m.group(1))
     # Go: import "pkg" or import ( "pkg1" "pkg2" )
-    for m in re.finditer(r'\bimport\s+(?:\(([^)]*)\)|"([^"]+)")', content):
+    for m in _PY_IMPORT_PAREN_RE.finditer(content):
         if m.group(2):
             includes.add(m.group(2))
         elif m.group(1):
-            for inner_m in re.finditer(r'"([^"]+)"', m.group(1)):
+            for inner_m in _PY_INNER_STR_RE.finditer(m.group(1)):
                 includes.add(inner_m.group(1))
     # Python: import X / from X import Y
-    for m in re.finditer(r'^\s*(?:from\s+(\S+)\s+import|import\s+(\S+))', content, re.MULTILINE):
+    for m in _PY_FROM_IMPORT_RE.finditer(content):
         includes.add(m.group(1) or m.group(2))
     # Java: import pkg.Class;
-    for m in re.finditer(r'^\s*import\s+([\w.]+)\s*;', content, re.MULTILINE):
+    for m in _RUST_IMPORT_SEMI_RE.finditer(content):
         includes.add(m.group(1))
     # Rust: use path::module;
-    for m in re.finditer(r'^\s*use\s+([\w:]+)', content, re.MULTILINE):
+    for m in _RUST_USE_RE.finditer(content):
         includes.add(m.group(1))
 
     _file_includes_cache[cache_key] = includes

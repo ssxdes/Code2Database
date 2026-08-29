@@ -56,7 +56,7 @@ runs:
         SEARCH_JSON=$(python3 $C2D_DIR/scripts/code2database_builder.py search \
           --graph "$C2D_GRAPH" --keywords "$KEYWORDS" --json --top 50)
         echo "::endgroup::"
-        for func in $(echo "$SEARCH_JSON" | python3 -c "import sys,json; [print(r['id']) for r in json.load(sys.stdin).get('results',[])]"); do
+        for func in $(echo "$SEARCH_JSON" | python3 -c "import sys,json; data=json.load(sys.stdin); [print(r['id']) for r in (data.get('results',[]) if isinstance(data, dict) else data)]"); do
           echo "::group::Blast radius for $func"
           python3 $C2D_DIR/scripts/code2database_builder.py blast-radius --graph "$C2D_GRAPH" --node $func --json
           echo "::endgroup::"

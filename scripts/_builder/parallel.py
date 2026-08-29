@@ -129,6 +129,21 @@ def map_files_processpool(
 # their nodes auto-cap workers to avoid per-worker memory duplication.
 LARGE_GRAPH_NODES = 100_000
 
+
+def _proc_map_nodes_wrapper(args):
+    """Module-level wrapper for map_nodes ProcessPoolExecutor path.
+
+    Receives: (work_fn, node_id, node_data)
+    Returns: work_fn(node_id, node_data)
+
+    work_fn must be picklable (top-level module function). Lambdas and
+    closures are NOT picklable — callers needing process mode with
+    closures should follow the _proc_state_access pattern (module-level
+    worker + fork COW for shared state).
+    """
+    work_fn, nid, nd = args
+    return work_fn(nid, nd)
+
 # Default hard ceiling on worker count. Was 8 (too low for modern hardware),
 # changed to 16 in the previous fix — but 16 causes oversubscription on
 # machines with fewer than 16 cores (4-core box + -j 48 → 16 threads = 4x
@@ -267,12 +282,15 @@ def map_nodes(
             ctx = _mp.get_context("fork")
             chunk_size = max(1, n // (workers * 4))
             with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as pool:
-                # pool.map handles batching internally; chunk_size controls
-                # how many items each worker processes before returning.
-                # work_fn must be a top-level function (picklable).
+                # NOTE: work_fn must be a top-level module function (picklable).
+                # Lambdas/closures are NOT picklable and will raise
+                # AttributeError, caught below → falls back to ThreadPool.
+                # Callers needing process mode with closures should use
+                # _proc_state_access / _proc_pre_strip_state_access patterns
+                # (module-level workers + fork COW for shared state).
                 results = list(pool.map(
-                    lambda item: work_fn(item[0], item[1]),
-                    items,
+                    _proc_map_nodes_wrapper,
+                    [(work_fn, nid, nd) for nid, nd in items],
                     chunksize=chunk_size,
                 ))
             return results

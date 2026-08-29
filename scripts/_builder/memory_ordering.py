@@ -48,6 +48,13 @@ _SMP_WMB_RE = re.compile(r'\bsmp_wmb\s*\(', re.IGNORECASE)
 _SMP_STORE_RELEASE_RE = re.compile(r'\bsmp_store_release\s*\(\s*([^,]+?)\s*,', re.IGNORECASE)
 _SMP_LOAD_ACQUIRE_RE = re.compile(r'\bsmp_load_acquire\s*\(\s*([^)]+?)\s*\)', re.IGNORECASE)
 _SMP_STORE_MB_RE = re.compile(r'\bsmp_store_mb\s*\(\s*([^,]+?)\s*,', re.IGNORECASE)
+_SYNC_RCU_RE = re.compile(r'\bsynchronize_rcu\s*\(', re.IGNORECASE)
+# Pre-compiled prefix patterns for WRITE_ONCE/READ_ONCE var matching.
+# The full pattern is dynamic (includes the var name), but we can
+# use these to quickly check if the macro is even present in the body
+# before doing the expensive full regex search.
+_WRITE_ONCE_PREFIX_RE = re.compile(r'\bWRITE_ONCE\s*\(', re.IGNORECASE)
+_READ_ONCE_PREFIX_RE = re.compile(r'\bREAD_ONCE\s*\(', re.IGNORECASE)
 
 # C11 / atomic_thread_fence
 _ATOMIC_THREAD_FENCE_RE = re.compile(r'\batomic_thread_fence\s*\(\s*(\w+)\s*\)', re.IGNORECASE)
@@ -231,7 +238,7 @@ def _writer_writes_var(G, writer_id: str, var: str) -> bool:
             return True
     # Check WRITE_ONCE on the var
     body = nd.get("body_text", "")
-    if body and re.search(r'\bWRITE_ONCE\s*\(\s*' + re.escape(var) + r'\b', body):
+    if body and _WRITE_ONCE_PREFIX_RE.search(body) and re.search(r'\bWRITE_ONCE\s*\(\s*' + re.escape(var) + r'\b', body):
         return True
     return False
 
@@ -252,7 +259,7 @@ def _reader_reads_var(G, reader_id: str, var: str) -> bool:
         if gr.get("name", "").lower() == var_l:
             return True
     body = nd.get("body_text", "")
-    if body and re.search(r'\bREAD_ONCE\s*\(\s*' + re.escape(var) + r'\b', body):
+    if body and _READ_ONCE_PREFIX_RE.search(body) and re.search(r'\bREAD_ONCE\s*\(\s*' + re.escape(var) + r'\b', body):
         return True
     return False
 
@@ -337,7 +344,7 @@ def happens_before_analysis(G, writer_id: str, reader_id: str,
     # or invoked synchronize_rcu (which is the canonical RCU writer primitive)
     if reader_mo.rcu_read_locks:
         writer_body = writer_nd.get("body_text", "")
-        has_sync_rcu = bool(re.search(r'\bsynchronize_rcu\s*\(', writer_body))
+        has_sync_rcu = bool(_SYNC_RCU_RE.search(writer_body))
         if has_sync_rcu:
             result.has_happens_before = True
             result.mechanisms.append("RCU: synchronize_rcu + reader in rcu_read_lock")

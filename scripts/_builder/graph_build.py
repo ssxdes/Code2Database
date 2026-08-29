@@ -1954,7 +1954,8 @@ def _disambiguate_struct_chain(struct_chain: str, candidate_structs: list,
     return candidate_structs
 
 
-def _detect_thread_models(G: nx.DiGraph, builder_profile: dict = None) -> dict:
+def _detect_thread_models(G: nx.DiGraph, builder_profile: dict = None,
+                           jobs: int = 0, max_workers: int = 0) -> dict:
     """Detect threading models used by functions in the graph.
 
     Scans all nodes for threading API usage in body_text and callee_args,
@@ -2035,7 +2036,8 @@ def _detect_thread_models(G: nx.DiGraph, builder_profile: dict = None) -> dict:
         from _builder.parallel import map_nodes
         _thread_results = map_nodes(
             _thread_candidates, _check_thread_model,
-            jobs=getattr(G, 'graph', {}).get('jobs', 0) if hasattr(G, 'graph') else 0,
+            jobs=jobs,
+            max_workers_cap=max_workers,
             desc="thread_model_detection",
         )
         for nid, model in _thread_results:
@@ -6107,12 +6109,17 @@ def cmd_build(args):
                 if _had_any:
                     _sa_extracted_count += 1
             _sa_candidate_count = len(_sa_candidates)
-            # Clean up module-level globals
+        except (ImportError, OSError, BrokenPipeError):
+            _use_sa_process = False  # fall through to sequential
+        finally:
+            # Clean up module-level globals (in finally so cleanup
+            # runs even if the try block raised before reaching the
+            # explicit cleanup — prevents transient memory leak of
+            # the 30K-branch regex between calls in long-running
+            # processes).
             _PRE_STRIP_GLOBALS = None
             _PRE_STRIP_FIELD_ASSIGNMENTS = None
             _PRE_STRIP_CACHED = None
-        except (ImportError, OSError, BrokenPipeError):
-            _use_sa_process = False  # fall through to sequential
 
     if not _use_sa_process:
         # Sequential path (or ThreadPool fallback)
@@ -6567,7 +6574,9 @@ def cmd_build(args):
 
     # Thread model detection and propagation
     tracker.begin("detect_thread_models")
-    thread_models = _detect_thread_models(G, builder_profile=builder_profile)
+    thread_models = _detect_thread_models(G, builder_profile=builder_profile,
+                                            jobs=getattr(args, 'jobs', 0),
+                                            max_workers=getattr(args, 'max_workers', 0))
     if thread_models:
         _propagate_thread_models(G, thread_models)
         inherited_count = sum(1 for _, nd in G.nodes(data=True)

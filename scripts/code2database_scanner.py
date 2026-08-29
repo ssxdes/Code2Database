@@ -1240,7 +1240,15 @@ def scan_directory(source_root: str, lang: str = "auto",
                         logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         continue
                 for future in _done_futures:
-                    del _active_futures[future]
+                    # Pop the future BEFORE processing the result so the
+                    # original (file_path, lang) tuple is available for
+                    # lang_stats attribution and error reporting. The old
+                    # code did del first then .get(future) which always
+                    # returned the fallback — corrupting lang_stats for
+                    # out-of-order completions (common with ProcessPool).
+                    item = _active_futures.pop(future, None)
+                    if item is None:
+                        item = file_list[_par_processed] if _par_processed < _total_files else ("", "")
                     _par_processed += 1
                     try:
                         result = future.result()
@@ -1248,13 +1256,12 @@ def scan_directory(source_root: str, lang: str = "auto",
                         logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         continue
                     if progress_callback and _par_processed % _report_interval == 0:
-                        item = _active_futures.get(future, file_list[_par_processed - 1])
                         progress_callback(_par_processed, _total_files,
                                           os.path.relpath(item[0], source_root))
                     # Put result into queue for the background aggregator
                     # thread (instead of doing 12+ list.extend here, which
                     # blocks the main process and starves child processes).
-                    _result_queue.put((result, _active_futures.get(future, file_list[_par_processed - 1])))
+                    _result_queue.put((result, item))
 
                 # Periodic flush in parallel mode — keep memory bounded
                 if _use_split and _par_processed % _PAR_FLUSH_INTERVAL < len(_done_futures):

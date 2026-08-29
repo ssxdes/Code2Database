@@ -59,7 +59,6 @@ from _builder.memory_manager import cmd_manage_memory, cmd_memory_health
 from _builder.knowledge_manager import cmd_extract_knowledge, cmd_apply_knowledge, cmd_knowledge_query, cmd_knowledge_validate
 from _builder.kb_index import rebuild_kb_index as cmd_kb_rebuild_index_impl
 from _builder.patcher import cmd_patch_from_diff, cmd_patch_from_git, cmd_light_scan
-from _builder.lsp_server import cmd_lsp_server
 from _builder.changelog_update import cmd_quick_update, cmd_export_changes, cmd_merge_changes, cmd_semantic_status
 from _builder.update_cmd import cmd_update_node, cmd_update_edge, cmd_patch_profile
 from _builder.cgdb_commands import (
@@ -2573,7 +2572,7 @@ def main():
         "patch-from-diff": cmd_patch_from_diff,
         "patch-from-git": cmd_patch_from_git,
         "light-scan": cmd_light_scan,
-        "lsp-server": cmd_lsp_server,
+        "lsp-server": _lazy("_builder.lsp_server", "cmd_lsp_server"),
         "explore-flow": cmd_explore_flow,
         "key-paths": cmd_key_paths,
         "quick-update": cmd_quick_update,

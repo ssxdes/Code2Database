@@ -43,6 +43,12 @@ except ImportError:
 # Use [^\S\n]* (match whitespace except newline) to prevent \s* from crossing line boundaries
 # This avoids #endif\n\treturn foo() being parsed as endif with condition "return foo()"
 _PP_COND_RE = re.compile(r'^\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b[^\S\n]*(.*)', re.MULTILINE)
+_PP_ELSE_RE = re.compile(r'^\s*#\s*(else|elif)\b[^\S\n]*(.*)', re.MULTILINE)
+_PP_ENDIF_RE = re.compile(r'^\s*#\s*endif\b', re.MULTILINE)
+# Static patterns used inside methods — hoisted to avoid recompiling
+# on every call (1.5M+ calls on kernel-scale projects).
+_FUNC_DECL_RE = re.compile(r'\b(\w+)\s*\([^)]*\)\s*\{', re.MULTILINE)
+_ARR_ELEM_RE = re.compile(r'\b(\w+)\s*=\s*\(.*?\)\s*(\w+)\s*\[', re.MULTILINE)
 
 # Pre-compiled label detection patterns (avoid re-compiling per function)
 _THREAD_PATTERNS = [re.compile(p) for p in [
@@ -529,10 +535,7 @@ class CTreeSitterScanner(BaseScanner):
                 # Look for a function-like pattern before this asm node
                 # Pattern: type [*] name(params) { — we only need the part up to {
                 # because the body may contain } from ERROR nodes
-                func_re = re.compile(
-                    r'\b(\w+)\s*\([^)]*\)\s*\{',
-                    re.MULTILINE
-                )
+                func_re = _FUNC_DECL_RE
                 # Search in the text before the asm node
                 search_text = source_text[:asm_start]
                 func_match = None
@@ -888,11 +891,8 @@ class CTreeSitterScanner(BaseScanner):
 
         # Build complete list of pp directives with positions
         # Use [^\S\n]* instead of \s* to prevent crossing line boundaries
-        _PP_ELSE_RE = re.compile(r'^\s*#\s*(else|elif)\b[^\S\n]*(.*)', re.MULTILINE)
-        _PP_ENDIF_RE = re.compile(r'^\s*#\s*endif\b', re.MULTILINE)
-
         all_pp = []
-        for m in _PP_COND_RE.finditer(source_text):
+        for m in _PP_ELSE_RE.finditer(source_text):
             all_pp.append((m.start(), m.group(1), m.group(2).strip()))
         for m in _PP_ELSE_RE.finditer(source_text):
             all_pp.append((m.start(), m.group(1), m.group(2).strip()))
@@ -2471,11 +2471,7 @@ class CTreeSitterScanner(BaseScanner):
 
         # Trace variables assigned from array elements: void *fn = (void *)ops[op];
         # Also: type *fn = (type *)ops[idx];
-        arr_elem_re = re.compile(
-            r'\b(\w+)\s*=\s*\(.*?\)\s*(\w+)\s*\[',
-            re.MULTILINE
-        )
-        for m in arr_elem_re.finditer(body_text):
+        for m in _ARR_ELEM_RE.finditer(body_text):
             var_name = m.group(1)
             arr_name = m.group(2)
             if arr_name in fn_ptr_arrays and var_name not in bindings:

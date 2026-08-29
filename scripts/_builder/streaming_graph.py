@@ -1082,3 +1082,16 @@ class _LazyNodeView:
     def __contains__(self, nid):
         return nid in self._graph
 
+    def get(self, nid, default=None):
+        """Get node attributes, returning default if not found.
+
+        Required for NetworkX API compatibility — many call sites use
+        G.nodes.get(nid) instead of G.nodes[nid]. Without this method,
+        large graphs (>50K nodes, using LazySQLiteGraph) crash with
+        AttributeError on extract-signals and other commands.
+        """
+        try:
+            return self._graph._get_node_attrs(nid)
+        except KeyError:
+            return default
+

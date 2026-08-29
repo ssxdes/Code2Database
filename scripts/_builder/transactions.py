@@ -918,10 +918,17 @@ def cmd_tx_commit(args):
     via WritebackPipeline.commit() and reports the result.
     """
     graph_dir = args.graph
-    state = _read_tx_state(graph_dir)
-    if not state or state.status != "active":
-        print("No active transaction to commit", file=sys.stderr)
+    # Acquire write lock — prevents concurrent commit/rollback racing
+    lock = GraphLock(graph_dir)
+    if not lock.acquire_write(timeout=10.0):
+        print("Error: could not acquire write lock for tx-commit — "
+              "another operation may be in progress.", file=sys.stderr)
         sys.exit(1)
+    try:
+        state = _read_tx_state(graph_dir)
+        if not state or state.status != "active":
+            print("No active transaction to commit", file=sys.stderr)
+            sys.exit(1)
 
     # RPT-P0-16: Check for a pending write-back tx. We stored its id in
     # the description as "[writeback_tx=<uuid>]".
@@ -980,24 +987,38 @@ def cmd_tx_commit(args):
     if state.error:
         response["error"] = state.error
     print(json.dumps(response, ensure_ascii=False, indent=2, default=str))
+    finally:
+        lock.release()
 
 
 def cmd_tx_rollback(args):
     """Rollback the current transaction (restores snapshot)."""
     graph_dir = args.graph
-    state = _read_tx_state(graph_dir)
-    if not state or state.status != "active":
-        print("No active transaction to rollback", file=sys.stderr)
+    # Acquire write lock — prevents concurrent commit/begin racing
+    lock = GraphLock(graph_dir)
+    if not lock.acquire_write(timeout=10.0):
+        print("Error: could not acquire write lock for tx-rollback.",
+              file=sys.stderr)
         sys.exit(1)
-    restore_snapshot(graph_dir, state.snapshot_id)
-    clear_wal(graph_dir)
-    state.status = "rolled_back"
-    state.ended_at = time.time()
-    _write_tx_state(graph_dir, state)
-    print(json.dumps({
-        "tx_id": state.tx_id, "status": "rolled_back",
-        "snapshot_id": state.snapshot_id, "ended_at": state.ended_at,
-    }, ensure_ascii=False, indent=2, default=str))
+    try:
+        state = _read_tx_state(graph_dir)
+        if not state or state.status != "active":
+            print("No active transaction to rollback", file=sys.stderr)
+            sys.exit(1)
+        _restore_result = restore_snapshot(graph_dir, state.snapshot_id)
+        if not _restore_result.get("restored"):
+            print(f"WARNING: rollback failed: {_restore_result.get('reason', 'unknown')}",
+                  file=sys.stderr)
+        clear_wal(graph_dir)
+        state.status = "rolled_back"
+        state.ended_at = time.time()
+        _write_tx_state(graph_dir, state)
+        print(json.dumps({
+            "tx_id": state.tx_id, "status": "rolled_back",
+            "snapshot_id": state.snapshot_id, "ended_at": state.ended_at,
+        }, ensure_ascii=False, indent=2, default=str))
+    finally:
+        lock.release()
 
 
 def cmd_tx_status(args):

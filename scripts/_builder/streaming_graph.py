@@ -1058,14 +1058,19 @@ class _LazyNodeView:
         if data:
             # Single SELECT * — avoids N+1 query pattern. For 1.5M nodes,
             # this is the difference between ~30s and >180s timeout.
-            cur = self._graph._conn.execute("SELECT * FROM functions")
+            # Pre-filter at SQL level: skip nodes where extra_json indicates
+            # is_empty=true or node_type=file (saves ~30-50% of rows on
+            # kernel-scale graphs where many nodes are empty conditions or
+            # file containers).
+            cur = self._graph._conn.execute(
+                "SELECT * FROM functions WHERE extra_json IS NULL "
+                "OR (extra_json NOT LIKE '%\"is_empty\":true%' "
+                "AND extra_json NOT LIKE '%\"node_type\":\"file\"%')")
             for row in cur:
                 row_dict = dict(row)
                 nid = row_dict.get("id", "")
                 if not nid:
                     continue
-                # Use _build_attrs_from_row directly (no cache) — batch
-                # iteration is one-shot, caching 1.5M nodes would OOM.
                 yield (nid, self._graph._build_attrs_from_row(row_dict))
         else:
             cur = self._graph._conn.execute("SELECT id FROM functions")

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import logging
 """Call graph builder and query tool — CLI entry point.
 
 All implementation lives in the _builder package. This file only
@@ -8,8 +7,11 @@ handles argparse configuration and command routing.
 
 import argparse
 import json
+import logging
 import os
 import sys
+
+__version__ = "1.3.0"
 
 # Ensure _vendor/networkx shim is found before the real networkx
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "_vendor"))
@@ -19,7 +21,7 @@ from _builder.logging_utils import configure_logging, get_logger, parse_log_leve
 
 # Core command handlers — these are lightweight to import and cover the
 # most common operations (build, search, describe, trace, query).
-from _builder.graph_build import cmd_build, _detect_build_system
+from _builder.graph_build import cmd_build
 from _builder.search_cmd import cmd_load, cmd_search, cmd_path, cmd_neighbors, cmd_impact, cmd_domain
 from _builder.query import cmd_describe_node, cmd_resolve_chain, cmd_trace_chain, cmd_diff_chains, cmd_get_code_snippet, cmd_blast_radius, cmd_io_path, cmd_reverse_trace, cmd_field_access, cmd_field_flow, cmd_param_flow, cmd_describe_commit, cmd_node_history, cmd_graph_provenance, cmd_blame_node, cmd_find_commits
 from _builder.query_lang import cmd_query
@@ -630,6 +632,8 @@ def main():
                         help="Optional path to write structured logs (in addition to stderr)")
     parser.add_argument("--log-json", action="store_true",
                         help="Emit JSON-line logs (machine-parseable)")
+    parser.add_argument("--version", action="version",
+                        version=f"code2database_builder {__version__}")
     sub = parser.add_subparsers(dest="command")
 
     # build
@@ -2473,11 +2477,18 @@ def main():
     }
     for _alias, _canonical in _SKILL_ALIASES.items():
         _cp = sub.choices.get(_canonical)
-        if _cp is not None:
-            sub.add_parser(_alias, parents=[_cp], add_help=False,
-                           help="Alias for " + _canonical)
+        if _cp is None:
+            raise RuntimeError(
+                f"canonical subparser {_canonical!r} missing for alias {_alias!r}"
+            )
+        sub.add_parser(_alias, parents=[_cp], add_help=False,
+                       help="Alias for " + _canonical)
 
-    args = parser.parse_args()
+    try:
+        args = parser.parse_args()
+    except KeyboardInterrupt:
+        print("\nInterrupted.", file=sys.stderr)
+        sys.exit(130)
     if not args.command:
         parser.print_help()
         sys.exit(1)

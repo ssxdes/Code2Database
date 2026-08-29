@@ -711,6 +711,13 @@ class Daemon:
         last_breaker_trip = 0.0
         while not self._stop:
             now = time.time()
+            # Check paused state — skip all processing while paused
+            if self.state.paused:
+                if self.state.status != STATUS_PAUSED:
+                    self.state.status = STATUS_PAUSED
+                    self._write_state()
+                time.sleep(1.0)
+                continue
             # F9: periodically check watched foreign C2D db mtimes
             if now - getattr(self, '_last_foreign_check', 0) > 60.0:
                 self._last_foreign_check = now

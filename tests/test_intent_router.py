@@ -53,7 +53,7 @@ class TestClassifyIntent(unittest.TestCase):
         """'call chain from foo to bar' routes to call-chain with from/to."""
         result = classify_intent("call chain from foo to bar")
         self.assertIsNotNone(result)
-        self.assertEqual(result["command"], "call-chain")
+        self.assertEqual(result["command"], "path")
         self.assertEqual(result["args"]["from"], "foo")
         self.assertEqual(result["args"]["to"], "bar")
 
@@ -73,10 +73,10 @@ class TestClassifyIntent(unittest.TestCase):
         self.assertEqual(result["args"]["node"], "my_func")
 
     def test_race_condition(self):
-        """'race condition' routes to race-detect."""
+        """'race condition' routes to detect-races."""
         result = classify_intent("show me race conditions in the code")
         self.assertIsNotNone(result)
-        self.assertEqual(result["command"], "race-detect")
+        self.assertEqual(result["command"], "detect-races")
 
     def test_find_invariants(self):
         """'invariants for my_function' routes to find-invariants."""

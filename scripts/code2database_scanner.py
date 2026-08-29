@@ -273,11 +273,18 @@ def _proc_scan_one(item):
                                  macro_bindings=macro_bindings)
     except RecursionError:
         sys.setrecursionlimit(_old_limit)
+        print(f"[scan] RecursionError scanning {fpath} — skipping "
+              f"(file may be too deeply nested)", file=sys.stderr)
         return None
     except MemoryError:
         sys.setrecursionlimit(_old_limit)
+        print(f"[scan] MemoryError scanning {fpath} — skipping "
+              f"(file may be too large for available memory)", file=sys.stderr)
         return None
-    except Exception:
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).error(
+            "scan error on %s: %s", fpath, exc, exc_info=True)
         return None
 
 

@@ -119,7 +119,11 @@ def map_files_processpool(
                 i = active.pop(fut)
                 try:
                     results[i] = fut.result()
-                except Exception:
+                except Exception as exc:
+                    import logging
+                    logging.getLogger(__name__).error(
+                        "map_nodes worker failed for item %s: %s", i, exc,
+                        exc_info=True)
                     results[i] = None
     return results
 
@@ -321,7 +325,11 @@ def map_nodes(
                 i = active.pop(fut)
                 try:
                     results[i] = fut.result()
-                except Exception:
+                except Exception as exc:
+                    import logging
+                    logging.getLogger(__name__).error(
+                        "map_files_processpool worker failed for item %s: %s",
+                        i, exc, exc_info=True)
                     results[i] = None
     return results
 

@@ -883,11 +883,28 @@ def cmd_explore_flow(args):
     # for precise symbol names like "bdev_register").
     exact_match = None
     query_lower = query.strip().lower()
-    for nid, nd in G.nodes(data=True):
-        name = (nd.get("name") or "").lower()
-        if name == query_lower:
-            exact_match = nid
-            break
+    # Use SQL index for LazySQLiteGraph (O(log N) instead of O(N) scan)
+    cls_name = type(G).__name__
+    if cls_name == "LazySQLiteGraph":
+        conn = getattr(G, "_conn", None)
+        if conn is not None:
+            row = conn.execute(
+                "SELECT id FROM functions WHERE lower(name) = ? LIMIT 1",
+                (query_lower,)).fetchone()
+            if row:
+                exact_match = row[0]
+        else:
+            for nid, nd in G.nodes(data=True):
+                name = (nd.get("name") or "").lower()
+                if name == query_lower:
+                    exact_match = nid
+                    break
+    else:
+        for nid, nd in G.nodes(data=True):
+            name = (nd.get("name") or "").lower()
+            if name == query_lower:
+                exact_match = nid
+                break
     if exact_match:
         # Return the exact match + its 2-hop neighborhood
         from collections import deque

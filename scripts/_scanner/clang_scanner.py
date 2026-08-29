@@ -78,13 +78,30 @@ _AST_NODE_MASK = 0x7FFF_FFFF_FFFF_FFFF
 # Creating a new Index per scan_file is wasteful — the Index is a
 # long-lived object that manages translation-unit caching internally.
 _clang_index = None
+# Guard: set to True after fork() to prevent children from reusing the
+# parent's libclang Index (C-level resource, not fork-safe via COW).
+# Set to False in the parent before fork; children check this flag
+# and create their own Index instead of reusing the inherited one.
+_clang_index_forked = False
 
 
 def _get_clang_index():
-    """Return the process-level libclang Index singleton."""
-    global _clang_index
-    if _clang_index is None:
-        _clang_index = _ci.Index.create()
+    """Get or create the libclang Index singleton.
+
+    After fork(), the inherited _clang_index points to the parent's
+    C-level libclang state. Reusing it in a child process is undefined
+    behavior (potential crashes, corrupt TUs). Children MUST create
+    their own Index. The _clang_index_forked flag is set to True by
+    the scanner's ProcessPool initializer to force re-creation.
+    """
+    global _clang_index, _clang_index_forked
+    if _clang_index is not None and not _clang_index_forked:
+        return _clang_index
+    if _clang_index is not None and _clang_index_forked:
+        # Forked child — discard inherited Index, create fresh one
+        _clang_index = None
+        _clang_index_forked = False
+    _clang_index = _ci.Index.create()
     return _clang_index
 
 

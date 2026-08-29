@@ -204,12 +204,19 @@ def _proc_get_scanner(file_lang):
     Mirrors the in-process _get_scanner() closure but reads configuration
     from the module-level _PROC_SCAN_CONFIG dict. Each forked child has
     its own _PROC_TLS so tree-sitter parsers are never shared between
-    processes.
+    processes. Also sets _clang_index_forked=True to force clang scanner
+    to create its own libclang Index (fork-unsafe via COW).
     """
     global _PROC_TLS
     if _PROC_TLS is None:
         import threading
         _PROC_TLS = threading.local()
+        # Force clang scanner to create a fresh Index in this forked child
+        try:
+            import _scanner.clang_scanner as _cs
+            _cs._clang_index_forked = True
+        except (ImportError, AttributeError):
+            pass
     if not hasattr(_PROC_TLS, 'scanners'):
         _PROC_TLS.scanners = {}
     if file_lang not in _PROC_TLS.scanners:

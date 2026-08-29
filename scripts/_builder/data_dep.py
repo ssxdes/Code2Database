@@ -28,11 +28,14 @@ import os
 import sys
 from collections import defaultdict, deque
 from typing import List, Dict, Set
+import logging
 
 
 # ---------------------------------------------------------------------------
 # Build data-dependency edges from existing globals_read/written, fields_read/written
 # ---------------------------------------------------------------------------
+
+_log = logging.getLogger(__name__)
 
 def build_data_dep_edges(G) -> Dict:
     """Build data-dependency edges and a global/field node registry.
@@ -474,7 +477,7 @@ def cmd_data_dep(args):
     from _builder.utils import _find_node_id
     node_id = _find_node_id(G, node)
     if not node_id:
-        print(f"Node not found: {node}", file=sys.stderr)
+        _log.error("Node not found: %s", node)
         sys.exit(1)
 
     if getattr(args, "forward", False):

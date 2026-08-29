@@ -159,34 +159,61 @@ file is a topic; each `##` heading in a file is a sub-topic. The
 - Knowledge files containing only template comments (`FILL IN`, `LLM_FILL`)
 - Doc-code alignment mismatches (semantic_desc vs body_text/signature)
 
+## Unified KB Query (Phase 1-3 Upgrade)
+
+The memory and knowledge stores were originally searched independently
+(Jaccard / substring match). Phase 1-3 introduces a unified FTS5+BM25
+query surface, `kb-query`:
+
+- `kb-rebuild-index` indexes `memory/*.json` + `knowledge/*.md` into
+  the `kb_paragraphs` table + FTS5 virtual table in `code2database.db`
+- `kb-query --query "..."` runs a unified query across both stores,
+  returning ranked results with a BM25 score and a `source_kind`
+  (memory / knowledge)
+- The `query` (Cypher) command auto-injects the top 3 kb hits into
+  the result's `_hints` field
+- `describe-node` returns the node's `memory_refs` and `knowledge_refs`
+- The MCP tool `code2database_kb_query` is exposed to LLM agents
+
 ## Integration with queries
 
 The query priority chain is **aspirational** — `cmd_query` currently
 queries only the graph + cgdb tables. To consult memory/knowledge, the
 agent must explicitly call `search-memory` / `knowledge-query` (or
 their MCP equivalents `code2database_memory_search` /
-`code2database_knowledge_query`). Future `kb-query` (planned) will
-unify the three stores into one FTS5-indexed query surface.
+`code2database_knowledge_query`), or use the new unified `kb-query`
+command.
 
 ```
 context_pack_micro → context_pack_lite → explore-flow
-  → (manual) knowledge-query → (manual) search-memory → describe-node
+  → (manual) knowledge-query / kb-query → (manual) search-memory / kb-query → describe-node
 ```
 
 `memory_pack_lite.json` and `knowledge_pack_lite.json` are generated
 by `manage-memory --action pack` and `extract-knowledge` respectively;
 they sit alongside `context_pack_lite.json` for the agent to consult.
+Since Phase 3, `_build_context_pack` merges these two packs into the
+`memory_summary` + `knowledge_summary` fields of the context pack.
 
 ## Programmatic access
 
 ```python
 from _builder.memory_manager import MemoryManager
 from _builder.knowledge_manager import KnowledgeManager
+from _builder.kb_index import query_kb, rebuild_kb_index
 
+# Rebuild the unified FTS5 index (run after build/update)
+rebuild_kb_index("/path/to/code2db-out")
+
+# Unified query (across memory + knowledge)
+results = query_kb("/path/to/code2db-out", "bdev register", top_n=10)
+
+# Single-store memory
 mem = MemoryManager(graph_dir="/path/to/code2db-out")
 mem.add(question="...", answer="...", tags=["bdev"], node_ids=["bdev_register"])
 results = mem.query("bdev register")
 
+# Single-store knowledge
 know = KnowledgeManager(graph_dir="/path/to/code2db-out")
 know.query_knowledge("error_handling", max_tokens=500)
 ```

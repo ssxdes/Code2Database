@@ -73,7 +73,7 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 > **命名澄清（v4+）**：下方 cgdb 层命名（CGDB-L0 至 CGDB-L11 + FTS）**与**设计报告 `C代码数据库化方案-分析与执行报告.md` 中的 L1~L4 层**是不同概念**：
 > - **报告 L1**（无损重建层）：`tokens` / `macros` / `macro_invocations` / `pp_branches` / `pp_directives` / `pragmas` / `attributes` / `literals` / `string_literals` / `comments` —— schema v4 新增
 > - **报告 L2**（AST 层）：`symbols` / `ast_nodes` / `references` / `call_edges` / `includes` / `globals` / `types` / `modules` —— 部分由 `cgdb_nodes` / `cgdb_edges` / `cgdb_types` / `cgdb_includes` 覆盖
-> - **报告 L3**（IR 层）：`ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` —— schema v4 新增（LLVM Pass + SVF 集成属于 P1，见 `ir_adapters.py`）
+> - **报告 L3**（IR 层）：`ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` —— schema v4 新增（LLVM Pass + SVF 集成属于 P1，填充器尚未实现）
 > - **报告 L4**（派生层）：`call_graph_reachability` / `module_deps` / `function_embeddings` / `precise_write_sets` / `arch_metrics` / `history_snapshots` / `alignment_errors` —— schema v4 新增
 > - **报告多库**：`db_routing` / `precompute_tasks` —— schema v4 新增（路由层未实现，属 P1）
 > - **报告跨语言**：`cross_lang_bindings` / `type_mappings` / `ffi_call_sites` / `language_adapters` / `runtime_observations` / `dependencies` —— schema v4 新增
@@ -99,16 +99,16 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 | CGDB-L11 | `node_metadata` + `edge_metadata` | 按 target 的类型化键元数据 |
 | FTS | `nodes_fts` | 对 cgdb_nodes 的全文搜索（FTS5 external-content） |
 
-加上设计报告 v4 层（附加，当完整工具链安装时由 `ir_adapters.py` 和 `source_renderer.py` 填充）：
+加上设计报告 v4 层（附加，当完整工具链安装时由 `source_renderer.py` 填充）：
 
 | 报告层 | 表（v4） | 填充者 |
 |--------|----------|--------|
 | 报告 L1 | `tokens` / `macros` / `macro_invocations` / `pp_branches` / `pp_directives` / `pragmas` / `attributes` / `literals` / `string_literals` / `comments_freeform` + `comments_fts` | `l1_ingest.py`（P1，待实现）—— libclang Lexer raw_tokens + PPCallbacks 模拟 |
 | 报告 L2 | （由 cgdb_nodes/edges/types/includes 覆盖） | 现有扫描器 |
-| 报告 L3 | `ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` | `ir_adapters.py`（P1 —— LLVMIRAdapter/JimpleIRAdapter/等） |
+| 报告 L3 | `ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` | （P1，待实现 —— IR 适配器尚未实现） |
 | 报告 L4 | `call_graph_reachability` / `module_deps` / `function_embeddings` / `precise_write_sets` / `arch_metrics` / `history_snapshots` / `alignment_errors` | `l4_derive.py`（P1，待实现）—— 预计算任务 |
 | 报告多库 | `db_routing` / `precompute_tasks` | `db_router.py`（P1，待实现） |
-| 报告跨语言 | `cross_lang_bindings` / `type_mappings` / `ffi_call_sites` / `language_adapters` / `runtime_observations` / `dependencies` | `ffi_bridge.py`（现有）+ `ir_adapters.py` |
+| 报告跨语言 | `cross_lang_bindings` / `type_mappings` / `ffi_call_sites` / `language_adapters` / `runtime_observations` / `dependencies` | `ffi_bridge.py`（现有） |
 
 这些表由 clang 后端填充（遗留 cgdb 层）和 IR/L1/L4 流水线填充（报告层）。它们由 19 个 `cgdb_*` MCP 工具（遗留）+ 28 个设计报告 MCP 工具（`render_source` / `verify_consistency` / `edit_token` / `find_symbol` / `callers_of` / `indirect_targets` / `commit_db_transaction` / 等）查询。所有表共存于同一个 SQLite 数据库（`code2database.db`）。
 
@@ -194,7 +194,7 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 │        cgdb_sync.py, sqlite_store.py, sqlite_postprocess.py,        │
 │        memory_manager.py, knowledge_manager.py, semantics.py,       │
 │        auto_enhance.py, web_ui.py, bug_benchmark.py 等              │
-│  CLI：scripts/code2database_builder.py（214 个子命令）                │
+│  CLI：scripts/code2database_builder.py（222 个 CLI 命令）                │
 └──────────────────────────────┬───────────────────────────────────────┘
                                │
                                ▼  （可选）
@@ -387,7 +387,7 @@ Code2Database 在 `scripts/` 下组织成 5 个包，外加 CLI 入口层。总�
 
 ```
 scripts/
-├── code2database_builder.py      ← CLI 入口（214 个子命令，argparse 路由）
+├── code2database_builder.py      ← CLI 入口（222 个 CLI 命令，argparse 路由）
 ├── code2database_scanner.py      ← 扫描器 CLI 入口（8 个子命令）
 ├── setup.sh                      ← 依赖安装器（支持按语言安装）
 ├── requirements.txt              ← 锁定依赖
@@ -500,7 +500,6 @@ scripts/
 │   ├── update_cmd.py             ← update-node、update-edge、patch-profile（LLM 补充）
 │   ├── changelog_update.py       ← quick-update、export-changes、merge-changes、semantic-status
 │   ├── export.py                 ← HTML + Obsidian 导出
-│   ├── visualizer.py             ← 图可视化渲染
 │   ├── web_ui.py                 ← 单文件 HTML/SVG/JS 交互查看器；HTTP 服务器
 │   ├── bug_benchmark.py          ← GraphInvestigator vs GrepInvestigator 召回/精确
 │   ├── profile_health.py         ← 7 类 0-100 评分；演进建议；HEAD 绑定
@@ -538,7 +537,6 @@ scripts/
 │   ├── c2d_phase2.py              ← Composite query + check-compat + coverage-cross-c2d
 │   ├── c2d_phase3.py              ← Vendor stub + FFI auto-link + RPC scan + cross-team knowledge            ← KB 冲突检测（同 cluster 内矛盾词对）+ rollback + forget
 │   ├── lsp_server.py             ← LSP server（暴露 C2D 图给 IDE：definition/references/callHierarchy）
-│   ├── lsp_backend.py             ← LSP 提取后端（消费 gopls/rust-analyzer/clangd 作为扫描源）
 │   ├── validate.py               ← 图校验
 │   └── utils.py                  ← 共享构建器工具（_normalize_id、_resolve_invoked_id、
 │                                    _find_node_id、_parse_bindings、_load_globals、
@@ -669,7 +667,7 @@ ASM（.s .S .asm）用正则扫描——无需 tree-sitter 语法。
 
 | 组件 | 用途 |
 |------|------|
-| **pytest** | 测试运行器（55 个测试文件，~17K 行，覆盖扫描器/构建器/cgdb/守护进程/MCP/并发等） |
+| **pytest** | 测试运行器（87 个测试文件，覆盖扫描器/构建器/cgdb/守护进程/MCP/并发等） |
 | **evals/evals_en.json** + **evals_zh.json** | 端到端场景评测（多语言扫描 + 查询） |
 | **BUG benchmark** | `bug_benchmark.py`：GraphInvestigator vs GrepInvestigator 召回/精确/token 效率 |
 
@@ -832,7 +830,7 @@ Code2Database 当前能力，按类别组织：
 - 值流（DATA_FLOW 边）+ 跨函数数据依赖（DATA_DEP 边）
 
 ### 查询与分析
-- 214 个 CLI 子命令（3 个子 skill：核心 24、分析 13、运维 23 个 Tier-1）
+- 222 个 CLI 命令（3 个子 skill：核心 24、分析 13、运维 23 个 Tier-1）
 - 81 个 MCP (53 base + 28 design-report) 工具（34 code2database_* + 19 cgdb_*）
 - Cypher 子集查询语言（MATCH/WHERE/RETURN）
 - Z3 SMT 路径可行性（启发式回退）
@@ -860,6 +858,6 @@ Code2Database 当前能力，按类别组织：
 - Python skill，3 个子 skill（`/Code2Database`、`/Code2Database-analysis`、`/Code2Database-ops`）
 - 一键安装器（`install.sh`），支持 Claude Code / Cursor / Codex / OpenCode / Gemini
 - 按语言安装（`C2D_LANGUAGES` 环境变量或 `setup.sh --languages`）
-- 55 个测试文件，~17K 行（扫描器、构建器、cgdb、守护进程、MCP、并发、FFI 等）
+- 87 个测试文件（扫描器、构建器、cgdb、守护进程、MCP、并发、FFI 等）
 - 中英文端到端评测（`evals/evals_en.json`、`evals/evals_zh.json`）
 - 双语文档（`docs/en/`、`docs/zh/`）

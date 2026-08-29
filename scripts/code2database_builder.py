@@ -2453,6 +2453,30 @@ def main():
     p_ffiP = sub.add_parser("ffi-persist", help="Persist FFI edges into SQLite bridge tables")
     p_ffiP.add_argument("--graph", required=True)
 
+    # --- SKILL.md short aliases ---
+    # These must be registered as subparsers so argparse accepts them;
+    # the dispatch dict below already maps them to the same handlers.
+    # Each alias inherits ALL arguments from its canonical subparser via parents=[].
+    _SKILL_ALIASES = {
+        "describe": "describe-node",
+        "context": "describe-node",
+        "trace": "trace-chain",
+        "concurrency": "concurrency-risks",
+        "save": "save-memory",
+        "recall": "search-memory",
+        "know": "knowledge-query",
+        "flow": "value-flow",
+        "find": "find-invariants",
+        "health": "profile-health",
+        "daemon": "daemon-status",
+        "export": "export-mermaid",
+    }
+    for _alias, _canonical in _SKILL_ALIASES.items():
+        _cp = sub.choices.get(_canonical)
+        if _cp is not None:
+            sub.add_parser(_alias, parents=[_cp], add_help=False,
+                           help="Alias for " + _canonical)
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()

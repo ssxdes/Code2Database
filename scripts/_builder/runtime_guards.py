@@ -36,6 +36,7 @@ alongside the existing `solve_path_feasibility` and
 
 import re
 from typing import List, Dict, Any, Optional, Tuple
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +44,8 @@ from typing import List, Dict, Any, Optional, Tuple
 # ---------------------------------------------------------------------------
 
 # Match calls like bd_prepare_to_claim(bdev, holder, hops) — acquire
+_log = logging.getLogger(__name__)
+
 _ACQUIRE_RE = re.compile(
     r'\b(bd_prepare_to_claim|mutex_lock|mutex_lock_interruptible|'
     r'mutex_lock_killable|spin_lock|spin_lock_irq|spin_lock_irqsave|'
@@ -657,7 +660,7 @@ def cmd_runtime_guards(args):
     import sys
 
     if not getattr(args, "conditions", ""):
-        print("Specify --conditions", file=sys.stderr)
+        _log.error("Specify --conditions")
         sys.exit(1)
 
     conds = [c.strip() for c in args.conditions.split("|||") if c.strip()]

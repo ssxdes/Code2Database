@@ -1,4 +1,4 @@
-"""27 MCP tools implementing the report appendix B signatures.
+"""28 MCP tools implementing the report appendix B signatures.
 
 These tools are added on top of the existing 53 tools (34 code2database_*
 + 19 cgdb_*) in mcp_server.py. They implement the report

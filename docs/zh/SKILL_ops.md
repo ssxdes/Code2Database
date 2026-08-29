@@ -1,6 +1,6 @@
 ---
 name: Code2Database-ops
-description: "Code2Database 运维子技能。当用户询问安全图谱编辑（事务、快照、WAL 重放）、保持图谱新鲜（守护进程控制、文件监视、git hook 安装、patch-from-diff、patch-from-git、sync、merge）、profile 健康度与演化、文档-代码对齐与陈旧文档标记、图谱版本、持久记忆管理、导出（HTML、Obsidian、Web UI）、插件、embeddings（实验性）或 BUG 基准测试时激活。提供分层路由：Quick Reference 显示 30 个 Tier-1 高权重命令，路由表按问题类型映射到中权重命令组，按需部分仅列出低权重实验性命令名。数据库写入约束：LLM 在任何修改数据库的命令前必须获得用户确认（update-node、update-edge、patch-profile、apply-semantics、apply-invariants、auto-enhance、profile-evolve --apply、doc-mark-stale、ffi-types、merge-changes、tx-commit）。当 /Code2Database 检测到运维问题并显式移交，或用户输入 /Code2Database-ops 时使用。不适用于：查询图谱（用父 /Code2Database）；不适用于深度语义分析（用 /Code2Database-analysis）。"
+description: "Code2Database 运维子技能。当用户询问安全图谱编辑（事务、快照、WAL 重放）、保持图谱新鲜（守护进程控制、文件监视、git hook 安装、patch-from-diff、patch-from-git、sync、merge）、profile 健康度与演化、文档-代码对齐与陈旧文档标记、图谱版本、持久记忆管理、导出（HTML、Obsidian、Web UI）、插件、embeddings（实验性）或 BUG 基准测试时激活。提供分层路由：Quick Reference 显示 23 个 Tier-1 高权重命令，路由表按问题类型映射到中权重命令组，按需部分仅列出低权重实验性命令名。数据库写入约束：LLM 在任何修改数据库的命令前必须获得用户确认（update-node、update-edge、patch-profile、apply-semantics、apply-invariants、auto-enhance、profile-evolve --apply、doc-mark-stale、ffi-types、merge-changes、tx-commit）。当 /Code2Database 检测到运维问题并显式移交，或用户输入 /Code2Database-ops 时使用。不适用于：查询图谱（用父 /Code2Database）；不适用于深度语义分析（用 /Code2Database-analysis）。"
 trigger: /Code2Database-ops
 parent_skill: Code2Database
 ---

@@ -32,7 +32,10 @@ Usage:
 import os
 import sys
 from typing import Optional, List, Dict
+import logging
 
+
+_log = logging.getLogger(__name__)
 
 def _db_path_for(graph_dir: str) -> str:
     return os.path.join(graph_dir, "code2database.db")
@@ -109,7 +112,7 @@ def route_invokers(graph_dir: str, invoked_id: str, limit: int = 200) -> Optiona
     try:
         return store.query_invokers_sql(invoked_id, limit)
     except Exception as exc:
-        print(f"[query_router] invokers SQL failed, falling back: {exc}", file=sys.stderr)
+        _log.warning("invokers SQL failed, falling back: %s", exc)
         return None
     finally:
         store.close()
@@ -123,7 +126,7 @@ def route_invoked(graph_dir: str, invoker_id: str, limit: int = 500) -> Optional
     try:
         return store.query_invoked_sql(invoker_id, limit)
     except Exception as exc:
-        print(f"[query_router] invoked SQL failed, falling back: {exc}", file=sys.stderr)
+        _log.warning("invoked SQL failed, falling back: %s", exc)
         return None
     finally:
         store.close()
@@ -147,7 +150,7 @@ def route_function_by_id(graph_dir: str, func_id: str) -> Optional[Dict]:
     try:
         return store.query_function_by_id_sql(func_id)
     except Exception as exc:
-        print(f"[query_router] function-by-id SQL failed: {exc}", file=sys.stderr)
+        _log.warning("function-by-id SQL failed: %s", exc)
         return None
     finally:
         store.close()
@@ -162,7 +165,7 @@ def route_functions_by_name(graph_dir: str, name_pattern: str,
     try:
         return store.query_functions_by_name_sql(name_pattern, limit)
     except Exception as exc:
-        print(f"[query_router] functions-by-name SQL failed: {exc}", file=sys.stderr)
+        _log.warning("functions-by-name SQL failed: %s", exc)
         return None
     finally:
         store.close()
@@ -176,7 +179,7 @@ def route_thread_processors(graph_dir: str, limit: int = 200) -> Optional[List[D
     try:
         return store.query_thread_processors_sql(limit)
     except Exception as exc:
-        print(f"[query_router] thread-processors SQL failed: {exc}", file=sys.stderr)
+        _log.warning("thread-processors SQL failed: %s", exc)
         return None
     finally:
         store.close()
@@ -191,7 +194,7 @@ def route_change_log_by_node(graph_dir: str, node_id: str,
     try:
         return store.query_change_log_by_node(node_id, limit)
     except Exception as exc:
-        print(f"[query_router] change-log SQL failed: {exc}", file=sys.stderr)
+        _log.warning("change-log SQL failed: %s", exc)
         return None
     finally:
         store.close()
@@ -273,7 +276,7 @@ def route_path_between(graph_dir: str, from_id: str, to_id: str,
     try:
         return store.query_path_between_cte(from_id, to_id, max_depth)
     except Exception as exc:
-        print(f"[query_router] path-between CTE failed: {exc}", file=sys.stderr)
+        _log.warning("path-between CTE failed: %s", exc)
         return None
     finally:
         store.close()

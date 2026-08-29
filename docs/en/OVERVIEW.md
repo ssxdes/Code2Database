@@ -73,7 +73,7 @@ Each tier provides progressively more detail at higher token cost. The agent sta
 > **Naming clarification (v4+)**: The cgdb layer names below (CGDB-L0 through CGDB-L11 + FTS) are **different from** the design-report L1~L4 layers (`C代码数据库化方案-分析与执行报告.md`):
 > - **Report-L1** (无损重建层 / lossless reconstruction): `tokens` / `macros` / `macro_invocations` / `pp_branches` / `pp_directives` / `pragmas` / `attributes` / `literals` / `string_literals` / `comments` — added in schema v4
 > - **Report-L2** (AST 层): `symbols` / `ast_nodes` / `references` / `call_edges` / `includes` / `globals` / `types` / `modules` — partially covered by `cgdb_nodes` / `cgdb_edges` / `cgdb_types` / `cgdb_includes`
-> - **Report-L3** (IR 层): `ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` — added in schema v4 (LLVM Pass + SVF integration is P1, see `ir_adapters.py`)
+> - **Report-L3** (IR 层): `ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` — added in schema v4 (LLVM Pass + SVF integration is P1, populator not yet implemented)
 > - **Report-L4** (派生层 / derived): `call_graph_reachability` / `module_deps` / `function_embeddings` / `precise_write_sets` / `arch_metrics` / `history_snapshots` / `alignment_errors` — added in schema v4
 > - **Report-多库** (multi-DB routing): `db_routing` / `precompute_tasks` — added in schema v4 (router not yet implemented)
 > - **Report-跨语言** (cross-language bridge): `cross_lang_bindings` / `type_mappings` / `ffi_call_sites` / `language_adapters` / `runtime_observations` / `dependencies` — added in schema v4
@@ -99,16 +99,16 @@ The legacy graph (`functions` + `edges` tables) answers "who calls whom." The cg
 | CGDB-L11 | `node_metadata` + `edge_metadata` | Typed-key metadata per target |
 | FTS | `nodes_fts` | Full-text search over cgdb_nodes (FTS5 external-content) |
 
-Plus the design-report v4 layers (additive, populated by `ir_adapters.py` and `source_renderer.py` when full toolchain is installed):
+Plus the design-report v4 layers (additive, populated by `source_renderer.py` when full toolchain is installed):
 
 | Report-Layer | Tables (v4) | Populated by |
 |--------------|-------------|--------------|
 | Report-L1 | `tokens` / `macros` / `macro_invocations` / `pp_branches` / `pp_directives` / `pragmas` / `attributes` / `literals` / `string_literals` / `comments_freeform` + `comments_fts` | `l1_ingest.py` (P1, pending) — libclang Lexer raw_tokens + PPCallbacks simulation |
 | Report-L2 | (covered by cgdb_nodes/edges/types/includes) | existing scanners |
-| Report-L3 | `ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` | `ir_adapters.py` (P1 — LLVMIRAdapter/JimpleIRAdapter/etc.) |
+| Report-L3 | `ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` | (P1, pending — IR adapter not yet implemented) |
 | Report-L4 | `call_graph_reachability` / `module_deps` / `function_embeddings` / `precise_write_sets` / `arch_metrics` / `history_snapshots` / `alignment_errors` | `l4_derive.py` (P1, pending) — precompute tasks |
 | Report-多库 | `db_routing` / `precompute_tasks` | `db_router.py` (P1, pending) |
-| Report-跨语言 | `cross_lang_bindings` / `type_mappings` / `ffi_call_sites` / `language_adapters` / `runtime_observations` / `dependencies` | `ffi_bridge.py` (existing) + `ir_adapters.py` |
+| Report-跨语言 | `cross_lang_bindings` / `type_mappings` / `ffi_call_sites` / `language_adapters` / `runtime_observations` / `dependencies` | `ffi_bridge.py` (existing) |
 
 These tables are populated by the clang backend (for legacy cgdb layers) and the IR/L1/L4 pipelines (for report layers). They are queried by 19 `cgdb_*` MCP tools (legacy) plus 28 design-report MCP tools (`render_source` / `verify_consistency` / `edit_token` / `find_symbol` / `callers_of` / `indirect_targets` / `commit_db_transaction` / etc.). All tables coexist in the same SQLite database (`code2database.db`).
 
@@ -196,7 +196,7 @@ The daemon coordinates with manual updates via `pause`/`resume` socket commands 
 │         cgdb_sync.py, sqlite_store.py, sqlite_postprocess.py,       │
 │         memory_manager.py, knowledge_manager.py, semantics.py,      │
 │         auto_enhance.py, web_ui.py, bug_benchmark.py, etc.          │
-│  CLI: scripts/code2database_builder.py (214 subcommands)             │
+│  CLI: scripts/code2database_builder.py (222 CLI commands)             │
 └──────────────────────────────┬───────────────────────────────────────┘
                                │
                                ▼  (optional)
@@ -389,7 +389,7 @@ Code2Database is organized into 5 packages under `scripts/`, plus a CLI entry la
 
 ```
 scripts/
-├── code2database_builder.py      ← CLI entry point (214 subcommands, argparse routing)
+├── code2database_builder.py      ← CLI entry point (222 CLI commands, argparse routing)
 ├── code2database_scanner.py      ← Scanner CLI entry point (8 subcommands)
 ├── setup.sh                      ← Dependency installer (per-language option)
 ├── requirements.txt              ← Pinned dependencies
@@ -505,7 +505,6 @@ scripts/
 │   ├── update_cmd.py             ← update-node, update-edge, patch-profile (LLM supplements)
 │   ├── changelog_update.py       ← quick-update, export-changes, merge-changes, semantic-status
 │   ├── export.py                 ← HTML + Obsidian export
-│   ├── visualizer.py             ← Graph visualization rendering
 │   ├── web_ui.py                 ← Single-file HTML/SVG/JS interactive viewer; HTTP server
 │   ├── bug_benchmark.py          ← GraphInvestigator vs GrepInvestigator recall/precision
 │   ├── profile_health.py         ← 7-category 0-100 score; evolution suggestions; HEAD binding
@@ -543,7 +542,6 @@ scripts/
 │   ├── c2d_phase2.py              ← Composite query + check-compat + coverage-cross-c2d
 │   ├── c2d_phase3.py              ← Vendor stub + FFI auto-link + RPC scan + cross-team knowledge            ← KB conflict detection (within-cluster contradiction pairs) + rollback + forget
 │   ├── lsp_server.py             ← LSP server (expose C2D graph to IDEs: definition/references/callHierarchy)
-│   ├── lsp_backend.py             ← LSP extraction backend (consume gopls/rust-analyzer/clangd as scan source)
 │   ├── validate.py               ← Graph validation
 │   └── utils.py                  ← Shared builder utilities (_normalize_id, _resolve_invoked_id,
 │                                    _find_node_id, _parse_bindings, _load_globals,
@@ -641,7 +639,7 @@ ASM (.s .S .asm) uses regex-based scanning — no tree-sitter grammar needed.
 
 | Component | Purpose |
 |-----------|---------|
-| **MCP (Model Context Protocol) stdio transport** | `serve` command exposes 81 tools (34 `code2database_*` + 19 `cgdb_*`) over JSON-RPC with Content-Length framing |
+| **MCP (Model Context Protocol) stdio transport** | `serve` command exposes 81 tools (34 `code2database_*` + 19 `cgdb_*` + 28 design-report) over JSON-RPC with Content-Length framing |
 | **Tiered context packs** | micro (~200 tokens) → lite (~500) → standard (~1500) → full — minimizes LLM token cost |
 | **Lazy module imports** | `_builder/__init__.py` delays module load until first access, reducing startup time |
 
@@ -674,7 +672,7 @@ Used for `#ifdef` macro resolution and conditional compilation path feasibility.
 
 | Component | Purpose |
 |-----------|---------|
-| **pytest** | Test runner (55 test files, ~17K lines, covering scanner/builder/cgdb/daemon/MCP/concurrency/etc.) |
+| **pytest** | Test runner (87 test files, covering scanner/builder/cgdb/daemon/MCP/concurrency/etc.) |
 | **evals/evals_en.json** + **evals_zh.json** | End-to-end scenario evals (multi-language scan + query) |
 | **BUG benchmark** | `bug_benchmark.py`: GraphInvestigator vs GrepInvestigator recall/precision/token efficiency |
 
@@ -837,7 +835,7 @@ Code2Database's current capabilities, organized by category:
 - Value flow (DATA_FLOW edges) + cross-function data dependency (DATA_DEP edges)
 
 ### Query & Analysis
-- 214 CLI subcommands (3 sub-skills: core 24, analysis 13, ops 23 Tier-1)
+- 222 CLI commands (3 sub-skills: core 24, analysis 13, ops 23 Tier-1)
 - 81 MCP tools (53 base + 28 design-report) (34 code2database_* + 19 cgdb_*)
 - Cypher-subset query language (MATCH/WHERE/RETURN)
 - Z3 SMT path feasibility (heuristic fallback)
@@ -865,6 +863,6 @@ Code2Database's current capabilities, organized by category:
 - Python skill with 3 sub-skills (`/Code2Database`, `/Code2Database-analysis`, `/Code2Database-ops`)
 - One-click installer (`install.sh`) for Claude Code / Cursor / Codex / OpenCode / Gemini
 - Per-language install (`C2D_LANGUAGES` env var or `setup.sh --languages`)
-- 55 test files, ~17K lines (scanner, builder, cgdb, daemon, MCP, concurrency, FFI, etc.)
+- 87 test files (scanner, builder, cgdb, daemon, MCP, concurrency, FFI, etc.)
 - End-to-end evals in English and Chinese (`evals/evals_en.json`, `evals/evals_zh.json`)
 - Bilingual documentation (`docs/en/`, `docs/zh/`)

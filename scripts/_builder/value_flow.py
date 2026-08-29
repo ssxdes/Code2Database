@@ -36,6 +36,7 @@ _ASGN_RE_CACHE = {}
 import sys
 from collections import deque
 from typing import Optional, List, Dict, Any, Set, Tuple
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +44,8 @@ from typing import Optional, List, Dict, Any, Set, Tuple
 # ---------------------------------------------------------------------------
 
 # Match `return EXPR;` capturing the EXPR (handles nested parens up to depth 4)
+_log = logging.getLogger(__name__)
+
 _RETURN_RE = re.compile(
     r'\breturn\s+([^;{]+?);',
     re.MULTILINE
@@ -664,7 +667,7 @@ def cmd_value_flow(args):
         from _builder.utils import _find_node_id
         node_id = _find_node_id(G, node)
         if not node_id:
-            print(f"Node not found: {node}", file=sys.stderr)
+            _log.error("Node not found: %s", node)
             sys.exit(1)
         result = reverse_value_trace(G, node_id, pattern,
                                      getattr(args, "max_depth", 10))
@@ -677,7 +680,7 @@ def cmd_value_flow(args):
         from _builder.utils import _find_node_id
         node_id = _find_node_id(G, node)
         if not node_id:
-            print(f"Node not found: {node}", file=sys.stderr)
+            _log.error("Node not found: %s", node)
             sys.exit(1)
         result = forward_taint_trace(G, node_id, pattern,
                                      getattr(args, "max_depth", 10))
@@ -691,7 +694,7 @@ def cmd_value_flow(args):
         from _builder.utils import _find_node_id
         node_id = _find_node_id(G, node)
         if not node_id:
-            print(f"Node not found: {node}", file=sys.stderr)
+            _log.error("Node not found: %s", node)
             sys.exit(1)
         result = interprocedural_value_flow(
             G, node_id, pattern,

@@ -5,6 +5,46 @@ All notable changes to Code2Database will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-08-29
+
+### Deep Audit Round 2 — Architecture, Doc Sync, CLI Aliases, Dead Code
+
+**P0 Critical Bug Fix:**
+- Fix 12 SKILL.md CLI aliases (`describe`, `trace`, `find`, `flow`, `concurrency`, `context`, `save`, `recall`, `know`, `health`, `daemon`, `export`) not registered as argparse subparsers — running them produced "invalid choice" error. Registered each as a subparser inheriting all arguments from its canonical form via `parents=[canonical_parser]`.
+
+**Documentation Sync Fixes:**
+- Fix `skill.json` `mcp_tools_count` 53→81 and add `design_report: 28` to `mcp_tools_breakdown`
+- Fix `server.json` description to include "+ 28 design-report" (was 34+19=53, not 81)
+- Fix `mcp_report_tools.py` docstring 27→28 (actual tool count)
+- Fix `skill.json` `tier_1_commands` (27→24, matching SKILL.md Core Commands table)
+- Fix `skill_analysis.json` `tier_1_commands` (6→13, matching SKILL_analysis.md table)
+- Fix `skill_ops.json` `tier_1_commands` (11→23, matching SKILL_ops.md table)
+- Fix `skill_analysis.json` `cgdb_mcp_tools` array (18→19, add missing `cgdb_get_source`)
+- Fix `skill.json` `commands` array (123→222, now lists all subparsers)
+- Fix `skill.json` `core_commands` (27→24)
+- Fix `CHANGELOG.md` line 247 "27 core" → "24 core"
+- Fix `docs/en/SKILL_ops.md` description "30 Tier-1" → "23 Tier-1"
+- Fix `docs/zh/SKILL_ops.md` description "30 个 Tier-1" → "23 个 Tier-1"
+- Fix `install.sh` line 781 "50 tools (31+19)" → "81 tools (34+19+28)"
+- Fix `docs/en/OVERVIEW.md` + `docs/zh/OVERVIEW.md`: remove references to deleted modules (`ir_adapters.py`, `lsp_backend.py`, `visualizer.py`), fix stale counts (214→222 subcommands, 55→87 test files, MCP 81=34+19→81=34+19+28)
+
+**check_docs_sync.py Fix:**
+- Change non-recursive `glob("*.md")` to recursive `rglob("*.md")` — previously skipped entire `references/` subdirectory (13 files × 2 languages). Now checks all 20 files (was 6).
+- Fix `docs/zh/references/manifest_schema.md` — add missing "示例 manifest" section + JSON code block (was 9 headings/6 code blocks, now 10/8 matching EN)
+- Fix `docs/en/references/memory_knowledge.md` — add missing "Unified KB Query (Phase 1-3 Upgrade)" section, update "Future (planned)" → implemented, add `kb_index` API examples (now matches ZH)
+
+**Dead Code Removal:**
+- Remove `scripts/_builder/ir_adapters.py` (818 lines) — stub framework, never imported/wired
+- Remove `scripts/_builder/lsp_backend.py` (182 lines) — unfinished extraction backend, never imported
+- Remove `scripts/_builder/visualizer.py` (272 lines) — superseded by `export.py` + `export_mermaid.py` + `web_ui.py`
+- Remove `generate.py` (root, 2 bytes) — dead placeholder file
+
+**Logging Migration:**
+- Migrate 25 `print(..., file=sys.stderr)` → `logging` calls across 8 modules that had zero logging: `web_ui.py` (5), `value_flow.py` (3), `data_dep.py` (1), `invariants.py` (5), `explain.py` (1), `memory_cmd.py` (2), `query_router.py` (7), `runtime_guards.py` (1)
+
+**Test Coverage:**
+- Add `TestCLIAliasesRegistered` class with 2 tests verifying 12 aliases appear in `--help` and inherit identical arguments from canonical subparsers
+
 ## [Unreleased] - 2026-08-28
 
 ### Deep Audit — Code Quality, Performance, Test Coverage, Doc Sync
@@ -244,7 +284,7 @@ memory + knowledge + global stores. 13 new kb-* CLI commands, 1 new MCP tool,
 
 ### Doc sync
 - 16 `.md` / `.json` files updated for new counts (53 MCP tools /
-  34 code2database_* / 222 CLI commands / 27 core).
+  34 code2database_* / 222 CLI commands / 24 core).
 - `docs/en/references/memory_knowledge.md` and `docs/zh/references/memory_knowledge.md`
   rewritten to match actual code schema (removed fictional `mem_xxx` /
   `topic` / `fact` / `source` / `confidence` / `related_functions` /

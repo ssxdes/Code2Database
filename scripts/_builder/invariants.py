@@ -58,6 +58,7 @@ from collections import defaultdict
 from typing import Optional, List, Dict, Set, Tuple
 
 from _builder.line_utils import build_line_starts, line_for_offset
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +67,8 @@ from _builder.line_utils import build_line_starts, line_for_offset
 
 # Pattern: function entry guard `if (param == NULL) return -EINVAL;`
 # Common precondition patterns at function start.
+_log = logging.getLogger(__name__)
+
 _PRECOND_PATTERNS = [
     # NULL checks on parameters
     (re.compile(
@@ -562,7 +565,7 @@ def cmd_extract_invariants(args):
         from _builder.utils import _find_node_id
         nid = _find_node_id(G, node_filter)
         if not nid:
-            print(f"Node not found: {node_filter}", file=sys.stderr)
+            _log.error("Node not found: %s", node_filter)
             sys.exit(1)
         inv = extract_invariants_for_node(G.nodes[nid])
         result = {"node_id": nid, "name": G.nodes[nid].get("name", ""), **inv}
@@ -589,7 +592,7 @@ def cmd_extract_invariants(args):
           f"{summary['total_loop_invariants']} loop invariants, "
           f"{summary['total_state_machines']} state machines",
           file=sys.stderr)
-    print(f"Wrote {out_path}", file=sys.stderr)
+    _log.info("Wrote %s", out_path)
 
     if getattr(args, "apply", False):
         attach_invariants_to_graph(G, invariants)
@@ -602,9 +605,9 @@ def cmd_extract_invariants(args):
                     master = json.load(_f)
                 source_root = master.get("source_root", "")
                 split_by_domain(G, graph_dir, source_root)
-                print("Applied invariants to graph", file=sys.stderr)
+                _log.info("Applied invariants to graph")
         except Exception as exc:
-            print(f"Apply failed: {exc}", file=sys.stderr)
+            _log.error("Apply failed: %s", exc)
 
 
 def cmd_find_invariants(args):
@@ -627,7 +630,7 @@ def cmd_find_invariants(args):
     if getattr(args, "state_machine", False):
         var = getattr(args, "var", "")
         if not var:
-            print("Error: --var required with --state-machine", file=sys.stderr)
+            _log.error("--var required with --state-machine")
             sys.exit(1)
         sm = find_state_machine_for_var(G, var)
         print(json.dumps(sm, ensure_ascii=False, indent=2, default=str))

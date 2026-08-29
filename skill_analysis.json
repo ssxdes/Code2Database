@@ -14,12 +14,19 @@
     "ASM"
   ],
   "tier_1_commands": [
-    "flow",
-    "concurrency",
-    "find",
-    "trace",
-    "impact",
-    "kb-query"
+    "concurrency-analyze",
+    "detect-races",
+    "lock-coverage",
+    "value-flow",
+    "param-flow",
+    "data-dep",
+    "field-access",
+    "path-feasible",
+    "blast-radius",
+    "find-invariants",
+    "ffi-trace",
+    "blame-node",
+    "query"
   ],
   "commands": [
     "concurrency-risks",
@@ -79,6 +86,7 @@
     "cgdb_find_invoked",
     "cgdb_get_definition",
     "cgdb_get_function_body",
+    "cgdb_get_source",
     "cgdb_get_struct_layout",
     "cgdb_find_type_definition",
     "cgdb_find_ops_impls",
@@ -152,6 +160,7 @@
       "cgdb_find_invoked",
       "cgdb_get_definition",
       "cgdb_get_function_body",
+      "cgdb_get_source",
       "cgdb_get_struct_layout",
       "cgdb_find_type_definition",
       "cgdb_find_ops_impls",
@@ -189,6 +198,6 @@
   "activation_model": "User explicitly invokes /Code2Database-analysis, OR /Code2Database core skill detects a deep-analysis question (concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb) and hands off with the phrase 'activate Code2Database-analysis sub-skill'.",
   "shared_resources": {
     "scripts": "scripts/ (shared with parent and ops sub-skill — single CLI)",
-    "mcp_server": "All 53 MCP tools (34 code2database_* + 19 cgdb_*) accessible regardless of sub-skill activation. MCP is separate from skill layer."
+    "mcp_server": "All 81 MCP tools (34 code2database_* + 19 cgdb_* + 28 design-report) accessible regardless of sub-skill activation. MCP is separate from skill layer."
   }
 }

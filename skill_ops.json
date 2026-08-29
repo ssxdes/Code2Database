@@ -16,15 +16,27 @@
   "tier_1_commands": [
     "tx-begin",
     "tx-commit",
-    "daemon",
-    "health",
-    "export",
+    "tx-rollback",
+    "tx-status",
+    "daemon-start",
+    "daemon-stop",
+    "daemon-wait-sync",
+    "profile-health",
+    "profile-evolve",
+    "profile-bind-version",
+    "doc-code-check",
+    "doc-mark-stale",
+    "update-node",
+    "update-edge",
+    "serve",
     "kb-rebuild-index",
+    "kb-cluster",
     "kb-audit",
+    "kb-known-unknowns",
     "kb-forget",
-    "build-multi",
-    "c2d-sync-foreign",
-    "composite-query"
+    "kb-rollback",
+    "kb-conflict",
+    "kb-global-add"
   ],
   "commands": [
     "tx-begin",
@@ -195,6 +207,6 @@
   "database_write_constraint": "LLM MUST get user confirmation before any DB-modifying command. See CLAUDE.md / SKILL.md Database Write Constraint section for the full list and required report-and-wait protocol.",
   "shared_resources": {
     "scripts": "scripts/ (shared with parent and analysis sub-skill — single CLI)",
-    "mcp_server": "All 53 MCP tools (34 code2database_* + 19 cgdb_*) accessible regardless of sub-skill activation. MCP is separate from skill layer."
+    "mcp_server": "All 81 MCP tools (34 code2database_* + 19 cgdb_* + 28 design-report) accessible regardless of sub-skill activation. MCP is separate from skill layer."
   }
 }

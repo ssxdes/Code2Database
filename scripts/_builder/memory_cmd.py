@@ -8,7 +8,10 @@ from pathlib import Path
 import networkx as nx
 from _builder.utils import _experience_dir, _extract_chain_node_ids, _memory_dir, _similarity_score, _simple_tokenize
 from _builder.graph_build import _load_full_graph
+import logging
 
+
+_log = logging.getLogger(__name__)
 
 def _sanitize_memory_index(index, path_for_warn: str = ""):
     """Sanitize a memory index dict loaded from JSON.
@@ -242,7 +245,7 @@ def cmd_search_memory(args):
 
     index_path = os.path.join(mem_dir, "index.json")
     if not os.path.exists(index_path):
-        print("No memory entries found.", file=sys.stderr)
+        _log.info("No memory entries found.")
         sys.exit(0)
 
     index = _sanitize_memory_index(
@@ -335,7 +338,7 @@ def cmd_validate_memory(args):
 
     index_path = os.path.join(mem_dir, "index.json")
     if not os.path.exists(index_path):
-        print("No memory entries to validate.", file=sys.stderr)
+        _log.info("No memory entries to validate.")
         return
 
     # Load current graph node set

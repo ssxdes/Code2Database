@@ -17,11 +17,14 @@ from typing import Dict
 
 from _builder.graph_build import _load_full_graph
 from _builder.utils import _find_node_id
+import logging
 
 
 # ---------------------------------------------------------------------------
 # Label explanation rules
 # ---------------------------------------------------------------------------
+
+_log = logging.getLogger(__name__)
 
 LABEL_EXPLANATIONS = {
     "API_entry": {
@@ -384,7 +387,7 @@ def cmd_explain_label(args):
     G = _load_full_graph(graph_dir)
     node_id = _find_node_id(G, node_hint)
     if not node_id:
-        print(f"Error: node matching {node_hint!r} not found", file=sys.stderr)
+        _log.error("Node matching %r not found", node_hint)
         sys.exit(1)
 
     result = explain_label(G, node_id, label)

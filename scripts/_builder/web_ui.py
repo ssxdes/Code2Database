@@ -44,11 +44,14 @@ import webbrowser
 from collections import defaultdict, deque
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Optional, List, Dict, Any, Set, Tuple
+import logging
 
 
 # ---------------------------------------------------------------------------
 # Graph cache — load once at server startup, refresh on demand
 # ---------------------------------------------------------------------------
+
+_log = logging.getLogger(__name__)
 
 class GraphCache:
     """In-memory cache of the loaded graph + indices.
@@ -1423,19 +1426,19 @@ def cmd_web_ui(args):
 
     if not os.path.exists(os.path.join(graph_dir, "code2database_master.json")) and \
        not os.path.exists(os.path.join(graph_dir, "code2database.db")):
-        print(f"Error: No invocation graph found at {graph_dir}", file=sys.stderr)
+        _log.error("No invocation graph found at %s", graph_dir)
         sys.exit(1)
 
     cache = GraphCache(graph_dir)
     handler_class = _make_handler_class(cache)
     server = HTTPServer(("0.0.0.0", port), handler_class)
-    print(f"Web UI: http://localhost:{port}", file=sys.stderr)
-    print(f"Graph: {cache.summary()}", file=sys.stderr)
-    print("Ctrl+C to stop", file=sys.stderr)
+    _log.info("Web UI: http://localhost:%s", port)
+    _log.info("Graph: %s", cache.summary())
+    _log.info("Ctrl+C to stop")
     if open_browser:
         threading.Timer(0.5, lambda: webbrowser.open(f"http://localhost:{port}")).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nStopping...", file=sys.stderr)
+        _log.info("Stopping...")
         server.shutdown()

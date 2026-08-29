@@ -130,27 +130,34 @@ def main():
     root_readme = docs_dir.parent / "README.md"
 
     all_diffs = []
-    en_files = sorted(p for p in en_dir.glob("*.md"))
+    # Recursive glob: check all .md files including references/ subdirectory.
+    en_files = sorted(p for p in en_dir.rglob("*.md"))
     for en_path in en_files:
-        zh_path = zh_dir / en_path.name
+        # Preserve relative subpath (e.g. references/foo.md) for pairing.
+        rel = en_path.relative_to(en_dir)
+        zh_path = zh_dir / rel
         diffs = compare_docs(en_path, zh_path)
         if diffs:
-            all_diffs.append((en_path.name, diffs))
+            all_diffs.append((str(rel), diffs))
 
     # Also check files only in zh/ (like README.md). If the EN counterpart is the
     # repo-root README.md, compare against that instead of flagging as missing.
-    zh_only_files = sorted(p for p in zh_dir.glob("*.md") if not (en_dir / p.name).exists())
+    zh_only_files = sorted(
+        p for p in zh_dir.rglob("*.md")
+        if not (en_dir / p.relative_to(zh_dir)).exists()
+    )
     for zh_path in zh_only_files:
-        en_alt = root_readme if zh_path.name == "README.md" and root_readme.exists() else None
+        rel = zh_path.relative_to(zh_dir)
+        en_alt = root_readme if rel == Path("README.md") and root_readme.exists() else None
         if en_alt is not None:
             diffs = compare_docs(en_alt, zh_path)
             if diffs:
-                all_diffs.append((zh_path.name, diffs))
+                all_diffs.append((str(rel), diffs))
         else:
-            all_diffs.append((zh_path.name, [f"  EN missing: {en_dir / zh_path.name}"]))
+            all_diffs.append((str(rel), [f"  EN missing: {en_dir / rel}"]))
 
     if not all_diffs:
-        print(f"OK: docs/en/ and docs/zh/ are in sync ({len(en_files)} files checked)")
+        print(f"OK: docs/en/ and docs/zh/ are in sync ({len(en_files) + len(zh_only_files)} files checked)")
         sys.exit(0)
 
     print(f"Found differences in {len(all_diffs)} file(s):")

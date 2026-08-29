@@ -151,5 +151,59 @@ class TestNoDBGracefulError(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
 
 
+class TestCLIAliasesRegistered(unittest.TestCase):
+    """Verify all 12 SKILL.md short aliases are registered as subparsers."""
+
+    SKILL_ALIASES = {
+        'describe': 'describe-node',
+        'context': 'describe-node',
+        'trace': 'trace-chain',
+        'concurrency': 'concurrency-risks',
+        'save': 'save-memory',
+        'recall': 'search-memory',
+        'know': 'knowledge-query',
+        'flow': 'value-flow',
+        'find': 'find-invariants',
+        'health': 'profile-health',
+        'daemon': 'daemon-status',
+        'export': 'export-mermaid',
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        proc = subprocess.run(
+            [sys.executable, os.path.join(SCRIPTS_DIR, 'code2database_builder.py'),
+             '--help'],
+            capture_output=True, text=True, timeout=30,
+        )
+        cls.help_output = proc.stdout
+
+    def test_all_aliases_in_help(self):
+        for alias in self.SKILL_ALIASES:
+            self.assertIn(alias, self.help_output,
+                          f'alias missing from --help: {alias}')
+
+    def test_alias_help_matches_canonical_args(self):
+        """Each alias --help should list the same arguments as its canonical form."""
+        for alias, canonical in self.SKILL_ALIASES.items():
+            alias_proc = subprocess.run(
+                [sys.executable, os.path.join(SCRIPTS_DIR, 'code2database_builder.py'),
+                 alias, '--help'],
+                capture_output=True, text=True, timeout=30,
+            )
+            canonical_proc = subprocess.run(
+                [sys.executable, os.path.join(SCRIPTS_DIR, 'code2database_builder.py'),
+                 canonical, '--help'],
+                capture_output=True, text=True, timeout=30,
+            )
+            # Extract argument lines (lines starting with --) from both
+            alias_args = sorted(l.strip() for l in alias_proc.stdout.splitlines()
+                                if l.strip().startswith('--'))
+            canonical_args = sorted(l.strip() for l in canonical_proc.stdout.splitlines()
+                                    if l.strip().startswith('--'))
+            self.assertEqual(alias_args, canonical_args,
+                             f'alias {alias} args differ from canonical {canonical}')
+
+
 if __name__ == '__main__':
     unittest.main()

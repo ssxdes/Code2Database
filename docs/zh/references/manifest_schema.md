@@ -88,3 +88,36 @@ python3 scripts/code2database_builder.py build-multi \
   [--force-rescan A,B] \
   [--no-clang]
 ```
+
+## 示例 manifest（A -> B -> C 依赖）
+
+```json
+{
+  "version": 1,
+  "projects": [
+    {
+      "name": "C",
+      "source": "/src/C",
+      "include_paths": ["/src/C/include"]
+    },
+    {
+      "name": "B",
+      "source": "/src/B",
+      "include_paths": ["/src/B/include"],
+      "depends_on": ["C"]
+    },
+    {
+      "name": "A",
+      "source": "/src/A",
+      "include_paths": ["/src/A/include", "/src/A/src"],
+      "compile_commands": "/src/A/build/compile_commands.json",
+      "macros": ["CONFIG_A=1"],
+      "depends_on": ["B", "C"]
+    }
+  ],
+  "output": "/tmp/joint_c2db-out",
+  "jobs": 8
+}
+```
+
+构建顺序（拓扑）：C → B → A。A、B、C 的所有 include 路径被聚合到一个 `--clang-args` 字符串中。跨项目 `#include` 解析通过 `import_resolve.py` 中的 `import_map` 策略完成。

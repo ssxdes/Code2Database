@@ -272,9 +272,12 @@ def export_change_graph(source_root: str, graph_dir: str,
     if not output_path:
         output_path = os.path.join(graph_dir, ".code2database_changes.json")
 
-    Path(output_path).write_text(
+    # Atomic write: tmp + os.replace
+    _tmp = output_path + ".tmp"
+    Path(_tmp).write_text(
         json.dumps(change_graph, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8")
+    os.replace(_tmp, output_path)
 
     return output_path
 
@@ -402,9 +405,12 @@ def _write_semantic_status(graph_dir: str, stale_count: int = 0,
     if semantic_update:
         existing["last_semantic_update"] = datetime.now().isoformat()
 
-    Path(status_path).write_text(
+    # Atomic write: tmp + os.replace
+    _tmp = status_path + ".tmp"
+    Path(_tmp).write_text(
         json.dumps(existing, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8")
+    os.replace(_tmp, status_path)
 
 
 def get_semantic_update_status(graph_dir: str) -> dict:

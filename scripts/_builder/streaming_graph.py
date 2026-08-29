@@ -626,7 +626,7 @@ class LazySQLiteGraph:
         import sqlite3
         from collections import OrderedDict
         self._db_path = db_path
-        self._conn = sqlite3.connect(db_path)
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._node_cache = OrderedDict()
         self._node_cache_max = 10000

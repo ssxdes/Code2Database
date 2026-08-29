@@ -1160,7 +1160,12 @@ class Daemon:
         import argparse
         for f in files:
             if not os.path.exists(f):
-                continue  # deleted file
+                # File was deleted — mark it stale so graph nodes
+                # from this file are flagged as stale (was: silent
+                # continue, leaving orphan nodes as "live" forever).
+                self._mark_file_stale(f)
+                self._log(f"file deleted: {f} — marked stale")
+                continue
             # Light-scan the file and patch
             try:
                 # Use light-scan to get updated extraction, then patch

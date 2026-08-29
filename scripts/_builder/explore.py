@@ -500,8 +500,10 @@ def _find_relevant_nodes(G: nx.DiGraph, query_tokens: list, top_n: int = 20,
     if not candidate_ids:
         # Build a lightweight suffix map from node names
         suffix_map = defaultdict(list)
-        for nid in G.nodes:
-            nd = G.nodes[nid]
+        # Build suffix map — use streaming (data=True) to avoid N+1
+        # query pattern on LazySQLiteGraph (was: for nid in G.nodes:
+        # then G.nodes[nid] = separate SELECT per node = 1.5M queries).
+        for nid, nd in G.nodes(data=True):
             if nd.get("is_empty", False):
                 continue
             name = nd.get("name", "").lower()

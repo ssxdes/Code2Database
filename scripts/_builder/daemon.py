@@ -1126,45 +1126,35 @@ class Daemon:
         self._write_state()
 
     def _run_transactional_sync(self, files: List[str]):
-        """Run incremental sync wrapped in a transaction with lock timeout."""
+        """Run incremental sync wrapped in a write lock with timeout.
+
+        If the write lock cannot be acquired (user transaction in progress),
+        the files are re-queued for the next sync cycle — we do NOT fall
+        back to direct sync, as writing without the lock while a user
+        transaction is active would bypass snapshot/rollback semantics.
+        """
         try:
-            from _builder.transactions import transaction, GraphLock
+            from _builder.transactions import write_lock
         except ImportError:
             self._run_direct_sync(files)
             return
         try:
-            lock = GraphLock(self.graph_dir, mode="w", timeout=30.0)
-            lock._acquire("w", 30.0)
-            try:
+            with write_lock(self.graph_dir, timeout=30.0):
                 self._run_direct_sync(files)
-                lock._release()
-            except Exception:
-                lock._release()
-                raise
+        except TimeoutError:
+            self._log(f"transaction lock timeout (user tx in progress?), "
+                      f"deferring {len(files)} files to next sync cycle")
+            with self._pending_lock:
+                self._pending.update(files)
+            self.state.pending_events = len(self._pending)
         except Exception as exc:
-            if "timeout" in str(exc).lower() or "lock" in str(exc).lower():
-                # DO NOT fall back to direct sync — writing without the lock
-                # while a user transaction is active would bypass snapshot/WAL
-                # rollback semantics, corrupting the user's transaction.
-                # Instead, queue the files for retry on the next sync cycle.
-                self._log(f"transaction lock timeout (user tx in progress?), "
-                          f"deferring {len(files)} files to next sync cycle")
-                self.state.pending_events = max(self.state.pending_events, len(files))
-            else:
-                self._log(f"transactional sync failed: {exc}, deferring to next cycle")
-                self.state.pending_events = max(self.state.pending_events, len(files))
+            self._log(f"transactional sync failed: {exc}, deferring to next cycle")
+            with self._pending_lock:
+                self._pending.update(files)
+            self.state.pending_events = len(self._pending)
 
     def _run_direct_sync(self, files: List[str]):
-        """Run direct incremental sync using patch-from-diff pipeline."""
-        # Build a fake diff from changed files
-        # Reuse existing patcher.cmd_patch_from_diff logic
-        try:
-            from _builder.patcher import cmd_patch_from_diff
-        except ImportError:
-            self._log("patcher not available, skipping sync")
-            return
-        # Create a temporary args namespace
-        import argparse
+        """Run direct incremental sync using stale-marking."""
         for f in files:
             if not os.path.exists(f):
                 # File was deleted — mark it stale so graph nodes
@@ -1175,8 +1165,6 @@ class Daemon:
                 continue
             # Light-scan the file and patch
             try:
-                # Use light-scan to get updated extraction, then patch
-                # For simplicity, we just touch the master to mark the file stale
                 self._mark_file_stale(f)
             except Exception as exc:
                 self._log(f"failed to sync {f}: {exc}")

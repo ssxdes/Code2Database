@@ -545,7 +545,11 @@ class TransactionState:
 
 def _write_tx_state(graph_dir: str, state: TransactionState):
     os.makedirs(_tx_dir(graph_dir), exist_ok=True)
-    with open(_tx_state_path(graph_dir), "w", encoding="utf-8") as f:
+    # Atomic write: tmp + os.replace. Prevents concurrent readers
+    # (tx-status, daemon) from reading a half-written JSON file.
+    path = _tx_state_path(graph_dir)
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump({
             "tx_id": state.tx_id, "started_at": state.started_at,
             "description": state.description, "snapshot_id": state.snapshot_id,
@@ -554,6 +558,7 @@ def _write_tx_state(graph_dir: str, state: TransactionState):
             "dirty_file_ids": state.dirty_file_ids,
             "consistency_results": state.consistency_results,
         }, f, ensure_ascii=False, indent=2, default=str)
+    os.replace(tmp_path, path)
 
 
 def _read_tx_state(graph_dir: str) -> Optional[TransactionState]:

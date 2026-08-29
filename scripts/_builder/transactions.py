@@ -608,7 +608,10 @@ def transaction(graph_dir: str, description: str = "",
         existing = _read_tx_state(graph_dir)
         if existing and existing.status == "active":
             # Stale active tx — roll it back first
-            restore_snapshot(graph_dir, existing.snapshot_id)
+            _restore_result = restore_snapshot(graph_dir, existing.snapshot_id)
+            if not _restore_result.get("restored"):
+                print(f"[tx] WARNING: rollback failed: {_restore_result.get('reason', 'unknown')}",
+                      file=sys.stderr)
             clear_wal(graph_dir)
 
         # Begin: snapshot + state
@@ -649,7 +652,10 @@ def transaction(graph_dir: str, description: str = "",
             prune_snapshots(graph_dir, keep=keep_snapshots)
         except Exception as exc:
             # Rollback
-            restore_snapshot(graph_dir, snap.id)
+            _restore_result = restore_snapshot(graph_dir, snap.id)
+            if not _restore_result.get("restored"):
+                print(f"[tx] WARNING: rollback failed: {_restore_result.get('reason', 'unknown')}",
+                      file=sys.stderr)
             clear_wal(graph_dir)
             tx_state.status = "rolled_back"
             tx_state.ended_at = time.time()
@@ -770,7 +776,10 @@ def recover_unfinished_wal(graph_dir: str) -> Dict:
 
     if state.status == "active":
         # Crash during a transaction → rollback
-        restore_snapshot(graph_dir, state.snapshot_id)
+        _restore_result = restore_snapshot(graph_dir, state.snapshot_id)
+        if not _restore_result.get("restored"):
+            print(f"[tx] WARNING: rollback failed: {_restore_result.get('reason', 'unknown')}",
+                  file=sys.stderr)
         clear_wal(graph_dir)
         state.status = "rolled_back"
         state.ended_at = time.time()

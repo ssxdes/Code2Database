@@ -1142,10 +1142,16 @@ class Daemon:
                 raise
         except Exception as exc:
             if "timeout" in str(exc).lower() or "lock" in str(exc).lower():
-                self._log(f"transaction lock timeout (user tx in progress?), falling back to direct sync")
+                # DO NOT fall back to direct sync — writing without the lock
+                # while a user transaction is active would bypass snapshot/WAL
+                # rollback semantics, corrupting the user's transaction.
+                # Instead, queue the files for retry on the next sync cycle.
+                self._log(f"transaction lock timeout (user tx in progress?), "
+                          f"deferring {len(files)} files to next sync cycle")
+                self.state.pending_events = max(self.state.pending_events, len(files))
             else:
-                self._log(f"transactional sync failed: {exc}, falling back to direct")
-            self._run_direct_sync(files)
+                self._log(f"transactional sync failed: {exc}, deferring to next cycle")
+                self.state.pending_events = max(self.state.pending_events, len(files))
 
     def _run_direct_sync(self, files: List[str]):
         """Run direct incremental sync using patch-from-diff pipeline."""

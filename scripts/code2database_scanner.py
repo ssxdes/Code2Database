@@ -779,7 +779,14 @@ def scan_directory(source_root: str, lang: str = "auto",
                         print(f"[flush] Pre-write state_access: extracted from "
                               f"{_sa_count}/{_cand_count} function(s) for chunk {_chunk}",
                               file=sys.stderr)
-                    del _cached_g, _gv_names
+                    # _gv_names only exists in the first-flush (if) branch;
+                    # on subsequent flushes (else branch) it is never assigned.
+                    # Guard the del to avoid UnboundLocalError.
+                    del _cached_g
+                    try:
+                        del _gv_names
+                    except NameError:
+                        pass
                 except Exception as _e:
                     print(f"[flush] state_access extraction failed for chunk {_chunk}: {_e}",
                           file=sys.stderr)

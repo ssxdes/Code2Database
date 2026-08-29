@@ -266,7 +266,7 @@ def create_snapshot(graph_dir: str, description: str = "") -> Snapshot:
     Returns a Snapshot handle. The snapshot directory is timestamped
     so multiple snapshots don't collide.
     """
-    snap_id = f"snap_{int(time.time() * 1000)}"  # millisecond precision
+    snap_id = f"snap_{int(time.time() * 1000)}_{os.getpid()}"  # ms + PID for uniqueness
     snap_path = os.path.join(_snapshots_dir(graph_dir), snap_id)
     os.makedirs(snap_path, exist_ok=True)
 

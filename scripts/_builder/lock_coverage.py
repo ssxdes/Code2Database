@@ -213,24 +213,43 @@ def analyze_lock_coverage(ndata: Dict, profile: Optional[Dict] = None,
     return coverage
 
 
+# Cache for per-(struct_chain, field_name) regex patterns.
+# Without this, re.search(re.escape(x)+...) recompiles on every
+# (field access × line) pair — millions of calls on lock-coverage
+# analysis of large functions. The cache keeps the most recent
+# patterns (re module's internal 512-entry LRU is too small for
+# unique struct_chain × field_name combinations).
+_ACCESS_POS_CACHE = {}
+
+
 def _find_access_position(line: str, struct_chain: str, field_name: str) -> Optional[int]:
     """Find the character position of a field access in a line."""
     if not field_name:
         return None
     # Try struct->field first
     if struct_chain and struct_chain not in ("(global)",):
-        m = re.search(r'\b' + re.escape(struct_chain) + r'\s*(?:->|\.)\s*' + re.escape(field_name),
-                      line)
+        cache_key = (struct_chain, field_name)
+        if cache_key not in _ACCESS_POS_CACHE:
+            _ACCESS_POS_CACHE[cache_key] = re.compile(
+                r'\b' + re.escape(struct_chain) + r'\s*(?:->|\.)\s*' + re.escape(field_name))
+        m = _ACCESS_POS_CACHE[cache_key].search(line)
         if m:
             return m.start()
     # Fall back to field name alone
-    m = re.search(r'\b' + re.escape(field_name) + r'\b', line)
+    if field_name not in _ACCESS_POS_CACHE:
+        _ACCESS_POS_CACHE[field_name] = re.compile(r'\b' + re.escape(field_name) + r'\b')
+    m = _ACCESS_POS_CACHE[field_name].search(line)
     return m.start() if m else None
+
+
+_TOKEN_POS_CACHE = {}
 
 
 def _find_token_position(line: str, token: str) -> Optional[int]:
     """Find the character position of a token in a line."""
-    m = re.search(r'\b' + re.escape(token) + r'\b', line)
+    if token not in _TOKEN_POS_CACHE:
+        _TOKEN_POS_CACHE[token] = re.compile(r'\b' + re.escape(token) + r'\b')
+    m = _TOKEN_POS_CACHE[token].search(line)
     return m.start() if m else None
 
 

@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "将代码库转为可查询的代码数据库。扫描一次，永久查询——不再需要 grep/glob/Read。支持 C/C++/Go/Python/Java/Rust/ASM，调用图、条件路径、并发分析、数据流、FFI 追踪、19 个 cgdb 语义表。53 个 MCP 工具 + 222 个 CLI 命令。当代码问题涉及结构、调用链、影响面、并发或数据流时使用 /Code2Database。"
+description: "将代码库转为可查询的代码数据库。扫描一次，永久查询——不再需要 grep/glob/Read。支持 C/C++/Go/Python/Java/Rust/ASM，调用图、条件路径、并发分析、数据流、FFI 追踪、19 个 cgdb 语义表。81 个 MCP (53 base + 28 design-report) 工具 + 222 个 CLI 命令。当代码问题涉及结构、调用链、影响面、并发或数据流时使用 /Code2Database。"
 trigger: /Code2Database
 ---
 
@@ -43,7 +43,7 @@ python3 scripts/code2database_builder.py kb-rebuild-index --graph code2db-out/
 python3 scripts/code2database_builder.py describe --graph code2db-out/ --node bdev_start
 python3 scripts/code2database_builder.py kb-query --graph code2db-out/ --query "bdev register"
 python3 scripts/code2database_builder.py trace --graph code2db-out/ --from bdev_start --to spdk_app_start
-python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP 服务器（53 工具）
+python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP 服务器（81 工具 (53 base + 28 design-report)）
 ```
 
 ## 核心命令（24 个）
@@ -69,7 +69,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP 服�
 | `kb-known-unknowns` | 列出未命中的查询（feedback loop） | Memory+Knowledge |
 | `kb-audit` | 知识审计（引用、过期、置信度） | Memory+Knowledge |
 | `kb-forget` | 立即删除 memory/knowledge 项 | Memory+Knowledge |
-| `serve` | 启动 MCP 服务器（53 工具） | 全部 |
+| `serve` | 启动 MCP 服务器（81 工具 (53 base + 28 design-report)） | 全部 |
 | `web-ui` | 交互式浏览器（cytoscape.js） | 全部 |
 | `tx-begin` | 开始事务 | Ops |
 | `daemon` | 后台自动同步 | Ops |
@@ -93,7 +93,7 @@ C/C++ | Go | Python | Java | Rust | ASM（6 + ASM，C/C++ 共享扫描器）
 python3 scripts/code2database_builder.py serve --graph code2db-out/
 ```
 
-53 工具：34 个 `code2database_*`（含新增 `code2database_kb_query` 跨 memory+knowledge 查询）+ 19 个 `cgdb_*`（clang 语义层）。
+81 工具 (53 base + 28 design-report)：34 个 `code2database_*`（含新增 `code2database_kb_query` 跨 memory+knowledge 查询）+ 19 个 `cgdb_*`（clang 语义层）。
 
 ## 约束
 

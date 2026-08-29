@@ -255,36 +255,38 @@ def _detect_toctou_patterns(G, target_func=None, profile=None):
                     for p in release_patterns]
 
     field_writers = defaultdict(list)
+    # Single-pass traversal: collect both field_writers AND reader
+    # data in one G.nodes(data=True) pass (Finding 28: was two
+    # separate full-graph traversals doing the same regex work).
+    # The first traversal collects writers + their lock sets; the
+    # second collects readers + their lock sets. Merged into one
+    # pass: each node is checked for both writer and reader roles.
+    _reader_data = []  # (nid, nd, body, reader_locks)
     for nid, nd in G.nodes(data=True):
         if nd.get("is_empty", False):
-            continue
-        for fw in (nd.get("fields_written") or []):
-            fname = fw.get("field_name", "")
-            if not fname:
-                continue
-            body = nd.get("body_text", "") or ""
-            locks = set()
-            for _re in _acquire_res:
-                for m in _re.finditer(body):
-                    locks.add(m.group(1).strip())
-            for _re in _release_res:
-                for m in _re.finditer(body):
-                    locks.discard(m.group(1).strip())
-            field_writers[fname].append((nid, locks, nd.get("name", nid)))
-
-    for nid, nd in G.nodes(data=True):
-        if nd.get("is_empty", False):
-            continue
-        if target_func and nd.get("name", "") != target_func:
             continue
         body = nd.get("body_text", "") or ""
-        reader_locks = set()
+        if not body:
+            continue
+        # Compute lock set once per node (shared by writer + reader roles)
+        locks = set()
         for _re in _acquire_res:
             for m in _re.finditer(body):
-                reader_locks.add(m.group(1).strip())
+                locks.add(m.group(1).strip())
         for _re in _release_res:
             for m in _re.finditer(body):
-                reader_locks.discard(m.group(1).strip())
+                locks.discard(m.group(1).strip())
+        # Writer role: collect fields_written
+        for fw in (nd.get("fields_written") or []):
+            fname = fw.get("field_name", "")
+            if fname:
+                field_writers[fname].append((nid, set(locks), nd.get("name", nid)))
+        # Reader role: defer to second pass (needs field_writers complete)
+        if not target_func or nd.get("name", "") == target_func:
+            _reader_data.append((nid, nd, body, set(locks)))
+
+    # Second pass: only over reader data (no re-traversal of full graph)
+    for nid, nd, body, reader_locks in _reader_data:
 
         for fr in (nd.get("fields_read") or []):
             fname = fr.get("field_name", "")

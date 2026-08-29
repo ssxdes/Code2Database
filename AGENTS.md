@@ -26,7 +26,7 @@ Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/
 - MSVC `__asm {}` block support and ERROR node fallback
 - Static fn-ptr dispatch array resolution (dispatch_op)
 - LLM context packs (micro/lite/standard/full tiers)
-- MCP server mode for real-time agent queries (53 tools: 34 `code2database_*` + 19 `cgdb_*`)
+- MCP server mode for real-time agent queries (81 tools: 34 `code2database_*` + 19 `cgdb_*` + 28 design-report)
 
 Capabilities:
 - **Dual extraction backend** — `auto` (default, uses clang when libclang is installed, falls back to tree-sitter), `clang` (force clang, enables cgdb layer; libclang 17+), `tree-sitter` (force tree-sitter, no libclang dep). Selected via `--extraction-backend` flag at scan time. **libclang is recommended, NOT required** — tree-sitter-only mode is fully functional.
@@ -44,6 +44,7 @@ Capabilities:
 - Interactive Web UI — single-file HTML/cytoscape.js/JS (`web-ui`)
 - BUG benchmark — GraphInvestigator vs GrepInvestigator (`bug-benchmark`)
 - Profile health (0-100 across 7 categories) + auto-evolution + git/svn HEAD binding (`profile-health`, `profile-evolve`, `profile-bind-version`)
+- LSP server — exposes pre-built C2D graph as a read-only Language Server Protocol server for IDE integration (`lsp-server`)
 - Doc-code dual-source truth alignment — return value / param / signature / stale-doc mismatch detection (`doc-code-check`, `doc-mark-stale`, `doc-alignment-report`, `doc-signature-diff`)
 - Background daemon — inotify + polling fallback, Unix socket API, circuit breaker, transactional sync, auto output file rebuild (`daemon-start`/`stop`/`status`/`force-refresh`/`pause`/`resume`/`wait-sync`/`logs`/`reload`/`list-projects`)
 
@@ -108,6 +109,20 @@ Capability modules have dedicated unit tests in `tests/` covering:
 - Profile health (0-100 scoring) + evolution
 - Doc-code alignment (return value / param / signature / stale-doc mismatches)
 - Daemon (state persistence, socket API, force-refresh, file modification handling)
+- LSP server (definition/references/callHierarchy/hover/moniker)
+- Hybrid search (RRF fusion + FTS5 BM25 + neural embedding)
+- Neural embeddings (cosine similarity, provider auto-detection)
+- SARIF output (2.1.0 schema validation)
+- AST pattern matching ($metavar, ... ellipsis, $$deep)
+- Taint analysis (source/sink/sanitizer propagation)
+- Code intelligence (references-of, traverse-graph, hub-nodes, bridge-nodes)
+- Concurrency analysis (detect-races, TOCTOU, thread-context partitioning)
+- Data dependencies (cross-function DATA_DEP edges, dead writers)
+- Commit provenance (VCS detection, per-file commit attribution)
+- Update command (confirmation gate, attribute parsing, backend detection)
+- Profile generation (auto-profile, project-type detection, struct_op_types)
+
+**Test suite**: 1581 tests across 87 files (1250 at v1.3.0 + 331 added since). Run with `python3 -m pytest tests/ -v`.
 
 ## Language Support
 

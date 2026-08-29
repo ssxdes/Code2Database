@@ -10,7 +10,7 @@ Code2Database scans C/C++/Go/Python/Java/Rust/ASM codebases and generates direct
 
 Capabilities: dual clang + tree-sitter extraction backend (auto/clang/tree-sitter via `--extraction-backend`; libclang recommended but NOT required — tree-sitter-only mode is fully functional), cgdb (code graph database) layer with semantic tables (AST nodes, types, config predicates, CFG, data flow, alias, ops_bindings, sync primitives, happens-before, provenance, time-travel versions) exposed via 19 `cgdb_*` MCP tools, commit-based provenance with git hash verification, Cypher-subset queries, value flow / DATA_FLOW edges, lock-held region analysis, Z3 path feasibility, cross-function data dependencies, invariant extraction, LLM auto-semantic enhancement, transactional updates (WAL + snapshots), cross-language FFI tracing, interactive Web UI, BUG benchmark, profile health + auto-evolution, doc-code dual-source truth alignment, and a background daemon for real-time auto-sync.
 
-Distributed as a Python-based skill with 3 sub-skills: `/Code2Database` (core, always loaded — 24 Tier-1 commands), `/Code2Database-analysis` (deep semantic analysis, on-demand), `/Code2Database-ops` (graph editing + ops, on-demand). 222 CLI commands total, 53 MCP tools (34 `code2database_*` + 19 `cgdb_*`). CLI entry points: `scripts/code2database_builder.py`, `scripts/code2database_scanner.py`. Daemon entry point: `daemon-start`.
+Distributed as a Python-based skill with 3 sub-skills: `/Code2Database` (core, always loaded — 24 Tier-1 commands), `/Code2Database-analysis` (deep semantic analysis, on-demand), `/Code2Database-ops` (graph editing + ops, on-demand). 222 CLI commands total, 81 MCP tools (53 base + 28 design-report) (34 `code2database_*` + 19 `cgdb_*`). CLI entry points: `scripts/code2database_builder.py`, `scripts/code2database_scanner.py`. Daemon entry point: `daemon-start`.
 
 ## Architecture: Profile → Scan → Build
 
@@ -147,7 +147,7 @@ python3 scripts/code2database_scanner.py scan --source /path --extraction-backen
 python3 scripts/code2database_builder.py serve --graph code2db-out/
 ```
 
-Exposes 53 MCP tools (34 `code2database_*` + 19 `cgdb_*`) over stdio transport for real-time LLM agent queries. The 19 `cgdb_*` tools query the cgdb (code graph database) layer directly when the clang extraction backend is enabled. Daemon mode provides additional freshness tools via Unix socket at `/tmp/code2database-daemon-<project>.sock`:
+Exposes 81 MCP tools (53 base + 28 design-report) (34 `code2database_*` + 19 `cgdb_*`) over stdio transport for real-time LLM agent queries. The 19 `cgdb_*` tools query the cgdb (code graph database) layer directly when the clang extraction backend is enabled. Daemon mode provides additional freshness tools via Unix socket at `/tmp/code2database-daemon-<project>.sock`:
 
 ```bash
 # Query daemon freshness before important MCP queries

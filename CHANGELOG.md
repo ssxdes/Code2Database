@@ -5,7 +5,66 @@ All notable changes to Code2Database will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-08-27
+## [Unreleased] - 2026-08-28
+
+### Deep Audit — Code Quality, Performance, Test Coverage, Doc Sync
+
+**P0 Critical Bug Fixes:**
+- Fix `hybrid_search.py` missing `defaultdict` import (NameError on dense embedding channel)
+- Fix `neural_embed.py` cosine_similarity formula bug (nb computed as dot product instead of b's norm)
+- Fix `action.yml` 4 bugs (placeholder URL, wrong --query flag, missing --json flags)
+- Fix `transactions.py` unconditional `import fcntl` (Windows broken despite docstring claiming msvcrt fallback)
+- Fix `_LazyNodeView` missing `.get()` method (large-graph extract-signals crash on SPDK/Kernel)
+- Fix `add_foreign_stub` DETACH-before-commit ("database is locked")
+- Wire LSP server CLI subparser + register in _LAZY_IMPORTS + 16 tests
+
+**Performance Fixes (from BUG reports + re-audit, 20+ findings):**
+- `_FIELD_ACCESS_RE`/`_FIELD_WRITE_RE`/`_FN_PTR_PARAM_RE` hoisted to module level (1.5M+ re.compile calls eliminated)
+- `_extract_state_access` shadowed-locals path: pre-compiled regex + filter instead of per-function recompile (~62h → ~30s on kernel)
+- Pre-strip state_access loop parallelized via ProcessPoolExecutor with fork COW
+- Scanner flush: cross-flush regex cache reuse (30× → 1× compile)
+- `_trace_object_access`: single finditer cache instead of 9× full-body scans per function
+- `map_nodes` extended with `parallel_mode='process'` support
+- `_detect_thread_models` parallelized via `map_nodes`
+- Background aggregator thread for scanner (eliminates serial result-merge bottleneck)
+- Scanner `--parallel-mode process` + c_scanner/import_resolve/memory_ordering regex hoists
+- `detect_data_races` O(M²) pair iteration → thread-context partitioning (O(M×K))
+- `_detect_toctou_patterns` per-(node×pattern) regex recompile → pre-compile once per profile
+- `value_flow` hop regex cached in `_ASGN_RE_CACHE`
+- Split-output auto-enable threshold lowered 10K→5K files
+
+**Code Quality:**
+- 5 `json.loads(open().read())` resource leaks → `with open() as f: json.load(f)`
+- 1 builtin shadow renamed (`file` → `file_record` in cgdb_store.py)
+- `/tmp` socket path hardened (respects `$TMPDIR`)
+- `/proc/meminfo` fallback improved (psutil → resource.getrusage → 50%)
+- inotify bit-flags extracted to named constants
+- 230 unused imports removed (AST-verified, 90 files)
+- 441 silent `except Exception: pass/continue` sites annotated with logging.debug
+- Web UI offline support (local cytoscape.js + CDN fallback)
+
+**Test Coverage (+331 tests, 1250 → 1581):**
+- test_lsp_server.py (16), test_hybrid_search.py (20), test_neural_embed.py (13)
+- test_sarif_output.py (18), test_ast_pattern.py (33), test_taint_analysis.py (14)
+- test_code_intelligence.py (21), test_invariants.py (25)
+- test_concurrency_analysis.py (18), test_data_dep.py (11)
+- test_commit_meta.py (19), test_update_cmd.py (28), test_profile_generate.py (17)
+- 3 pre-existing test skips fixed (ProfileHealth API, BenchmarkResult class name, WAL lock)
+
+**Documentation Sync:**
+- CLI command count: 213→222 (214 builder + 8 scanner)
+- MCP tools: 53→81 (53 base + 28 design-report)
+- Tier-1 counts unified: 24/13/23 (was 15/13/14 in some docs)
+- All 222 CLI subparsers documented in usage_reference.md (en+zh)
+- `check_docs_sync.py` regex fixed (dead `callgraph_` prefix → `code2database_/cgdb_`)
+- `build_phases.py` added to OVERVIEW.md module tree
+- AGENTS.md Testing section updated with 12+ new test modules
+- `server.json` version 1.0.0→1.3.0
+
+**Architecture:**
+- `build_graph()` decomposed: 23 phases extracted to `build_phases.py` (620 lines saved)
+- `action.yml` hardened (configurable repository URL, correct flag references)
+- Scanner `--parallel-mode {thread,process}` for true multi-core scanning
 
 ### Phase J — Parallelism audit + ProcessPoolExecutor helper
 

@@ -5005,32 +5005,36 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
     # assignments are updated on the graph nodes.
     domain_labels = {}  # domain → label (e.g., "vendor_sdk", "core_eal")
     if profile and profile.get("domain_rules"):
+        # Pre-compile all domain rule regexes ONCE, then do a SINGLE
+        # pass over all nodes (Finding 3 + 33: was O(R×N), now O(R+N)).
+        _compiled_rules = []
         for rule in profile["domain_rules"]:
             pattern = rule.get("pattern", "")
-            merge_to = rule.get("merge_to", "")
-            label = rule.get("label", "")
-            domain_tag = rule.get("domain_tag", "")
             if not pattern:
                 continue
-            pat_re = re.compile(pattern)
-            # Apply to all existing domains
-            for nid, ndata in G.nodes(data=True):
-                domain = ndata.get("domain", "")
-                if not domain or domain == "root":
-                    continue
+            _compiled_rules.append((
+                re.compile(pattern),
+                rule.get("merge_to", ""),
+                rule.get("label", ""),
+                rule.get("domain_tag", ""),
+            ))
+        # Single pass: for each node, test all pre-compiled rules
+        for nid, ndata in G.nodes(data=True):
+            domain = ndata.get("domain", "")
+            if not domain or domain == "root":
+                continue
+            for pat_re, merge_to, label, domain_tag in _compiled_rules:
                 if pat_re.match(domain):
-                    # merge_to: reassign domain to target
                     if merge_to:
                         G.nodes[nid]["domain"] = merge_to
                         ndata["domain"] = merge_to
-                    # label: record label for the domain
                     if label:
                         effective_domain = merge_to or domain
                         domain_labels[effective_domain] = label
-                    # domain_tag: similar to label but also marks the nodes
                     if domain_tag:
                         effective_domain = merge_to or domain
                         domain_labels[effective_domain] = domain_tag
+                    break  # first matching rule wins
 
     # Group nodes by domain. Normalize empty/missing domain to "root" so
     # there is a single canonical bucket for files at source_root and for

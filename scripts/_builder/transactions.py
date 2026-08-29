@@ -930,63 +930,63 @@ def cmd_tx_commit(args):
             print("No active transaction to commit", file=sys.stderr)
             sys.exit(1)
 
-    # RPT-P0-16: Check for a pending write-back tx. We stored its id in
-    # the description as "[writeback_tx=<uuid>]".
-    writeback_tx_id: Optional[str] = None
-    if state.description and "writeback_tx=" in state.description:
-        import re
-        m = re.search(r"writeback_tx=([a-f0-9-]+)", state.description)
-        if m:
-            writeback_tx_id = m.group(1)
+        # RPT-P0-16: Check for a pending write-back tx. We stored its id in
+        # the description as "[writeback_tx=<uuid>]".
+        writeback_tx_id: Optional[str] = None
+        if state.description and "writeback_tx=" in state.description:
+            import re
+            m = re.search(r"writeback_tx=([a-f0-9-]+)", state.description)
+            if m:
+                writeback_tx_id = m.group(1)
 
-    response: Dict[str, Any] = {
-        "tx_id": state.tx_id, "status": "committed",
-        "ended_at": None,
-    }
+        response: Dict[str, Any] = {
+            "tx_id": state.tx_id, "status": "committed",
+            "ended_at": None,
+        }
 
-    if writeback_tx_id is not None:
-        # Run the write-back pipeline.
-        try:
-            import sqlite3 as _sqlite3
-            from _builder.writeback_pipeline import WritebackPipeline
-            db_path = os.path.join(graph_dir, "code2database.db")
-            conn = _sqlite3.connect(db_path)
+        if writeback_tx_id is not None:
+            # Run the write-back pipeline.
             try:
-                pipe = WritebackPipeline(conn, graph_dir, graph_dir)
-                result = pipe.commit(
-                    writeback_tx_id,
-                    run_compile=getattr(args, "run_compile", True),
-                    run_lint=getattr(args, "run_lint", False),
-                    run_clang_format=getattr(args, "run_clang_format", False),
-                    git_commit=getattr(args, "git_commit", False),
-                    commit_message=getattr(args, "commit_message", None),
-                )
-                response["writeback"] = result.to_dict()
-                if not result.applied:
-                    # Writeback failed — but the graph-level tx (snapshot,
-                    # WAL) is still ok. Mark the tx as committed-with-failure
-                    # rather than rolling back the whole graph snapshot,
-                    # because the user may want to inspect the failure.
-                    state.error = (
-                        f"writeback failed at {result.failure_stage}: "
-                        f"{result.failure_detail}"
+                import sqlite3 as _sqlite3
+                from _builder.writeback_pipeline import WritebackPipeline
+                db_path = os.path.join(graph_dir, "code2database.db")
+                conn = _sqlite3.connect(db_path)
+                try:
+                    pipe = WritebackPipeline(conn, graph_dir, graph_dir)
+                    result = pipe.commit(
+                        writeback_tx_id,
+                        run_compile=getattr(args, "run_compile", True),
+                        run_lint=getattr(args, "run_lint", False),
+                        run_clang_format=getattr(args, "run_clang_format", False),
+                        git_commit=getattr(args, "git_commit", False),
+                        commit_message=getattr(args, "commit_message", None),
                     )
-            finally:
-                conn.close()
-        except Exception as exc:
-            state.error = f"writeback pipeline raised: {exc}"
-            print(f"[tx-commit] WARNING: writeback failed: {exc}",
-                  file=sys.stderr)
+                    response["writeback"] = result.to_dict()
+                    if not result.applied:
+                        # Writeback failed — but the graph-level tx (snapshot,
+                        # WAL) is still ok. Mark the tx as committed-with-failure
+                        # rather than rolling back the whole graph snapshot,
+                        # because the user may want to inspect the failure.
+                        state.error = (
+                            f"writeback failed at {result.failure_stage}: "
+                            f"{result.failure_detail}"
+                        )
+                finally:
+                    conn.close()
+            except Exception as exc:
+                state.error = f"writeback pipeline raised: {exc}"
+                print(f"[tx-commit] WARNING: writeback failed: {exc}",
+                      file=sys.stderr)
 
-    # Standard commit: clear WAL + mark committed
-    clear_wal(graph_dir)
-    state.status = "committed"
-    state.ended_at = time.time()
-    _write_tx_state(graph_dir, state)
-    response["ended_at"] = state.ended_at
-    if state.error:
-        response["error"] = state.error
-    print(json.dumps(response, ensure_ascii=False, indent=2, default=str))
+        # Clear WAL and mark tx as committed
+        clear_wal(graph_dir)
+        state.status = "committed"
+        state.ended_at = time.time()
+        _write_tx_state(graph_dir, state)
+        response["ended_at"] = state.ended_at
+        if state.error:
+            response["error"] = state.error
+        print(json.dumps(response, ensure_ascii=False, indent=2, default=str))
     finally:
         lock.release()
 

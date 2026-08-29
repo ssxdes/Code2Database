@@ -1540,6 +1540,15 @@ def cmd_daemon_start(args):
     """Start the daemon (foreground; blocks)."""
     graph_dir = args.graph
     source_root = args.source
+    # Check if a daemon is already running — prevent double-start
+    # which hijacks the socket and causes two daemons racing on
+    # the same graph DB and state file.
+    if is_daemon_running(graph_dir):
+        print(f"Error: daemon is already running for {graph_dir}",
+              file=sys.stderr)
+        print("Use 'daemon-stop' first, or 'daemon-status' to check.",
+              file=sys.stderr)
+        sys.exit(1)
     config = {}
     profile_path = getattr(args, "profile", "") or ""
     if profile_path and os.path.exists(profile_path):

@@ -1357,7 +1357,10 @@ class Daemon:
             "daemon_pid": os.getpid(),
         }
         fresh_path = Path(self.graph_dir) / ".code2database_freshness.json"
-        fresh_path.write_text(json.dumps(freshness, indent=2), encoding="utf-8")
+        # Atomic write: tmp + os.replace
+        tmp_path = fresh_path.with_suffix(".json.tmp")
+        tmp_path.write_text(json.dumps(freshness, indent=2), encoding="utf-8")
+        os.replace(str(tmp_path), str(fresh_path))
 
     def _start_socket_server(self):
         """Start Unix socket server for daemon-status/force-refresh/etc."""

@@ -1359,7 +1359,7 @@ def _build_indexes(G: nx.DiGraph, outdir: str):
         with open(_ri_path, "w", encoding="utf-8") as _ri_f:
             _ri_f.write('{')
             _first_node = True
-            for nid in G.nodes:
+            for nid, ndata in G.nodes(data=True):
                 callers = []
                 for pred in G.predecessors(nid):
                     ed = G.get_edge_data(pred, nid) or {}
@@ -1387,7 +1387,7 @@ def _build_indexes(G: nx.DiGraph, outdir: str):
             _ri_f.write('}\n')
     else:
         reverse_index = {}
-        for nid in G.nodes:
+        for nid, ndata in G.nodes(data=True):
             callers = []
             for pred in G.predecessors(nid):
                 ed = G.get_edge_data(pred, nid) or {}

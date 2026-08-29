@@ -842,6 +842,15 @@ def cmd_tx_begin(args):
     description = getattr(args, "description", "")
     file_id = getattr(args, "file_id", None)
 
+    # Acquire write lock — prevents concurrent tx-begin from racing
+    # on the tx_state file. The context manager path (transaction())
+    # already acquires this lock; the CLI path was missing it.
+    lock = GraphLock(graph_dir)
+    if not lock.acquire_write(timeout=10.0):
+        print("Error: could not acquire write lock — another transaction "
+              "may be in progress. Use 'tx-status' to check.", file=sys.stderr)
+        sys.exit(1)
+
     snap = create_snapshot(graph_dir, description=description or "manual tx_begin")
     tx_state = TransactionState(
         tx_id=f"tx_{int(time.time() * 1000)}",
@@ -886,6 +895,9 @@ def cmd_tx_begin(args):
                   file=sys.stderr)
 
     print(json.dumps(response, ensure_ascii=False, indent=2, default=str))
+
+    # Release write lock acquired at the start of cmd_tx_begin
+    lock.release()
 
 
 def cmd_tx_commit(args):

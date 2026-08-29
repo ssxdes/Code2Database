@@ -61,8 +61,7 @@ def _open_store(graph_dir: str):
         store.connect()
         return store, _db_path_for(graph_dir)
     except Exception as exc:
-        print(f"[query_router] SQLite open failed, will fall back to NetworkX: {exc}",
-              file=sys.stderr)
+        _log.warning("SQLite open failed, will fall back to NetworkX: %s", exc)
         return None, None
 
 
@@ -97,8 +96,7 @@ def route_field_access(graph_dir: str, field_name: str,
         g_writers = store.query_global_access(field_name, "write", limit=limit)
         return writers + readers + g_writers + g_readers
     except Exception as exc:
-        print(f"[query_router] field-access SQL failed, falling back: {exc}",
-              file=sys.stderr)
+        _log.warning("field-access SQL failed, falling back: %s", exc)
         return None
     finally:
         store.close()
@@ -130,11 +128,6 @@ def route_invoked(graph_dir: str, invoker_id: str, limit: int = 500) -> Optional
         return None
     finally:
         store.close()
-
-
-# Backwards-compatible aliases (deprecated — use route_invokers/route_invoked).
-route_invokers = route_invokers
-route_invoked = route_invoked
 
 
 def route_function_by_id(graph_dir: str, func_id: str) -> Optional[Dict]:
@@ -231,8 +224,7 @@ def route_call_chain(graph_dir: str, start_id: str, max_depth: int = 5,
     try:
         return store.query_call_chain_cte(start_id, max_depth, direction)
     except Exception as exc:
-        print(f"[query_router] call-chain CTE failed, falling back: {exc}",
-              file=sys.stderr)
+        _log.warning("call-chain CTE failed, falling back: %s", exc)
         return None
     finally:
         store.close()

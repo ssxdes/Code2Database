@@ -280,6 +280,7 @@ def _share_lockset(G, a_id: str, b_id: str, profile: Optional[Dict]) -> bool:
         locks_b = {acq for acq, _ in cov_b.lock_acquire_lines}
         return bool(locks_a & locks_b)
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return False
 
 

@@ -177,6 +177,7 @@ class DaemonState:
             data = json.loads(path.read_text(encoding="utf-8"))
             return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return cls()
 
 

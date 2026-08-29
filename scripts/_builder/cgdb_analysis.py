@@ -166,6 +166,7 @@ class CFGExtractor:
                     tu = index.parse(source_path)
                     tu_cursor = tu.cursor
                 except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     return [], []
 
             try:
@@ -528,6 +529,7 @@ def _cursor_text(cursor) -> str:
     try:
         tokens = list(cursor.get_tokens())
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return ''
     if not tokens:
         return ''
@@ -541,6 +543,7 @@ def _cursor_text(cursor) -> str:
                 continue
         return ' '.join(spans).strip()
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return ''
 
 

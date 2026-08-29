@@ -73,6 +73,7 @@ def _ollama_embed(text: str) -> Optional[List[float]]:
             data = json.loads(resp.read())
             return data.get("embedding")
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return None
 
 
@@ -86,6 +87,7 @@ def _st_embed(text: str) -> Optional[List[float]]:
         emb = _ST_MODEL_CACHE.encode(text, normalize_embeddings=True)
         return emb.tolist()
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return None
 
 
@@ -102,6 +104,7 @@ def _openai_embed(text: str) -> Optional[List[float]]:
             data = json.loads(resp.read())
             return data["data"][0]["embedding"]
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return None
 
 

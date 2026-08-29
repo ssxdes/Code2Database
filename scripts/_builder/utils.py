@@ -71,6 +71,7 @@ def _streaming_json_lookup(json_path: str, key: str, max_size_mb: int = 200):
             data = json.loads(Path(json_path).read_text(encoding="utf-8"))
             return data.get(key)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return None
 
     try:
@@ -102,6 +103,7 @@ def _streaming_json_lookup(json_path: str, key: str, max_size_mb: int = 200):
                         return item
             return None
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return None
 
 

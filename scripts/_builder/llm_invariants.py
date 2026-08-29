@@ -136,6 +136,7 @@ def _call_llm(prompt: str, model: str = "") -> Optional[str]:
             payload = json.loads(resp.read().decode("utf-8"))
         return payload.get("choices", [{}])[0].get("message", {}).get("content", "")
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return None
 
 

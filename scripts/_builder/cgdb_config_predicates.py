@@ -155,6 +155,7 @@ def _to_bdd_serialized(text_form: str) -> str:
         }, ensure_ascii=False)
     except Exception:
         # Any error in BDD construction → fall back to text wrapper
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return json.dumps({'type': 'text', 'form': text_form},
                           ensure_ascii=False)
 
@@ -229,6 +230,7 @@ def evaluate_predicate(text_form: str, macro_bindings: Dict[str, bool]) -> Optio
         try:
             expr = eval(expr_str, {"__builtins__": {}}, z3_vars)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return None
         solver = Solver()
         # Add macro bindings as constraints
@@ -269,6 +271,7 @@ def evaluate_predicate(text_form: str, macro_bindings: Dict[str, bool]) -> Optio
             return None
         return bool(eval(py_expr, {"__builtins__": {}}, {}))
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return None
 
 

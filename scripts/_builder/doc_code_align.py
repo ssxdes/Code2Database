@@ -427,6 +427,7 @@ def _mark_doc_stale_sqlite(db_path: str, node_id: str, reason: str,
         conn.commit()
         return True
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return False
     finally:
         conn.close()
@@ -439,6 +440,7 @@ def _mark_doc_stale_json_fallback(graph_dir: str, node_id: str, reason: str,
     try:
         master = json.loads(Path(master_path).read_text(encoding="utf-8"))
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return False
     domains = master.get("domains", {}) or {}
     for domain, filename in domains.items():

@@ -50,6 +50,7 @@ def _get_embedding(text: str) -> Optional[List[float]]:
     except ImportError:
         return None
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return None
 
 
@@ -69,6 +70,7 @@ def _get_model():
     except ImportError:
         return None
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return None
 
 

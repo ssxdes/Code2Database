@@ -184,6 +184,7 @@ def _count_graph(graph_dir: str) -> Tuple[int, int]:
         G = _load_full_graph(graph_dir)
         return G.number_of_nodes(), G.number_of_edges()
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return 0, 0
 
 

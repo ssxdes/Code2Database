@@ -304,6 +304,7 @@ class KnowledgeManager:
         try:
             G = _load_full_graph(graph_dir)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return knowledge
 
         # Infer architecture from domain structure

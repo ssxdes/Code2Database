@@ -280,6 +280,7 @@ class ClangScanner(BaseScanner):
             with open(self._compile_commands_path, 'r', encoding='utf-8') as f:
                 entries = _json.load(f)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return
         if not isinstance(entries, list):
             return
@@ -377,6 +378,7 @@ class ClangScanner(BaseScanner):
         try:
             file_abs = os.path.abspath(filepath)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return []
         # Direct file match
         if file_abs in self._compile_db_cache:
@@ -437,6 +439,7 @@ class ClangScanner(BaseScanner):
             tu = idx.parse(filepath, args=args,
                            options=_ci.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return None
         # Check for fatal diagnostics — return None if parse totally failed.
         for d in tu.diagnostics:
@@ -651,6 +654,7 @@ class ClangScanner(BaseScanner):
                 })
                 return tid
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 return 0
 
         # Walk top-level cursors of the main file only.
@@ -760,6 +764,7 @@ class ClangScanner(BaseScanner):
                     pass
         except Exception:
             # Predicate extraction is best-effort; don't fail the scan.
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
 
         # L7: Type-based ops_bindings detection — find VarDecls with struct
@@ -782,6 +787,7 @@ class ClangScanner(BaseScanner):
             )
         except Exception:
             # ops_bind derivation is best-effort.
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
 
         # L4/L5/L6/L8: CFG + data_flow + alias_sets + sync_primitives, per function.
@@ -906,6 +912,7 @@ class ClangScanner(BaseScanner):
                     pass
         except Exception:
             # L4-L8 extraction is best-effort; don't fail the scan.
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
 
         # L10: doc comments — extract via clang's raw_comment for each
@@ -1036,6 +1043,7 @@ class ClangScanner(BaseScanner):
                     add_node(child, 'member_ref', enclosing_func_id=func_id)
         except Exception:
             # walk_preorder can fail on broken ASTs — skip silently.
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
 
     def _extract_function_body(self, func_cursor) -> str:
@@ -1054,9 +1062,11 @@ class ClangScanner(BaseScanner):
                                 f.seek(start)
                                 return f.read(end - start).decode('utf-8', errors='replace')
                         except Exception:
+                            logging.getLogger(__name__).debug("silent exception", exc_info=True)
                             return ''
             return ''
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return ''
 
     def _classify_doc_comment(self, raw: str) -> str:

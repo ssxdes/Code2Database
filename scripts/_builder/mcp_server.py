@@ -1086,6 +1086,7 @@ def _cgdb_store(graph_dir: str):
         _CGDB_STORE_CACHE[graph_dir] = store
         return store
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return None
 
 

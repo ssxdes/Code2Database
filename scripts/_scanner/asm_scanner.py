@@ -2610,6 +2610,7 @@ class LLVMMCASMScanner(AsmRegexScanner):
             )
             return result.returncode == 0
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return False
 
     def _run_llvm_mc(self, source_path: str, arch: str = '',
@@ -2811,4 +2812,5 @@ class LLVMMCASMScanner(AsmRegexScanner):
             return enhanced
         except Exception:
             # Enhancement is best-effort; return the base result if it fails
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return result

@@ -781,6 +781,7 @@ def _load_master_from_sqlite(db_path: str, outdir: str) -> dict:
             "_sqlite_source": True,
         }
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return None
 
 

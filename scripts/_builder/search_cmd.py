@@ -354,6 +354,7 @@ def _node_domain(G, nid):
         d = G.nodes[nid] or {}
         return d.get("domain", "") or ""
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return ""
 
 
@@ -488,6 +489,7 @@ def _cmd_path_touched(args) -> frozenset:
                 ids.add(v)
         return frozenset(ids) if ids else frozenset()
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return frozenset()
 
 

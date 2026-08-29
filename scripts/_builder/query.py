@@ -1287,6 +1287,7 @@ def _cmd_trace_chain_touched(args) -> frozenset:
                 ids.add(v)
         return frozenset(ids) if ids else frozenset()
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return frozenset()
 
 

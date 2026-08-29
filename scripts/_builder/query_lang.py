@@ -1215,6 +1215,7 @@ def _try_cte_execution(query: Query, cgdb_store) -> Optional[List[Dict]]:
         return results
     except Exception:
         # Any error → fall back to networkx
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return None
 
 
@@ -1266,6 +1267,7 @@ def cmd_query(args):
             try:
                 return cgdb_store.find_configs_for(int(node_id))
             except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 return []
         set_config_lookup_fn(_cgdb_config_lookup)
     else:
@@ -1327,6 +1329,7 @@ def cmd_query(args):
             )
         except Exception:
             # Hints are best-effort; never fail the query because of them.
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         with_hints = getattr(args, "with_hints", False)
         if with_hints:

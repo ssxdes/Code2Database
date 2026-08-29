@@ -820,6 +820,7 @@ class LazySQLiteGraph:
         try:
             return zlib.decompress(blob).decode("utf-8", errors="replace")
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return ""
 
     def get_edge_data(self, u: str, v: str) -> dict:

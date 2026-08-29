@@ -415,6 +415,7 @@ class BaseScanner(ABC):
             )
         except Exception:
             # Best-effort: predicate extraction should never block a scan.
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
 
         # For non-C/C++ files, synthesize cgdb_* records from legacy
@@ -1360,6 +1361,7 @@ class BaseScanner(ABC):
         try:
             text = source_bytes.decode('utf-8', errors='replace')
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return out
         if language == 'python':
             for m in re.finditer(r'^\s*import\s+([A-Za-z_][A-Za-z0-9_\.]*)', text, re.MULTILINE):
@@ -2270,6 +2272,7 @@ class BaseScanner(ABC):
         try:
             before_text = before.decode("utf-8", errors="replace")
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return ""
         # Find the last block comment /** ... */ before the function
         # Strip trailing whitespace and check what's immediately before

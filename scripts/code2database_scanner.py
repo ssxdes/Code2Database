@@ -375,6 +375,7 @@ def _load_checkpoint(checkpoint_path: str, source_root: str):
                   file=sys.stderr)
         return completed
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return None
 
 
@@ -1033,6 +1034,7 @@ def scan_directory(source_root: str, lang: str = "auto",
             sys.setrecursionlimit(_old_limit)
             return None
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return None
 
     if workers > 1:

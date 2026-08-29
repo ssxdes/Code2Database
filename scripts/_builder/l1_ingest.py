@@ -615,6 +615,7 @@ def _walk_cursors_for_pp_info(
 
         except Exception:
             # Skip problematic cursors
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
 
 
@@ -749,6 +750,7 @@ def _extract_cursor_text(cursor, source_bytes: bytes) -> str:
         end_off = cursor.extent.end.offset
         return source_bytes[start_off:end_off].decode("utf-8", errors="replace")
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return ""
 
 

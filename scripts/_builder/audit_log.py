@@ -99,6 +99,7 @@ def log_audit(graph_dir: str,
         # JSON backend: append to audit_log.jsonl
         return _log_audit_json(graph_dir, record)
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return False
 
 

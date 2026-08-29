@@ -132,6 +132,7 @@ class SyncPrimitiveWriter:
             first_arg = args[0]
             return self._resolve_var_node(first_arg, add_node_fn)
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return None
 
     def _resolve_var_node(self, cursor, add_node_fn) -> Optional[int]:
@@ -141,6 +142,7 @@ class SyncPrimitiveWriter:
         try:
             k = cursor.kind.name if cursor.kind else ''
         except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return None
         # Direct decl reference
         if k in ('VAR_DECL', 'PARM_DECL', 'FIELD_DECL'):

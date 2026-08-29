@@ -44,6 +44,7 @@ def _is_function_pointer_type(t) -> bool:
                 return True
         return False
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return False
 
 
@@ -60,6 +61,7 @@ def _struct_has_function_pointer_fields(cursor) -> bool:
                     return True
         return False
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return False
 
 
@@ -70,6 +72,7 @@ def _is_function_pointer_field(cursor) -> bool:
             return False
         return _is_function_pointer_type(cursor.type)
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return False
 
 
@@ -100,6 +103,7 @@ def _find_function_decl_by_name(decl_ref_cursor):
             return ref
         return None
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return None
 
 
@@ -130,6 +134,7 @@ def _signatures_match(field_type, func_type) -> bool:
             ft_canon = func_type.spelling
         return pe_canon == ft_canon
     except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return False
 
 

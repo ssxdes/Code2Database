@@ -223,15 +223,15 @@ def _find_node_id(G, partial_id: str) -> str:
             if row:
                 return row[0]
             return ""
-    # Fallback: linear scan via G.nodes (works for NetworkX-like and
-    # LazySQLiteGraph). Avoid `for nid in G` — LazySQLiteGraph lacks __iter__
-    # in older versions and would fall back to int-keyed sequence protocol.
-    for nid in G.nodes:
-        if partial_id in nid or G.nodes[nid].get("name", "") == partial_id:
+    # Fallback: linear scan — use streaming (data=True) to avoid N+1
+    # query pattern on LazySQLiteGraph (was: for nid in G.nodes: then
+    # G.nodes[nid] = separate SELECT per node = 1.5M queries).
+    for nid, ndata in G.nodes(data=True):
+        if partial_id in nid or ndata.get("name", "") == partial_id:
             return nid
-    # Search by name prefix
-    for nid in G.nodes:
-        if G.nodes[nid].get("name", "").startswith(partial_id):
+    # Search by name prefix — also streaming
+    for nid, ndata in G.nodes(data=True):
+        if ndata.get("name", "").startswith(partial_id):
             return nid
     return ""
 

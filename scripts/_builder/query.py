@@ -92,7 +92,19 @@ def _load_profile_from_graph_dir(graph_dir):
     try:
         with open(profile_path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except (IOError, OSError, ValueError):
+    except (IOError, OSError) as e:
+        import logging
+        logging.getLogger(__name__).error(
+            "Could not read profile %s: %s — query results will lack "
+            "profile-driven features (vtable dispatch, callback patterns, "
+            "API prefix matching, etc.)", profile_path, e)
+        return None
+    except ValueError as e:
+        import logging
+        logging.getLogger(__name__).error(
+            "Corrupt profile JSON at %s: %s — query results will lack "
+            "profile-driven features. Fix the JSON syntax error and rebuild.",
+            profile_path, e)
         return None
 
 

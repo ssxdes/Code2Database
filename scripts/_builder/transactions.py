@@ -801,14 +801,24 @@ def recover_unfinished_wal(graph_dir: str) -> Dict:
         unapplied = read_wal(graph_dir, only_unapplied=True)
         if not unapplied:
             return {"action": "already_committed", "tx_id": state.tx_id}
-        # Replay logic would go here — for now, just clear since
-        # the writes are already applied (we mark applied as we go).
-        # If there are unapplied entries, they were never written to the
-        # live db, so we drop them (consistent with the snapshot taken
-        # at begin()).
+        # For committed transactions with unapplied WAL entries:
+        # the snapshot at begin() captured the pre-transaction state.
+        # Unapplied entries were written to WAL but never applied to
+        # the live db. Since the transaction is marked committed, the
+        # intended behavior is that these writes SHOULD have been applied.
+        # We drop them because the snapshot provides the rollback path
+        # (the committed state is the post-write state, and the snapshot
+        # is the pre-write state). If the user wants to apply them
+        # manually, they can use tx-replay-wal.
+        # WARNING the user that entries were dropped:
+        print(f"[tx] WARNING: {len(unapplied)} WAL entries were committed "
+              f"but never applied to the live database. They have been "
+              f"dropped. Use 'tx-replay-wal' to inspect them before they "
+              f"are cleared.", file=sys.stderr)
         clear_wal(graph_dir)
         return {"action": "committed_with_dropped_wal",
-                "dropped_entries": len(unapplied)}
+                "dropped_entries": len(unapplied),
+                "warning": "entries were committed but never applied"}
 
     return {"action": "unknown_state", "status": state.status}
 

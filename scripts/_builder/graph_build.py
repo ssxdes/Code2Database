@@ -4066,20 +4066,44 @@ def build_graph(extraction: dict, profile: dict = None,
             if _is_callback_field(field):
                 _fn_ptr_cb_fields[func_name].add(field)
 
+    # Single merged pass over G.edges to build three indexes consumed by
+    # the caller-bridged, passthrough, and param-bridged dispatch blocks:
+    #   _cbarg_from      -> caller_node -> {target_node} for CALLBACK_ARG edges
+    #   _callers_by_name -> target_func_name -> {caller_node_ids}
+    #   _cbarg_by_callee -> callee_name -> [(invoker_id, target_id, arg_idx)]
+    _cbarg_from = defaultdict(set)
+    _callers_by_name = defaultdict(set)
+    _cbarg_by_callee = {}
+    _need_cbarg_by_callee = bool(_param_bridged_fa)
+    for u, v, d in G.edges(data=True):
+        conf = d.get("confidence")
+        if conf == "CALLBACK_ARG":
+            _cbarg_from[u].add(v)
+            if _need_cbarg_by_callee:
+                ev = d.get("evidence", "")
+                cc = d.get("call_condition", "")
+                callee_name = ""
+                if cc.startswith("#callback="):
+                    callee_name = cc[len("#callback="):]
+                if not callee_name and "callback_arg:" in ev:
+                    parts = ev.split("callback_arg:")[1].strip()
+                    callee_name = parts.split("(")[0].strip() if "(" in parts else ""
+                arg_idx = -1
+                if "arg#" in ev:
+                    arg_str = ev.split("arg#")[1].split("=")[0]
+                    try:
+                        arg_idx = int(arg_str)
+                    except ValueError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                        pass
+                if callee_name:
+                    _cbarg_by_callee.setdefault(callee_name, []).append(
+                        (u, v, arg_idx))
+        v_name = G.nodes[v].get("name", "") if v in G else ""
+        if v_name:
+            _callers_by_name[v_name].add(u)
+
     if _fn_ptr_cb_fields:
-        # Build: caller_node -> {target_node} for CALLBACK_ARG edges
-        _cbarg_from = defaultdict(set)
-        for u, v, d in G.edges(data=True):
-            if d.get("confidence") == "CALLBACK_ARG":
-                _cbarg_from[u].add(v)
-
-        # Build: target_func_name -> {caller_node_ids}
-        _callers_by_name = defaultdict(set)
-        for u, v, d in G.edges(data=True):
-            v_name = G.nodes[v].get("name", "") if v in G else ""
-            if v_name:
-                _callers_by_name[v_name].add(u)
-
         # For each function with cb_fn fn_ptr_calls, bridge through callers
         _bridged_count = 0
         _MAX_CALLERS_FOR_BRIDGED = 15  # Too many callers = imprecise bridging
@@ -4271,18 +4295,7 @@ def build_graph(extraction: dict, profile: dict = None,
     # actual callback functions that F's callers pass through.
     _passthrough_funcs = extraction.get("passthrough_reg_funcs", {})
     if _passthrough_funcs:
-        # Reuse _cbarg_from and _callers_by_name from caller-bridged pass
-        # (rebuild if caller-bridged pass didn't run)
-        if not _fn_ptr_cb_fields:
-            _cbarg_from = defaultdict(set)
-            for u, v, d in G.edges(data=True):
-                if d.get("confidence") == "CALLBACK_ARG":
-                    _cbarg_from[u].add(v)
-            _callers_by_name = defaultdict(set)
-            for u, v, d in G.edges(data=True):
-                v_name = G.nodes[v].get("name", "") if v in G else ""
-                if v_name:
-                    _callers_by_name[v_name].add(u)
+        # _cbarg_from and _callers_by_name were built in the merged edge pass above.
 
         # Transitive passthrough resolution: for each passthrough function,
         # walk the caller chain upward to find ancestors with CALLBACK_ARG edges.
@@ -4440,36 +4453,7 @@ def build_graph(extraction: dict, profile: dict = None,
     #        → we create INFERRED edge from fn_ptr_call site to callback_func
     _param_bridged_count = 0
     if _param_bridged_fa:
-        # Build index: callee_name → [(invoker_id, target_id, arg_index, evidence)]
-        # from existing CALLBACK_ARG edges. Evidence format:
-        # "callback_arg: callee_name() arg#N=target_name"
-        _cbarg_by_callee = {}  # callee_name → [(invoker_id, target_id, arg_idx)]
-        for u, v, d in G.edges(data=True):
-            if d.get("confidence") != "CALLBACK_ARG":
-                continue
-            ev = d.get("evidence", "")
-            # Parse evidence: "callback_arg: callee_name() arg#N=target_name"
-            # Also check call_condition: "#callback=callee_name"
-            cc = d.get("call_condition", "")
-            callee_name = ""
-            if cc.startswith("#callback="):
-                callee_name = cc[len("#callback="):]
-            if not callee_name and "callback_arg:" in ev:
-                # Extract callee from evidence
-                parts = ev.split("callback_arg:")[1].strip()
-                callee_name = parts.split("(")[0].strip() if "(" in parts else ""
-
-            arg_idx = -1
-            if "arg#" in ev:
-                arg_str = ev.split("arg#")[1].split("=")[0]
-                try:
-                    arg_idx = int(arg_str)
-                except ValueError:
-                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                    pass
-            if callee_name:
-                _cbarg_by_callee.setdefault(callee_name, []).append(
-                    (u, v, arg_idx))
+        # _cbarg_by_callee was built in the merged edge pass above.
 
         # For each param-bridged FA, resolve the dispatch targets
         # Pre-compute: for polymorphic fields, count assign_funcs per struct_chain

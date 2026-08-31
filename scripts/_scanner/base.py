@@ -263,6 +263,21 @@ _DOC_COMMENT_BLOCK_RE = re.compile(r'/\*\*?(.*?)\*/\s*$', re.DOTALL)
 _DOC_COMMENT_LINE_RE = re.compile(r'^\s*\*\s?')
 _NORMALIZE_NAME_RE = re.compile(r'[^A-Za-z0-9_]')
 
+# Pre-compiled patterns for global definition extraction (used by _extract_globals)
+_GLOBAL_DEFINE_RE = re.compile(r'#define\s+(\w+)\s+(.*)')
+_GLOBAL_TYPEDEF_RE = re.compile(r'typedef\s+.*?(\w+)\s*;')
+_GLOBAL_VAR_RE = re.compile(
+    r'(?:extern\s+)?(?:static\s+)?(?:const\s+)?(\w[\w\s*]+?)\s+(\w+)\s*(?:=\s*(.{0,80}))?;'
+)
+
+# Pre-compiled patterns for condition variable token cleaning (used by _extract_condition_vars)
+_COND_TOKEN_SUBST_RE_1 = re.compile(r'[!=<>]=*')
+_COND_TOKEN_SUBST_RE_2 = re.compile(r'[(){}\[\]|&^~+\-*/%,]')
+_COND_TOKEN_SUBST_RE_3 = re.compile(
+    r'\b(?:\d+|true|false|null|nil|None|NULL|void)\b', re.IGNORECASE
+)
+_COND_TOKEN_IDENT_RE = re.compile(r'^[A-Za-z_]\w*$')
+
 
 class BaseScanner(ABC):
     """Abstract base for language-specific code graph scanners."""
@@ -2848,13 +2863,12 @@ class BaseScanner(ABC):
         """Extract variable names referenced in a condition expression."""
         if not condition_text:
             return []
-        cleaned = re.sub(r'[!=<>]=*', ' ', condition_text)
-        cleaned = re.sub(r'[(){}[\]|&^~+\-*/%,]', ' ', cleaned)
-        cleaned = re.sub(r'\b\d+\b', ' ', cleaned)
-        cleaned = re.sub(r'\b(true|false|null|nil|None|NULL|void)\b', ' ', cleaned, flags=re.IGNORECASE)
+        cleaned = _COND_TOKEN_SUBST_RE_1.sub(' ', condition_text)
+        cleaned = _COND_TOKEN_SUBST_RE_2.sub(' ', cleaned)
+        cleaned = _COND_TOKEN_SUBST_RE_3.sub(' ', cleaned)
         vars_found = []
         for token in cleaned.split():
-            if re.match(r'^[A-Za-z_]\w*$', token) and len(token) > 1 and token not in (
+            if _COND_TOKEN_IDENT_RE.match(token) and len(token) > 1 and token not in (
                 'if', 'else', 'switch', 'case', 'match', 'and', 'or', 'not', 'in', 'is'):
                 vars_found.append(token)
         return list(dict.fromkeys(vars_found))
@@ -2888,7 +2902,7 @@ class BaseScanner(ABC):
                             self._extract_py_enum(node, source_bytes, rel_path, enums)
             elif node.type in ('preproc_def', 'preproc_function_def'):
                 text = self._node_text(node, source_bytes)
-                m = re.match(r'#define\s+(\w+)\s+(.*)', text)
+                m = _GLOBAL_DEFINE_RE.match(text)
                 if m and not m.group(1).startswith('_'):
                     pos = self._node_position(node)
                     constants.append({"name": m.group(1), "value_snippet": m.group(2).strip(),
@@ -2898,7 +2912,7 @@ class BaseScanner(ABC):
             elif node.type in ('type_definition', 'declaration'):
                 text = self._node_text(node, source_bytes)
                 if 'typedef' in text or 'type' in node.type:
-                    m = re.match(r'typedef\s+.*?(\w+)\s*;', text)
+                    m = _GLOBAL_TYPEDEF_RE.match(text)
                     if m:
                         pos = self._node_position(node)
                         typedefs.append({"name": m.group(1), "underlying_type": "",
@@ -2908,7 +2922,7 @@ class BaseScanner(ABC):
             if node.parent and node.parent.type == 'translation_unit':
                 if node.type in ('declaration', 'variable_declaration', 'global_variable_declaration'):
                     text = self._node_text(node, source_bytes)
-                    m = re.match(r'(?:extern\s+)?(?:static\s+)?(?:const\s+)?(\w[\w\s*]+?)\s+(\w+)\s*(?:=\s*(.{0,80}))?;', text)
+                    m = _GLOBAL_VAR_RE.match(text)
                     if m and m.group(2) not in ('main',):
                         pos = self._node_position(node)
                         global_vars.append({"name": m.group(2), "type": m.group(1).strip(),

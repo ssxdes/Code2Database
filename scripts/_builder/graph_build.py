@@ -2350,7 +2350,7 @@ def build_graph(extraction: dict, profile: dict = None,
     # Phase 5: process edges — create empty conditional placeholder nodes
     # and build the target→first-edge index used by downstream condition lookup
     from _builder.build_phases import _create_empty_conditional_nodes
-    _edge_target_index = _create_empty_conditional_nodes(G, raw_edges, id_registry)
+    _create_empty_conditional_nodes(G, raw_edges, id_registry)
 
     # Phase 6: build vtable field-name set + struct_type→{field→[func]} index
     from _builder.build_phases import (
@@ -2399,7 +2399,7 @@ def build_graph(extraction: dict, profile: dict = None,
     _fn_ptr_struct_lookup = _build_fn_ptr_struct_lookup(extraction)
 
     # Phase 14: build struct embedding index (inner_type → embedding entries)
-    _embedding_index, _known_struct_types = _build_struct_embedding_index(
+    _embedding_index = _build_struct_embedding_index(
         extraction, profile)
 
     # Phase 15: identify polymorphic callback fields (cb_fn, cb_func, etc.)

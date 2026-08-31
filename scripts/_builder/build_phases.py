@@ -241,7 +241,7 @@ def _enable_streaming_deferred(G) -> bool:
 # Phase 5: create empty conditional nodes + build edge target index
 # ---------------------------------------------------------------------------
 
-def _create_empty_conditional_nodes(G, raw_edges: list, id_registry: dict) -> dict:
+def _create_empty_conditional_nodes(G, raw_edges: list, id_registry: dict) -> None:
     """Create empty placeholder nodes for conditional sub-expressions.
 
     Conditional sub-nodes (e.g., ``func__cond_0``, ``func__cond_0_else``)
@@ -257,16 +257,11 @@ def _create_empty_conditional_nodes(G, raw_edges: list, id_registry: dict) -> di
         id_registry: dict mapping function id -> raw function dict. Read
             to derive parent_domain from the parent caller id. Mutated to
             add a synthesized record for each new empty node.
-
-    Returns:
-        edge_target_index: dict mapping target id -> first edge targeting
-            it (used by downstream phases for O(1) condition lookup).
     """
     empty_nodes_needed: Set[str] = set()
     # First-edge-wins: matches the original build_graph semantics where
-    # _edge_target_index[tgt] = first edge that targets tgt. Downstream
-    # phases only need ANY edge with a call_condition attribute for the
-    # given target — first-hit is sufficient.
+    # the first edge targeting a given target provides the call_condition.
+    # Used internally for O(1) condition text lookup.
     edge_target_index: Dict[str, dict] = {}
     for edge in raw_edges:
         tgt = edge.get("target", "")
@@ -305,8 +300,6 @@ def _create_empty_conditional_nodes(G, raw_edges: list, id_registry: dict) -> di
             "domain": parent_domain,
             "name": f"<cond:{cond_text}>",
         }
-
-    return edge_target_index
 
 
 __all__ = [
@@ -808,10 +801,7 @@ def _build_struct_embedding_index(extraction: dict, profile) -> tuple:
         profile: Builder config dict. Reads profile.struct_embeddings.
 
     Returns:
-        Tuple ``(embedding_index, known_struct_types)``:
-        - embedding_index: dict[inner_type, list[{outer_type, member, domain_hint}]]
-        - known_struct_types: set of struct_type strings seen in struct_defs
-          (used downstream to validate that a candidate inner_type is real).
+        embedding_index: dict[inner_type, list[{outer_type, member, domain_hint}]]
     """
     # 1. From struct_defs: field_type/field_name pairs where field_type is a known struct
     embedding_index: Dict[str, list] = {}
@@ -879,7 +869,7 @@ def _build_struct_embedding_index(extraction: dict, profile) -> tuple:
                 seen.add(ekey)
                 unique.append(entry)
         embedding_index[key] = unique
-    return embedding_index, known_struct_types
+    return embedding_index
 
 
 # ---------------------------------------------------------------------------
@@ -1377,7 +1367,8 @@ def _annotate_call_edges_with_goto(G) -> int:
                 try:
                     edge_data = G[nid][succ]
                 except KeyError:
-                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                    logging.getLogger(__name__).warning(
+                        "edge %s->%s vanished during goto annotation", nid, succ)
                     continue
                 co = edge_data.get("call_order")
                 if co is None or co not in co_lines:

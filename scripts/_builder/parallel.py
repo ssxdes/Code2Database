@@ -149,28 +149,28 @@ def _proc_map_nodes_wrapper(args):
     return work_fn(nid, nd)
 
 # Default hard ceiling on worker count. Was 8 (too low for modern hardware),
-# changed to 16 in the previous fix — but 16 causes oversubscription on
-# machines with fewer than 16 cores (4-core box + -j 48 → 16 threads = 4x
-# oversubscription → OS scheduling overhead + memory waste).
+# changed to 16 in a previous fix — but 16 is still an artificial ceiling
+# that underutilizes 32/64/128-core machines.
 #
-# Now: the effective default is min(cpu_count, 16) — never more than the
-# machine's core count, but at most 16 for safety on high-core boxes.
+# Now: the default is the machine's actual core count with no artificial
+# cap. This prevents oversubscription on low-core machines (4-core box
+# won't get 16 threads) while fully utilizing high-core machines.
+# cap_for_graph() applies graph-size-sensitive caps for very large graphs.
 # Override via C2D_MAX_WORKERS env var or --max-workers CLI flag.
-DEFAULT_MAX_WORKERS = 16
+DEFAULT_MAX_WORKERS = 0  # 0 = use cpu_count (no artificial cap)
 
 
 def _get_max_workers_cap(cli_override: int = 0) -> int:
     """Resolve the effective worker cap.
 
-    Priority: CLI --max-workers > C2D_MAX_WORKERS env > min(cpu_count, 16).
+    Priority: CLI --max-workers > C2D_MAX_WORKERS env > cpu_count.
 
-    The default is min(cpu_count, 16) — this prevents oversubscription on
-    low-core machines (4-core box won't get 16 threads) while still capping
-    at 16 on high-core machines (128-core box won't get 128 threads unless
-    the user explicitly overrides).
+    The default is the machine's actual core count — no artificial cap.
+    This fully utilizes high-core machines (64/128-core) while preventing
+    oversubscription on low-core machines (4-core box gets 4, not 16).
 
-    Use --max-workers N or C2D_MAX_WORKERS=N to override (e.g., 48 on a
-    64-core, 250GB RAM box for maximum throughput).
+    Use --max-workers N or C2D_MAX_WORKERS=N to override (e.g., cap at 32
+    on a 64-core box to leave cores for other work).
     """
     # CLI override (highest priority — user explicitly chose)
     if cli_override and cli_override > 0:
@@ -187,7 +187,9 @@ def _get_max_workers_cap(cli_override: int = 0) -> int:
         cpu = multiprocessing.cpu_count()
     except (NotImplementedError, OSError):
         cpu = 4
-    return max(2, min(cpu, DEFAULT_MAX_WORKERS))
+    # No artificial cap — use the machine's full core count.
+    # cap_for_graph() applies graph-size-sensitive caps later.
+    return max(2, cpu)
 
 
 def resolve_jobs(jobs: int, max_workers_cap: int = 0) -> int:
@@ -233,8 +235,8 @@ def cap_for_graph(jobs: int, n_nodes: int, parallel_mode: str = "thread") -> int
     if parallel_mode == "process":
         return max(2, min(jobs, 16))
     if n_nodes >= 500_000:
-        return max(2, min(jobs, 4))
-    return max(2, min(jobs, 6))
+        return max(2, min(jobs, 8))
+    return max(2, min(jobs, 12))
 
 
 def map_nodes(

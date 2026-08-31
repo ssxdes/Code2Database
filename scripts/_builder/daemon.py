@@ -228,7 +228,8 @@ class FileWatcher:
     def __init__(self, source_root: str,
                  exclude_patterns: List[str],
                  backend: str = "auto",
-                 use_content_hash: bool = False):
+                 use_content_hash: bool = False,
+                 graph_dir: str = ""):
         self.source_root = os.path.abspath(source_root)
         self.exclude_patterns = exclude_patterns
         self.backend = backend
@@ -237,6 +238,7 @@ class FileWatcher:
         # mtime misses (e.g., touch -d, in-place rewrites within the same
         # second) and matches the cgdb incremental-sync baseline.
         self.use_content_hash = use_content_hash
+        self._graph_dir = graph_dir
         self._stop = False
         self._callback: Optional[Callable[[str], None]] = None
         self._thread: Optional[threading.Thread] = None
@@ -534,10 +536,10 @@ class FileWatcher:
         O(N_files × file_size) to O(N_files + changed_files × file_size).
         """
         incremental_sync = None
-        if self.use_content_hash:
+        if self.use_content_hash and self._graph_dir:
             try:
                 from _builder.cgdb_incremental import IncrementalSync
-                db_path = Path(self.graph_dir) / "code2database.db"
+                db_path = Path(self._graph_dir) / "code2database.db"
                 if db_path.exists():
                     incremental_sync = IncrementalSync(self.source_root)
                     incremental_sync.db_path = str(db_path)
@@ -588,17 +590,15 @@ class FileWatcher:
             # against the cgdb_files table's stored content_hash. Any file
             # whose DB hash differs from its current hash but wasn't caught
             # by the polling state (e.g., daemon was offline when the file
-            # changed) gets flagged as changed.
+            # changed) gets flagged as changed via the callback.
             if incremental_sync is not None:
                 try:
                     changed_in_db = incremental_sync.detect_changes(
                         incremental_sync.db_path
                     )
                     for changed_path in changed_in_db:
-                        if changed_path not in self._pending:
-                            with self._pending_lock:
-                                self._pending.add(changed_path)
-                            self.state.pending_events = len(self._pending)
+                        if changed_path not in current and self._callback:
+                            self._callback(changed_path)
                 except Exception:
                     logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
@@ -699,6 +699,7 @@ class Daemon:
             self.config.get("exclude_patterns", []),
             self.config.get("backend", "auto"),
             use_content_hash=use_content_hash,
+            graph_dir=self.graph_dir,
         )
         self._watcher.start(self._on_file_change)
         # Main loop: batch + dispatch sync jobs to the worker thread

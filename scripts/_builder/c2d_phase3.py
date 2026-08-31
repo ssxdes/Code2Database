@@ -497,35 +497,3 @@ def import_foreign_knowledge(graph_dir: str, foreign_c2d_path: str,
 # CLI handlers
 # ---------------------------------------------------------------------------
 
-def cmd_c2d_add_foreign_stub(args):
-    """CLI handler for c2d-add-foreign-stub."""
-    summary = add_foreign_stub(
-        graph_dir=args.graph,
-        stub_c2d_path=args.stub_c2d,
-        project_name=getattr(args, "project_name", "") or "",
-        verbose=True,
-    )
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
-
-
-def cmd_ffi_auto_link(args):
-    """CLI handler for ffi-auto-link."""
-    summary = auto_link_ffi_to_foreign(args.graph, verbose=True)
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
-
-
-def cmd_scan_rpc(args):
-    """CLI handler for scan-rpc."""
-    summary = scan_rpc_edges(args.graph, verbose=True)
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
-
-
-def cmd_import_foreign_knowledge(args):
-    """CLI handler for import-foreign-knowledge."""
-    summary = import_foreign_knowledge(
-        graph_dir=args.graph,
-        foreign_c2d_path=args.foreign_c2d,
-        project_name=getattr(args, "project_name", "") or "",
-        verbose=True,
-    )
-    print(json.dumps(summary, ensure_ascii=False, indent=2))

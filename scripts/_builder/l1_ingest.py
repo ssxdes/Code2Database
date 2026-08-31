@@ -261,6 +261,12 @@ def is_libclang_available() -> bool:
     tokens. This helper actually attempts Index.create() so callers can
     decide between the libclang path and the fallback path up-front.
 
+    Before probing, it calls clang_scanner._configure_libclang() which
+    searches common distribution paths (e.g. /usr/lib/x86_64-linux-gnu/
+    libclang-18.so.1) and sets Config.set_library_file() so the probe
+    can find the shared library even when libclang.so (without version
+    suffix) is absent.
+
     The result is cached after the first call to avoid repeated dlopen
     probes on hot paths (e.g., cmd_build's per-file loop).
     """
@@ -271,6 +277,16 @@ def is_libclang_available() -> bool:
         _LIBCLANG_USABLE_CACHE = False
         return False
     try:
+        # Configure the library path before probing. clang_scanner has
+        # a comprehensive search list for libclang.so variants across
+        # distributions (Ubuntu, Debian, Fedora, etc.). Without this,
+        # the clang Python binding only looks for libclang.so (no version
+        # suffix) which is typically absent.
+        try:
+            from _scanner.clang_scanner import _configure_libclang
+            _configure_libclang()
+        except ImportError:
+            pass
         Index.create()
         _LIBCLANG_USABLE_CACHE = True
     except Exception:

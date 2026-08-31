@@ -435,17 +435,11 @@ def ingest_l1(
         line_ending = "LF"
     encoding = "utf-8-sig" if has_bom else "utf-8"
 
-    # Upsert source_files_meta (INSERT if missing, UPDATE if present).
-    # The original UPDATE-only version silently no-op'd when the row didn't
-    # exist yet, leaving disk_sha256 empty and breaking verify_consistency.
-    conn.execute(
-        "INSERT INTO source_files_meta (file_id, encoding, line_ending, "
-        "has_bom, disk_sha256) VALUES (?, ?, ?, ?, ?) "
-        "ON CONFLICT(file_id) DO UPDATE SET encoding=?, line_ending=?, "
-        "has_bom=?, disk_sha256=?",
-        (file_id, encoding, line_ending, int(has_bom), disk_sha,
-         encoding, line_ending, int(has_bom), disk_sha)
-    )
+    # ── Phase 1: CPU-intensive work (no DB writes) ──
+    # All parsing and data collection happens here.  No SQLite writes are
+    # performed so the write lock is NOT held during the expensive libclang
+    # parse.  This prevents "database is locked" errors when multiple
+    # ProcessPoolExecutor workers parse simultaneously.
 
     # Parse with libclang
     try:
@@ -459,8 +453,14 @@ def ingest_l1(
         stats["error"] = f"libclang parse failed: {exc}"
         return stats
 
-    # Walk tokens — this is the L1 token stream
+    # Walk tokens — collect data into in-memory lists for batch INSERT
     tokens = list(tu.cursor.get_tokens())
+    _token_rows = []      # rows for executemany("INSERT INTO tokens")
+    _literal_rows = []    # rows for executemany("INSERT INTO literals")
+    _strlit_rows = []     # rows for executemany("INSERT INTO string_literals")
+    _comment_rows = []    # rows for executemany("INSERT INTO comments_freeform")
+    # Track literal_id back-references: (token_seq, literal_kind, literal_row_idx)
+    _literal_backrefs = []
     seq = 0
     prev_end_offset = 0
 
@@ -487,100 +487,61 @@ def ingest_l1(
             tok_kind_name = str(tok.kind).split('.')[-1] if tok.kind else "UNKNOWN"
             db_kind = _TOKEN_KIND_MAP.get(tok_kind_name, "punct")
 
-            # Refine literal kinds
-            literal_id = None
+            # Refine literal kinds — collect into lists (no DB writes)
+            literal_placeholder = None  # will be replaced after executemany
             if db_kind == "literal":
                 refined = _refine_literal_kind(spelling)
                 if refined == "string_literal":
                     db_kind = "string_literal"
-                    # Insert into literals + string_literals
-                    cur = conn.execute(
-                        "INSERT INTO literals (kind, raw_text, token_id) "
-                        "VALUES (?, ?, NULL)",
-                        ("string", spelling)
-                    )
-                    literal_id = cur.lastrowid
-                    # Compute security flags
                     sec_flags = _compute_security_flags(spelling)
-                    conn.execute(
-                        "INSERT INTO string_literals "
-                        "(literal_id, raw_bytes, decoded, encoding, is_wide, "
-                        "security_flags, token_id) "
-                        "VALUES (?, ?, ?, ?, ?, ?, NULL)",
-                        (literal_id, spelling.encode("utf-8"),
+                    _literal_rows.append(
+                        ("string", spelling, None)  # token_id filled later
+                    )
+                    _strlit_rows.append(
+                        (spelling.encode("utf-8"),
                          _decode_string_literal(spelling),
                          "utf-8" if not spelling.startswith("L") else "wide",
                          1 if spelling.startswith("L") else 0,
-                         sec_flags)
+                         sec_flags,
+                         None)  # token_id filled later
                     )
+                    _literal_backrefs.append((seq, "string", len(_literal_rows) - 1))
                     stats["string_literals"] += 1
                 elif refined == "char_literal":
                     db_kind = "char_literal"
-                    cur = conn.execute(
-                        "INSERT INTO literals (kind, raw_text, token_id) "
-                        "VALUES (?, ?, NULL)",
-                        ("char", spelling)
-                    )
-                    literal_id = cur.lastrowid
+                    _literal_rows.append(("char", spelling, None))
+                    _literal_backrefs.append((seq, "char", len(_literal_rows) - 1))
                 elif refined == "int_literal":
                     db_kind = "int_literal"
-                    cur = conn.execute(
-                        "INSERT INTO literals (kind, value, raw_text, base, suffix, token_id) "
-                        "VALUES (?, ?, ?, ?, ?, NULL)",
-                        ("int", spelling, spelling, 10, _extract_literal_suffix(spelling))
+                    _literal_rows.append(
+                        ("int", spelling, spelling, 10,
+                         _extract_literal_suffix(spelling), None)
                     )
-                    literal_id = cur.lastrowid
+                    _literal_backrefs.append((seq, "int", len(_literal_rows) - 1))
                 elif refined == "float_literal":
                     db_kind = "float_literal"
-                    cur = conn.execute(
-                        "INSERT INTO literals (kind, value, raw_text, suffix, token_id) "
-                        "VALUES (?, ?, ?, ?, NULL)",
-                        ("float", spelling, spelling, _extract_literal_suffix(spelling))
+                    _literal_rows.append(
+                        ("float", spelling, spelling,
+                         _extract_literal_suffix(spelling), None)
                     )
-                    literal_id = cur.lastrowid
+                    _literal_backrefs.append((seq, "float", len(_literal_rows) - 1))
                 stats["literals"] += 1
 
-            # Insert token
-            cur = conn.execute(
-                "INSERT INTO tokens (file_id, seq, kind, spelling, line, col, "
-                "end_line, end_col, byte_offset, byte_length, "
-                "preceding_whitespace, literal_id, language) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'c')",
+            # Collect token row
+            _token_rows.append(
                 (file_id, seq, db_kind, spelling, line, col, end_line, end_col,
-                 start_off, end_off - start_off, preceding_ws, literal_id)
+                 start_off, end_off - start_off, preceding_ws,
+                 literal_placeholder, 'c')
             )
-            token_id = cur.lastrowid
-
-            # Update literal_id back-reference if we created a literal
-            if literal_id is not None:
-                conn.execute(
-                    "UPDATE literals SET token_id=? WHERE id=?",
-                    (token_id, literal_id)
-                )
-                # Update string_literals back-reference too
-                if db_kind == "string_literal":
-                    conn.execute(
-                        "UPDATE string_literals SET token_id=? WHERE literal_id=?",
-                        (token_id, literal_id)
-                    )
 
             # Handle comments
             if tok_kind_name == "COMMENT":
                 comment_kind = _classify_comment_kind(spelling)
-                conn.execute(
-                    "INSERT INTO comments_freeform (file_id, line, end_line, col, end_col, "
-                    "text, kind, attached_symbol_id, language) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'c')",
+                _comment_rows.append(
                     (file_id, line, end_line, col, end_col,
-                     spelling, comment_kind)
+                     spelling, comment_kind, None, 'c')
                 )
                 stats["comments"] += 1
-
-            # Handle __attribute__((...)) — extract attribute text
-            if db_kind == "keyword" and spelling == "__attribute__":
-                # The next non-whitespace tokens should be (( ... ))
-                # We extract the attr_kind from the spelling text
-                pass  # attributes are extracted separately via cursor walk below
 
             prev_end_offset = end_off
             seq += 1
@@ -596,30 +557,214 @@ def ingest_l1(
                   f"{_tok_exc}", file=_sys.stderr)
             continue
 
-    # Walk cursor tree for macros / includes / pp directives / attributes
-    # (This is the "PPCallbacks simulation" layer.)
-    _walk_cursors_for_pp_info(conn, tu.cursor, file_path, file_id, source_bytes, stats)
+    # Collect PP info into lists (walk cursors + pp_branches)
+    _macro_rows = []
+    _macro_inv_rows = []
+    _pp_directive_rows = []
+    _pragma_rows = []
+    _pp_branch_rows = []
+    _collect_pp_info(tu.cursor, file_path, file_id, source_bytes,
+                     _macro_rows, _macro_inv_rows, _pp_directive_rows,
+                     _pragma_rows)
+    _collect_pp_branch_tree(file_id, source_bytes, _pp_branch_rows)
+    stats["macros"] = len(_macro_rows)
+    stats["macro_invocations"] = len(_macro_inv_rows)
+    stats["pp_directives"] = len(_pp_directive_rows)
+    stats["pragmas"] = len(_pragma_rows)
+    stats["attributes"] = 0  # attributes require ast_node_id (L2), not populated in L1
+    stats["pp_branches"] = len(_pp_branch_rows)
 
-    # Parse pp_branches from raw source lines
-    _build_pp_branch_tree(conn, file_id, source_bytes, stats)
-
-    # Update trailing_whitespace on source_files_meta
+    # Compute trailing_whitespace
+    trailing_ws = ""
     if prev_end_offset < len(source_bytes):
-        trailing = source_bytes[prev_end_offset:].decode("utf-8", errors="replace")
-        conn.execute(
-            "UPDATE source_files_meta SET trailing_whitespace=? WHERE file_id=?",
-            (trailing, file_id)
+        trailing_ws = source_bytes[prev_end_offset:].decode("utf-8", errors="replace")
+
+    # ── Phase 2: DB writes (minimize write lock hold time) ──
+    # All DB writes are batched and committed in a single transaction.
+    # The write lock is held only for the duration of these writes, NOT
+    # during the CPU-intensive parsing phase above.
+
+    # Upsert source_files_meta
+    conn.execute(
+        "INSERT INTO source_files_meta (file_id, encoding, line_ending, "
+        "has_bom, disk_sha256) VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(file_id) DO UPDATE SET encoding=?, line_ending=?, "
+        "has_bom=?, disk_sha256=?",
+        (file_id, encoding, line_ending, int(has_bom), disk_sha,
+         encoding, line_ending, int(has_bom), disk_sha)
+    )
+
+    # Batch INSERT tokens
+    if _token_rows:
+        conn.executemany(
+            "INSERT INTO tokens (file_id, seq, kind, spelling, line, col, "
+            "end_line, end_col, byte_offset, byte_length, "
+            "preceding_whitespace, literal_id, language) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            _token_rows
         )
 
+    # Batch INSERT literals + resolve back-references
+    if _literal_rows:
+        # For string literals: (kind, raw_text, token_id)
+        # For char literals: (kind, raw_text, token_id)
+        # For int literals: (kind, value, raw_text, base, suffix, token_id)
+        # For float literals: (kind, value, raw_text, suffix, token_id)
+        # We need to INSERT them in the same order and get lastrowid for each.
+        # executemany doesn't return per-row IDs, so we fall back to
+        # individual INSERTs for literals (typically few per file).
+        _literal_ids = {}  # row_idx → literal_id
+        for _li, _lrow in enumerate(_literal_rows):
+            if _lrow[0] == "string":
+                cur = conn.execute(
+                    "INSERT INTO literals (kind, raw_text, token_id) "
+                    "VALUES (?, ?, NULL)",
+                    (_lrow[0], _lrow[1])
+                )
+            elif _lrow[0] == "char":
+                cur = conn.execute(
+                    "INSERT INTO literals (kind, raw_text, token_id) "
+                    "VALUES (?, ?, NULL)",
+                    (_lrow[0], _lrow[1])
+                )
+            elif _lrow[0] == "int":
+                cur = conn.execute(
+                    "INSERT INTO literals (kind, value, raw_text, base, suffix, token_id) "
+                    "VALUES (?, ?, ?, ?, ?, NULL)",
+                    (_lrow[0], _lrow[1], _lrow[2], _lrow[3], _lrow[4])
+                )
+            elif _lrow[0] == "float":
+                cur = conn.execute(
+                    "INSERT INTO literals (kind, value, raw_text, suffix, token_id) "
+                    "VALUES (?, ?, ?, ?, NULL)",
+                    (_lrow[0], _lrow[1], _lrow[2], _lrow[3])
+                )
+            else:
+                continue
+            _literal_ids[_li] = cur.lastrowid
+
+        # Batch INSERT string_literals
+        if _strlit_rows:
+            for _si, _srow in enumerate(_strlit_rows):
+                _lid = _literal_ids.get(_si)
+                if _lid is not None:
+                    # _srow is (raw_bytes, decoded, encoding, is_wide,
+                    #           security_flags, token_id_placeholder)
+                    conn.execute(
+                        "INSERT INTO string_literals "
+                        "(literal_id, raw_bytes, decoded, encoding, is_wide, "
+                        "security_flags, token_id) "
+                        "VALUES (?, ?, ?, ?, ?, ?, NULL)",
+                        (_lid, _srow[0], _srow[1], _srow[2],
+                         _srow[3], _srow[4])
+                    )
+
+    # Resolve literal_id back-references in tokens
+    if _literal_backrefs:
+        # Build a map from seq → token_id for this file
+        _seq_to_token_id = {}
+        for _trow in conn.execute(
+            "SELECT id, seq FROM tokens WHERE file_id=?", (file_id,)
+        ):
+            _seq_to_token_id[_trow[1]] = _trow[0]
+
+        for _tseq, _lkind, _lidx in _literal_backrefs:
+            _lid = _literal_ids.get(_lidx)
+            if _lid is not None:
+                _tok_id = _seq_to_token_id.get(_tseq)
+                conn.execute(
+                    "UPDATE tokens SET literal_id=? WHERE file_id=? AND seq=?",
+                    (_lid, file_id, _tseq)
+                )
+                # Set literals.token_id back-reference
+                if _tok_id is not None:
+                    conn.execute(
+                        "UPDATE literals SET token_id=? WHERE id=?",
+                        (_tok_id, _lid)
+                    )
+                # Set string_literals.token_id back-reference
+                if _lkind == "string" and _tok_id is not None:
+                    conn.execute(
+                        "UPDATE string_literals SET token_id=? "
+                        "WHERE literal_id=?",
+                        (_tok_id, _lid)
+                    )
+
+    # Batch INSERT comments
+    if _comment_rows:
+        conn.executemany(
+            "INSERT INTO comments_freeform (file_id, line, end_line, col, end_col, "
+            "text, kind, attached_symbol_id, language) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            _comment_rows
+        )
+
+    # Batch INSERT macros, macro_invocations, pp_directives, pragmas
+    if _macro_rows:
+        conn.executemany(
+            "INSERT INTO macros (name, file_id, line, col, is_function_like, "
+            "is_variadic, params, body_text, is_undef, language) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            _macro_rows
+        )
+    if _macro_inv_rows:
+        # Resolve macro_id by name from just-inserted macros for this file
+        _macro_name_to_id = {}
+        for _mrow in conn.execute(
+            "SELECT id, name FROM macros WHERE file_id=? ORDER BY id",
+            (file_id,)
+        ):
+            _macro_name_to_id[_mrow[1]] = _mrow[0]  # last wins for duplicates
+        for _inv_file_id, _inv_name, _inv_line, _inv_col in _macro_inv_rows:
+            _mid = _macro_name_to_id.get(_inv_name)
+            if _mid is not None:
+                conn.execute(
+                    "INSERT INTO macro_invocations (macro_id, file_id, line, col, "
+                    "arg_token_ids, expanded_text) VALUES (?, ?, ?, ?, '[]', NULL)",
+                    (_mid, _inv_file_id, _inv_line, _inv_col)
+                )
+    if _pp_directive_rows:
+        conn.executemany(
+            "INSERT INTO pp_directives (file_id, kind, line, col, raw_text, "
+            "parsed_payload) VALUES (?, ?, ?, ?, ?, ?)",
+            _pp_directive_rows
+        )
+    if _pragma_rows:
+        conn.executemany(
+            "INSERT INTO pragmas (file_id, line, col, pragma_kind, raw_text, "
+            "parsed_payload) VALUES (?, ?, ?, ?, ?, ?)",
+            _pragma_rows
+        )
+
+    # Batch INSERT pp_branches (need parent_id resolution)
+    if _pp_branch_rows:
+        # pp_branches have parent_id which references other pp_branches rows.
+        # We need to INSERT in order and track IDs.
+        _branch_ids = []
+        for _brow in _pp_branch_rows:
+            _parent_id = _branch_ids[_brow[1]] if _brow[1] is not None and _brow[1] < len(_branch_ids) else None
+            cur = conn.execute(
+                "INSERT INTO pp_branches (file_id, parent_id, kind, condition, "
+                "start_line, end_line, is_active, language) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (file_id, _parent_id, _brow[2], _brow[3],
+                 _brow[4], _brow[5], _brow[6], _brow[7])
+            )
+            _branch_ids.append(cur.lastrowid)
+
+    # Update trailing_whitespace on source_files_meta
+    if trailing_ws:
+        conn.execute(
+            "UPDATE source_files_meta SET trailing_whitespace=? WHERE file_id=?",
+            (trailing_ws, file_id)
+        )
+
+    # Commit all writes in one transaction
+    conn.commit()
+
     # RPT-P0-21: L1↔L2 alignment — link identifier tokens to cgdb_nodes
-    # by matching byte ranges. For each cgdb_node of kind function/var/
-    # parameter/decl in this file, find the token whose [byte_offset,
-    # byte_offset+byte_length) overlaps with [byte_start, byte_end) and
-    # set tokens.ast_node_id = cgdb_nodes.id.
-    #
-    # This is the *minimum* L1↔L2 join: it links declaration name tokens
-    # to their cgdb_node rows. Full per-expression alignment (linking
-    # every identifier reference to its declaration) is a P1 task.
+    # This runs AFTER the main commit so it doesn't hold the write lock
+    # during the CPU-intensive parsing phase.
     try:
         node_rows = conn.execute(
             "SELECT id, byte_start, byte_end FROM cgdb_nodes "
@@ -654,6 +799,8 @@ def ingest_l1(
                 )
                 linked += 1
         stats["l1_l2_linked"] = linked
+        if linked:
+            conn.commit()
     except Exception as _align_exc:
         # Best-effort — alignment is a P0-21 enhancement, not a correctness
         # requirement for L1 ingest itself.
@@ -661,8 +808,6 @@ def ingest_l1(
         import sys as _sys
         print(f"[l1] WARNING: L1↔L2 alignment failed for "
               f"{os.path.basename(file_path)}: {_align_exc}", file=_sys.stderr)
-
-    conn.commit()
 
     # Verify consistency: render from tokens and compare to disk
     from _builder.source_renderer import SourceRenderer
@@ -738,20 +883,24 @@ def _ingest_l1_fallback(
     return stats
 
 
-def _walk_cursors_for_pp_info(
-    conn: sqlite3.Connection,
-    cursor,
-    file_path: str,
-    file_id: int,
-    source_bytes: bytes,
-    stats: dict,
-) -> None:
+def _collect_pp_info(cursor, file_path, file_id, source_bytes,
+                    _macro_rows, _macro_inv_rows, _pp_directive_rows,
+                    _pragma_rows):
     """Walk cursor tree for MACRO_DEFINITION / MACRO_INSTANTIATION /
-    INCLUDE_DIRECTIVE / PREPROCESSING_DIRECTIVE — the PPCallbacks simulation.
+    INCLUDE_DIRECTIVE / PREPROCESSING_DIRECTIVE — collect data into lists
+    for later batch INSERT.
 
-    Python libclang doesn't expose PPCallbacks directly, so we walk the cursor
-    tree (which includes preprocessor cursors when PARSE_DETAILED_PROCESSING_RECORD
-    is used) to collect the equivalent info.
+    This is the two-phase (collect-then-write) version of
+    _walk_cursors_for_pp_info: no DB writes happen here; all data is
+    appended to the supplied lists.
+
+    Row formats match the actual cgdb_schema.py definitions:
+      _macro_rows:     (name, file_id, line, col, is_function_like,
+                        is_variadic, params, body_text, is_undef, language)
+      _macro_inv_rows: (file_id, name, line, col)
+                        macro_id resolved in Phase 2 after macros are inserted
+      _pp_directive_rows: (file_id, kind, line, col, raw_text, parsed_payload)
+      _pragma_rows:    (file_id, line, col, pragma_kind, raw_text, parsed_payload)
     """
     try:
         from clang.cindex import CursorKind
@@ -767,177 +916,132 @@ def _walk_cursors_for_pp_info(
             kind = c.kind
 
             if kind == CursorKind.MACRO_DEFINITION:
-                # Macro definition
                 name = c.spelling or ""
                 is_function_like = _is_macro_function_like(c, source_bytes)
                 params, body_text = _extract_macro_params_and_body(c, source_bytes)
                 line = c.location.line
                 col = c.location.column
-                cur = conn.execute(
-                    "INSERT INTO macros (name, file_id, line, col, "
-                    "is_function_like, is_variadic, params, body_text, "
-                    "is_undef, language) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'c')",
-                    (name, file_id, line, col,
-                     int(is_function_like),
+                _macro_rows.append(
+                    (name, file_id, line, col, int(is_function_like),
                      int(name.endswith("...")),
                      str(params) if params else "[]",
-                     body_text or "")
+                     body_text or "", 0, 'c')
                 )
-                stats["macros"] += 1
 
             elif kind == CursorKind.MACRO_INSTANTIATION:
-                # Macro expansion site
                 name = c.spelling or ""
                 line = c.location.line
                 col = c.location.column
-                macro_row = conn.execute(
-                    "SELECT id FROM macros WHERE name=? ORDER BY id DESC LIMIT 1",
-                    (name,)
-                ).fetchone()
-                macro_id = macro_row[0] if macro_row else None
-                if macro_id:
-                    conn.execute(
-                        "INSERT INTO macro_invocations "
-                        "(macro_id, file_id, line, col, arg_token_ids, expanded_text) "
-                        "VALUES (?, ?, ?, ?, '[]', NULL)",
-                        (macro_id, file_id, line, col)
-                    )
-                    stats["macro_invocations"] += 1
+                # macro_id resolved in Phase 2 after macros are inserted
+                _macro_inv_rows.append((file_id, name, line, col))
 
             elif kind == CursorKind.INCLUDE_DIRECTIVE:
-                # #include directive
                 line = c.location.line
                 col = c.location.column
                 included_path = c.spelling or ""
-                conn.execute(
-                    "INSERT INTO pp_directives "
-                    "(file_id, kind, line, col, raw_text, parsed_payload) "
-                    "VALUES (?, 'include', ?, ?, ?, ?)",
-                    (file_id, line, col,
+                _pp_directive_rows.append(
+                    (file_id, 'include', line, col,
                      f"#include {included_path}",
                      f'{{"path":"{included_path}"}}')
                 )
-                stats["pp_directives"] += 1
 
             elif kind == CursorKind.PREPROCESSING_DIRECTIVE:
-                # #pragma / #line / #error / #warning
                 line = c.location.line
                 col = c.location.column
-                # Get the raw text of the directive
                 raw = _extract_cursor_text(c, source_bytes)
                 if raw and raw.strip().startswith("#"):
                     directive_info = _split_pp_directive(raw)
                     if directive_info:
                         d_kind, d_rest = directive_info
                         if d_kind == "pragma":
-                            # Parse pragma kind
                             p_kind = d_rest.split()[0] if d_rest.split() else "unknown"
-                            cur = conn.execute(
-                                "INSERT INTO pragmas (file_id, line, col, pragma_kind, "
-                                "raw_text, parsed_payload) VALUES (?, ?, ?, ?, ?, '{}')",
-                                (file_id, line, col, p_kind, raw)
+                            # Collect pragma row (pragmas table)
+                            _pragma_rows.append(
+                                (file_id, line, col, p_kind, raw, '{}')
                             )
-                            pragma_id = cur.lastrowid
-                            conn.execute(
-                                "INSERT INTO pp_directives (file_id, kind, line, col, "
-                                "raw_text, parsed_payload, pragma_id) "
-                                "VALUES (?, 'pragma', ?, ?, ?, '{}', ?)",
-                                (file_id, line, col, raw, pragma_id)
+                            # Also add to pp_directives (kind='pragma')
+                            _pp_directive_rows.append(
+                                (file_id, 'pragma', line, col, raw, '{}')
                             )
-                            stats["pragmas"] += 1
                         else:
-                            conn.execute(
-                                "INSERT INTO pp_directives (file_id, kind, line, col, "
-                                "raw_text, parsed_payload) VALUES (?, ?, ?, ?, ?, '{}')",
-                                (file_id, d_kind, line, col, raw)
+                            _pp_directive_rows.append(
+                                (file_id, d_kind, line, col, raw, '{}')
                             )
-                        stats["pp_directives"] += 1
 
         except Exception:
-            # Skip problematic cursors
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
 
 
-def _build_pp_branch_tree(
-    conn: sqlite3.Connection,
-    file_id: int,
-    source_bytes: bytes,
-    stats: dict,
-) -> None:
-    """Build the pp_branches tree from regex on source lines.
+def _collect_pp_branch_tree(file_id, source_bytes, _pp_branch_rows):
+    """Build pp_branches data from regex on source lines.
 
     Walks the source code line by line, detects #ifdef/#ifndef/#if/#elif/
-    #else/#endif, and builds the parent_id tree.
+    #else/#endif, and appends rows to _pp_branch_rows.  parent_id is stored
+    as a stack index that will be resolved to actual DB IDs during batch INSERT.
+
+    Row format: (file_id, parent_idx, kind, condition,
+                  start_line, end_line, is_active, language)
+    - parent_idx: index into _pp_branch_rows (or None for root), resolved
+      to real parent_id in Phase 2.
     """
     text = source_bytes.decode("utf-8", errors="replace")
     lines = text.splitlines(keepends=False)
 
-    stack: list[int] = []  # stack of pp_branches.id
-    branch_seq = 0
+    stack = []  # stack of row indices into _pp_branch_rows
 
     for line_idx, line in enumerate(lines, start=1):
         directive = _split_pp_directive(line)
         if directive is None:
             continue
         d_kind, d_rest = directive
-        parent_id = stack[-1] if stack else None
+        parent_idx = stack[-1] if stack else None
 
         if d_kind in ("ifdef", "ifndef", "if"):
-            cur = conn.execute(
-                "INSERT INTO pp_branches (file_id, parent_id, kind, condition, "
-                "start_line, end_line, is_active, language) "
-                "VALUES (?, ?, ?, ?, ?, 0, 1, 'c')",
-                (file_id, parent_id, d_kind, d_rest, line_idx)
+            row_idx = len(_pp_branch_rows)
+            _pp_branch_rows.append(
+                (file_id, parent_idx, d_kind, d_rest, line_idx, 0, 1, 'c')
             )
-            branch_id = cur.lastrowid
-            stack.append(branch_id)
-            stats["pp_branches"] += 1
-            branch_seq += 1
+            stack.append(row_idx)
 
         elif d_kind == "elif":
             if stack:
-                # Pop the previous if/ifdef sibling and replace with this elif
-                prev_id = stack.pop()
+                prev_idx = stack.pop()
                 # Update end_line of the previous branch
-                conn.execute(
-                    "UPDATE pp_branches SET end_line=? WHERE id=?",
-                    (line_idx - 1, prev_id)
+                _prev = _pp_branch_rows[prev_idx]
+                _pp_branch_rows[prev_idx] = (
+                    _prev[0], _prev[1], _prev[2], _prev[3],
+                    _prev[4], line_idx - 1, _prev[6], _prev[7]
                 )
-                parent_id = stack[-1] if stack else None
-                cur = conn.execute(
-                    "INSERT INTO pp_branches (file_id, parent_id, kind, condition, "
-                    "start_line, end_line, is_active, language) "
-                    "VALUES (?, ?, ?, ?, ?, 0, 1, 'c')",
-                    (file_id, parent_id, "elif", d_rest, line_idx)
+                parent_idx = stack[-1] if stack else None
+                row_idx = len(_pp_branch_rows)
+                _pp_branch_rows.append(
+                    (file_id, parent_idx, "elif", d_rest, line_idx, 0, 1, 'c')
                 )
-                stack.append(cur.lastrowid)
-                stats["pp_branches"] += 1
+                stack.append(row_idx)
 
         elif d_kind == "else":
             if stack:
-                prev_id = stack.pop()
-                conn.execute(
-                    "UPDATE pp_branches SET end_line=? WHERE id=?",
-                    (line_idx - 1, prev_id)
+                prev_idx = stack.pop()
+                _prev = _pp_branch_rows[prev_idx]
+                _pp_branch_rows[prev_idx] = (
+                    _prev[0], _prev[1], _prev[2], _prev[3],
+                    _prev[4], line_idx - 1, _prev[6], _prev[7]
                 )
-                parent_id = stack[-1] if stack else None
-                cur = conn.execute(
-                    "INSERT INTO pp_branches (file_id, parent_id, kind, condition, "
-                    "start_line, end_line, is_active, language) "
-                    "VALUES (?, ?, ?, ?, ?, 0, 1, 'c')",
-                    (file_id, parent_id, "else", "", line_idx)
+                parent_idx = stack[-1] if stack else None
+                row_idx = len(_pp_branch_rows)
+                _pp_branch_rows.append(
+                    (file_id, parent_idx, "else", "", line_idx, 0, 1, 'c')
                 )
-                stack.append(cur.lastrowid)
-                stats["pp_branches"] += 1
+                stack.append(row_idx)
 
         elif d_kind == "endif":
             if stack:
-                branch_id = stack.pop()
-                conn.execute(
-                    "UPDATE pp_branches SET end_line=? WHERE id=?",
-                    (line_idx, branch_id)
+                prev_idx = stack.pop()
+                _prev = _pp_branch_rows[prev_idx]
+                _pp_branch_rows[prev_idx] = (
+                    _prev[0], _prev[1], _prev[2], _prev[3],
+                    _prev[4], line_idx, _prev[6], _prev[7]
                 )
 
 

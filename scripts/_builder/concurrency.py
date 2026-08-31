@@ -6,6 +6,10 @@ from _builder.utils import _output_result
 from _builder.graph_build import _load_full_graph
 import logging
 
+_ALLOC_RE = re.compile(r'(alloc|malloc|new|create|init|open|start|get_mem|make)', re.I)
+_RELEASE_RE = re.compile(r'(free|dealloc|delete|destroy|close|stop|cleanup|release|put_mem|drop)', re.I)
+_USE_RE = re.compile(r'(read|write|process|handle|access|modify|update|send|recv|copy)', re.I)
+
 
 def cmd_concurrency_risks(args):
     """List all concurrency risk points sorted by risk level."""
@@ -125,10 +129,6 @@ def cmd_data_lifecycle(args):
     resource_kw = args.resource.lower()
     result = {"resource": args.resource, "alloc": [], "use": [], "release": [], "unknown": [], "paths": []}
 
-    alloc_patterns = re.compile(r'(alloc|malloc|new|create|init|open|start|get_mem|make)', re.I)
-    release_patterns = re.compile(r'(free|dealloc|delete|destroy|close|stop|cleanup|release|put_mem|drop)', re.I)
-    use_patterns = re.compile(r'(read|write|process|handle|access|modify|update|send|recv|copy)', re.I)
-
     relevant_nodes = []
     for nid, ndata in G.nodes(data=True):
         if ndata.get("is_empty"):
@@ -139,11 +139,11 @@ def cmd_data_lifecycle(args):
         searchable = f"{name} {body} {lvars}"
         if resource_kw in searchable:
             role = "unknown"
-            if alloc_patterns.search(name):
+            if _ALLOC_RE.search(name):
                 role = "alloc"
-            elif release_patterns.search(name):
+            elif _RELEASE_RE.search(name):
                 role = "release"
-            elif use_patterns.search(name):
+            elif _USE_RE.search(name):
                 role = "use"
             relevant_nodes.append({"id": nid, "name": ndata.get("name", ""),
                                    "role": role, "domain": ndata.get("domain", ""),

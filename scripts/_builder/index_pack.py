@@ -11,6 +11,13 @@ from _builder.query import _resolve_detailed_chain, _trace_simple_chain
 from _builder.token_budget import estimate_tokens
 import logging
 
+_CB_NUM_SUFFIX_RE = re.compile(r'.*_cb\d+$')
+_CB_USCORE_NUM_RE = re.compile(r'.*_cb_\d+$')
+_IO_CB_RE = re.compile(r'.*_(read|write|unmap|flush|reset|abort)_cb$')
+_LIFECYCLE_CB_RE = re.compile(r'.*_(init|fini|startup|shutdown|destroy)_cb$')
+_OBJ_LIFECYCLE_CB_RE = re.compile(r'.*_(construct|destruct|create|delete|remove|add)_cb$')
+_CB_PATTERN_RE = re.compile(r'.*(_cb|_cb_\d+|_done|_completion|_cpl|_event)$')
+
 # Import universal skip names from scanner for automatic external endpoint classification
 try:
     from _vendor._regex_c_scanner import _UNIVERSAL_SKIP_NAMES as _SCANNER_SKIP_NAMES
@@ -2317,7 +2324,7 @@ def _classify_endpoint(name: str, domain: str, profile: dict = None,
             return 'callback', 'Hot-remove callback'
         return 'callback', 'Callback function'
     # Callback variants: _cb with numeric suffix (_cb3, _cb_1), _cb_ctx, _cb_fun
-    if re.match(r'.*_cb\d+$', name) or re.match(r'.*_cb_\d+$', name):
+    if _CB_NUM_SUFFIX_RE.match(name) or _CB_USCORE_NUM_RE.match(name):
         return 'callback', 'Callback function'
     if name.endswith('_cb_ctx') or name.endswith('_cb_fun') or name.endswith('_cb_func'):
         return 'callback', 'Callback function'
@@ -2341,16 +2348,16 @@ def _classify_endpoint(name: str, domain: str, profile: dict = None,
     if name.endswith('_ops'):
         return 'function_pointer', 'Operation table / vtable'
     # IO operation callbacks (common in bdev/nvme)
-    if re.match(r'.*_(read|write|unmap|flush|reset|abort)_cb$', name):
+    if _IO_CB_RE.match(name):
         return 'callback', 'IO completion callback'
     # Init/fini callbacks
-    if re.match(r'.*_(init|fini|startup|shutdown|destroy)_cb$', name):
+    if _LIFECYCLE_CB_RE.match(name):
         return 'callback', 'Lifecycle callback'
     # Poller callbacks
     if name.endswith('_poller') or name.endswith('_poll_fn'):
         return 'callback', 'Poller callback'
     # Construct/destruct callbacks - refine with context
-    if re.match(r'.*_(construct|destruct|create|delete|remove|add)_cb$', name):
+    if _OBJ_LIFECYCLE_CB_RE.match(name):
         if 'channel_' in name:
             return 'callback', 'Channel lifecycle callback'
         return 'callback', 'Object lifecycle callback'
@@ -2457,7 +2464,7 @@ def _mark_endpoint_nodes(G: nx.DiGraph, outdir: str, profile: dict = None) -> in
             # Mark as endpoint only if: external (no src) or has external description.
             # Skip callback_func — they are internal callbacks, not external endpoints.
             # Also skip names matching callback patterns even if not labeled callback_func.
-            is_callback_pattern = bool(re.match(r'.*(_cb|_cb_\d+|_done|_completion|_cpl|_event)$', name))
+            is_callback_pattern = bool(_CB_PATTERN_RE.match(name))
             if not is_already_ep and not is_api and not is_callback and not is_callback_pattern:
                 if not has_src or has_ext_desc:
                     labels = list(labels)

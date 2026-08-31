@@ -38,6 +38,16 @@ import sys
 from typing import Dict, List, Optional, Set
 import logging
 
+_LOCK_CALL_RE_CACHE: Dict[str, re.Pattern] = {}
+
+
+def _get_lock_call_re(fn: str) -> re.Pattern:
+    if fn not in _LOCK_CALL_RE_CACHE:
+        _LOCK_CALL_RE_CACHE[fn] = re.compile(
+            r'\b' + re.escape(fn) + r'\s*\(([^)]*)\)'
+        )
+    return _LOCK_CALL_RE_CACHE[fn]
+
 
 # ---------------------------------------------------------------------------
 # Built-in semantic patterns
@@ -211,9 +221,7 @@ def detect_semantic_edges(node_data: Dict, profile: Optional[Dict] = None) -> Li
             if obj_idx < 0:
                 continue  # No protected-object index declared — skip HOLDER.
             # Match fn(arg0, arg1, ...) — capture the full arg list.
-            call_re = re.compile(
-                r'\b' + re.escape(fn) + r'\s*\(([^)]*)\)'
-            )
+            call_re = _get_lock_call_re(fn)
             for m in call_re.finditer(body_text):
                 arg_str = m.group(1)
                 args = [a.strip() for a in arg_str.split(',')]

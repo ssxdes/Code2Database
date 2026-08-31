@@ -38,6 +38,11 @@ import re
 from typing import List, Dict, Any, Optional, Tuple
 import logging
 
+_CONDITION_WRAPPER_RE = re.compile(
+    r'^(if_cond|if|switch|else_if|case|while|for)\s*\((.*)\)\s*$', re.DOTALL
+)
+_GUARD_PAT_CACHE: Dict[str, re.Pattern] = {}
+
 
 # ---------------------------------------------------------------------------
 # Pattern 1: Exclusive hold regions (bd_prepare_to_claim / bd_unclaim)
@@ -127,7 +132,7 @@ def _strip_condition_wrapper(cond: str) -> str:
     if s.startswith("else "):
         s = s[5:]
     # Match `if(...)` or `if_cond(...)` or `switch(...)` — take inner
-    m = re.match(r'^(if_cond|if|switch|else_if|case|while|for)\s*\((.*)\)\s*$', s, re.DOTALL)
+    m = _CONDITION_WRAPPER_RE.match(s)
     if m:
         return m.group(2)
     return s
@@ -472,14 +477,15 @@ def _detect_profile_guards(
         if not name:
             continue
         kind = entry.get("kind", "")
-        # Escape the function name for regex safety.
-        esc = re.escape(name)
-        if kind == "type_predicate":
-            # Match both `name(...)` and `!name(...)`.
-            pat = re.compile(rf'(!?)\b{esc}\s*\(([^)]*)\)')
-        else:
-            # acquire / release / lock_state / identity_predicate — bare call.
-            pat = re.compile(rf'\b{esc}\s*\(([^)]*)\)')
+        cache_key = f"{kind}:{name}"
+        pat = _GUARD_PAT_CACHE.get(cache_key)
+        if pat is None:
+            esc = re.escape(name)
+            if kind == "type_predicate":
+                pat = re.compile(rf'(!?)\b{esc}\s*\(([^)]*)\)')
+            else:
+                pat = re.compile(rf'\b{esc}\s*\(([^)]*)\)')
+            _GUARD_PAT_CACHE[cache_key] = pat
         compiled.append((entry, pat))
 
     results = []

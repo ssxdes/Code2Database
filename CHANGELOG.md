@@ -5,6 +5,65 @@ All notable changes to Code2Database will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-08-31
+
+### Deep Audit Round 3 — Architecture, Implementation Logic, Crash Safety, Protocol Compliance
+
+**P0 Critical Bug Fixes:**
+- Fix `_run_transactional_sync` in daemon.py — was permanently dead code since it was written: `GraphLock(graph_dir, mode="w", timeout=30.0)` always raised `TypeError` (GraphLock.__init__ only accepts `graph_dir`), `lock._release()` was `AttributeError` (method is `release()`), and lock timeout was never checked (sync ran without lock). Rewrote using `write_lock()` context manager. On timeout/failure, now re-queues actual file paths (was only restoring count, losing paths forever).
+- Fix `LazySQLiteGraph._node_neg_cache` eviction crash — `set.keys()` + `del set[k]` → `AttributeError` + `TypeError`. Triggered after 10K missing-node lookups (guaranteed crash for long-lived LSP/MCP servers on large graphs). Converted to `OrderedDict` with `popitem()`.
+- Fix `restore_snapshot` non-atomic per-file — `os.remove(dst)` + `shutil.copy2(src, dst)` left NO database file if killed mid-restore. Now uses temp-file + fsync + `os.replace` (crash-safe).
+- Fix `cmd_tx_restore` ran without write lock — concurrent daemon sync or another transaction could corrupt the DB. Now acquires write lock with 10s timeout.
+
+**P1 High-Impact Bug Fixes:**
+- Fix daemon `pause` socket command was a no-op — main loop never checked `self.state.paused`, so daemon continued syncing after `daemon-pause`. Now checks at top of each iteration and sets `STATUS_PAUSED`.
+- Fix `_prune_old_events` hardcoded 60s window — ignored configurable `circuit_breaker_window_sec` (user who set 120s thought they widened the window but daemon still counted only last 60s).
+- Fix `FileWatcher._run_polling` referenced daemon-only attributes (`self.graph_dir`, `self._pending`, `self._pending_lock`, `self.state`) — `AttributeError` caught by try/except, so DB-aware change detection silently no-op'd in polling fallback mode. Fixed: added `graph_dir` param to FileWatcher, uses `self._callback()` instead of daemon internals.
+- Fix LSP server advertised but unimplemented capabilities (`documentSymbolProvider`, `workspaceSymbolProvider`) — editors sent requests, server returned `-32601` errors. Removed from ServerCapabilities.
+- Fix LSP `run_stdio` header parser: accepted only CRLF framing (hung on LF-only clients), crashed on malformed `Content-Length` (no try/except), crashed on malformed JSON, didn't handle partial body reads, infinite loop on EOF. Now handles all edge cases with `-32700` Parse error responses.
+- Fix LSP `_send` mixed text+binary stdout — `\r\r\n` on Windows. Now writes entire response to `stdout.buffer` in one binary write.
+- Fix `StreamingGraph.close()` not idempotent — second call executed `DELETE FROM functions` + wrote zero functions → empty table. Added `_closed` flag.
+- Fix `LazySQLiteGraph` missing `__del__` — fd leak when callers don't use `with`. Added `__del__` calling `close()`.
+
+**P2 Implementation Logic Fixes:**
+- Fix `intent_router` 3 misrouted commands: `call-chain`→`path`, `race-detect`→`detect-races`, removed `find-concepts` (no such command existed).
+- Fix `query_router` no-op self-aliases (`route_invokers = route_invokers`).
+- Fix `query_router` 3 `print(stderr)`→`_log.warning()` for consistent logging.
+- Fix `query_cache` dead node-version check — read from live map and snapshot built from same map, so `!=` branch never fired. Removed dead code, updated docstring.
+- Fix `build_phases` goto exception logger: DEBUG→WARNING with edge IDs.
+- Remove 2 dead return values: `_edge_target_index` from `_create_empty_conditional_nodes`, `_known_struct_types` from `_build_struct_embedding_index`.
+- Fix MCP: `ImportError` for `mcp_report_tools` was silently swallowed (server started with 53 tools instead of 81 with no warning). Now logs at ERROR.
+- Fix MCP: 7 tools missing required-param validation (`_tool_explain_label`, `_tool_edit_token`, `_tool_data_lifecycle`, `_tool_domain`, `_tool_knowledge_query`, `_tool_memory_search`, `_tool_composite_query`).
+- Fix MCP: `_tool_audit_log` missing `int()` type coercion for `limit`.
+- Fix MCP module docstring: listed 13 of 81 tools. Updated to full breakdown.
+- Fix `cmd_kb_migrate` silent per-row exception swallowing — now counts failures, logs at WARNING, includes `"failed"` count in JSON output.
+- Refactor `null-source` alias from hand-copied 5 args to `parents=[p_ff]` pattern (inherits all field-flow args automatically).
+- Fix 3 resource leaks: `export_mermaid.py`, `graph_diff.py`, `mcp_server.py` (2 sites) — `conn.close()` was outside `finally` block, leaked on non-sqlite3 exceptions.
+- Fix `web_ui.py` `threading.Timer` was non-daemon and never cancelled — delayed process exit by 0.5s on shutdown. Now daemon + `cancel()` in `finally`.
+
+**CLI Builder Improvements:**
+- Fix module docstring shadowed by `import logging` on line 2 — `__doc__` was `None`.
+- Remove dead import `_detect_build_system` (never referenced).
+- Add `--version` flag (prints `code2database_builder 1.3.0`).
+- Add `RuntimeError` guard in alias loop if canonical subparser missing (was silently skipped).
+- Wrap `parser.parse_args()` in try/except `KeyboardInterrupt` → exit 130.
+
+**Dead Code Removal:**
+- Remove 4 dead `cmd_*` wrappers in `c2d_phase3.py` (code2database_builder.py has its own versions).
+
+**Documentation:**
+- Update MCP module docstring from 13 to 81 tools.
+- Fix README MCP tool examples: were CLI command names (`explore-flow`, `detect-races`), now actual MCP tool names (`code2database_explore`, `code2database_detect_races`). Synced zh/README.md.
+- Fix stale D37 comment: `16 -> 30+` → `16 -> 34`.
+
+**Test Coverage:**
+- New `tests/test_streaming_graph.py` (8 tests): LazySQLiteGraph negative cache eviction, basic read ops, StreamingGraph close idempotency.
+- Add `test_module_has_docstring`, `test_version_flag_prints_version_and_exits_zero` to test_cli_command_coverage.py.
+- Tighten `test_help_lists_at_least_26_commands` → `_200` (was too loose for 222 commands).
+- Add `test_no_unimplemented_capabilities_advertised` to test_lsp_server.py.
+- Update intent_router tests for corrected command names.
+- **Test suite**: 1594 tests across 88 files (was 1583/87).
+
 ## [Unreleased] - 2026-08-29
 
 ### Deep Audit Round 2 — Architecture, Doc Sync, CLI Aliases, Dead Code

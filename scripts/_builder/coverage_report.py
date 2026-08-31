@@ -110,10 +110,12 @@ def write_coverage_report(graph_dir: str) -> Optional[str]:
         return None
     try:
         conn = sqlite3.connect(db_path)
-        rows = conn.execute(
-            "SELECT path, language FROM cgdb_files"
-        ).fetchall()
-        conn.close()
+        try:
+            rows = conn.execute(
+                "SELECT path, language FROM cgdb_files"
+            ).fetchall()
+        finally:
+            conn.close()
     except sqlite3.Error:
         return None
     if not rows:
@@ -217,8 +219,10 @@ def path_not_found_hints(
         if os.path.exists(db_path):
             try:
                 conn = sqlite3.connect(db_path)
-                rows = conn.execute("SELECT path FROM cgdb_files").fetchall()
-                conn.close()
+                try:
+                    rows = conn.execute("SELECT path FROM cgdb_files").fetchall()
+                finally:
+                    conn.close()
                 scanned = sorted(set(
                     _subsystem_from_path(r[0]) for r in rows
                 ))
@@ -287,11 +291,13 @@ def write_file_coverage(graph_dir: str) -> Optional[str]:
         return None
     try:
         conn = sqlite3.connect(db_path)
-        rows = conn.execute(
-            "SELECT path, language, line_count, byte_count, "
-            "commit_hash FROM cgdb_files ORDER BY path"
-        ).fetchall()
-        conn.close()
+        try:
+            rows = conn.execute(
+                "SELECT path, language, line_count, byte_count, "
+                "commit_hash FROM cgdb_files ORDER BY path"
+            ).fetchall()
+        finally:
+            conn.close()
     except sqlite3.Error:
         return None
     if not rows:

@@ -1308,28 +1308,29 @@ class Daemon:
             conn = sqlite3.connect(db_path)
             conn.row_factory = sqlite3.Row
             try:
-                watched = conn.execute(
-                    "SELECT c2d_path, db_mtime_at_sync FROM watched_c2ds "
-                    "WHERE sync_status IN ('ok', 'stub')"
-                ).fetchall()
-            except sqlite3.OperationalError:
-                conn.close()
-                return  # watched_c2ds table doesn't exist
-            needs_sync = False
-            for w in watched:
-                fdb_path = os.path.join(w["c2d_path"], "code2database.db")
-                if not os.path.exists(fdb_path):
-                    continue
                 try:
-                    current_mtime = str(os.path.getmtime(fdb_path))
-                except OSError:
-                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                    continue
-                if current_mtime != w["db_mtime_at_sync"]:
-                    needs_sync = True
-                    self._log(f"foreign c2d changed: {w['c2d_path']}")
-                    break
-            conn.close()
+                    watched = conn.execute(
+                        "SELECT c2d_path, db_mtime_at_sync FROM watched_c2ds "
+                        "WHERE sync_status IN ('ok', 'stub')"
+                    ).fetchall()
+                except sqlite3.OperationalError:
+                    return  # watched_c2ds table doesn't exist
+                needs_sync = False
+                for w in watched:
+                    fdb_path = os.path.join(w["c2d_path"], "code2database.db")
+                    if not os.path.exists(fdb_path):
+                        continue
+                    try:
+                        current_mtime = str(os.path.getmtime(fdb_path))
+                    except OSError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                        continue
+                    if current_mtime != w["db_mtime_at_sync"]:
+                        needs_sync = True
+                        self._log(f"foreign c2d changed: {w['c2d_path']}")
+                        break
+            finally:
+                conn.close()
             if needs_sync:
                 self._sync_foreign_refs_after_local_update()
         except Exception as exc:

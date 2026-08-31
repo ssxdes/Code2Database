@@ -86,7 +86,6 @@ class SourceRenderer:
         if not self.source_root:
             return file_path
         if not os.path.isabs(file_path):
-            import os
             cand = os.path.join(self.source_root, file_path)
             if os.path.exists(cand):
                 return cand

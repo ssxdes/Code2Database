@@ -712,18 +712,8 @@ def _run_post_commit_consistency_check(graph_dir: str,
         return
     # Resolve source_root from the database meta table so relative
     # file paths in cgdb_files can be opened for disk_sha256.
-    conn_test = sqlite3.connect(db_path, timeout=30.0)
-    source_root = ""
-    try:
-        row = conn_test.execute(
-            "SELECT value FROM meta WHERE key='source_root'"
-        ).fetchone()
-        if row:
-            source_root = row[0]
-    except Exception:
-        pass
-    conn_test.close()
     conn: Optional[sqlite3.Connection] = None
+    source_root = ""
     try:
         conn = sqlite3.connect(db_path)
         # Verify the tokens table exists — skip silently if not (graph_dir
@@ -734,6 +724,14 @@ def _run_post_commit_consistency_check(graph_dir: str,
         )
         if cur.fetchone() is None:
             return
+        try:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key='source_root'"
+            ).fetchone()
+            if row:
+                source_root = row[0]
+        except Exception:
+            pass
         for fid in tx_state.dirty_file_ids:
             try:
                 cr = verify_consistency(conn, int(fid), source_root=source_root)

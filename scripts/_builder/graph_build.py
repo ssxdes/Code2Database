@@ -7430,8 +7430,15 @@ def cmd_build(args):
                         ):
                             key = (row[1], row[2])
                             invoke_site_index.setdefault(key, []).append(row[0])
+                        # Precompute index: field_name -> list of (struct_type, impls)
+                        # so the per-call lookup is O(small list) instead of scanning
+                        # all ops_field_to_impls entries for each fn_ptr_call.
+                        _impls_by_field_name = defaultdict(list)
+                        for (st, fn), impls in ops_field_to_impls.items():
+                            _impls_by_field_name[fn].append((st, impls))
                         # Match each fn_ptr_call to candidates
-                        updated = 0
+                        import json as _json
+                        update_batch = []  # list of (cand_json, rowid) for executemany
                         for invoker_name, calls in (fn_ptr_calls or {}).items():
                             invoker_nid = fn_name_to_nid.get(invoker_name)
                             if invoker_nid is None:
@@ -7443,17 +7450,16 @@ def cmd_build(args):
                                     continue
                                 # Find candidates: first try (struct_type, field_name)
                                 # matching the struct_chain, then fall back to ('', field_name).
+                                sc = call.get('struct_chain', '') or ''
                                 candidates = []
-                                for (st, fn), impls in ops_field_to_impls.items():
-                                    if fn != field_name:
-                                        continue
-                                    if st and st not in (call.get('struct_chain', '') or ''):
+                                for st, impls in _impls_by_field_name.get(field_name, ()):
+                                    if st and st not in sc:
                                         continue
                                     candidates.extend(impls)
                                 if not candidates:
                                     # Fall back to all impls with this field_name
-                                    for (st, fn), impls in ops_field_to_impls.items():
-                                        if fn == field_name and not st:
+                                    for st, impls in _impls_by_field_name.get(field_name, ()):
+                                        if not st:
                                             candidates.extend(impls)
                                 if not candidates:
                                     continue
@@ -7480,15 +7486,18 @@ def cmd_build(args):
                                 rowids = invoke_site_index.get((invoker_nid, invoked_nid), [])
                                 if not rowids:
                                     continue
-                                import json as _json
                                 _cand_json = _json.dumps(candidates)
                                 for rowid in rowids:
-                                    conn.execute(
-                                        "UPDATE invoke_sites SET dispatch_candidates=? "
-                                        "WHERE id=?",
-                                        (_cand_json, rowid)
-                                    )
-                                    updated += 1
+                                    update_batch.append((_cand_json, rowid))
+                        if update_batch:
+                            conn.executemany(
+                                "UPDATE invoke_sites SET dispatch_candidates=? "
+                                "WHERE id=?",
+                                update_batch
+                            )
+                            updated = len(update_batch)
+                        else:
+                            updated = 0
                         conn.commit()
                         if updated:
                             print(f"[cgdb] Populated dispatch_candidates for "

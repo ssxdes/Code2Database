@@ -5565,6 +5565,46 @@ def _load_extraction_chunked(extraction_path: str, memory_guard=None):
     return data, extraction_tokens
 
 
+def _read_file_bytes(fpath: str) -> bytes | None:
+    """Read a file's raw bytes (top-level function for ThreadPoolExecutor).
+
+    Returns the file content as bytes, or None on error.
+    I/O is GIL-free, so multiple threads can read files in parallel.
+    The caller deserializes with json.loads() in the main thread.
+    """
+    import sys as _sys
+    import os as _os
+    try:
+        with open(fpath, "rb") as f:
+            return f.read()
+    except OSError as e:
+        print(f"[build] WARNING: Cannot read file {_os.path.basename(fpath)}: "
+              f"{e}", file=_sys.stderr)
+        return None
+
+
+def _load_json_file(fpath: str):
+    """Load a single JSON file (top-level function for ProcessPoolExecutor).
+
+    Returns the deserialized Python object, or None on error
+    (error is printed to stderr).
+    """
+    import json as _json
+    import sys as _sys
+    import os as _os
+    try:
+        with open(fpath, "r", encoding="utf-8") as f:
+            return _json.load(f)
+    except _json.JSONDecodeError as e:
+        print(f"[build] WARNING: Corrupt file {_os.path.basename(fpath)}: "
+              f"{e.msg} at pos {e.pos}, skipping", file=_sys.stderr)
+        return None
+    except OSError as e:
+        print(f"[build] WARNING: Cannot read file {_os.path.basename(fpath)}: "
+              f"{e}", file=_sys.stderr)
+        return None
+
+
 def _load_split_extraction(extraction_dir: str, strip_body_text: bool = False) -> dict:
     """Load per-domain extraction files incrementally.
 
@@ -5688,79 +5728,170 @@ def _load_split_extraction(extraction_dir: str, strip_body_text: bool = False) -
     _globals_data = data.get("globals", {"enums": [], "constants": [], "typedefs": [], "global_vars": []})
     _field_assignments = data.get("field_assignments", [])
 
-    # Load functions by domain
+    # Load functions by domain — parallel I/O with ThreadPoolExecutor.
+    # The approach uses two phases:
+    #   Phase 1 (parallel I/O): ThreadPoolExecutor reads file contents into
+    #     memory in parallel. Python releases the GIL during I/O, so multiple
+    #     threads can read files concurrently.
+    #   Phase 2 (serial deserialize): json.loads() in the main thread
+    #     deserializes the raw bytes. This avoids the massive pickle overhead
+    #     of ProcessPoolExecutor (transferring 15GB of Python objects across
+    #     process boundaries), while still overlapping I/O with CPU work.
+    #   strip_body_text / _extract_state_access are applied in the main
+    #   process after deserialization, because they depend on _globals_data
+    #   and _field_assignments which are too large to pickle efficiently.
     functions_dir = os.path.join(extraction_dir, "functions")
     if os.path.isdir(functions_dir):
         data["functions"] = []
-        _gc_milestone = 0
         _func_files = sorted(_glob.glob(os.path.join(functions_dir, "*.json")))
         _total_func_files = len(_func_files)
-        for _fi, fpath in enumerate(_func_files):
-            with open(fpath, "r", encoding="utf-8") as f:
-                domain_funcs = json.load(f)
-                # Per-domain state_access extraction BEFORE stripping body_text.
-                # Only needed when strip_body_text=True (low-memory mode),
-                # because that mode skips _extract_state_access_all (the
-                # streaming path early-returns at line ~5977). In normal
-                # mode, _extract_state_access_all runs after build_graph and
-                # does this derivation centrally — skipping it here avoids
-                # duplicate work for ~1.5M functions.
-                if strip_body_text:
-                    for func in domain_funcs:
-                        body = func.get("body_text", "")
-                        if not body:
-                            continue
-                        access_info = _extract_state_access(
-                            body,
-                            func.get("local_vars", []),
-                            func.get("params", []),
-                            _globals_data,
-                            _field_assignments,
-                            func.get("name", ""))
-                        for _ak in ("globals_read", "globals_written",
-                                    "fields_read", "fields_written"):
-                            _av = access_info.get(_ak, [])
-                            if _av:
-                                func[_ak] = _av
-                if strip_body_text:
-                    # Only strip body_text (the large field, ~80% of size).
-                    # Previously also stripped params/callee_args/condition_vars/
-                    # local_vars/accessed_fields — but these are SMALL and
-                    # essential for query-time analysis (param-flow,
-                    # describe-node --full, field-access, race detection).
-                    # Stripping them caused critical data loss on large
-                    # projects: 1.5M kernel functions had empty params.
-                    # state_access (globals_read/written, fields_read/written)
-                    # was derived above BEFORE stripping, so it is preserved.
-                    _STRIP_KEYS = ("body_text", "macros")
-                    for func in domain_funcs:
-                        for k in _STRIP_KEYS:
-                            func.pop(k, None)
-                data["functions"].extend(domain_funcs)
-            del domain_funcs
-            # Periodic GC at milestones (100K, 200K, 400K, 600K functions)
-            # not on every file iteration, to avoid GC thrashing
-            _func_count = len(data["functions"])
-            _next_milestone = (_gc_milestone + 1) * 100000
-            if _func_count >= _next_milestone:
-                _gc.collect()
-                _gc_milestone += 1
-                print(f"[build] Loaded {_fi+1}/{_total_func_files} function files "
-                      f"({_func_count} functions)", file=sys.stderr)
 
-    # Load edges by domain
+        # Use parallel I/O when there are enough files to amortize the
+        # ThreadPool overhead. Threshold is conservative (50+ files).
+        _use_parallel = _total_func_files > 50 and (os.cpu_count() or 1) > 1
+        if _use_parallel:
+            _load_start = time.time()
+            try:
+                from concurrent.futures import ThreadPoolExecutor
+                _n_workers = min(os.cpu_count() or 4, 8)  # Cap at 8 I/O threads
+                # Phase 1: parallel I/O — read all files into memory
+                with ThreadPoolExecutor(max_workers=_n_workers) as _pool:
+                    _raw_chunks = list(_pool.map(_read_file_bytes, _func_files))
+                # Phase 2: serial deserialize + merge
+                _gc_milestone = 0
+                for _fi, _raw in enumerate(_raw_chunks):
+                    if _raw is None:
+                        continue  # read error already printed
+                    try:
+                        domain_funcs = json.loads(_raw)
+                    except json.JSONDecodeError as e:
+                        print(f"[build] WARNING: Corrupt file "
+                              f"{os.path.basename(_func_files[_fi])}: "
+                              f"{e.msg} at pos {e.pos}, skipping",
+                              file=sys.stderr)
+                        continue
+                    if strip_body_text:
+                        for func in domain_funcs:
+                            body = func.get("body_text", "")
+                            if not body:
+                                continue
+                            access_info = _extract_state_access(
+                                body,
+                                func.get("local_vars", []),
+                                func.get("params", []),
+                                _globals_data,
+                                _field_assignments,
+                                func.get("name", ""))
+                            for _ak in ("globals_read", "globals_written",
+                                        "fields_read", "fields_written"):
+                                _av = access_info.get(_ak, [])
+                                if _av:
+                                    func[_ak] = _av
+                        _STRIP_KEYS = ("body_text", "macros")
+                        for func in domain_funcs:
+                            for k in _STRIP_KEYS:
+                                func.pop(k, None)
+                    data["functions"].extend(domain_funcs)
+                    del _raw, domain_funcs
+                    _func_count = len(data["functions"])
+                    _next_milestone = (_gc_milestone + 1) * 100000
+                    if _func_count >= _next_milestone:
+                        _gc.collect()
+                        _gc_milestone += 1
+                        print(f"[build] Loaded {_fi+1}/{_total_func_files} function files "
+                              f"({_func_count} functions)", file=sys.stderr)
+                _load_elapsed = time.time() - _load_start
+                print(f"[build] Loaded {_total_func_files} function files "
+                      f"({len(data['functions'])} functions) in {_load_elapsed:.1f}s "
+                      f"(parallel I/O, {_n_workers} threads)", file=sys.stderr)
+            except (ImportError, OSError):
+                # Fallback to serial if ThreadPool fails
+                _use_parallel = False
+
+        if not _use_parallel:
+            # Serial path (original logic, kept as fallback)
+            _gc_milestone = 0
+            for _fi, fpath in enumerate(_func_files):
+                with open(fpath, "r", encoding="utf-8") as f:
+                    domain_funcs = json.load(f)
+                    if strip_body_text:
+                        for func in domain_funcs:
+                            body = func.get("body_text", "")
+                            if not body:
+                                continue
+                            access_info = _extract_state_access(
+                                body,
+                                func.get("local_vars", []),
+                                func.get("params", []),
+                                _globals_data,
+                                _field_assignments,
+                                func.get("name", ""))
+                            for _ak in ("globals_read", "globals_written",
+                                        "fields_read", "fields_written"):
+                                _av = access_info.get(_ak, [])
+                                if _av:
+                                    func[_ak] = _av
+                    if strip_body_text:
+                        _STRIP_KEYS = ("body_text", "macros")
+                        for func in domain_funcs:
+                            for k in _STRIP_KEYS:
+                                func.pop(k, None)
+                    data["functions"].extend(domain_funcs)
+                del domain_funcs
+                _func_count = len(data["functions"])
+                _next_milestone = (_gc_milestone + 1) * 100000
+                if _func_count >= _next_milestone:
+                    _gc.collect()
+                    _gc_milestone += 1
+                    print(f"[build] Loaded {_fi+1}/{_total_func_files} function files "
+                          f"({_func_count} functions)", file=sys.stderr)
+
+    # Load edges by domain — also parallelized with ThreadPoolExecutor.
     edges_dir = os.path.join(extraction_dir, "edges")
     if os.path.isdir(edges_dir):
         data["edges"] = []
-        for fpath in sorted(_glob.glob(os.path.join(edges_dir, "*.json"))):
+        _edge_files = sorted(_glob.glob(os.path.join(edges_dir, "*.json")))
+        _total_edge_files = len(_edge_files)
+        if _use_parallel and _total_edge_files > 50:
             try:
-                with open(fpath, "r", encoding="utf-8") as f:
-                    domain_edges = json.load(f)
+                from concurrent.futures import ThreadPoolExecutor
+                _n_workers = min(os.cpu_count() or 4, 8)
+                with ThreadPoolExecutor(max_workers=_n_workers) as _pool:
+                    _raw_edges = list(_pool.map(_read_file_bytes, _edge_files))
+                for _ei, _raw in enumerate(_raw_edges):
+                    if _raw is None:
+                        continue
+                    try:
+                        domain_edges = json.loads(_raw)
+                    except json.JSONDecodeError as e:
+                        print(f"[build] WARNING: Corrupt edge file "
+                              f"{os.path.basename(_edge_files[_ei])}: "
+                              f"{e.msg} at pos {e.pos}, skipping",
+                              file=sys.stderr)
+                        continue
                     data["edges"].extend(domain_edges)
-                del domain_edges
-            except json.JSONDecodeError as e:
-                print(f"[build] WARNING: Corrupt edge file {os.path.basename(fpath)}: "
-                      f"{e.msg} at pos {e.pos}, skipping", file=sys.stderr)
+                    del _raw, domain_edges
+            except (ImportError, OSError):
+                # Fallback to serial
+                for fpath in _edge_files:
+                    try:
+                        with open(fpath, "r", encoding="utf-8") as f:
+                            domain_edges = json.load(f)
+                            data["edges"].extend(domain_edges)
+                        del domain_edges
+                    except json.JSONDecodeError as e:
+                        print(f"[build] WARNING: Corrupt edge file {os.path.basename(fpath)}: "
+                              f"{e.msg} at pos {e.pos}, skipping", file=sys.stderr)
+        else:
+            for fpath in _edge_files:
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        domain_edges = json.load(f)
+                        data["edges"].extend(domain_edges)
+                    del domain_edges
+                except json.JSONDecodeError as e:
+                    print(f"[build] WARNING: Corrupt edge file {os.path.basename(fpath)}: "
+                          f"{e.msg} at pos {e.pos}, skipping", file=sys.stderr)
 
     # Load remaining auxiliary files (skip globals/field_assignments — already loaded)
     for key in ("vtable_registrations", "import_edges",
@@ -5779,6 +5910,7 @@ def _load_split_extraction(extraction_dir: str, strip_body_text: bool = False) -
     # tables even though the scanner produced them.
     _cgdb_dir = os.path.join(extraction_dir, "cgdb")
     if os.path.isdir(_cgdb_dir):
+        _cgdb_start = time.time()
         for key in ("cgdb_nodes", "cgdb_types", "cgdb_edges",
                     "cgdb_invoke_sites", "cgdb_predicates",
                     "cgdb_ops_bindings", "cgdb_basic_blocks",
@@ -5791,17 +5923,62 @@ def _load_split_extraction(extraction_dir: str, strip_body_text: bool = False) -
             if not _chunk_files:
                 continue
             data[key] = []
-            for cf in _chunk_files:
+            if _use_parallel and len(_chunk_files) > 10:
+                # Parallel I/O for cgdb chunks (large files)
                 try:
-                    with open(cf, "r", encoding="utf-8") as f:
-                        chunk_data = json.load(f)
-                    data[key].extend(chunk_data)
-                    del chunk_data
-                except json.JSONDecodeError as e:
-                    print(f"[build] WARNING: Corrupt cgdb chunk "
-                          f"{os.path.basename(cf)}: {e.msg} at pos {e.pos}, "
-                          f"skipping", file=sys.stderr)
+                    from concurrent.futures import ThreadPoolExecutor
+                    _n_workers = min(os.cpu_count() or 4, 8)
+                    with ThreadPoolExecutor(max_workers=_n_workers) as _pool:
+                        _raw_chunks = list(_pool.map(_read_file_bytes, _chunk_files))
+                    for _ci, _raw in enumerate(_raw_chunks):
+                        if _raw is None:
+                            continue
+                        try:
+                            chunk_data = json.loads(_raw)
+                        except json.JSONDecodeError as e:
+                            print(f"[build] WARNING: Corrupt cgdb chunk "
+                                  f"{os.path.basename(_chunk_files[_ci])}: "
+                                  f"{e.msg} at pos {e.pos}, skipping",
+                                  file=sys.stderr)
+                            continue
+                        data[key].extend(chunk_data)
+                        del _raw, chunk_data
+                except (ImportError, OSError):
+                    # Fallback to serial
+                    for cf in _chunk_files:
+                        try:
+                            with open(cf, "r", encoding="utf-8") as f:
+                                chunk_data = json.load(f)
+                            data[key].extend(chunk_data)
+                            del chunk_data
+                        except json.JSONDecodeError as e:
+                            print(f"[build] WARNING: Corrupt cgdb chunk "
+                                  f"{os.path.basename(cf)}: {e.msg} at pos {e.pos}, "
+                                  f"skipping", file=sys.stderr)
+            else:
+                for cf in _chunk_files:
+                    try:
+                        with open(cf, "r", encoding="utf-8") as f:
+                            chunk_data = json.load(f)
+                        data[key].extend(chunk_data)
+                        del chunk_data
+                    except json.JSONDecodeError as e:
+                        print(f"[build] WARNING: Corrupt cgdb chunk "
+                              f"{os.path.basename(cf)}: {e.msg} at pos {e.pos}, "
+                              f"skipping", file=sys.stderr)
             _gc.collect()
+        _cgdb_elapsed = time.time() - _cgdb_start
+        _cgdb_total = sum(len(data.get(k, [])) for k in
+                          ("cgdb_nodes", "cgdb_types", "cgdb_edges",
+                           "cgdb_invoke_sites", "cgdb_predicates",
+                           "cgdb_ops_bindings", "cgdb_basic_blocks",
+                           "cgdb_cfg_edges", "cgdb_data_flow",
+                           "cgdb_sync_primitives", "cgdb_happens_before",
+                           "cgdb_alias_sets", "cgdb_doc_comments",
+                           "cgdb_metadata", "cgdb_includes", "conditions")
+                          if k in data)
+        print(f"[build] Loaded cgdb layer: {_cgdb_total} records in "
+              f"{_cgdb_elapsed:.1f}s", file=sys.stderr)
 
     # Set defaults for missing keys
     data.setdefault("functions", [])

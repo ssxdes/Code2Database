@@ -83,7 +83,17 @@ def _tool_render_source(args: dict, graph_dir: str) -> dict:
     conn = None
     try:
         conn = _get_conn(graph_dir)
-        result = render_source(conn, file_id)
+        # Resolve source_root for relative path handling
+        source_root = ""
+        try:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key='source_root'"
+            ).fetchone()
+            if row:
+                source_root = row[0]
+        except Exception:
+            pass
+        result = render_source(conn, file_id, source_root=source_root)
         if result.error:
             return {"error": result.error, "file_id": file_id}
         return {
@@ -115,7 +125,18 @@ def _tool_verify_consistency(args: dict, graph_dir: str) -> dict:
     conn = None
     try:
         conn = _get_conn(graph_dir)
-        result = verify_consistency(conn, file_id)
+        # Resolve source_root from the database meta table so relative
+        # file paths in cgdb_files can be opened for disk_sha256.
+        source_root = ""
+        try:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key='source_root'"
+            ).fetchone()
+            if row:
+                source_root = row[0]
+        except Exception:
+            pass
+        result = verify_consistency(conn, file_id, source_root=source_root)
         return {
             "file_id": file_id,
             "db_sha256": result.db_sha256,

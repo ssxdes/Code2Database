@@ -710,6 +710,19 @@ def _run_post_commit_consistency_check(graph_dir: str,
         from _builder.source_renderer import verify_consistency
     except ImportError:
         return
+    # Resolve source_root from the database meta table so relative
+    # file paths in cgdb_files can be opened for disk_sha256.
+    conn_test = sqlite3.connect(db_path, timeout=30.0)
+    source_root = ""
+    try:
+        row = conn_test.execute(
+            "SELECT value FROM meta WHERE key='source_root'"
+        ).fetchone()
+        if row:
+            source_root = row[0]
+    except Exception:
+        pass
+    conn_test.close()
     conn: Optional[sqlite3.Connection] = None
     try:
         conn = sqlite3.connect(db_path)
@@ -723,7 +736,7 @@ def _run_post_commit_consistency_check(graph_dir: str,
             return
         for fid in tx_state.dirty_file_ids:
             try:
-                cr = verify_consistency(conn, int(fid))
+                cr = verify_consistency(conn, int(fid), source_root=source_root)
                 tx_state.consistency_results.append({
                     "file_id": int(fid),
                     "ok": bool(cr.ok),

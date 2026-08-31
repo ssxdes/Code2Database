@@ -63,8 +63,40 @@ class SourceRenderer:
     `matches_disk=True` trivially (no DB-side state to compare).
     """
 
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: sqlite3.Connection, source_root: str = ""):
         self.conn = conn
+        self.source_root = source_root
+
+    def _resolve_path(self, file_path: str) -> str:
+        """Resolve a possibly-relative file path using source_root.
+
+        Mirrors _builder.l1_ingest._resolve_source_path logic:
+          1. If file_path exists as-is, use it.
+          2. If source_root given and file_path is relative,
+             try os.path.join(source_root, file_path).
+          3. If source_root given and file_path is absolute (source tree
+             was renamed), try joining source_root with the tail.
+          4. Return original path as fallback (caller's open() will raise).
+        """
+        if not file_path:
+            return file_path
+        import os
+        if os.path.exists(file_path):
+            return file_path
+        if not self.source_root:
+            return file_path
+        if not os.path.isabs(file_path):
+            import os
+            cand = os.path.join(self.source_root, file_path)
+            if os.path.exists(cand):
+                return cand
+        else:
+            parts = file_path.replace("\\", "/").split("/")
+            for start in range(1, len(parts)):
+                tail = os.path.join(self.source_root, *parts[start:])
+                if os.path.exists(tail):
+                    return tail
+        return file_path
 
     def render(self, file_id: int) -> RenderResult:
         """Render the source for `file_id` from the tokens table.
@@ -89,6 +121,13 @@ class SourceRenderer:
         line_ending = line_ending or "LF"
         has_bom = bool(has_bom)
 
+        # Resolve relative paths using source_root.
+        # cgdb_files.path may be relative (e.g., "crypto/xcbc.c"), and
+        # open(path, "rb") will fail unless CWD happens to be the source
+        # root. _resolve_source_path joins with source_root when the path
+        # is relative and source_root is provided.
+        resolved_path = self._resolve_path(path)
+
         # Fetch tokens ordered by seq (preserves source order)
         token_rows = self.conn.execute(
             "SELECT seq, preceding_whitespace, spelling FROM tokens "
@@ -99,19 +138,19 @@ class SourceRenderer:
         if not token_rows:
             # No tokens in DB — fall back to reading the file from disk
             try:
-                with open(path, "rb") as f:
+                with open(resolved_path, "rb") as f:
                     content = f.read()
                 sha = hashlib.sha256(content).hexdigest()
                 return RenderResult(
                     content=content, sha256=sha, matches_disk=True,
-                    disk_sha256=sha, file_id=file_id, path=path,
+                    disk_sha256=sha, file_id=file_id, path=resolved_path,
                     token_count=0
                 )
             except (OSError, FileNotFoundError) as exc:
                 return RenderResult(
                     content=b"", sha256=hashlib.sha256(b"").hexdigest(),
                     matches_disk=False, disk_sha256=None, file_id=file_id,
-                    path=path, error=f"no tokens and cannot read disk: {exc}"
+                    path=resolved_path, error=f"no tokens and cannot read disk: {exc}"
                 )
 
         # Build the rendered string
@@ -152,7 +191,7 @@ class SourceRenderer:
 
         return RenderResult(
             content=content, sha256=sha, matches_disk=matches,
-            disk_sha256=disk_sha256, file_id=file_id, path=path,
+            disk_sha256=disk_sha256, file_id=file_id, path=resolved_path,
             token_count=len(token_rows)
         )
 
@@ -307,19 +346,22 @@ class SourceRenderer:
         self.conn.commit()
 
 
-def render_source(conn: sqlite3.Connection, file_id: int) -> RenderResult:
+def render_source(conn: sqlite3.Connection, file_id: int,
+                   source_root: str = "") -> RenderResult:
     """Module-level convenience: render source for a file_id."""
-    return SourceRenderer(conn).render(file_id)
+    return SourceRenderer(conn, source_root=source_root).render(file_id)
 
 
-def verify_consistency(conn: sqlite3.Connection, file_id: int) -> ConsistencyResult:
+def verify_consistency(conn: sqlite3.Connection, file_id: int,
+                       source_root: str = "") -> ConsistencyResult:
     """Module-level convenience: verify consistency for a file_id."""
-    return SourceRenderer(conn).verify_consistency(file_id)
+    return SourceRenderer(conn, source_root=source_root).verify_consistency(file_id)
 
 
-def verify_all_files(conn: sqlite3.Connection) -> list[ConsistencyResult]:
+def verify_all_files(conn: sqlite3.Connection,
+                     source_root: str = "") -> list[ConsistencyResult]:
     """Module-level convenience: verify consistency for all files."""
-    return SourceRenderer(conn).verify_all_files()
+    return SourceRenderer(conn, source_root=source_root).verify_all_files()
 
 
 def compute_sha256(path: str) -> Optional[str]:

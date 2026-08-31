@@ -665,8 +665,9 @@ def ingest_l1(
     conn.commit()
 
     # Verify consistency: render from tokens and compare to disk
-    from _builder.source_renderer import verify_consistency
-    cr = verify_consistency(conn, file_id)
+    from _builder.source_renderer import SourceRenderer
+    renderer = SourceRenderer(conn, source_root=source_root or "")
+    cr = renderer.verify_consistency(file_id)
     stats["rendered_sha256"] = cr.db_sha256
     stats["consistency_ok"] = cr.ok
 

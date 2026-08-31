@@ -118,7 +118,7 @@ class WritebackPipeline:
         self.conn = conn
         self.graph_dir = graph_dir
         self.source_root = source_root
-        self.renderer = renderer or SourceRenderer(conn)
+        self.renderer = renderer or SourceRenderer(conn, source_root=source_root)
 
     # ------------------------------------------------------------------
     # Transaction lifecycle

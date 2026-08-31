@@ -211,7 +211,7 @@ def resolve_jobs(jobs: int, max_workers_cap: int = 0) -> int:
     return min(jobs, cap)
 
 
-def cap_for_graph(jobs: int, n_nodes: int) -> int:
+def cap_for_graph(jobs: int, n_nodes: int, parallel_mode: str = "thread") -> int:
     """Auto-cap workers when operating on very large graphs.
 
     On 700K+ node graphs, each thread's per-iteration state (regex match
@@ -221,12 +221,20 @@ def cap_for_graph(jobs: int, n_nodes: int) -> int:
     The caps here are LOWER bounds — they never reduce below 2, and they
     only apply to graphs above LARGE_GRAPH_NODES. For smaller graphs, the
     full requested jobs count is used (bounded by resolve_jobs).
+
+    When ``parallel_mode='process'`` (Linux fork start method), child
+    processes inherit the read-only graph and module globals via
+    copy-on-write, so per-worker memory pressure is much lower than in
+    thread mode (where every worker mutates shared state on the same
+    heap). Allow up to 16 workers on the largest graphs instead of 4.
     """
+    if n_nodes < 200_000:
+        return jobs
+    if parallel_mode == "process":
+        return max(2, min(jobs, 16))
     if n_nodes >= 500_000:
         return max(2, min(jobs, 4))
-    if n_nodes >= 200_000:
-        return max(2, min(jobs, 6))
-    return jobs
+    return max(2, min(jobs, 6))
 
 
 def map_nodes(
@@ -274,7 +282,8 @@ def map_nodes(
     n = len(items)
     if n == 0:
         return []
-    workers = cap_for_graph(resolve_jobs(jobs, max_workers_cap=max_workers_cap), n)
+    workers = cap_for_graph(resolve_jobs(jobs, max_workers_cap=max_workers_cap), n,
+                            parallel_mode=parallel_mode)
     if workers <= 1 or n < 2:
         return [work_fn(nid, nd) for nid, nd in items]
 

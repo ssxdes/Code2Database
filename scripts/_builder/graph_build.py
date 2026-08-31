@@ -931,7 +931,8 @@ def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
     # Decide sequential vs parallel
     try:
         from _builder.parallel import resolve_jobs, cap_for_graph
-        workers = cap_for_graph(resolve_jobs(jobs, max_workers_cap=max_workers), len(candidates))
+        workers = cap_for_graph(resolve_jobs(jobs, max_workers_cap=max_workers), len(candidates),
+                                parallel_mode=parallel_mode)
     except ImportError:
         workers = 1
 
@@ -6075,15 +6076,16 @@ def cmd_build(args):
     # (child processes inherit _cached_globals_sa without pickling).
     # Otherwise, fall back to ThreadPoolExecutor (re.finditer releases GIL
     # during matching, giving modest speedup) or sequential.
+    _sa_parallel_mode = getattr(args, 'parallel_mode', 'thread')
     try:
         from _builder.parallel import resolve_jobs, cap_for_graph
         _sa_workers = cap_for_graph(resolve_jobs(getattr(args, 'jobs', 0),
                                                   max_workers_cap=getattr(args, 'max_workers', 0)),
-                                      len(_sa_candidates))
+                                      len(_sa_candidates),
+                                      parallel_mode=_sa_parallel_mode)
     except ImportError:
         _sa_workers = 1
 
-    _sa_parallel_mode = getattr(args, 'parallel_mode', 'thread')
     _use_sa_process = (_sa_parallel_mode == "process" and
                         _sa_workers > 1 and len(_sa_candidates) > 1000)
 
@@ -7298,13 +7300,15 @@ def cmd_build(args):
                             from _builder.l1_ingest import run_l1_ingest
                             try:
                                 from _builder.parallel import resolve_jobs, cap_for_graph
+                                _l1_parallel_mode = getattr(args, 'parallel_mode', 'thread')
                                 _l1_workers = cap_for_graph(
                                     resolve_jobs(getattr(args, 'jobs', 0),
                                                   max_workers_cap=getattr(args, 'max_workers', 0)),
-                                    len(_l1_tasks))
+                                    len(_l1_tasks),
+                                    parallel_mode=_l1_parallel_mode)
                             except ImportError:
                                 _l1_workers = 1
-                            _l1_parallel_mode = getattr(args, 'parallel_mode', 'thread')
+                                _l1_parallel_mode = getattr(args, 'parallel_mode', 'thread')
                             # When the user runs the default 'thread' mode on a
                             # large project, L1 ingest takes ~7s/file × 60K = 77h
                             # serially. Promote 'process' mode automatically — but

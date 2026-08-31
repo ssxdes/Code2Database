@@ -169,6 +169,19 @@ _GENERIC_CB_ARG_RE = re.compile(
     r'(\w+)\s*\([^)]*\b(\w+(?:_cb|_fn|_handler|_callback))\b',
 )
 
+# Pre-compiled patterns for _strip_comments / _strip_comments_only.
+# Previously these were `re.sub(r'...', ...)` string-pattern calls inside
+# per-function / per-line loops, causing ~300M recompiles on kernel scans.
+_STRIP_BLOCK_COMMENT_RE = re.compile(r'/\*.*?\*/', re.DOTALL)
+_STRIP_LINE_COMMENT_RE = re.compile(r'//.*$', re.MULTILINE)
+_STRIP_STRING_LIT_RE = re.compile(r'"(?:[^"\\]|\\.)*"')
+_STRIP_PP_DIRECTIVE_RE = re.compile(
+    r'^\s*#\s*(if|ifdef|ifndef|elif|else|endif|define|include)\b.*$',
+    re.MULTILINE,
+)
+# Bare identifier check — was `_BARE_IDENT_RE.match(arg)` at 10+ sites.
+_BARE_IDENT_RE = re.compile(r'^[a-zA-Z_]\w*$')
+
 # Generic names that are too ambiguous as callback arguments — they're
 # common local variable/parameter names (like 'init', 'ctx', 'data')
 # and create false positive edges when they coincidentally match a
@@ -452,6 +465,15 @@ def scan_c_file(filepath: str, source_root: str = "", api_prefixes: list = None,
     # obj->method() in C++ is a direct call, not a fn_ptr dispatch.
     _is_cpp = rel_path.lower().endswith(('.cpp', '.cc', '.cxx', '.c++', '.h++', '.hpp', '.hxx'))
 
+    # Hoist the generic-callback-suffix regex compile OUT of the per-function
+    # loop. The suffixes don't change per function — they're either from the
+    # profile or the default list.
+    _active_generic_suffixes = _profile_generic_suffixes if _profile_generic_suffixes is not None else ["_cb", "_fn", "_handler", "_callback"]
+    _generic_cb_re = None
+    if _active_generic_suffixes:
+        suffix_pattern = r'(\w+)\s*\([^)]*\b(\w+(?:' + '|'.join(re.escape(s) for s in _active_generic_suffixes) + r'))\b'
+        _generic_cb_re = re.compile(suffix_pattern)
+
     for caller_name, body_info in func_bodies.items():
         body = body_info["body"]
         body_source_offset = body_info["source_offset"]
@@ -484,11 +506,9 @@ def scan_c_file(filepath: str, source_root: str = "", api_prefixes: list = None,
                     spawn_targets[spawn_callee] = "spawn_target"
             reg_func_concurrency["pthread_create"] = "spawn_target"
 
-        # Generic callback suffix detection (always active)
-        _active_generic_suffixes = _profile_generic_suffixes if _profile_generic_suffixes is not None else ["_cb", "_fn", "_handler", "_callback"]
-        if _active_generic_suffixes:
-            suffix_pattern = r'(\w+)\s*\([^)]*\b(\w+(?:' + '|'.join(re.escape(s) for s in _active_generic_suffixes) + r'))\b'
-            _generic_cb_re = re.compile(suffix_pattern)
+        # Generic callback suffix detection (always active). Uses the
+        # pre-compiled _generic_cb_re from outside the per-function loop.
+        if _generic_cb_re is not None:
             for sm in _generic_cb_re.finditer(body):
                 cb_name = sm.group(2)
                 if cb_name and cb_name not in effective_skip and len(cb_name) > 3:
@@ -793,7 +813,7 @@ def scan_c_file(filepath: str, source_root: str = "", api_prefixes: list = None,
                 # Remove leading & or * (address-of or dereference)
                 arg = arg.lstrip('&*').strip()
                 # Check if it's a bare identifier matching a known function name
-                if re.match(r'^[a-zA-Z_]\w*$', arg):
+                if _BARE_IDENT_RE.match(arg):
                     # Validate: the matched name should be a function definition,
                     # not a variable that coincidentally shares the name.
                     # Check if arg name appears as a local variable assignment
@@ -1033,7 +1053,7 @@ def scan_c_file(filepath: str, source_root: str = "", api_prefixes: list = None,
                 if cb_idx >= len(arg_list):
                     continue
                 arg = arg_list[cb_idx].strip().lstrip('&*').strip()
-                if not re.match(r'^[a-zA-Z_]\w*$', arg):
+                if not _BARE_IDENT_RE.match(arg):
                     continue
                 if arg not in func_names or arg in effective_skip or len(arg) <= 2:
                     continue
@@ -1767,22 +1787,14 @@ def _strip_comments(source: str) -> str:
     false callee matches when the regex scanner looks for func_name( patterns.
     All removals preserve newline count to maintain line number alignment.
     """
-    # Remove block comments /* ... */ — preserve newlines for line number alignment
     def _replace_block_comment(match):
         return '\n' * match.group(0).count('\n')
-    result = re.sub(r'/\*.*?\*/', _replace_block_comment, source, flags=re.DOTALL)
-    # Remove line comments // ...
-    result = re.sub(r'//.*$', '', result, flags=re.MULTILINE)
-    # Remove string literals "..." — replace with empty string to avoid false callee matches
-    # from format strings like "SCT(0x%x)" being parsed as function calls
-    result = re.sub(r'"(?:[^"\\]|\\.)*"', '', result)
-    # Remove preprocessor directives #if, #ifdef, #ifndef, #else, #elif, #endif, #define, #include
-    # Replace with empty lines (same number of newlines) to preserve byte offset alignment
-    # for pp condition matching. If we delete these lines entirely, the byte offsets in the
-    # stripped body won't align with the original source, causing wrong condition attribution.
+    result = _STRIP_BLOCK_COMMENT_RE.sub(_replace_block_comment, source)
+    result = _STRIP_LINE_COMMENT_RE.sub('', result)
+    result = _STRIP_STRING_LIT_RE.sub('', result)
     def _replace_pp_with_empty(match):
         return '\n' * match.group(0).count('\n')
-    result = re.sub(r'^\s*#\s*(if|ifdef|ifndef|elif|else|endif|define|include)\b.*$', _replace_pp_with_empty, result, flags=re.MULTILINE)
+    result = _STRIP_PP_DIRECTIVE_RE.sub(_replace_pp_with_empty, result)
     return result
 
 
@@ -1791,14 +1803,11 @@ def _strip_comments_only(source: str) -> str:
 
     Used for function definition extraction where #ifdef handling is critical.
     """
-    # Remove block comments /* ... */ — preserve newlines
     def _replace_block_comment(match):
         return '\n' * match.group(0).count('\n')
-    result = re.sub(r'/\*.*?\*/', _replace_block_comment, source, flags=re.DOTALL)
-    # Remove line comments // ...
-    result = re.sub(r'//.*$', '', result, flags=re.MULTILINE)
-    # Remove string literals "..."
-    result = re.sub(r'"(?:[^"\\]|\\.)*"', '', result)
+    result = _STRIP_BLOCK_COMMENT_RE.sub(_replace_block_comment, source)
+    result = _STRIP_LINE_COMMENT_RE.sub('', result)
+    result = _STRIP_STRING_LIT_RE.sub('', result)
     return result
 
 
@@ -1851,15 +1860,24 @@ def _extract_func_bodies(source: str, func_defs: list) -> dict:
         # Track #ifdef nesting: when we enter an #else branch, skip brace counting
         # until the matching #endif. This prevents brace imbalance from counting
         # braces in both branches of a conditional.
+        #
+        # Pre-strip the body slice ONCE (using _strip_comments_only, which
+        # preserves # directives for PP tracking) and reuse the stripped lines.
+        # Previously `_strip_comments(line)` was called PER LINE inside this
+        # loop — ~300M recompiles on kernel-scale scans.
+        body_end_limit = min(body_start + 500, len(lines))
+        raw_slice = lines[body_start:body_end_limit]
+        stripped_slice = _strip_comments_only('\n'.join(raw_slice)).split('\n')
         body_lines = []
         brace_count = 0
         found_open = False
         pp_skip_depth = 0  # >0 means we're in an #else branch, skip brace counting
         pp_if_depth = 0    # Track #ifdef nesting depth
 
-        for i in range(body_start, min(body_start + 500, len(lines))):
+        for i in range(body_start, body_end_limit):
             line = lines[i]
             raw_line = line.strip()
+            stripped = stripped_slice[i - body_start]
 
             # Track preprocessor conditional nesting
             if _PP_IF_RE.match(raw_line):
@@ -1881,7 +1899,6 @@ def _extract_func_bodies(source: str, func_defs: list) -> dict:
 
             # Only count braces when not in an #else branch
             if pp_skip_depth == 0:
-                stripped = _strip_comments(line)
                 for ch in stripped:
                     if ch == '{':
                         brace_count += 1
@@ -3309,7 +3326,7 @@ def _detect_cross_file_callbacks(all_functions: list, edges: list,
                                                 "_struct_field_arg": f"{sf_struct_pt}->{sf_field_pt}",
                                                 "_source_file": src_file,
                                             })
-                        elif (re.match(r'^[a-zA-Z_]\w*$', arg)
+                        elif (_BARE_IDENT_RE.match(arg)
                                 and arg in global_func_names and len(arg) > 2
                                 and arg != func_name
                                 and arg not in _CALLBACK_ARG_GENERIC_NAMES):
@@ -3381,7 +3398,7 @@ def _detect_cross_file_callbacks(all_functions: list, edges: list,
                                 })
                         continue
 
-                    if not re.match(r'^[a-zA-Z_]\w*$', arg):
+                    if not _BARE_IDENT_RE.match(arg):
                         continue
                     if arg not in global_func_names or len(arg) <= 2:
                         continue
@@ -3499,7 +3516,7 @@ def _detect_cross_file_callbacks(all_functions: list, edges: list,
                                 })
                         continue
 
-                    if not re.match(r'^[a-zA-Z_]\w*$', arg):
+                    if not _BARE_IDENT_RE.match(arg):
                         continue
                     if arg not in global_func_names or len(arg) <= 2:
                         continue

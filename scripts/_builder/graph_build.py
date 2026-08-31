@@ -7222,31 +7222,33 @@ def cmd_build(args):
         print(f"[SQLite] Exporting to {db_path}...", file=sys.stderr)
         _sqlite_start = time.time()
         with SQLiteStore(db_path) as store:
-            # Store functions — stream in batches to avoid building a full list
+            # Store functions AND populate field_access/global_access in a
+            # single pass over G.nodes(data=True). Previously these were two
+            # separate full-graph traversals (lines 7228 and 7242), costing
+            # an extra ~30-60s on a 1.6M-node kernel graph.
             _BATCH_SIZE = 5000
             _func_batch = []
+            print(f"[SQLite] Exporting functions + field_access/global_access...", file=sys.stderr)
+            _sqlite_func_start = time.time()
             for nid, nd in G.nodes(data=True):
+                # Batch-accumulate for functions table
                 _func_batch.append(dict(nd, id=nid))
                 if len(_func_batch) >= _BATCH_SIZE:
                     store.store_functions(_func_batch)
                     _func_batch.clear()
+                # Populate field_access / global_access for non-empty,
+                # non-file nodes (same filter as the old second pass)
+                if not nd.get("is_empty", False) and nd.get("node_type") != "file":
+                    store.store_field_access(dict(nd, id=nid), autocommit=False)
+                    store.store_global_access(dict(nd, id=nid), autocommit=False)
+            # Flush remaining function batch
             if _func_batch:
                 store.store_functions(_func_batch)
             del _func_batch
-
-            # Populate field_access and global_access tables
-            # so query commands can use SQL-native indexed lookups instead of
-            # O(n) Python traversal of all nodes.
-            print(f"[SQLite] Populating field_access/global_access tables...", file=sys.stderr)
-            _field_start = time.time()
-            for nid, nd in G.nodes(data=True):
-                if nd.get("is_empty", False) or nd.get("node_type") == "file":
-                    continue
-                store.store_field_access(dict(nd, id=nid), autocommit=False)
-                store.store_global_access(dict(nd, id=nid), autocommit=False)
-            store._conn.commit()  # flush accumulated field/global access rows
-            print(f"[SQLite] field/global access populated in {time.time() - _field_start:.1f}s",
-                  file=sys.stderr)
+            # Flush accumulated field/global access rows
+            store._conn.commit()
+            print(f"[SQLite] Functions + field/global access exported in "
+                  f"{time.time() - _sqlite_func_start:.1f}s", file=sys.stderr)
 
             # Store edges — stream in batches to avoid building a full list
             _edge_batch = []

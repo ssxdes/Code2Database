@@ -1955,7 +1955,8 @@ def _disambiguate_struct_chain(struct_chain: str, candidate_structs: list,
 
 
 def _detect_thread_models(G: nx.DiGraph, builder_profile: dict = None,
-                           jobs: int = 0, max_workers: int = 0) -> dict:
+                           jobs: int = 0, max_workers: int = 0,
+                           parallel_mode: str = "thread") -> dict:
     """Detect threading models used by functions in the graph.
 
     Scans all nodes for threading API usage in body_text and callee_args,
@@ -2038,6 +2039,7 @@ def _detect_thread_models(G: nx.DiGraph, builder_profile: dict = None,
             _thread_candidates, _check_thread_model,
             jobs=jobs,
             max_workers_cap=max_workers,
+            parallel_mode=parallel_mode,
             desc="thread_model_detection",
         )
         for nid, model in _thread_results:
@@ -2405,6 +2407,21 @@ def build_graph(extraction: dict, profile: dict = None,
     # Phase 15: identify polymorphic callback fields (cb_fn, cb_func, etc.)
     _polymorphic_fields = _identify_polymorphic_callback_fields(
         _field_dispatch_map, _param_bridged_fa)
+
+    # Pre-compute an index of field_assignments by field_name (and a
+    # separate index by (struct_chain, field_name)) so that the per-edge
+    # loops below don't do an O(FAs) linear scan for every edge.
+    _fa_by_field_name: dict = {}
+    _fa_by_sc_field: dict = {}
+    for _fa in extraction.get("field_assignments", []):
+        _fa_field = _fa.get("field_name", "")
+        _fa_chain = _fa.get("struct_chain", "")
+        _fa_target = _fa.get("target_func", "")
+        if not _fa_field:
+            continue
+        _fa_by_field_name.setdefault(_fa_field, []).append(_fa)
+        if _fa_chain:
+            _fa_by_sc_field.setdefault((_fa_chain, _fa_field), []).append(_fa)
 
     # Add edges with resolved IDs
     _edge_progress_milestone = 0
@@ -2812,11 +2829,11 @@ def build_graph(extraction: dict, profile: dict = None,
                 fa_targets = set()
                 fa_match_type = ""  # Track how we matched for evidence
                 if struct_chain:
-                    # Find field_assignments matching (struct_chain, field_name)
-                    for fa in extraction.get("field_assignments", []):
-                        if (fa.get("field_name") == target_name
-                                and fa.get("struct_chain") == struct_chain
-                                and fa.get("target_func")):
+                    # Find field_assignments matching (struct_chain, field_name).
+                    # Use pre-computed _fa_by_sc_field index instead of scanning
+                    # all FAs per edge.
+                    for fa in _fa_by_sc_field.get((struct_chain, target_name), []):
+                        if fa.get("target_func"):
                             fa_targets.add(fa["target_func"])
                     fa_match_type = "direct" if fa_targets else ""
 
@@ -3248,14 +3265,12 @@ def build_graph(extraction: dict, profile: dict = None,
             source_func = source_id.rsplit(".", 1)[-1] if "." in source_id else source_id
             struct_chain = _fn_ptr_struct_lookup.get((source_func, target_name), "")
             has_fa = False
-            for fa in extraction.get("field_assignments", []):
+            # Use pre-computed _fa_by_field_name index instead of scanning
+            # all FAs per fn_ptr edge.
+            for fa in _fa_by_field_name.get(target_name, []):
                 fa_chain = fa.get("struct_chain", "")
-                fa_field = fa.get("field_name", "")
                 fa_target = fa.get("target_func", "")
-                # Match: same field name, and target func matches the
-                # function we resolved to, with matching or absent struct
-                if (fa_field == target_name
-                        and fa_target == target_name
+                if (fa_target == target_name
                         and (fa_chain == struct_chain or not struct_chain)):
                     has_fa = True
                     break
@@ -6588,7 +6603,8 @@ def cmd_build(args):
     tracker.begin("detect_thread_models")
     thread_models = _detect_thread_models(G, builder_profile=builder_profile,
                                             jobs=getattr(args, 'jobs', 0),
-                                            max_workers=getattr(args, 'max_workers', 0))
+                                            max_workers=getattr(args, 'max_workers', 0),
+                                            parallel_mode=getattr(args, 'parallel_mode', 'thread'))
     if thread_models:
         _propagate_thread_models(G, thread_models)
         inherited_count = sum(1 for _, nd in G.nodes(data=True)

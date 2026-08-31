@@ -248,39 +248,16 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
     counts = {"functions_imported": 0, "edges_imported": 0}
     try:
         conn.execute(f"ATTACH DATABASE '{existing_db}' AS src")
-        # Import functions with re-prefixed domain + regenerated legacy id
+        _changes_before = conn.total_changes
+        # Import functions with re-prefixed domain + regenerated legacy id.
+        # Batch with executemany instead of per-row INSERT.
         rows = conn.execute(
             "SELECT id, name, domain, source_file, line_number, signature, "
             "labels, body_text_compressed, extra_json FROM src.functions"
         ).fetchall()
-        for r in rows:
-            old_domain = r["domain"] or "root"
-            if old_domain == "root" or not old_domain:
-                new_domain = project_name
-            elif old_domain.startswith(project_name + "."):
-                new_domain = old_domain
-            else:
-                new_domain = project_name + "." + old_domain
-            name = r["name"] or ""
-            new_id = new_domain.replace(".", "_") + "_" + _normalize_name(name).lower()
-            try:
-                conn.execute(
-                    "INSERT OR IGNORE INTO functions "
-                    "(id, name, domain, source_file, line_number, signature, "
-                    "labels, body_text_compressed, extra_json) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (new_id, name, new_domain, r["source_file"],
-                     r["line_number"], r["signature"], r["labels"],
-                     r["body_text_compressed"], r["extra_json"])
-                )
-                counts["functions_imported"] += 1
-            except sqlite3.IntegrityError:
-                logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                pass
-        # Build old_id -> new_id map for edges
+        _func_batch = []
         id_remap: Dict[str, str] = {}
         for r in rows:
-            old_id = r["id"]
             old_domain = r["domain"] or "root"
             if old_domain == "root" or not old_domain:
                 new_domain = project_name
@@ -290,33 +267,50 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
                 new_domain = project_name + "." + old_domain
             name = r["name"] or ""
             new_id = new_domain.replace(".", "_") + "_" + _normalize_name(name).lower()
-            id_remap[old_id] = new_id
+            id_remap[r["id"]] = new_id
+            _func_batch.append((
+                new_id, name, new_domain, r["source_file"],
+                r["line_number"], r["signature"], r["labels"],
+                r["body_text_compressed"], r["extra_json"]
+            ))
+        if _func_batch:
+            conn.executemany(
+                "INSERT OR IGNORE INTO functions "
+                "(id, name, domain, source_file, line_number, signature, "
+                "labels, body_text_compressed, extra_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                _func_batch
+            )
+            counts["functions_imported"] = conn.total_changes - _changes_before
+            _changes_before = conn.total_changes
+        # Import edges with remapped IDs using executemany.
         edge_rows = conn.execute(
             "SELECT invoker_id, invoked_id, relation, call_order, "
             "call_condition, concurrency, confidence, confidence_score, "
             "source, evidence, invoked_arg_json, reg_args_json, "
             "vtable_type, vtable_bound_module FROM src.edges"
         ).fetchall()
+        _edge_batch = []
         for r in edge_rows:
             new_invoker = id_remap.get(r["invoker_id"], r["invoker_id"])
             new_invoked = id_remap.get(r["invoked_id"], r["invoked_id"])
-            try:
-                conn.execute(
-                    "INSERT INTO edges (invoker_id, invoked_id, relation, "
-                    "call_order, call_condition, concurrency, confidence, "
-                    "confidence_score, source, evidence, invoked_arg_json, "
-                    "reg_args_json, vtable_type, vtable_bound_module) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (new_invoker, new_invoked, r["relation"],
-                     r["call_order"], r["call_condition"], r["concurrency"],
-                     r["confidence"], r["confidence_score"], r["source"],
-                     r["evidence"], r["invoked_arg_json"], r["reg_args_json"],
-                     r["vtable_type"], r["vtable_bound_module"])
-                )
-                counts["edges_imported"] += 1
-            except sqlite3.IntegrityError:
-                logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                pass
+            _edge_batch.append((
+                new_invoker, new_invoked, r["relation"],
+                r["call_order"], r["call_condition"], r["concurrency"],
+                r["confidence"], r["confidence_score"], r["source"],
+                r["evidence"], r["invoked_arg_json"], r["reg_args_json"],
+                r["vtable_type"], r["vtable_bound_module"]
+            ))
+        if _edge_batch:
+            conn.executemany(
+                "INSERT OR IGNORE INTO edges (invoker_id, invoked_id, relation, "
+                "call_order, call_condition, concurrency, confidence, "
+                "confidence_score, source, evidence, invoked_arg_json, "
+                "reg_args_json, vtable_type, vtable_bound_module) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                _edge_batch
+            )
+            counts["edges_imported"] = conn.total_changes - _changes_before
         conn.execute("DETACH DATABASE src")
         conn.commit()
     except sqlite3.Error as e:

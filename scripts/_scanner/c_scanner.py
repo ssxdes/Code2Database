@@ -29,6 +29,12 @@ _STATIC_ARRAY_RE = re.compile(
     re.MULTILINE
 )
 
+# Pre-compiled coroutine keyword + static-prefix patterns.
+_COROUTINE_KEYWORD_RES = tuple(
+    re.compile(rf'\b{kw}\b') for kw in ('co_await', 'co_yield', 'co_return')
+)
+_STATIC_PREFIX_RE = re.compile(r'\s*static\s+')
+
 
 try:
     import tree_sitter_c as tsc
@@ -1204,8 +1210,8 @@ class CTreeSitterScanner(BaseScanner):
         if body_node is None:
             return False
         body_text = self._node_text(body_node, source_bytes)
-        for kw in ('co_await', 'co_yield', 'co_return'):
-            if re.search(r'\b' + kw + r'\b', body_text):
+        for pat in _COROUTINE_KEYWORD_RES:
+            if pat.search(body_text):
                 return True
         return False
 
@@ -1438,7 +1444,7 @@ class CTreeSitterScanner(BaseScanner):
         # Check the full text for 'static' keyword before the function name
         func_text = self._node_text(func_node, source_bytes)
         first_line = func_text.split('\n')[0]
-        if re.match(r'\s*static\s+', first_line):
+        if _STATIC_PREFIX_RE.match(first_line):
             is_static = True
 
         if is_static:
@@ -2443,17 +2449,9 @@ class CTreeSitterScanner(BaseScanner):
 
         # Regex to match: register [type] [*]name __asm__("reg") = [(cast)] value;
         # Group 1: variable name, Group 2: register, Group 3: cast (if any), Group 4: value
-        # Supports both ARM (x0-x30, w0-w30) and x86 (rax, rdi, rsi, etc.) register names
-        _REG_DECL_RE = re.compile(
-            r'\bregister\s+\w+\s+\*?\s*'
-            r'(\w+)\s+'                                    # variable name
-            r'__asm__\s*\(\s*"([xw]\d+|[a-z]{2,4}\d*)"\s*\)'  # __asm__("x9") or __asm__("rax")
-            r'\s*=\s*'
-            r'(\([^)]*\)\s*)?'                # optional cast like (void *) — group 3
-            r'(\w+)',                          # initializer value — group 4
-            re.MULTILINE
-        )
-
+        # Supports both ARM (x0-x30, w0-w30) and x86 (rax, rdi, rsi, etc.) register names.
+        # Re-use the module-level _REG_DECL_RE (line 17) instead of re-defining
+        # a duplicate local copy per call.
         for m in _REG_DECL_RE.finditer(body_text):
             var_name = m.group(1)
             asm_reg = m.group(2)

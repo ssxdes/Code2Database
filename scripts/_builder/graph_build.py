@@ -4474,11 +4474,23 @@ def build_graph(extraction: dict, profile: dict = None,
         # For each param-bridged FA, resolve the dispatch targets
         # Pre-compute: for polymorphic fields, count assign_funcs per struct_chain
         # to detect generic chains (like "ctx") with many unrelated assign_funcs.
-        _poly_sc_assign_count = {}  # (field_name, sc_norm) → count of assign_funcs
+        _poly_sc_assign_count = {}  # (field_name, sc_norm) -> count of assign_funcs
         if _polymorphic_fields:
             for (fn, sc), ents in _param_bridged_fa.items():
                 if fn in _polymorphic_fields:
                     _poly_sc_assign_count[(fn, sc)] = len(set(e[0] for e in ents))
+
+        # Pre-compute index of fn_ptr_call sources keyed by (field_name,
+        # normalized struct_chain) so the per-FA dispatch below uses an O(1)
+        # lookup instead of scanning every fn_ptr_call for every outer entry.
+        _fn_ptr_calls_by_field_sc = defaultdict(list)  # (field_name, sc_norm) -> [caller_name]
+        for caller_name, calls in extraction.get("fn_ptr_calls", {}).items():
+            for call in (calls if isinstance(calls, list) else []):
+                fn = call.get("field_name", "")
+                if not fn:
+                    continue
+                call_sc = call.get("struct_chain", "").replace("->", ".")
+                _fn_ptr_calls_by_field_sc[(fn, call_sc)].append(caller_name)
 
         for (field_name, sc_norm), entries in _param_bridged_fa.items():
             # Polymorphic fields (cb_fn, cb_func, etc.) require stricter
@@ -4513,27 +4525,18 @@ def build_graph(extraction: dict, profile: dict = None,
                 # Limit resolved targets to prevent over-dispatch
                 if len(resolved_targets) > 10:
                     continue
-                # Find fn_ptr_call sites that call this field on this struct_chain
-                # The fn_ptr_call source needs to be in the same domain as assign_func
-                # Use pre-built name index for O(1) lookup instead of O(N) scan
+                # Find fn_ptr_call sources: functions that have fn_ptr_calls
+                # with this field_name and struct_chain matching sc_norm EXACTLY.
+                # The fn_ptr_call source needs to be in the same domain as assign_func.
                 assign_func_id = _name_to_nid.get(assign_func)
                 if not assign_func_id or assign_func_id not in G:
                     continue
                 assign_func_domain = G.nodes[assign_func_id].get("domain", "")
-                # Find fn_ptr_call sources: functions that have fn_ptr_calls
-                # with this field_name and struct_chain matching sc_norm EXACTLY
                 fn_ptr_sources = set()
-                for caller_name, calls in extraction.get("fn_ptr_calls", {}).items():
-                    for call in calls:
-                        if call.get("field_name") == field_name:
-                            call_sc = call.get("struct_chain", "").replace("->", ".")
-                            # Require exact struct_chain match (not prefix)
-                            # to avoid connecting unrelated fn_ptr_call sites
-                            if call_sc == sc_norm:
-                                # Use pre-built name index for O(1) lookup
-                                caller_nid = _name_to_nid.get(caller_name)
-                                if caller_nid and caller_nid in G:
-                                    fn_ptr_sources.add(caller_nid)
+                for caller_name in _fn_ptr_calls_by_field_sc.get((field_name, sc_norm), ()):
+                    caller_nid = _name_to_nid.get(caller_name)
+                    if caller_nid and caller_nid in G:
+                        fn_ptr_sources.add(caller_nid)
                 if not fn_ptr_sources:
                     continue
                 # Create INFERRED edges from fn_ptr_call sources to resolved targets

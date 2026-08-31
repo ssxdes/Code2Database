@@ -632,6 +632,11 @@ def apply_heuristic_enhancement_batch(graph_dir: str,
     builtin = 0
 
     try:
+        # Collect supplements for LazySQLiteGraph — when G is a LazySQLiteGraph,
+        # G.nodes(data=True) yields ephemeral dicts that are NOT cached, so
+        # _supplemented keys are lost.  We collect them here and pass them
+        # to split_by_domain via node_supplements parameter.
+        _supplements = {}  # {nid: {key: val, ...}}
         for nid, nd in G.nodes(data=True):
             if nd.get("is_empty", False) or nd.get("node_type") == "file":
                 continue
@@ -664,6 +669,7 @@ def apply_heuristic_enhancement_batch(graph_dir: str,
             # Update JSON-side graph node attrs (will be flushed by split_by_domain).
             meta = nd.get("_supplement_meta", {})
             applied_this = False
+            _supp_for_node = {}  # supplements to collect for this node
             if sem:
                 stored_key = "semantic_desc_supplemented"
                 meta[stored_key] = {
@@ -673,6 +679,7 @@ def apply_heuristic_enhancement_batch(graph_dir: str,
                     "original": nd.get("semantic_desc", ""),
                 }
                 nd[stored_key] = sem
+                _supp_for_node[stored_key] = sem
                 applied_this = True
                 # Direct SQLite cgdb_nodes update (fast).
                 if conn is not None:
@@ -695,6 +702,7 @@ def apply_heuristic_enhancement_batch(graph_dir: str,
                 if existing:
                     continue
                 nd[field_name] = field_val
+                _supp_for_node[field_name] = field_val
                 meta[field_name + "_supplemented"] = {
                     "source": "heuristic",
                     "confidence": "INFERRED",
@@ -705,6 +713,8 @@ def apply_heuristic_enhancement_batch(graph_dir: str,
 
             if applied_this:
                 nd["_supplement_meta"] = meta
+                _supp_for_node["_supplement_meta"] = meta
+                _supplements[nid] = _supp_for_node
                 applied += 1
             else:
                 no_signal += 1
@@ -785,7 +795,8 @@ def apply_heuristic_enhancement_batch(graph_dir: str,
         if os.path.exists(master_path):
             master = json.loads(Path(master_path).read_text(encoding="utf-8"))
             source_root = master.get("source_root", "")
-            split_by_domain(G, graph_dir, source_root)
+            split_by_domain(G, graph_dir, source_root,
+                            node_supplements=_supplements if _supplements else None)
     except Exception:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass

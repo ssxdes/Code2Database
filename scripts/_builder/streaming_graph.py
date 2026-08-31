@@ -875,6 +875,57 @@ class LazySQLiteGraph:
         self._edge_cache[cache_key] = attrs
         return attrs
 
+    def _query_node_domains(self) -> dict:
+        """Lightweight query for domain classification — no full json.loads.
+
+        Returns {nid: {"domain": str, "is_empty": bool, "node_type": str}}
+        Uses SQL string matching for is_empty/node_type detection instead of
+        json.loads on extra_json.  This is 10-50x faster than G.nodes(data=True)
+        for large graphs (207K+ nodes) because it skips the expensive
+        _build_attrs_from_row deserialization and avoids fetching
+        body_text_compressed.
+
+        Used by split_by_domain to avoid multiple full traversals.
+        """
+        result = {}
+        cur = self._conn.execute(
+            "SELECT id, domain, extra_json FROM functions"
+        )
+        for row in cur:
+            nid = row[0]
+            domain = row[1] or "root"
+            extra_raw = row[2]
+            is_empty = False
+            node_type = ""
+            if extra_raw:
+                # Lightweight string check — avoids json.loads on ~4KB per node
+                if '"is_empty":true' in extra_raw:
+                    is_empty = True
+                if '"node_type":"file"' in extra_raw:
+                    node_type = "file"
+            result[nid] = {"domain": domain, "is_empty": is_empty, "node_type": node_type}
+        return result
+
+    def _nodes_data_for_split(self) -> dict:
+        """Fetch all node attrs for split_by_domain in a single pass.
+
+        Excludes body_text_compressed from the SELECT to save I/O on large
+        graphs (29MB+ of compressed blobs for SPDK).  body_text is set to ""
+        in the returned dicts (use get_body_text() for lazy decompression).
+        Returns {nid: ndata_dict}.
+        """
+        cur = self._conn.execute(
+            "SELECT id, name, source_file, line_number, domain, labels, "
+            "signature, extra_json FROM functions"
+        )
+        result = {}
+        for row in cur:
+            row_dict = dict(row)
+            nid = row_dict.get("id", "")
+            if nid:
+                result[nid] = self._build_attrs_from_row(row_dict)
+        return result
+
     def number_of_nodes(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM functions").fetchone()[0]
 

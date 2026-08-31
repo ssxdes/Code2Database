@@ -4971,7 +4971,8 @@ def build_graph(extraction: dict, profile: dict = None,
 
 def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
                     max_per_dir: int = 50, build_info: dict = None,
-                    profile: dict = None):
+                    profile: dict = None,
+                    node_supplements: dict = None):
     """Split the graph into per-domain JSON files with a master navigation file.
 
     Domain JSON files are organized under a ``domains/`` subdirectory with
@@ -4987,13 +4988,43 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
       - Merge domains with merge_to (e.g., app.test-* → app)
       - Label domains with label (e.g., drivers.net.*.base → vendor_sdk)
 
+    node_supplements: optional {nid: {key: value, ...}} dict for LazySQLiteGraph.
+      When the graph is a LazySQLiteGraph, G.nodes(data=True) yields fresh dicts
+      that are not cached, so modifications (e.g., _supplemented keys from
+      apply_heuristic_enhancement_batch) are lost.  Pass them via this parameter
+      and they will be merged into the node attrs during per-domain writing.
+
     Creates:
     - code2database_master.json  (in outdir/)
     - domains/<group>/code2database_domain_<sanitized>.json  (hierarchical)
     """
     _split_start = time.time()
-    _func_node_count = sum(1 for _, nd in G.nodes(data=True)
-                           if not nd.get("is_empty", False) and nd.get("node_type") != "file")
+
+    # --- OPTIMIZATION for LazySQLiteGraph ---
+    # Avoid multiple G.nodes(data=True) traversals (each re-executes SQL +
+    # json.loads on extra_json for 207K+ nodes, taking ~25-30s each).
+    # For LazySQLiteGraph, use _query_node_domains() for lightweight
+    # classification and _nodes_data_for_split() for a single cached
+    # full-data pass.  This reduces 3-4 full traversals + ~1M individual
+    # node lookups to 1 lightweight query + 1 full-data pass.
+    _is_lazy = hasattr(G, '_conn') and hasattr(G, '_query_node_domains')
+
+    if _is_lazy:
+        # Phase 1: Lightweight classification — no json.loads, no body_text
+        _node_info = G._query_node_domains()  # {nid: {domain, is_empty, node_type}}
+        _domain_map = {nid: info["domain"] for nid, info in _node_info.items()}
+        _func_node_count = sum(
+            1 for info in _node_info.values()
+            if not info["is_empty"] and info["node_type"] != "file"
+        )
+        _cached_node_ids = set(_node_info.keys())
+    else:
+        _node_info = None
+        _domain_map = None
+        _func_node_count = sum(1 for _, nd in G.nodes(data=True)
+                               if not nd.get("is_empty", False) and nd.get("node_type") != "file")
+        _cached_node_ids = None
+
     print(f"[build] Splitting domains... ({_func_node_count} function nodes)",
           file=sys.stderr)
     domains_dir = os.path.join(outdir, "domains")
@@ -5007,6 +5038,7 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
     # This must happen BEFORE domain_nodes grouping so the domain
     # assignments are updated on the graph nodes.
     domain_labels = {}  # domain → label (e.g., "vendor_sdk", "core_eal")
+    _domain_overrides = {}  # nid → new_domain (for LazySQLiteGraph, where G.nodes[] writes are cache-only)
     if profile and profile.get("domain_rules"):
         # Pre-compile all domain rule regexes ONCE, then do a SINGLE
         # pass over all nodes (Finding 3 + 33: was O(R×N), now O(R+N)).
@@ -5022,22 +5054,41 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
                 rule.get("domain_tag", ""),
             ))
         # Single pass: for each node, test all pre-compiled rules
-        for nid, ndata in G.nodes(data=True):
-            domain = ndata.get("domain", "")
-            if not domain or domain == "root":
-                continue
-            for pat_re, merge_to, label, domain_tag in _compiled_rules:
-                if pat_re.match(domain):
-                    if merge_to:
-                        G.nodes[nid]["domain"] = merge_to
-                        ndata["domain"] = merge_to
-                    if label:
-                        effective_domain = merge_to or domain
-                        domain_labels[effective_domain] = label
-                    if domain_tag:
-                        effective_domain = merge_to or domain
-                        domain_labels[effective_domain] = domain_tag
-                    break  # first matching rule wins
+        if _is_lazy:
+            for nid, info in _node_info.items():
+                domain = info["domain"]
+                if not domain or domain == "root":
+                    continue
+                for pat_re, merge_to, label, domain_tag in _compiled_rules:
+                    if pat_re.match(domain):
+                        if merge_to:
+                            _domain_overrides[nid] = merge_to
+                            info["domain"] = merge_to
+                            _domain_map[nid] = merge_to
+                        if label:
+                            effective_domain = merge_to or domain
+                            domain_labels[effective_domain] = label
+                        if domain_tag:
+                            effective_domain = merge_to or domain
+                            domain_labels[effective_domain] = domain_tag
+                        break  # first matching rule wins
+        else:
+            for nid, ndata in G.nodes(data=True):
+                domain = ndata.get("domain", "")
+                if not domain or domain == "root":
+                    continue
+                for pat_re, merge_to, label, domain_tag in _compiled_rules:
+                    if pat_re.match(domain):
+                        if merge_to:
+                            G.nodes[nid]["domain"] = merge_to
+                            ndata["domain"] = merge_to
+                        if label:
+                            effective_domain = merge_to or domain
+                            domain_labels[effective_domain] = label
+                        if domain_tag:
+                            effective_domain = merge_to or domain
+                            domain_labels[effective_domain] = domain_tag
+                        break  # first matching rule wins
 
     # Group nodes by domain. Normalize empty/missing domain to "root" so
     # there is a single canonical bucket for files at source_root and for
@@ -5047,9 +5098,16 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
     # path starting with "/" as absolute, so _domain_subdir("") == "/"
     # collapses the relative path to "/<filename>".
     domain_nodes = defaultdict(list)
-    for nid, ndata in G.nodes(data=True):
-        domain = ndata.get("domain") or "root"
-        domain_nodes[domain].append((nid, ndata))
+    if _is_lazy:
+        # Use lightweight _node_info for grouping; full ndata fetched lazily
+        # in the per-domain writing phase via _nodes_data_for_split().
+        for nid, info in _node_info.items():
+            domain = info["domain"]
+            domain_nodes[domain].append((nid, None))
+    else:
+        for nid, ndata in G.nodes(data=True):
+            domain = ndata.get("domain") or "root"
+            domain_nodes[domain].append((nid, ndata))
 
     # Merge single-function domains into their parent domain
     # A domain with only 1 non-empty function is too granular
@@ -5058,11 +5116,22 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
     for domain in list(domain_nodes.keys()):
         # Count real (non-file) functions — file nodes don't count toward
         # domain size because they are synthetic artifacts from #include
-        real_func_count = sum(
-            1 for _, nd in domain_nodes[domain]
-            if not nd.get("is_empty", False) and nd.get("node_type") != "file"
-        )
-        non_empty_count = sum(1 for _, nd in domain_nodes[domain] if not nd.get("is_empty", False))
+        if _is_lazy:
+            # Use _node_info for classification (nd is None in domain_nodes)
+            real_func_count = sum(
+                1 for nid, _ in domain_nodes[domain]
+                if not _node_info[nid]["is_empty"] and _node_info[nid]["node_type"] != "file"
+            )
+            non_empty_count = sum(
+                1 for nid, _ in domain_nodes[domain]
+                if not _node_info[nid]["is_empty"]
+            )
+        else:
+            real_func_count = sum(
+                1 for _, nd in domain_nodes[domain]
+                if not nd.get("is_empty", False) and nd.get("node_type") != "file"
+            )
+            non_empty_count = sum(1 for _, nd in domain_nodes[domain] if not nd.get("is_empty", False))
         if real_func_count == 0:
             # File-only domain: merge into a connected domain
             # 1. Try predecessors (files that #include this one)
@@ -5070,23 +5139,31 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
             # 3. Try parent domain by name
             # 4. Fall back to 'root'
             best_parent = None
-            for nid, ndata in domain_nodes[domain]:
+            for nid, _ndata in domain_nodes[domain]:
                 for pred in G.predecessors(nid):
-                    if pred in G:
+                    if _is_lazy:
+                        pred_domain = _domain_map.get(pred, "")
+                    elif pred in G:
                         pred_domain = G.nodes[pred].get("domain", "")
-                        if pred_domain and pred_domain != domain:
-                            best_parent = pred_domain
-                            break
+                    else:
+                        pred_domain = ""
+                    if pred_domain and pred_domain != domain:
+                        best_parent = pred_domain
+                        break
                 if best_parent:
                     break
             if not best_parent:
-                for nid, ndata in domain_nodes[domain]:
+                for nid, _ndata in domain_nodes[domain]:
                     for succ in G.successors(nid):
-                        if succ in G:
+                        if _is_lazy:
+                            succ_domain = _domain_map.get(succ, "")
+                        elif succ in G:
                             succ_domain = G.nodes[succ].get("domain", "")
-                            if succ_domain and succ_domain != domain:
-                                best_parent = succ_domain
-                                break
+                        else:
+                            succ_domain = ""
+                        if succ_domain and succ_domain != domain:
+                            best_parent = succ_domain
+                            break
                     if best_parent:
                         break
             if not best_parent and "." in domain:
@@ -5107,16 +5184,29 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
             if parent not in domain_nodes:
                 domain_nodes[parent] = []
             # Reassign nodes from child to parent in the graph
-            is_file_only = all(
-                nd.get("node_type") == "file" or nd.get("is_empty", False)
-                for _, nd in domain_nodes[child]
-            )
+            if _is_lazy:
+                is_file_only = all(
+                    _node_info[nid]["node_type"] == "file" or _node_info[nid]["is_empty"]
+                    for nid, _ in domain_nodes[child]
+                )
+            else:
+                is_file_only = all(
+                    nd.get("node_type") == "file" or nd.get("is_empty", False)
+                    for _, nd in domain_nodes[child]
+                )
             if is_file_only:
                 file_only_count += 1
             for nid, ndata in domain_nodes[child]:
-                if not ndata.get("is_empty", False):
-                    G.nodes[nid]["domain"] = parent
-                    ndata["domain"] = parent
+                if _is_lazy:
+                    # Update _node_info and _domain_map (LazySQLiteGraph cache
+                    # is write-through but evictable; track overrides reliably)
+                    if not _node_info[nid]["is_empty"]:
+                        _node_info[nid]["domain"] = parent
+                        _domain_map[nid] = parent
+                else:
+                    if not ndata.get("is_empty", False):
+                        G.nodes[nid]["domain"] = parent
+                        ndata["domain"] = parent
                 domain_nodes[parent].append((nid, ndata))
             del domain_nodes[child]
             merged_count += 1
@@ -5137,8 +5227,12 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
 
     for u, v, edata in G.edges(data=True):
         relation = edata.get("relation", "")
-        u_domain = G.nodes[u].get("domain", "root") if u in G else "root"
-        v_domain = G.nodes[v].get("domain", "root") if v in G else "root"
+        if _is_lazy:
+            u_domain = _domain_map.get(u, "root")
+            v_domain = _domain_map.get(v, "root")
+        else:
+            u_domain = G.nodes[u].get("domain", "root") if u in G else "root"
+            v_domain = G.nodes[v].get("domain", "root") if v in G else "root"
         edge_record = {
             "source": u,
             "target": v,
@@ -5201,6 +5295,23 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
     for domain in sorted(domain_nodes.keys()):
         domain_subdirs[domain] = _domain_subdir(domain, domain_count, max_per_dir)
 
+    # For LazySQLiteGraph: fetch full node data in a single pass for per-domain
+    # writing.  This avoids 207K+ individual G.nodes[nid] lookups (each is a
+    # separate SQL query + json.loads).  The _nodes_data_for_split() method
+    # excludes body_text_compressed to save I/O.
+    if _is_lazy:
+        _full_node_data = G._nodes_data_for_split()  # {nid: ndata}
+        # Merge node_supplements into fetched data.  For LazySQLiteGraph,
+        # G.nodes(data=True) yields ephemeral dicts (not cached), so
+        # _supplemented keys written by apply_heuristic_enhancement_batch
+        # are lost unless we merge them back here.
+        if node_supplements:
+            for nid, supp in node_supplements.items():
+                if nid in _full_node_data and supp:
+                    _full_node_data[nid].update(supp)
+    else:
+        _full_node_data = None
+
     # Write per-domain files
     domain_map = {}
     total_nodes = 0
@@ -5210,6 +5321,9 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
         nodes = domain_nodes[domain]
         edges = domain_edges.get(domain, [])
 
+        if _is_lazy and _full_node_data is not None:
+            # Replace (nid, None) with (nid, ndata) from pre-fetched data
+            nodes = [(nid, _full_node_data.get(nid, {})) for nid, _ in nodes]
         nodes.sort(key=lambda x: x[1].get("name", ""))
         edges.sort(key=lambda x: (x.get("call_order") or 999, x.get("source", "")))
 
@@ -5409,7 +5523,10 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
     # in the graph. These arise when callee resolution returns an unresolved
     # name, or when a node was removed after edges were already collected
     # (e.g., C++ artifact removal, parameter-name-only node removal).
-    all_node_ids = set(G.nodes())
+    if _is_lazy:
+        all_node_ids = _cached_node_ids
+    else:
+        all_node_ids = set(G.nodes())
     before_dangling = len(cross_domain_edges)
     cross_domain_edges = [e for e in cross_domain_edges
                           if e.get("source", "") in all_node_ids

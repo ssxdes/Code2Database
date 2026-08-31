@@ -312,27 +312,23 @@ def scan_rpc_edges(graph_dir: str, verbose: bool = True) -> Dict[str, Any]:
     conn = _connect(graph_dir)
     try:
         # Get all functions' body_text to scan for RPC patterns.
-        # Early filter: only fetch functions that HAVE body_text_compressed
-        # (skip functions without source body — saves O(N) zlib decompress).
+        # Fetch body_text_compressed in the same SELECT to avoid N+1 queries.
         rows = conn.execute(
             "SELECT id, name, domain, source_file, line_number, "
-            "signature FROM functions WHERE name IS NOT NULL "
-            "AND id IN (SELECT id FROM functions WHERE body_text_compressed IS NOT NULL) "
+            "signature, body_text_compressed FROM functions "
+            "WHERE name IS NOT NULL "
+            "AND body_text_compressed IS NOT NULL "
             "LIMIT 50000"
         ).fetchall()
         rpc_endpoints_found: List[Dict[str, str]] = []
         for r in rows:
-            # Try to get body_text from body_text_compressed
+            # Decompress body_text from the already-fetched BLOB
             body = ""
             try:
-                # body_text_compressed is BLOB; decompress if non-empty
-                blob_row = conn.execute(
-                    "SELECT body_text_compressed FROM functions WHERE id = ?",
-                    (r["id"],)
-                ).fetchone()
-                if blob_row and blob_row["body_text_compressed"]:
+                blob = r["body_text_compressed"]
+                if blob:
                     import zlib
-                    body = zlib.decompress(blob_row["body_text_compressed"]).decode(
+                    body = zlib.decompress(blob).decode(
                         "utf-8", errors="replace")
             except (sqlite3.Error, zlib.error, TypeError):
                 logging.getLogger(__name__).debug("silent exception", exc_info=True)

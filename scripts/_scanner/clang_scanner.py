@@ -494,6 +494,8 @@ class ClangScanner(BaseScanner):
 
         # Read source bytes once for snippet extraction (avoids re-reading
         # the file per node). Falls back to empty bytes on I/O error.
+        # Also store on self._current_source_bytes so _extract_function_body
+        # can slice from memory instead of opening the file per function.
         _source_bytes = b''
         try:
             with open(filepath, 'rb') as _f:
@@ -501,6 +503,8 @@ class ClangScanner(BaseScanner):
         except (IOError, OSError):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
+        self._current_source_bytes = _source_bytes
+        self._current_source_path = filepath
         _SNIPPET_MAX = 4096
 
         def _snippet(byte_start: int, byte_end: int) -> str:
@@ -1064,15 +1068,22 @@ class ClangScanner(BaseScanner):
             pass
 
     def _extract_function_body(self, func_cursor) -> str:
-        """Extract the function body source text from a clang cursor."""
+        """Extract the function body source text from a clang cursor.
+
+        Slices from self._current_source_bytes (set once per file by
+        _extract_from_tu) instead of opening the file per function.
+        """
         try:
-            # Get tokens for the body range. walk_preorder finds the compound stmt.
             for child in func_cursor.get_children():
                 if child.kind and child.kind.name == 'COMPOUND_STMT':
-                    # Use source range from extent
                     start = child.extent.start.offset
                     end = child.extent.end.offset
-                    # We need the source bytes — read from file.
+                    # Slice from the file's pre-read bytes (set in
+                    # _extract_from_tu). Fall back to opening the file
+                    # only if the cache is missing or out of range.
+                    sb = getattr(self, '_current_source_bytes', b'')
+                    if sb and 0 <= start < end <= len(sb):
+                        return sb[start:end].decode('utf-8', errors='replace')
                     if child.location and child.location.file:
                         try:
                             with open(child.location.file.name, 'rb') as f:

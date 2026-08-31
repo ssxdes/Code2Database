@@ -14,6 +14,7 @@ from typing import Any, Optional
 
 from _builder.cgdb_store import SQLiteCGDBStore
 from _builder.cgdb_versions import VersionController
+from _builder.utils import resolve_source_file as _resolve_source_file
 import logging
 
 
@@ -773,8 +774,10 @@ def cmd_cgdb_get_source(args):
                 result["source"] = "source_snippet_no_file"
                 _print_json(result)
                 return
+            # Resolve relative paths via source_root (cgdb_files.path may be relative).
+            resolved_path = _resolve_source_file(file_path, args.graph)
             try:
-                with open(file_path, "rb") as fh:
+                with open(resolved_path, "rb") as fh:
                     raw = fh.read()
             except OSError as exc:
                 result["source_text"] = snippet

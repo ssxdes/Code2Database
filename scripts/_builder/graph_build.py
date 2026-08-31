@@ -7197,6 +7197,15 @@ def cmd_build(args):
                     _cgdb_node_count = 0
                     _cgdb_edge_count = 0
                     _global_emitted = False
+                    # L1 ingest was previously interleaved with cgdb_store.write_batch
+                    # in this loop, making it a pure-serial bottleneck. Split into
+                    # two phases:
+                    #   Phase 1 (serial): write all cgdb batches via the shared
+                    #     connection (must be serial — single conn).
+                    #   Phase 2 (parallel): run ingest_l1 across N worker processes,
+                    #     each with its own WAL connection. The libclang parse is
+                    #     CPU-bound and stateless across files.
+                    _l1_tasks = []
                     for fp, nodes in _nodes_by_file.items():
                         if not fp:
                             continue
@@ -7263,50 +7272,91 @@ def cmd_build(args):
                         _cgdb_node_count += len(nodes)
                         _cgdb_edge_count += len(_edges_by_file.get(fp, []))
 
-                        # RPT-P0-14: L1 lossless reconstruction layer ingest.
-                        # After the cgdb batch is written, ingest L1 token stream
-                        # + preprocessing info (macros, pp_branches, pragmas,
-                        # attributes, literals, string_literals, comments) for
-                        # C/C++ files. l1_ingest gracefully falls back to a
-                        # sha256-only record when libclang is unavailable.
+                        # Collect L1 ingest tasks for Phase 2 (parallel).
+                        # l1_ingest gracefully falls back to a sha256-only
+                        # record when libclang is unavailable.
                         if fp.endswith(('.c', '.cc', '.cpp', '.cxx',
                                         '.h', '.hh', '.hpp', '.hxx',
                                         '.m', '.mm')):
+                            from _builder.cgdb_ingest import file_id_for
+                            _l1_fid = file_id_for(fp)
+                            _l1_tasks.append((fp, _l1_fid))
+                    # Flush any pending write on the shared conn before L1
+                    # workers start (they need to read cgdb_nodes via their
+                    # own connections in WAL mode).
+                    try:
+                        store._conn.commit()
+                    except Exception:
+                        pass
+
+                    # Phase 2: L1 ingest (parallel when --parallel-mode process)
+                    if _l1_tasks:
+                        try:
+                            from _builder.l1_ingest import run_l1_ingest
                             try:
-                                from _builder.l1_ingest import ingest_l1
-                                from _builder.cgdb_ingest import file_id_for
-                                _l1_fid = file_id_for(fp)
-                                _l1_stats = ingest_l1(
-                                    conn=store._conn,
-                                    file_path=fp,
-                                    file_id=_l1_fid,
-                                    commit_hash=_build_commit_hash,
-                                    source_root=source_root,
+                                from _builder.parallel import resolve_jobs, cap_for_graph
+                                _l1_workers = cap_for_graph(
+                                    resolve_jobs(getattr(args, 'jobs', 0),
+                                                  max_workers_cap=getattr(args, 'max_workers', 0)),
+                                    len(_l1_tasks))
+                            except ImportError:
+                                _l1_workers = 1
+                            _l1_parallel_mode = getattr(args, 'parallel_mode', 'thread')
+                            # When the user runs the default 'thread' mode on a
+                            # large project, L1 ingest takes ~7s/file × 60K = 77h
+                            # serially. Promote 'process' mode automatically — but
+                            # only print a recommendation, don't override the
+                            # user's explicit choice.
+                            if (_l1_parallel_mode == "thread"
+                                    and len(_l1_tasks) > 1000
+                                    and _l1_workers > 1
+                                    and (os.cpu_count() or 1) >= 4):
+                                print(
+                                    f"[l1] NOTE: {len(_l1_tasks)} C/C++ files "
+                                    f"require L1 ingest. With the default "
+                                    f"--parallel-mode=thread, libclang parse "
+                                    f"is GIL-serialized (~7s/file = "
+                                    f"{len(_l1_tasks)*7//3600}h+ estimated). "
+                                    f"Pass --parallel-mode process to use "
+                                    f"{_l1_workers} cores in parallel "
+                                    f"(~{len(_l1_tasks)*7//_l1_workers//3600}h).",
+                                    file=sys.stderr)
+                            _l1_results = run_l1_ingest(
+                                tasks=_l1_tasks,
+                                db_path=db_path,
+                                source_root=source_root,
+                                commit_hash=_build_commit_hash,
+                                workers=_l1_workers,
+                                parallel_mode=_l1_parallel_mode,
+                                serial_conn=store._conn,
+                            )
+                        except ImportError:
+                            _l1_results = []
+                        # Print per-file summary (preserves prior log format).
+                        for _l1_stats in _l1_results:
+                            _fp = _l1_stats.get("file_path", "")
+                            if _l1_stats.get("consistency_ok"):
+                                _l1_msg = (
+                                    f"[l1] {os.path.basename(_fp)}: "
+                                    f"{_l1_stats.get('tokens', 0)} tokens, "
+                                    f"{_l1_stats.get('macros', 0)} macros, "
+                                    f"{_l1_stats.get('pp_branches', 0)} pp_branches, "
+                                    f"{_l1_stats.get('string_literals', 0)} str_literals "
+                                    f"(sha256 ok)"
                                 )
-                                if _l1_stats.get("consistency_ok"):
-                                    _l1_msg = (
-                                        f"[l1] {os.path.basename(fp)}: "
-                                        f"{_l1_stats['tokens']} tokens, "
-                                        f"{_l1_stats['macros']} macros, "
-                                        f"{_l1_stats['pp_branches']} pp_branches, "
-                                        f"{_l1_stats['string_literals']} str_literals "
-                                        f"(sha256 ok)"
-                                    )
-                                else:
-                                    _l1_msg = (
-                                        f"[l1] {os.path.basename(fp)}: "
-                                        f"consistency_ok=False "
-                                        f"(disk={_l1_stats.get('disk_sha256','')[:8]}, "
-                                        f"rendered={_l1_stats.get('rendered_sha256','')[:8]})"
-                                    )
-                                print(_l1_msg, file=sys.stderr)
-                            except Exception as _l1_exc:
-                                # L1 ingest is best-effort; don't fail the build
-                                # if it breaks. The cgdb tables are already
-                                # written, so the graph is usable without L1.
-                                print(f"[l1] WARNING: ingest failed for "
-                                      f"{os.path.basename(fp)}: {_l1_exc}",
-                                      file=sys.stderr)
+                            elif _l1_stats.get("error"):
+                                _l1_msg = (
+                                    f"[l1] WARNING: {os.path.basename(_fp)}: "
+                                    f"{_l1_stats['error']}"
+                                )
+                            else:
+                                _l1_msg = (
+                                    f"[l1] {os.path.basename(_fp)}: "
+                                    f"consistency_ok=False "
+                                    f"(disk={_l1_stats.get('disk_sha256','')[:8]}, "
+                                    f"rendered={_l1_stats.get('rendered_sha256','')[:8]})"
+                                )
+                            print(_l1_msg, file=sys.stderr)
                     cgdb_store.close()
                     print(f"[cgdb] Wrote {_cgdb_node_count} nodes, "
                           f"{_cgdb_edge_count} edges, {len(cgdb_types_data)} types, "

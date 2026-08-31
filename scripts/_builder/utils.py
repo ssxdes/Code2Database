@@ -7,6 +7,59 @@ import re
 from pathlib import Path
 from collections import defaultdict
 import networkx as nx
+import logging
+
+
+# Cache source_root per graph_dir to avoid re-reading master.json on every
+# describe-node / get-source query. Invalidated only on graph reload.
+_SOURCE_ROOT_CACHE: dict = {}
+
+
+def resolve_source_file(file_path: str, graph_dir: str) -> str:
+    """Resolve a possibly-relative source file path against the graph's
+    source_root, read once from code2database_master.json and cached.
+
+    cgdb_files.path and functions.source_file may both be relative (the
+    scanner stores relative paths to keep the graph portable across
+    machines). At query time, we resolve them against source_root so
+    open(file_path) works regardless of the query process's cwd.
+
+    Falls back to:
+      1. file_path as-is if it's already absolute and exists.
+      2. source_root + file_path (relative join).
+      3. graph_dir's parent dir as a fallback source_root (common project
+         layout: graph_dir is a subdirectory of source_root, e.g.
+         /proj/.code2database/).
+    Returns the original file_path if no resolution succeeds (caller's
+    open() will then raise OSError naturally).
+    """
+    if not file_path:
+        return file_path
+    if os.path.isabs(file_path) and os.path.exists(file_path):
+        return file_path
+    source_root = _SOURCE_ROOT_CACHE.get(graph_dir, "")
+    if source_root == "" and graph_dir not in _SOURCE_ROOT_CACHE:
+        master_path = os.path.join(graph_dir, "code2database_master.json")
+        if os.path.exists(master_path):
+            try:
+                master = json.loads(Path(master_path).read_text(encoding="utf-8"))
+                source_root = master.get("source_root", "") or ""
+            except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                source_root = ""
+        if not source_root:
+            source_root = os.path.dirname(graph_dir.rstrip(os.sep)) or ""
+        _SOURCE_ROOT_CACHE[graph_dir] = source_root
+    if source_root:
+        if not os.path.isabs(file_path):
+            cand = os.path.join(source_root, file_path)
+            if os.path.exists(cand):
+                return cand
+        else:
+            cand = os.path.join(source_root, os.path.basename(file_path))
+            if os.path.exists(cand):
+                return cand
+    return file_path
 
 
 def _ensure_mutable_graph(G, command_name: str = "this command"):

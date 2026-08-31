@@ -57,6 +57,12 @@ def _get_graph(graph_dir: str):
     return G
 
 
+# Re-export the shared path resolver so existing callers in this module
+# continue to work. The canonical home is _builder.utils to avoid each
+# module re-implementing the source_root lookup logic.
+from _builder.utils import resolve_source_file as _resolve_source_file
+
+
 def _close_cached_graphs():
     """Close any cached graph connections on exit."""
     for graph_dir, G in list(_GRAPH_CACHE.items()):
@@ -745,18 +751,7 @@ def _tool_get_code_snippet(args: dict, graph_dir: str) -> dict:
     if not source_file or not line_num:
         return {"error": "No source location for this node"}
     # Resolve source_root from master.json for relative paths
-    full_path = source_file
-    if not os.path.isabs(source_file):
-        master_path = os.path.join(graph_dir, "code2database_master.json")
-        if os.path.exists(master_path):
-            try:
-                master = json.loads(Path(master_path).read_text(encoding="utf-8"))
-                source_root = master.get("source_root", "")
-                if source_root:
-                    full_path = os.path.join(source_root, source_file)
-            except Exception:
-                logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                pass
+    full_path = _resolve_source_file(source_file, graph_dir)
     try:
         with open(full_path, "r", errors="replace") as f:
             lines = f.readlines()
@@ -1196,8 +1191,10 @@ def _tool_cgdb_get_source(args: dict, graph_dir: str) -> dict:
         result["source_text"] = snippet
         result["source"] = "source_snippet_no_file"
         return result
+    # Resolve relative paths via source_root (cgdb_files.path may be relative).
+    resolved_path = _resolve_source_file(file_path, graph_dir)
     try:
-        with open(file_path, "rb") as fh:
+        with open(resolved_path, "rb") as fh:
             raw = fh.read()
     except OSError as exc:
         result["source_text"] = snippet

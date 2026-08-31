@@ -43,6 +43,179 @@ import hashlib
 from typing import Optional
 import logging
 
+# Module-level globals for fork COW parallelism (set by graph_build when
+# spawning ProcessPoolExecutor workers). Each forked child inherits these
+# via copy-on-write — no pickling needed. Empty by default; only populated
+# when _l1_ingest_proc_worker is invoked from a ProcessPoolExecutor.
+_L1_DB_PATH: str = ""
+_L1_SOURCE_ROOT: str = ""
+_L1_COMMIT_HASH: str = "unknown"
+
+
+def _resolve_source_path(file_path: str, source_root: str = "") -> str:
+    """Resolve a possibly-relative or moved source path to an existing file.
+
+    cgdb_nodes.file_path may be
+      - absolute (clang_scanner uses cursor.location.file.name which
+        preserves the path passed to index.parse)
+      - relative (base._emit_cgdb_records stores relpath for non-C/C++ files)
+
+    When ingest_l1 is invoked later from cmd_build, the cwd may differ from
+    source_root, causing `open(file_path, 'rb')` to fail with OSError and
+    leaving disk_sha256 empty.
+
+    Resolution order:
+      1. If file_path exists as-is, use it.
+      2. If source_root given and file_path is relative,
+         try os.path.join(source_root, file_path).
+      3. If source_root given and file_path is absolute (e.g. the source
+         tree was renamed after scan), try joining source_root with the
+         tail of file_path (preserving subdirectories like kernel/sched/).
+
+    Returns the original file_path if no candidate exists (caller's open()
+    will then raise OSError naturally, preserving existing error handling).
+    """
+    if not file_path:
+        return file_path
+    if os.path.exists(file_path):
+        return file_path
+    if not source_root:
+        return file_path
+    if not os.path.isabs(file_path):
+        cand = os.path.join(source_root, file_path)
+        if os.path.exists(cand):
+            return cand
+    else:
+        parts = file_path.replace("\\", "/").split("/")
+        for start in range(1, len(parts)):
+            tail = os.path.join(source_root, *parts[start:])
+            if os.path.exists(tail):
+                return tail
+    return file_path
+
+
+def _l1_ingest_proc_worker(task):
+    """Module-level worker for ProcessPoolExecutor (fork COW).
+
+    Each forked child inherits _L1_DB_PATH, _L1_SOURCE_ROOT, _L1_COMMIT_HASH
+    via copy-on-write — no pickling needed for these globals. Opens its own
+    SQLite connection in WAL mode so the libclang parse (CPU-bound) runs in
+    parallel across N processes while SQLite handles write contention via
+    busy_timeout (60s). The libclang Index is created per-worker (libclang
+    is not thread/process-safe across fork without re-init).
+
+    Args:
+        task: (file_path, file_id) tuple
+
+    Returns:
+        stats dict from ingest_l1, plus 'file_path' for caller reporting.
+    """
+    fp, fid = task
+    conn = sqlite3.connect(_L1_DB_PATH, timeout=120.0)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=60000")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-32000")  # 32MB per worker
+        conn.execute("PRAGMA temp_store=MEMORY")
+        result = ingest_l1(
+            conn=conn,
+            file_path=fp,
+            file_id=fid,
+            commit_hash=_L1_COMMIT_HASH,
+            source_root=_L1_SOURCE_ROOT,
+        )
+        result.setdefault("file_path", fp)
+        return result
+    except Exception as exc:
+        return {
+            "file_path": fp,
+            "error": f"worker crashed: {exc}",
+            "tokens": 0, "macros": 0, "macro_invocations": 0,
+            "pp_branches": 0, "pp_directives": 0, "pragmas": 0,
+            "attributes": 0, "literals": 0, "string_literals": 0,
+            "comments": 0, "disk_sha256": "", "rendered_sha256": "",
+            "consistency_ok": False,
+        }
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def run_l1_ingest(tasks, db_path, source_root, commit_hash,
+                  workers, parallel_mode, serial_conn=None):
+    """Run L1 ingest over a list of (file_path, file_id) tasks.
+
+    When parallel_mode == 'process' and workers > 1 and len(tasks) > 100,
+    use ProcessPoolExecutor with fork COW (each worker opens its own WAL
+    connection). Otherwise fall back to serial execution on serial_conn.
+
+    The caller is responsible for committing any pending transaction on
+    serial_conn BEFORE calling this function (Phase 1 must be flushed so
+    parallel workers can read cgdb_nodes via their own connections).
+    """
+    if not tasks:
+        return []
+    use_process = (parallel_mode == "process" and workers > 1
+                    and len(tasks) > 100)
+    if use_process:
+        global _L1_DB_PATH, _L1_SOURCE_ROOT, _L1_COMMIT_HASH
+        _L1_DB_PATH = db_path
+        _L1_SOURCE_ROOT = source_root or ""
+        _L1_COMMIT_HASH = commit_hash
+        try:
+            from concurrent.futures import ProcessPoolExecutor
+            import multiprocessing as _mp
+            _ctx = _mp.get_context("fork")
+            with ProcessPoolExecutor(max_workers=workers, mp_context=_ctx) as _pool:
+                results = list(_pool.map(
+                    _l1_ingest_proc_worker,
+                    tasks,
+                    chunksize=max(1, len(tasks) // (workers * 4)),
+                ))
+            return results
+        except (ImportError, OSError, BrokenPipeError):
+            pass
+        finally:
+            _L1_DB_PATH = ""
+            _L1_SOURCE_ROOT = ""
+            _L1_COMMIT_HASH = "unknown"
+    conn = serial_conn if serial_conn is not None else sqlite3.connect(
+        db_path, timeout=120.0)
+    own_conn = serial_conn is None
+    results = []
+    try:
+        for fp, fid in tasks:
+            try:
+                stats = ingest_l1(
+                    conn=conn,
+                    file_path=fp,
+                    file_id=fid,
+                    commit_hash=commit_hash,
+                    source_root=source_root,
+                )
+                stats.setdefault("file_path", fp)
+                results.append(stats)
+            except Exception as exc:
+                results.append({
+                    "file_path": fp,
+                    "error": f"ingest failed: {exc}",
+                    "tokens": 0, "macros": 0, "macro_invocations": 0,
+                    "pp_branches": 0, "pp_directives": 0, "pragmas": 0,
+                    "attributes": 0, "literals": 0, "string_literals": 0,
+                    "comments": 0, "disk_sha256": "", "rendered_sha256": "",
+                    "consistency_ok": False,
+                })
+    finally:
+        if own_conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    return results
+
 # libclang TokenKind names — only load if libclang is available
 try:
     from clang.cindex import Index, TranslationUnit, TokenKind, CursorKind
@@ -79,8 +252,41 @@ _DOC_COMMENT_RE = re.compile(r'^///|^\*/!\*|^/\*\*')
 
 
 def is_libclang_available() -> bool:
-    """Check if libclang (Python bindings) is installed."""
-    return _LIBCLANG_AVAILABLE
+    """Check if libclang (Python bindings + the native libclang.so) is
+    actually usable.
+
+    Importing the `clang` Python package succeeds even when the underlying
+    libclang.so shared library is missing — Index.create() only fails at
+    first use, which previously caused ingest_l1 to silently return 0
+    tokens. This helper actually attempts Index.create() so callers can
+    decide between the libclang path and the fallback path up-front.
+
+    The result is cached after the first call to avoid repeated dlopen
+    probes on hot paths (e.g., cmd_build's per-file loop).
+    """
+    global _LIBCLANG_USABLE_CACHE
+    if _LIBCLANG_USABLE_CACHE is not None:
+        return _LIBCLANG_USABLE_CACHE
+    if not _LIBCLANG_AVAILABLE:
+        _LIBCLANG_USABLE_CACHE = False
+        return False
+    try:
+        Index.create()
+        _LIBCLANG_USABLE_CACHE = True
+    except Exception:
+        _LIBCLANG_USABLE_CACHE = False
+        import sys as _sys
+        print(
+            "[l1] WARNING: clang Python package imports but libclang.so "
+            "could not be loaded — L1 token-stream ingest will fall back "
+            "to sha256-only mode. Install libclang (e.g. apt install "
+            "libclang-18-dev or dnf install clang-libs) to enable L1.",
+            file=_sys.stderr)
+    return _LIBCLANG_USABLE_CACHE
+
+
+# Cache for is_libclang_available() — None = not yet probed.
+_LIBCLANG_USABLE_CACHE: Optional[bool] = None
 
 
 def _refine_literal_kind(spelling: str) -> str:
@@ -176,9 +382,21 @@ def ingest_l1(
         "consistency_ok": False,
     }
 
-    if not _LIBCLANG_AVAILABLE:
-        # Fallback: just compute disk sha256 and source_files_meta
-        return _ingest_l1_fallback(conn, file_path, file_id, commit_hash, stats)
+    if not is_libclang_available():
+        # Fallback: just compute disk sha256 and source_files_meta.
+        # is_libclang_available() probes Index.create() so this also
+        # catches the missing-libclang.so case (the Python binding
+        # imports OK but the actual shared library can't be loaded).
+        return _ingest_l1_fallback(conn, file_path, file_id, commit_hash, stats,
+                                    source_root=source_root)
+
+    # Resolve file path: cgdb_nodes.file_path may be relative or may point
+    # to a renamed/relocated source tree. _resolve_source_path falls back
+    # to source_root join candidates. Without this, disk_sha256 ends up
+    # empty and consistency_ok is False for every file.
+    resolved_path = _resolve_source_path(file_path, source_root or "")
+    if resolved_path != file_path:
+        file_path = resolved_path
 
     # Read source bytes for disk sha256 + raw byte access
     try:
@@ -445,6 +663,7 @@ def _ingest_l1_fallback(
     file_id: int,
     commit_hash: str,
     stats: dict,
+    source_root: str = "",
 ) -> dict:
     """Fallback path when libclang is not available.
 
@@ -453,6 +672,11 @@ def _ingest_l1_fallback(
     table — L1 queries will return empty (or use the disk-read fallback in
     source_renderer.render()).
     """
+    # Resolve relative/moved paths before reading (same logic as the
+    # libclang path in ingest_l1).
+    resolved_path = _resolve_source_path(file_path, source_root or "")
+    if resolved_path != file_path:
+        file_path = resolved_path
     try:
         with open(file_path, "rb") as f:
             source_bytes = f.read()

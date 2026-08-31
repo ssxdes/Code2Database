@@ -148,10 +148,16 @@ def analyze_lock_coverage(ndata: Dict, profile: Optional[Dict] = None,
                 groups = m.groups()
                 lock_name = groups[0].lstrip("&") if groups else "__rcu_read_lock__"
                 events.append((m.start(), "release", lock_name))
-        # Field accesses — find their position in the line
+        # Field accesses — find their position in the line.
+        # Pre-filter with substring check before the expensive
+        # _find_access_position regex. Most lines don't contain any field
+        # name, so the substring check rejects ~95% of (line, field) pairs
+        # without invoking the regex.
         for fr in ndata.get("fields_read", []) or []:
             sc = fr.get("struct_chain", "")
             fn = fr.get("field_name", "")
+            if fn and fn not in line:
+                continue
             pos = _find_access_position(line, sc, fn)
             if pos is not None:
                 events.append((pos, "access", {
@@ -161,6 +167,8 @@ def analyze_lock_coverage(ndata: Dict, profile: Optional[Dict] = None,
         for fw in ndata.get("fields_written", []) or []:
             sc = fw.get("struct_chain", "")
             fn = fw.get("field_name", "")
+            if fn and fn not in line:
+                continue
             pos = _find_access_position(line, sc, fn)
             if pos is not None:
                 events.append((pos, "access", {
@@ -170,6 +178,8 @@ def analyze_lock_coverage(ndata: Dict, profile: Optional[Dict] = None,
         for gr in ndata.get("globals_read", []) or []:
             gname = gr.get("name", "")
             if gname:
+                if gname not in line:
+                    continue
                 pos = _find_token_position(line, gname)
                 if pos is not None:
                     events.append((pos, "access", {
@@ -179,6 +189,8 @@ def analyze_lock_coverage(ndata: Dict, profile: Optional[Dict] = None,
         for gw in ndata.get("globals_written", []) or []:
             gname = gw.get("name", "")
             if gname:
+                if gname not in line:
+                    continue
                 pos = _find_token_position(line, gname)
                 if pos is not None:
                     events.append((pos, "access", {

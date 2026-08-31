@@ -285,51 +285,51 @@ def export_mermaid_multi(graph_dir: str, output: str = None) -> str:
         return f"%% No db found at {db_path}"
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    # Collect project-level stats + cross-project edges
-    # Project = first segment of domain (e.g., 'A' from 'A.module')
-    projects: Dict[str, Dict[str, Any]] = {}
     try:
-        rows = conn.execute(
-            "SELECT domain, COUNT(*) AS cnt FROM functions "
-            "WHERE domain IS NOT NULL GROUP BY domain"
-        ).fetchall()
-        for r in rows:
-            domain = r["domain"]
-            project = domain.split(".")[0] if "." in domain else domain
-            if project not in projects:
-                projects[project] = {"functions": 0, "domains": set()}
-            projects[project]["functions"] += r["cnt"]
-            projects[project]["domains"].add(domain)
-    except sqlite3.Error:
-        logging.getLogger(__name__).debug("silent exception", exc_info=True)
-        pass
-    cross_edges: Dict[str, Dict[str, int]] = {}
-    try:
-        rows = conn.execute(
-            "SELECT f_invoker.domain AS caller_domain, "
-            "       f_invoked.domain AS callee_domain, "
-            "       COUNT(*) AS edge_count "
-            "FROM edges e "
-            "JOIN functions f_invoker ON e.invoker_id = f_invoker.id "
-            "JOIN functions f_invoked ON e.invoked_id = f_invoked.id "
-            "WHERE f_invoker.domain IS NOT NULL "
-            "  AND f_invoked.domain IS NOT NULL "
-            "GROUP BY f_invoker.domain, f_invoked.domain"
-        ).fetchall()
-        for r in rows:
-            caller_proj = r["caller_domain"].split(".")[0] if "." in r["caller_domain"] else r["caller_domain"]
-            callee_proj = r["callee_domain"].split(".")[0] if "." in r["callee_domain"] else r["callee_domain"]
-            if caller_proj == callee_proj:
-                continue  # skip intra-project
-            if caller_proj not in cross_edges:
-                cross_edges[caller_proj] = {}
-            cross_edges[caller_proj][callee_proj] = (
-                cross_edges[caller_proj].get(callee_proj, 0) + r["edge_count"]
-            )
-    except sqlite3.Error:
-        logging.getLogger(__name__).debug("silent exception", exc_info=True)
-        pass
-    conn.close()
+        # Collect project-level stats + cross-project edges
+        # Project = first segment of domain (e.g., 'A' from 'A.module')
+        projects: Dict[str, Dict[str, Any]] = {}
+        try:
+            rows = conn.execute(
+                "SELECT domain, COUNT(*) AS cnt FROM functions "
+                "WHERE domain IS NOT NULL GROUP BY domain"
+            ).fetchall()
+            for r in rows:
+                domain = r["domain"]
+                project = domain.split(".")[0] if "." in domain else domain
+                if project not in projects:
+                    projects[project] = {"functions": 0, "domains": set()}
+                projects[project]["functions"] += r["cnt"]
+                projects[project]["domains"].add(domain)
+        except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        cross_edges: Dict[str, Dict[str, int]] = {}
+        try:
+            rows = conn.execute(
+                "SELECT f_invoker.domain AS caller_domain, "
+                "       f_invoked.domain AS callee_domain, "
+                "       COUNT(*) AS edge_count "
+                "FROM edges e "
+                "JOIN functions f_invoker ON e.invoker_id = f_invoker.id "
+                "JOIN functions f_invoked ON e.invoked_id = f_invoked.id "
+                "WHERE f_invoker.domain IS NOT NULL "
+                "  AND f_invoked.domain IS NOT NULL "
+                "GROUP BY f_invoker.domain, f_invoked.domain"
+            ).fetchall()
+            for r in rows:
+                caller_proj = r["caller_domain"].split(".")[0] if "." in r["caller_domain"] else r["caller_domain"]
+                callee_proj = r["callee_domain"].split(".")[0] if "." in r["callee_domain"] else r["callee_domain"]
+                if caller_proj == callee_proj:
+                    continue  # skip intra-project
+                if caller_proj not in cross_edges:
+                    cross_edges[caller_proj] = {}
+                cross_edges[caller_proj][callee_proj] = (
+                    cross_edges[caller_proj].get(callee_proj, 0) + r["edge_count"]
+                )
+        except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+    finally:
+        conn.close()
     # Build Mermaid graph
     lines = ["graph TD"]
     # Project nodes

@@ -50,8 +50,8 @@ def graph_diff(before_dir: str, after_dir: str, detail: str = "summary") -> Dict
                     }
             except Exception:
                 logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                pass
-            conn.close()
+            finally:
+                conn.close()
             if nodes:
                 return nodes
         # Fallback: load from domain JSON files

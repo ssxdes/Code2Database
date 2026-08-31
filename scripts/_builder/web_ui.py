@@ -1435,10 +1435,16 @@ def cmd_web_ui(args):
     _log.info("Web UI: http://localhost:%s", port)
     _log.info("Graph: %s", cache.summary())
     _log.info("Ctrl+C to stop")
+    timer = None
     if open_browser:
-        threading.Timer(0.5, lambda: webbrowser.open(f"http://localhost:{port}")).start()
+        timer = threading.Timer(0.5, lambda: webbrowser.open(f"http://localhost:{port}"))
+        timer.daemon = True
+        timer.start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         _log.info("Stopping...")
         server.shutdown()
+    finally:
+        if timer is not None:
+            timer.cancel()

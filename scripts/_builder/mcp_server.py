@@ -169,8 +169,8 @@ def _tool_load(args: dict, graph_dir: str) -> dict:
     db_path = os.path.join(graph_dir, "code2database.db")
     if os.path.exists(db_path) and os.path.getsize(db_path) > 0:
         import sqlite3
+        conn = sqlite3.connect(db_path)
         try:
-            conn = sqlite3.connect(db_path)
             cur = conn.cursor()
             nodes = cur.execute("SELECT COUNT(*) FROM functions").fetchone()[0]
             edges = cur.execute(
@@ -186,7 +186,6 @@ def _tool_load(args: dict, graph_dir: str) -> dict:
             domains = cur.execute(
                 "SELECT COUNT(DISTINCT domain) FROM functions WHERE domain != ''"
             ).fetchone()[0]
-            conn.close()
             return {
                 "nodes": nodes,
                 "edges": edges,
@@ -197,7 +196,8 @@ def _tool_load(args: dict, graph_dir: str) -> dict:
             }
         except sqlite3.Error:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
-            pass
+        finally:
+            conn.close()
     from _builder.graph_build import _load_full_graph
     G = _get_graph(graph_dir)
     api_count = sum(1 for _, d in G.nodes(data=True) if "API_entry" in d.get("labels", []))
@@ -226,12 +226,11 @@ def _tool_search(args: dict, graph_dir: str) -> list:
     db_path = os.path.join(graph_dir, "code2database.db")
     if os.path.exists(db_path) and os.path.getsize(db_path) > 0:
         import sqlite3
+        conn = sqlite3.connect(db_path)
         try:
-            conn = sqlite3.connect(db_path)
             cur = conn.cursor()
             tokens = [t.strip() for t in keywords.replace(",", " ").split() if t.strip()]
             if not tokens:
-                conn.close()
                 return []
             # Build WHERE clause: each token must match name OR signature
             # (using LIKE for case-insensitive substring match)
@@ -246,7 +245,6 @@ def _tool_search(args: dict, graph_dir: str) -> list:
             params.append(top * 5)  # fetch more, then score in Python
             cur.execute(sql, params)
             rows = cur.fetchall()
-            conn.close()
             # Score in Python: prefer name matches over extra_json matches
             results = []
             for nid, name, domain, labels in rows:
@@ -264,7 +262,8 @@ def _tool_search(args: dict, graph_dir: str) -> list:
             return results[:top]
         except sqlite3.Error:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
-            pass
+        finally:
+            conn.close()
     from _builder.graph_build import _load_full_graph
     from _builder.utils import _simple_tokenize, _similarity_score, _find_node_id
     G = _get_graph(graph_dir)

@@ -507,7 +507,7 @@ bash scripts/setup.sh --languages c,go
 python3 scripts/code2database_builder.py serve --graph code2db-out/
 ```
 
-通过 stdio 传输暴露 **81 个 MCP (53 base + 28 design-report) 工具**：34 个 `code2database_*` 工具（包括 `explore-flow`、`trace-chain`、`describe-node`、`detect-races`、`param-flow`、`field-access`、`reverse-trace`、`blast-radius`）+ 19 个 `cgdb_*` 工具（启用 clang 提取后端时直接查询 cgdb 层——类型化 vtable 派发、CFG、数据流、同步原语、配置谓词、时间旅行版本）。代理可以直接查询图谱，无需重读源文件——一次工具调用获得精准上下文。
+通过 stdio 传输暴露 **81 个 MCP (53 base + 28 design-report) 工具**：34 个 `code2database_*` 工具（包括 `code2database_explore`、`code2database_trace`、`code2database_describe`、`code2database_blast_radius`、`code2database_concurrency`、`code2database_data_lifecycle`）+ 19 个 `cgdb_*` 工具（启用 clang 提取后端时直接查询 cgdb 层——类型化 vtable 派发、CFG、数据流、同步原语、配置谓词、时间旅行版本）。代理可以直接查询图谱，无需重读源文件——一次工具调用获得精准上下文。
 
 ---
 

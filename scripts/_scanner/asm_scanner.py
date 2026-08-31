@@ -411,6 +411,14 @@ _AARCH64_ADDSUB_RE = re.compile(
 _IDENT_RE = re.compile(r'^[a-zA-Z_]\w*$')
 _AARCH64_REGNAME_RE = re.compile(r'^[xw]\d+$')
 
+# Pre-compiled patterns for pass-2 line scanning. Previously these were
+# `re.match(r'...', stripped)` per line per .S file.
+_ASM_PP_IFDEF_RE = re.compile(r'^\s*#ifdef\s+([a-zA-Z_]\w*)')
+_ASM_PP_IFNDEF_RE = re.compile(r'^\s*#ifndef\s+([a-zA-Z_]\w*)')
+_ASM_PP_ELSE_RE = re.compile(r'^\s*#else\b')
+_ASM_PP_ENDIF_RE = re.compile(r'^\s*#endif\b')
+_ASM_SECTION_RE = re.compile(r'^\s*\.section\s+\.(\w+)')
+
 # Pre-compiled macro-body variants of kernel asm func/end macros.
 # These replace the per-line `pat.pattern.replace(r'(\w+)', r'(\\?\w+)')` calls.
 _KERNEL_ASM_FUNC_MACROS_MACROBODY = [
@@ -603,8 +611,7 @@ class _RegisterTracker:
             return
 
         # --- AArch64 ADD/SUB ---
-        m = re.match(r'\b(add|sub)\s+([xw]\d+)\s*,\s*([xw]\d+)\s*,\s*(.+)',
-                     stripped, re.IGNORECASE)
+        m = _AARCH64_ADDSUB_RE.match(stripped)
         if m:
             op = m.group(1).lower()
             dst = self._canonical(m.group(2).lower())
@@ -1187,15 +1194,15 @@ class AsmRegexScanner(BaseScanner):
             # --- C preprocessor directives in .S files ---
             # #ifdef, #ifndef, #else, #endif must be tracked BEFORE the # skip
             if is_gas and stripped.startswith('#'):
-                m = re.match(r'^\s*#ifdef\s+([a-zA-Z_]\w*)', stripped)
+                m = _ASM_PP_IFDEF_RE.match(stripped)
                 if m:
                     cond_stack.append((f"pp_ifdef_{m.group(1)}", line_num))
                     continue
-                m = re.match(r'^\s*#ifndef\s+([a-zA-Z_]\w*)', stripped)
+                m = _ASM_PP_IFNDEF_RE.match(stripped)
                 if m:
                     cond_stack.append((f"pp_ifndef_{m.group(1)}", line_num))
                     continue
-                m = re.match(r'^\s*#else\b', stripped)
+                m = _ASM_PP_ELSE_RE.match(stripped)
                 if m:
                     if cond_stack and cond_stack[-1][0].startswith(('pp_ifdef_', 'pp_ifndef_')):
                         old = cond_stack[-1][0]
@@ -1204,7 +1211,7 @@ class AsmRegexScanner(BaseScanner):
                         elif old.startswith('pp_ifndef_'):
                             cond_stack[-1] = (f"pp_else_{old[10:]}", line_num)
                     continue
-                m = re.match(r'^\s*#endif\b', stripped)
+                m = _ASM_PP_ENDIF_RE.match(stripped)
                 if m:
                     if cond_stack and cond_stack[-1][0].startswith(('pp_ifdef_', 'pp_ifndef_', 'pp_else_')):
                         cond_stack.pop()
@@ -1223,7 +1230,7 @@ class AsmRegexScanner(BaseScanner):
                 continue
 
             # GAS-style .section directive (e.g., .section .text)
-            m = re.match(r'^\s*\.section\s+\.(\w+)', stripped)
+            m = _ASM_SECTION_RE.match(stripped)
             if m:
                 current_section = m.group(1).lower()
                 continue
@@ -1310,7 +1317,7 @@ class AsmRegexScanner(BaseScanner):
                             # Check for call targets in the expanded line
                             for cm in _GAS_CALL_RE.finditer(expanded):
                                 callee = cm.group(1)
-                                if current_func_name and current_func_id and re.match(r'^[a-zA-Z_]\w*$', callee):
+                                if current_func_name and current_func_id and _IDENT_RE.match(callee):
                                     call_order[0] += 1
                                     condition = "; ".join(c[0] for c in cond_stack) if cond_stack else ""
                                     edges.append({
@@ -1323,7 +1330,7 @@ class AsmRegexScanner(BaseScanner):
                                     })
                             for cm in _ARM_CALL_RE.finditer(expanded):
                                 callee = cm.group(1)
-                                if current_func_name and current_func_id and re.match(r'^[a-zA-Z_]\w*$', callee):
+                                if current_func_name and current_func_id and _IDENT_RE.match(callee):
                                     call_order[0] += 1
                                     condition = "; ".join(c[0] for c in cond_stack) if cond_stack else ""
                                     edges.append({
@@ -1370,7 +1377,7 @@ class AsmRegexScanner(BaseScanner):
                             # Resolve the function name from the invocation
                             start_pname = func_start_params[0]
                             resolved_func_name = param_map.get(start_pname)
-                            if resolved_func_name and re.match(r'^[a-zA-Z_]\w*$', resolved_func_name):
+                            if resolved_func_name and _IDENT_RE.match(resolved_func_name):
                                 # Close any previous function
                                 if current_func_name and current_func_id:
                                     self._finalize_function(
@@ -1389,7 +1396,7 @@ class AsmRegexScanner(BaseScanner):
                                 # Create edges for parameterized call targets
                                 for pname in call_params:
                                     resolved = param_map.get(pname)
-                                    if resolved and re.match(r'^[a-zA-Z_]\w*$', resolved):
+                                    if resolved and _IDENT_RE.match(resolved):
                                         call_order[0] += 1
                                         edges.append({
                                             "source": current_func_id,
@@ -1417,7 +1424,7 @@ class AsmRegexScanner(BaseScanner):
                             if call_params and current_func_name and current_func_id:
                                 for pname in call_params:
                                     resolved = param_map.get(pname)
-                                    if resolved and re.match(r'^[a-zA-Z_]\w*$', resolved):
+                                    if resolved and _IDENT_RE.match(resolved):
                                         call_order[0] += 1
                                         condition = "; ".join(c[0] for c in cond_stack) if cond_stack else ""
                                         edges.append({
@@ -1452,7 +1459,7 @@ class AsmRegexScanner(BaseScanner):
                             call_indices = entry_macro.get("call_params", [])
                             if 0 <= func_idx < len(args):
                                 func_name_arg = args[func_idx]
-                                if re.match(r'^[a-zA-Z_]\w*$', func_name_arg):
+                                if _IDENT_RE.match(func_name_arg):
                                     # Close any previous function
                                     if current_func_name and current_func_id:
                                         self._finalize_function(
@@ -1471,7 +1478,7 @@ class AsmRegexScanner(BaseScanner):
                                     for cidx in call_indices:
                                         if 0 <= cidx < len(args):
                                             invoked_arg = args[cidx]
-                                            if re.match(r'^[a-zA-Z_]\w*$', invoked_arg):
+                                            if _IDENT_RE.match(invoked_arg):
                                                 call_order[0] += 1
                                                 edges.append({
                                                     "source": current_func_id,
@@ -2469,7 +2476,7 @@ class AsmRegexScanner(BaseScanner):
             if m:
                 current_section = m.group(1).lower()
                 continue
-            m = re.match(r'^\s*\.section\s+\.(\w+)', stripped)
+            m = _ASM_SECTION_RE.match(stripped)
             if m:
                 current_section = m.group(1).lower()
                 continue

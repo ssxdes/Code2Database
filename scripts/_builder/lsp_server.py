@@ -58,8 +58,6 @@ class LSPServer:
                 "referencesProvider": True,
                 "callHierarchyProvider": True,
                 "hoverProvider": True,
-                "documentSymbolProvider": True,
-                "workspaceSymbolProvider": True,
                 "monikerProvider": True,
                 # Read-only: no text sync, no completion, no diagnostics
                 "textDocumentSync": 0,  # None
@@ -201,20 +199,45 @@ class LSPServer:
     # --- LSP base protocol transport ---
 
     def run_stdio(self):
-        """Run the LSP server on stdio (Content-Length framing)."""
+        """Run the LSP server on stdio (Content-Length framing).
+
+        Handles both CRLF and LF framing, malformed headers, malformed
+        JSON, partial body reads, and EOF (clean exit).
+        """
         while not self._shutdown:
             headers = {}
             while True:
                 line = sys.stdin.readline()
-                if not line or line == "\r\n":
+                if not line:
+                    # EOF — clean exit
+                    return
+                line = line.strip()
+                if not line:
                     break
                 key, _, val = line.partition(":")
                 headers[key.strip().lower()] = val.strip()
-            content_length = int(headers.get("content-length", 0))
+            try:
+                content_length = int(headers.get("content-length", 0))
+            except ValueError:
+                content_length = 0
             if content_length == 0:
                 continue
-            body = sys.stdin.read(content_length)
-            msg = json.loads(body)
+            # Read exactly content_length bytes (read() may return fewer)
+            body = b""
+            while len(body) < content_length:
+                chunk = sys.stdin.buffer.read(content_length - len(body))
+                if not chunk:
+                    return  # EOF
+                body += chunk
+            try:
+                msg = json.loads(body.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                if "id" in headers:
+                    self._send({"jsonrpc": "2.0",
+                                "id": None,
+                                "error": {"code": -32700,
+                                          "message": "Parse error"}})
+                continue
             response = self._handle(msg)
             if response is not None:
                 self._send(response)
@@ -270,9 +293,8 @@ class LSPServer:
     @staticmethod
     def _send(msg: Dict):
         body = json.dumps(msg).encode("utf-8")
-        sys.stdout.write(f"Content-Length: {len(body)}\r\n\r\n")
-        sys.stdout.flush()
-        sys.stdout.buffer.write(body)
+        header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
+        sys.stdout.buffer.write(header + body)
         sys.stdout.buffer.flush()
 
 

@@ -636,7 +636,8 @@ class LazySQLiteGraph:
         self._succ_cache_max = 50000
         self._pred_cache = OrderedDict()
         self._pred_cache_max = 50000
-        self._node_neg_cache = set()
+        self._node_neg_cache: OrderedDict = OrderedDict()
+        self._node_neg_cache_max = 10000
         # nx.DiGraph-compatibility attrs. networkx functions like nx.compose
         # call `result.graph.update(G1.graph)` which requires a `.graph` dict.
         # LazySQLiteGraph is read-only, so we expose an empty dict — callers
@@ -657,11 +658,11 @@ class LazySQLiteGraph:
             "SELECT 1 FROM functions WHERE id=? LIMIT 1", (node_id,)).fetchone()
         if row is not None:
             return True
-        if len(self._node_neg_cache) >= self._node_cache_max:
-            _evict = self._node_cache_max // 4
-            for k in list(self._node_neg_cache.keys())[:_evict]:
-                del self._node_neg_cache[k]
-        self._node_neg_cache.add(node_id)
+        if len(self._node_neg_cache) >= self._node_neg_cache_max:
+            _evict = self._node_neg_cache_max // 4
+            for _ in range(_evict):
+                self._node_neg_cache.popitem(last=False)
+        self._node_neg_cache[node_id] = True
         return False
 
     def has_node(self, node_id: str) -> bool:

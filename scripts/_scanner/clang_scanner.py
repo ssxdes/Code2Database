@@ -14,6 +14,7 @@ Falls back gracefully if libclang is unavailable — returns empty cgdb_* lists.
 Node ID strategy (per cgdb 5.6): int(sha256(usr)[:16], 16) for AST nodes,
 with bit-range prefix to keep AST nodes < 0x8000_0000_0000_0000.
 """
+import bisect
 import hashlib
 import os
 
@@ -243,6 +244,10 @@ class ClangScanner(BaseScanner):
         # Fallback directory-level args (when no per-file entry exists):
         # directory prefix → list of clang args (longest-prefix match).
         self._compile_db_dir_cache: dict = {}
+        # Sorted list of directory prefixes for O(log D) longest-prefix
+        # lookup via bisect. Built once when _compile_db_dir_cache is
+        # populated by _load_compile_commands.
+        self._compile_db_dir_prefixes: list = []
         self._tu = None  # holds the TranslationUnit for the current scan
         self._file_id = 0  # set by caller via cgdb_ingest
         self._macro_bindings = {}
@@ -383,6 +388,11 @@ class ClangScanner(BaseScanner):
             except Exception:
                 logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
+        # Build a sorted prefix list once so per-file lookups can use bisect
+        # for O(log D) longest-prefix matching instead of scanning every
+        # directory prefix on each lookup.
+        self._compile_db_dir_prefixes = sorted(self._compile_db_dir_cache.keys())
+
     def _lookup_compile_args(self, filepath: str) -> list:
         """Look up per-file compile args from compile_commands.json.
 
@@ -400,15 +410,20 @@ class ClangScanner(BaseScanner):
         # Direct file match
         if file_abs in self._compile_db_cache:
             return list(self._compile_db_cache[file_abs])
-        # Directory longest-prefix match
-        best_prefix = ''
-        best_args = []
-        for dir_prefix, args in self._compile_db_dir_cache.items():
-            if file_abs.startswith(dir_prefix + os.sep) or file_abs == dir_prefix:
-                if len(dir_prefix) > len(best_prefix):
-                    best_prefix = dir_prefix
-                    best_args = args
-        return list(best_args) if best_args else []
+        # Directory longest-prefix match via bisect. Start from the
+        # lexicographically-largest prefix <= file_abs and walk backwards
+        # until a true path-prefix is found (the first match is the
+        # longest). The walk is O(log D) for the bisect plus typically
+        # O(1) for the check; it only advances past sibling directories
+        # that sort below the file but are not its real ancestor.
+        sorted_prefixes = self._compile_db_dir_prefixes
+        i = bisect.bisect_right(sorted_prefixes, file_abs)
+        while i > 0:
+            candidate = sorted_prefixes[i - 1]
+            if file_abs == candidate or file_abs.startswith(candidate + os.sep):
+                return list(self._compile_db_dir_cache[candidate])
+            i -= 1
+        return []
 
     def _parse_path(self, filepath: str):
         """Parse source file by path with libclang. Returns TranslationUnit or None."""

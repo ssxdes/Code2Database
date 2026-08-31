@@ -1011,6 +1011,14 @@ def _add_imports_edges(G, file_nodes: dict) -> None:
         file_nodes: dict[source_file, file_node_id] from
             _add_contains_edges.
     """
+    # Pre-compute basename → list of source_files index once before the
+    # per-node loop. Previously the inner loop did an O(file_nodes) linear
+    # scan per #include directive per node.
+    _file_by_basename: dict = {}
+    for _sf, _fid in file_nodes.items():
+        _base = os.path.basename(_sf)
+        _file_by_basename.setdefault(_base, []).append((_sf, _fid))
+
     for nid, ndata in G.nodes(data=True):
         if ndata.get("is_empty", False) or ndata.get("node_type") == "file":
             continue
@@ -1028,9 +1036,10 @@ def _add_imports_edges(G, file_nodes: dict) -> None:
             header_id = f"file:{header}"
             # Also try to find by matching existing file nodes
             if header_id not in G:
-                # Try relative path matching
-                for existing_sf, existing_id in file_nodes.items():
-                    if existing_sf.endswith(header) or os.path.basename(existing_sf) == os.path.basename(header):
+                # O(matches) lookup via pre-computed basename index
+                header_base = os.path.basename(header)
+                for existing_sf, existing_id in _file_by_basename.get(header_base, []):
+                    if existing_sf.endswith(header) or existing_sf == header:
                         header_id = existing_id
                         break
             if header_id in G and header_id != fid and not G.has_edge(fid, header_id):

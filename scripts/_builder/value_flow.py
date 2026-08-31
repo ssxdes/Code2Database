@@ -365,14 +365,18 @@ def forward_taint_trace(G, source_id: str, taint_pattern: str,
     visited = set()
     queue = deque([(source_id, taint_pattern, 0, [source_id])])
     sinks = []
-    # Pre-build name → id index to avoid O(V) linear scan per callee lookup.
-    # On 700K-node kernel graphs the linear scan inside the BFS loop below
-    # would otherwise dominate runtime (visited nodes × args × G.nodes scan).
-    _name_index = {}
-    for _n, _nd in G.nodes(data=True):
-        _nm = _nd.get("name")
-        if _nm:
-            _name_index.setdefault(_nm, _n)
+    # Cache the name → id index on the graph object itself so repeated calls
+    # to forward_taint_trace don't rebuild it from scratch. Use
+    # G.graph['_name_index_v1'] as a stable cache key (bump the version
+    # suffix if the index format ever changes).
+    _name_index = G.graph.get('_name_index_v1')
+    if _name_index is None:
+        _name_index = {}
+        for _n, _nd in G.nodes(data=True):
+            _nm = _nd.get("name")
+            if _nm:
+                _name_index.setdefault(_nm, _n)
+        G.graph['_name_index_v1'] = _name_index
 
     while queue:
         cur_id, cur_taint, depth, path = queue.popleft()

@@ -144,11 +144,20 @@ def _detect_locks_held(ndata, profile=None, G=None, nid=None):
             else:
                 locks_released.add("__rcu_read_lock__")
 
-    # Also check callee_args for lock API calls
+    # Also check callee_args for lock API calls. Use a substring pre-filter
+    # to skip the regex search() for (callee, pattern) pairs where the callee
+    # name does not even appear in the pattern source string — such a pattern
+    # cannot match this callee, so the expensive regex call is avoided for the
+    # vast majority of callee_args (which are not lock API calls at all).
     for ca in ndata.get("callee_args", []):
         callee_name = ca.get("callee", "")
+        if not callee_name:
+            continue
+        callee_search_target = callee_name + "()"
         for pat in acquire_patterns:
-            m = pat.search(callee_name + "()")
+            if callee_name not in pat.pattern:
+                continue
+            m = pat.search(callee_search_target)
             if m:
                 groups = m.groups()
                 if groups:
@@ -156,7 +165,9 @@ def _detect_locks_held(ndata, profile=None, G=None, nid=None):
                 else:
                     locks_acquired.add("__rcu_read_lock__")
         for pat in release_patterns:
-            m = pat.search(callee_name + "()")
+            if callee_name not in pat.pattern:
+                continue
+            m = pat.search(callee_search_target)
             if m:
                 groups = m.groups()
                 if groups:

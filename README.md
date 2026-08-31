@@ -509,7 +509,7 @@ Launch Code2Database as an MCP server to give any MCP-compatible agent (Claude C
 python3 scripts/code2database_builder.py serve --graph code2db-out/
 ```
 
-Exposes **81 MCP tools (53 base + 28 design-report)** over stdio transport: 34 `code2database_*` tools (including `explore-flow`, `trace-chain`, `describe-node`, `detect-races`, `param-flow`, `field-access`, `reverse-trace`, `blast-radius`) plus 19 `cgdb_*` tools that query the cgdb (code graph database) layer directly when the clang extraction backend is enabled (typed vtable dispatch, CFG, data flow, sync primitives, config predicates, time-travel versions). The agent can query the graph directly without re-reading source files — surgical context in one tool call.
+Exposes **81 MCP tools (53 base + 28 design-report)** over stdio transport: 34 `code2database_*` tools (including `code2database_explore`, `code2database_trace`, `code2database_describe`, `code2database_blast_radius`, `code2database_concurrency`, `code2database_data_lifecycle`) plus 19 `cgdb_*` tools that query the cgdb (code graph database) layer directly when the clang extraction backend is enabled (typed vtable dispatch, CFG, data flow, sync primitives, config predicates, time-travel versions). The agent can query the graph directly without re-reading source files — surgical context in one tool call.
 
 ---
 

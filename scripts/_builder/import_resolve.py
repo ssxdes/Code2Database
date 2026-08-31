@@ -270,12 +270,14 @@ def _compute_fqn(nd: dict, project_name: str = "") -> str:
 def _build_resolve_lookups(G: nx.DiGraph) -> tuple:
     """Pre-build lookup structures for _multi_strategy_resolve.
 
-    Returns (name_to_ids, file_to_ids, domain_to_ids).
-    Call once before a batch of resolve calls, then pass the result in.
+    Returns (name_to_ids, file_to_ids, domain_to_ids, basename_to_files).
+    The basename_to_files dict maps basename → list of source_files so
+    Strategy 2's basename match is O(matches) instead of O(F) per include.
     """
     name_to_ids = defaultdict(list)
     file_to_ids = defaultdict(list)
     domain_to_ids = defaultdict(list)
+    basename_to_files: dict = {}
     for nid, ndata in G.nodes(data=True):
         if ndata.get("is_empty", False):
             continue
@@ -285,9 +287,11 @@ def _build_resolve_lookups(G: nx.DiGraph) -> tuple:
         sf = ndata.get("source_file", "")
         if sf:
             file_to_ids[sf].append((nid, n_lower))
+            base = os.path.basename(sf)
+            basename_to_files.setdefault(base, []).append(sf)
         dom = ndata.get("domain", "root")
         domain_to_ids[dom].append((nid, n_lower))
-    return (name_to_ids, file_to_ids, domain_to_ids)
+    return (name_to_ids, file_to_ids, domain_to_ids, basename_to_files)
 
 
 def _get_file_includes(source_file: str, source_root: str) -> set:
@@ -372,9 +376,9 @@ def _multi_strategy_resolve(G: nx.DiGraph, callee_name: str, invoker_id: str,
 
     # Use pre-built lookups or build them (slow path for one-off calls)
     if _lookups:
-        name_to_ids, file_to_ids, domain_to_ids = _lookups
+        name_to_ids, file_to_ids, domain_to_ids, basename_to_files = _lookups
     else:
-        name_to_ids, file_to_ids, domain_to_ids = _build_resolve_lookups(G)
+        name_to_ids, file_to_ids, domain_to_ids, basename_to_files = _build_resolve_lookups(G)
 
     callee_lower = callee_name.lower()
 
@@ -389,7 +393,9 @@ def _multi_strategy_resolve(G: nx.DiGraph, callee_name: str, invoker_id: str,
     caller_includes = _get_file_includes(caller_file, source_root) if source_root else set()
 
     if caller_includes:
-        # Use pre-built file_to_ids for O(1) lookup instead of O(N) scan
+        # Use pre-built file_to_ids for O(1) lookup instead of O(N) scan.
+        # Basename matches use the pre-computed basename_to_files index
+        # instead of scanning file_to_ids.items() per include.
         for inc in caller_includes:
             # Direct match
             if inc in file_to_ids:
@@ -398,18 +404,22 @@ def _multi_strategy_resolve(G: nx.DiGraph, callee_name: str, invoker_id: str,
                         return (nid, "import_map", 0.85)
             # Basename match (e.g., inc="lib/bdev.h" matches sf="bdev.h")
             inc_base = os.path.basename(inc)
-            for sf, entries in file_to_ids.items():
-                if os.path.basename(sf) == inc_base:
+            for sf in basename_to_files.get(inc_base, []):
+                entries = file_to_ids.get(sf)
+                if entries:
                     for nid, n_lower in entries:
                         if n_lower == callee_lower:
                             return (nid, "import_map", 0.85)
             # Python/Java: import matches module path
             inc_path = inc.replace(".", "/")
-            for sf, entries in file_to_ids.items():
+            inc_path_base = os.path.basename(inc_path) or inc_path
+            for sf in basename_to_files.get(inc_path_base, []):
                 if sf.endswith(inc_path + ".py") or sf.endswith(inc_path + ".java"):
-                    for nid, n_lower in entries:
-                        if n_lower == callee_lower:
-                            return (nid, "import_map", 0.85)
+                    entries = file_to_ids.get(sf)
+                    if entries:
+                        for nid, n_lower in entries:
+                            if n_lower == callee_lower:
+                                return (nid, "import_map", 0.85)
 
     # Strategy 3: same_domain
     if caller_domain in domain_to_ids:

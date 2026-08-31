@@ -82,6 +82,19 @@ _MACRO_ASM_CALL_RES = [
     (re.compile(r'\bcall\s+\*\s*%([a-zA-Z_]\w*)'), "AMBIGUOUS", 0.3, "indirect_call"),
 ]
 
+# Pre-compiled inline-asm instruction patterns, reusing the compiled regex
+# objects from _MACRO_ASM_CALL_RES so the inline-asm path never recompiles
+# the same instruction patterns per call. Each named handle aliases the
+# compiled regex at the matching list index.
+_ASM_DIRECT_CALL_RE = _MACRO_ASM_CALL_RES[0][0]          # call <label>
+_ASM_TAIL_JMP_RE = _MACRO_ASM_CALL_RES[1][0]              # jmp <label>
+_ASM_DIRECT_BL_RE = _MACRO_ASM_CALL_RES[2][0]             # bl <label> (ARM)
+_ASM_SYSCALL_RE = _MACRO_ASM_CALL_RES[5][0]                # syscall
+_ASM_INDIRECT_CALL_REG_RE = _MACRO_ASM_CALL_RES[11][0]    # call *%reg
+
+# Identifier-followed-by-call-paren pattern for macro body call extraction.
+_IDENT_CALL_RE = re.compile(r'\b([a-zA-Z_]\w*)\s*\(')
+
 
 class CTreeSitterScanner(BaseScanner):
     """Scanner for C and C++ using tree-sitter."""
@@ -1344,7 +1357,7 @@ class CTreeSitterScanner(BaseScanner):
                      'sizeof', 'typeof', 'offsetof', 'container_of'}
         callees = []
         seen = set()
-        for m in re.finditer(r'\b([a-zA-Z_]\w*)\s*\(', expanded_text):
+        for m in _IDENT_CALL_RE.finditer(expanded_text):
             name = m.group(1)
             if name in _KEYWORDS:
                 continue
@@ -2604,7 +2617,7 @@ class CTreeSitterScanner(BaseScanner):
 
         # 2. Extract direct call targets from inline asm
         # x86: call func_name
-        for m in re.finditer(r'\bcall\s+([a-zA-Z_]\w*)', asm_text):
+        for m in _ASM_DIRECT_CALL_RE.finditer(asm_text):
             callee_name = m.group(1)
             call_order[0] += 1
             edges.append({
@@ -2618,7 +2631,7 @@ class CTreeSitterScanner(BaseScanner):
             })
 
         # 3. ARM: bl instructions (direct call to label)
-        for m in re.finditer(r'\bbl\s+([a-zA-Z_]\w*)', asm_text):
+        for m in _ASM_DIRECT_BL_RE.finditer(asm_text):
             callee_name = m.group(1)
             call_order[0] += 1
             edges.append({
@@ -2633,7 +2646,7 @@ class CTreeSitterScanner(BaseScanner):
 
         # 3b. jmp tail call targets (x86 jmp label, ARM b label — not b.eq/b.ne)
         # Only match simple unconditional jumps, not conditional branches
-        for m in re.finditer(r'\bjmp\s+([a-zA-Z_]\w*)', asm_text):
+        for m in _ASM_TAIL_JMP_RE.finditer(asm_text):
             target = m.group(1)
             call_order[0] += 1
             edges.append({
@@ -2703,7 +2716,7 @@ class CTreeSitterScanner(BaseScanner):
 
         # 4a. x86: call *%rax or call *%N — indirect call via register or operand
         # Register form: call *%rax — check if rax was bound to a function or dispatch array
-        for m in re.finditer(r'\bcall\s+\*\s*%([a-zA-Z_]\w*)', asm_text):
+        for m in _ASM_INDIRECT_CALL_REG_RE.finditer(asm_text):
             reg_name = m.group(1).lower()
             resolved = reg_to_func.get(reg_name)
             candidates = reg_to_candidates.get(reg_name, [])
@@ -2761,7 +2774,7 @@ class CTreeSitterScanner(BaseScanner):
             })
 
         # 5. Syscall/svc instructions from inline asm
-        if re.search(r'\bsyscall\b', asm_text):
+        if _ASM_SYSCALL_RE.search(asm_text):
             call_order[0] += 1
             # Try to resolve syscall name from mov to rax/eax before syscall
             syscall_target = "syscall_inline"

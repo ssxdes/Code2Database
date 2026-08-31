@@ -209,6 +209,60 @@ _INFER_DISPATCH = {
 
 _INFER_FIRST_TOKEN_RE = re.compile(r'^([A-Za-z_][A-Za-z0-9_]*)')
 
+# Pre-compiled patterns for per-function hot paths. Previously these were
+# `re.match(r'...', text)` / `re.search(r'...', text)` calls inside
+# per-function loops, causing ~50M+ redundant regex compilations on
+# kernel-scale scans. Python's re cache (~512 entries) thrashes when
+# distinct patterns exceed cache capacity.
+_CB_DIGIT_SUFFIX_RES = tuple(
+    re.compile(rf'.*{re.escape(s)}_\d+$') for s in
+    ('_cb', '_callback', '_handler', '_fn', '_done', '_completion', '_cpl', '_event')
+)
+_HB_ACQUIRE_PAT = re.compile(
+    r'\b(?:with\s+([A-Za-z_][A-Za-z0-9_\.]*)\s*:|'
+    r'([A-Za-z_][A-Za-z0-9_]*)\.acquire\(\)|'
+    r'([A-Za-z_][A-Za-z0-9_]*)\.Lock\(\)|'
+    r'([A-Za-z_][A-Za-z0-9_]*)\.lock\(\)|'
+    r'pthread_mutex_lock\s*\(\s*&?\s*([A-Za-z_][A-Za-z0-9_]*)|'
+    r'([A-Za-z_][A-Za-z0-9_]*)\.lock\(\)\.unwrap\(\)|'
+    r'synchronized\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\))'
+)
+_HB_RELEASE_PAT = re.compile(
+    r'\b(?:([A-Za-z_][A-Za-z0-9_]*)\.release\(\)|'
+    r'([A-Za-z_][A-Za-z0-9_]*)\.Unlock\(\)|'
+    r'([A-Za-z_][A-Za-z0-9_]*)\.unlock\(\)|'
+    r'pthread_mutex_unlock\s*\(\s*&?\s*([A-Za-z_][A-Za-z0-9_]*)\))'
+)
+_HB_BLOCK_ACQUIRE_RE = re.compile(r'\b(?:with\s+|synchronized\s*\()')
+_ASSIGN_LHS_HB_BY_LANG = {
+    'python': re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?::\s*[^=\n]+)?\s*=', re.MULTILINE),
+    'go':     re.compile(r'^\s*(?:var\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?::?=\s*|=\s*)', re.MULTILINE),
+    'rust':   re.compile(r'^\s*(?:let\s+(?:mut\s+)?)?([A-Za-z_][A-Za-z0-9_]*)\s*(?::\s*[^=\n]+)?\s*=', re.MULTILINE),
+    'java':   re.compile(r'^\s*(?:final\s+)?(?:[\w<>\[\],\s]+)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=', re.MULTILINE),
+    'c':      re.compile(r'^\s*(?:[\w\s\*]+?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=', re.MULTILINE),
+    'cpp':    re.compile(r'^\s*(?:[\w\s\*:<>,]+?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=', re.MULTILINE),
+}
+_CF_KEYWORDS_BY_LANG = {
+    'python': re.compile(r'^\s*(?:if|elif|else|for|while|try|except|finally|with|match|case)\b'),
+    'go': re.compile(r'^\s*(?:if|else|for|switch|case|select|defer|go)\b'),
+    'rust': re.compile(r'^\s*(?:if|else|for|while|loop|match|return|break|continue)\b'),
+    'java': re.compile(r'^\s*(?:if|else|for|while|do|switch|case|try|catch|finally|return|break|continue)\b'),
+    'c': re.compile(r'^\s*(?:if|else|for|while|do|switch|case|return|break|continue|goto)\b'),
+    'cpp': re.compile(r'^\s*(?:if|else|for|while|do|switch|case|return|break|continue|goto|try|catch|throw)\b'),
+}
+_LITERAL_NUM_RE_1 = re.compile(r'^[-+]?0[xXbBoO][0-9a-fA-F_]+$')
+_LITERAL_NUM_RE_2 = re.compile(r'^[-+]?\d[\d_]*\.?\d*([eE][+-]?\d+)?[fFlLuU]*$')
+_CALLABLE_IDENT_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*([.:][A-Za-z_][A-Za-z0-9_]*)*$')
+_LOCAL_DECL_RE = re.compile(
+    r'(?:var\s+|let\s+(?:mut\s+)?)?(\w+)(?:\s*[:]\s*\w+)?\s*[=:]\s*(.{0,400})',
+    re.DOTALL,
+)
+_LOCAL_DECL_TYPE_RE = re.compile(r'(?:var\s+|let\s+(?:mut\s+)?)?\w+\s*[:]\s*(\w+)')
+_INFER_COMMENT_SPLIT_RE = re.compile(r'\s+#')
+_DOC_COMMENT_BLOCK_RE = re.compile(r'/\*\*?(.*?)\*/\s*$', re.DOTALL)
+_DOC_COMMENT_LINE_RE = re.compile(r'^\s*\*\s?')
+_NORMALIZE_NAME_RE = re.compile(r'[^A-Za-z0-9_]')
+
 
 class BaseScanner(ABC):
     """Abstract base for language-specific code graph scanners."""
@@ -302,9 +356,8 @@ class BaseScanner(ABC):
 
     def _is_callback_by_name(self, func_name: str) -> bool:
         """Check if a function name matches callback naming conventions."""
-        import re
-        if any(func_name.endswith(s) or re.match(rf'.*{re.escape(s)}_\d+$', func_name)
-               for s in self._CALLBACK_SUFFIXES):
+        if any(func_name.endswith(s) or pat.match(func_name)
+               for s, pat in zip(self._CALLBACK_SUFFIXES, _CB_DIGIT_SUFFIX_RES)):
             return True
         if func_name.startswith('on_') or '_on_' in func_name:
             return True
@@ -1651,17 +1704,9 @@ class BaseScanner(ABC):
         except ImportError:
             return []
         out = []
-        # Per-language assignment LHS pattern. Captures the variable name on
-        # the LHS — used to detect additional writes beyond local_vars (which
-        # only captures declared-with-initializer writes).
-        assign_lhs_by_lang = {
-            'python': re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?::\s*[^=\n]+)?\s*=', re.MULTILINE),
-            'go':     re.compile(r'^\s*(?:var\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?::?=\s*|=\s*)', re.MULTILINE),
-            'rust':   re.compile(r'^\s*(?:let\s+(?:mut\s+)?)?([A-Za-z_][A-Za-z0-9_]*)\s*(?::\s*[^=\n]+)?\s*=', re.MULTILINE),
-            'java':   re.compile(r'^\s*(?:final\s+)?(?:[\w<>\[\],\s]+)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=', re.MULTILINE),
-            'c':      re.compile(r'^\s*(?:[\w\s\*]+?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=', re.MULTILINE),
-            'cpp':    re.compile(r'^\s*(?:[\w\s\*:<>,]+?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=', re.MULTILINE),
-        }
+        # Per-language assignment LHS pattern. Hoisted to module level
+        # as _ASSIGN_LHS_HB_BY_LANG.
+        assign_lhs_by_lang = _ASSIGN_LHS_HB_BY_LANG
         for fn in functions:
             fn_id_str = fn.get('id', '') or ''
             fn_nid = fn_legacy_to_nid.get(fn_id_str)
@@ -1696,21 +1741,9 @@ class BaseScanner(ABC):
             lock_acquire_lines: list = []
             lock_release_lines: list = []
             # Fallback: inline patterns for the most common acquire/release.
-            acquire_pat = re.compile(
-                r'\b(?:with\s+([A-Za-z_][A-Za-z0-9_\.]*)\s*:|'
-                r'([A-Za-z_][A-Za-z0-9_]*)\.acquire\(\)|'
-                r'([A-Za-z_][A-Za-z0-9_]*)\.Lock\(\)|'
-                r'([A-Za-z_][A-Za-z0-9_]*)\.lock\(\)|'
-                r'pthread_mutex_lock\s*\(\s*&?\s*([A-Za-z_][A-Za-z0-9_]*)|'
-                r'([A-Za-z_][A-Za-z0-9_]*)\.lock\(\)\.unwrap\(\)|'
-                r'synchronized\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\))'
-            )
-            release_pat = re.compile(
-                r'\b(?:([A-Za-z_][A-Za-z0-9_]*)\.release\(\)|'
-                r'([A-Za-z_][A-Za-z0-9_]*)\.Unlock\(\)|'
-                r'([A-Za-z_][A-Za-z0-9_]*)\.unlock\(\)|'
-                r'pthread_mutex_unlock\s*\(\s*&?\s*([A-Za-z_][A-Za-z0-9_]*)\))'
-            )
+            # Pre-compiled at module level as _HB_ACQUIRE_PAT / _HB_RELEASE_PAT.
+            acquire_pat = _HB_ACQUIRE_PAT
+            release_pat = _HB_RELEASE_PAT
             # Track implicit-release block ends for `with`/`synchronized`/
             # `lock_guard` style acquires. Map: acquire_line → release_line.
             implicit_release: dict = {}
@@ -1718,8 +1751,7 @@ class BaseScanner(ABC):
                 if acquire_pat.search(line):
                     lock_acquire_lines.append(line_idx)
                     # Determine if this is a block-style acquire (with/sync).
-                    is_block = bool(re.search(
-                        r'\b(?:with\s+|synchronized\s*\()', line))
+                    is_block = bool(_HB_BLOCK_ACQUIRE_RE.search(line))
                     if is_block:
                         # Find the block end: next line at same/lower
                         # indentation (Python-style) or matching brace
@@ -1845,27 +1877,9 @@ class BaseScanner(ABC):
             from _scanner.unified_id import unified_node_id
         except ImportError:
             return ([], [])
-        # Per-language control-flow keyword patterns. Each entry is a regex
-        # that matches the start of a control-flow statement.
-        cf_patterns_by_lang = {
-            'python': re.compile(
-                r'^\s*(?:if|elif|else|for|while|try|except|finally|with|'
-                r'match|case)\b'),
-            'go': re.compile(
-                r'^\s*(?:if|else|for|switch|case|select|defer|go)\b'),
-            'rust': re.compile(
-                r'^\s*(?:if|else|for|while|loop|match|return|break|'
-                r'continue)\b'),
-            'java': re.compile(
-                r'^\s*(?:if|else|for|while|do|switch|case|try|catch|finally|'
-                r'return|break|continue)\b'),
-            'c': re.compile(
-                r'^\s*(?:if|else|for|while|do|switch|case|return|break|'
-                r'continue|goto)\b'),
-            'cpp': re.compile(
-                r'^\s*(?:if|else|for|while|do|switch|case|return|break|'
-                r'continue|goto|try|catch|throw)\b'),
-        }
+        # Per-language control-flow keyword patterns. Hoisted to module
+        # level as _CF_KEYWORDS_BY_LANG.
+        cf_patterns_by_lang = _CF_KEYWORDS_BY_LANG
         cf_pat = cf_patterns_by_lang.get(language)
         blocks_out: list = []
         edges_out: list = []
@@ -2039,7 +2053,7 @@ class BaseScanner(ABC):
         return source_bytes[node.start_byte:node.end_byte].decode('utf-8', errors='replace')
 
     def _normalize_name(self, name: str) -> str:
-        return re.sub(r'[^A-Za-z0-9_]', '_', name)
+        return _NORMALIZE_NAME_RE.sub('_', name)
 
     def _make_func_id(self, domain: str, name: str) -> str:
         return domain.replace(".", "_") + "_" + self._normalize_name(name).lower()
@@ -2089,7 +2103,7 @@ class BaseScanner(ABC):
         if t[0] in ('"', "'") or t.startswith(('f"', "f'", 'r"', "r'", 'b"', "b'", 'rb"', "rb'", 'br"', "br'")):
             return False
         # Number literal (int, float, hex, octal, binary)
-        if re.match(r'^[-+]?0[xXbBoO][0-9a-fA-F_]+$', t) or re.match(r'^[-+]?\d[\d_]*\.?\d*([eE][-+]?\d+)?[fFlLuU]*$', t):
+        if _LITERAL_NUM_RE_1.match(t) or _LITERAL_NUM_RE_2.match(t):
             return False
         # Boolean / null / none literals
         if t in ('true', 'false', 'True', 'False', 'None', 'null', 'nil', 'NULL', 'nullptr'):
@@ -2102,12 +2116,12 @@ class BaseScanner(ABC):
         if not stripped:
             return False
         # Identifier or dotted name (allow :: for C++/Java/Rust method refs)
-        if re.match(r'^[A-Za-z_][A-Za-z0-9_]*([.:][A-Za-z_][A-Za-z0-9_]*)*$', stripped):
+        if _CALLABLE_IDENT_RE.match(stripped):
             return True
         # Parenthesized callable or call expression: (foo), foo()
         if '(' in stripped or ')' in stripped:
             inner = stripped.strip('()').strip()
-            if inner and re.match(r'^[A-Za-z_][A-Za-z0-9_]*([.:][A-Za-z_][A-Za-z0-9_]*)*$', inner):
+            if inner and _CALLABLE_IDENT_RE.match(inner):
                 return True
         return False
 
@@ -2282,13 +2296,13 @@ class BaseScanner(ABC):
             return BaseScanner._extract_python_docstring(func_node, source_bytes)
 
         # /** ... */ block comment (must end at the very end of `stripped`)
-        block_match = re.search(r'/\*\*?(.*?)\*/\s*$', stripped, re.DOTALL)
+        block_match = _DOC_COMMENT_BLOCK_RE.search(stripped)
         if block_match:
             inner = block_match.group(1)
             # Strip leading * on each line (Javadoc-style)
             lines = []
             for line in inner.split('\n'):
-                cleaned = re.sub(r'^\s*\*\s?', '', line)
+                cleaned = _DOC_COMMENT_LINE_RE.sub('', line)
                 lines.append(cleaned)
             return '\n'.join(lines).strip()
 
@@ -2602,14 +2616,13 @@ class BaseScanner(ABC):
                                  'let_declaration', 'let_statement'):
                     text = self._node_text(nd, source_bytes)
                     pos = self._node_position(nd)
-                    m = re.match(r'(?:var\s+|let\s+(?:mut\s+)?)?(\w+)(?:\s*[:]\s*\w+)?\s*[=:]\s*(.{0,400})',
-                                 text.strip(), re.DOTALL)
+                    m = _LOCAL_DECL_RE.match(text.strip())
                     if m:
                         name = m.group(1)
                         val = m.group(2).rstrip(';').strip()
                         if name not in seen and len(name) > 1:
                             seen.add(name)
-                            type_match = re.match(r'(?:var\s+|let\s+(?:mut\s+)?)?\w+\s*[:]\s*(\w+)', text.strip())
+                            type_match = _LOCAL_DECL_TYPE_RE.match(text.strip())
                             vtype = type_match.group(1) if type_match else ""
                             if not vtype:
                                 vtype = self._infer_type_from_value(val)
@@ -2644,7 +2657,7 @@ class BaseScanner(ABC):
         if not value:
             return ''
         v = value.strip()
-        v = re.split(r'\s+#', v)[0].strip()
+        v = _INFER_COMMENT_SPLIT_RE.split(v, 1)[0].strip()
         if not v:
             return ''
 

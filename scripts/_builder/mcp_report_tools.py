@@ -136,6 +136,8 @@ def _tool_edit_token(args: dict, graph_dir: str) -> dict:
     new_text = args.get("new_text", "")
     if not token_id:
         return {"error": "token_id is required"}
+    if not new_text:
+        return {"error": "new_text is required (cannot set to empty)"}
     conn = None
     try:
         conn = _get_conn(graph_dir)

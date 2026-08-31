@@ -7,20 +7,22 @@ CLI subprocess calls.
 Usage:
     python code2database_builder.py serve --graph code2db-out/
 
-MCP Tools exposed:
-    - code2database_load: Load and summarize the invocation graph
-    - code2database_search: Search nodes by keywords
-    - code2database_describe: Describe a node (brief/standard/full)
-    - code2database_explore: One-shot context retrieval by query
-    - code2database_trace: Trace chain from A to B
-    - code2database_impact: Impact analysis (upstream/downstream)
-    - code2database_key_paths: Extract key execution paths
-    - code2database_concurrency: List concurrency risk points
-    - code2database_data_lifecycle: Trace resource lifecycle
-    - code2database_domain: List nodes/edges in a domain
-    - code2database_knowledge_query: Query knowledge by topic
-    - code2database_memory_search: Search memory for similar questions
-    - code2database_semantic_status: Check if semantic update is recommended
+MCP Tools exposed (81 total):
+    - 34 code2database_* tools (load, search, describe, explore, trace,
+      impact, key_paths, concurrency, data_lifecycle, domain, knowledge_query,
+      memory_search, semantic_status, blast_radius, field_access, etc.)
+    - 19 cgdb_* tools (query, time_travel, configs_for, ops_impls, cfg_paths,
+      data_flow, race_check, index_status, sql, views, schema_version,
+      versions, find_invokers, find_invoked, path, definition, function_body,
+      struct_layout, type_definition, nodes_under_config, path_feasible,
+      get_source, layer_summary)
+    - 28 design-report tools (render_source, verify_consistency, edit_token,
+      insert_token, delete_token, find_macros, get_pp_branches,
+      get_string_literals, commit/rollback_db_transaction, insert_node_after,
+      delete_node, add_function, find_symbol, callers_of, callees_of,
+      who_writes, who_reads, get_context, impact_analysis, get_module_view,
+      indirect_targets, alias_set, trace_data_flow, cfg_of,
+      path_sensitive_states, precise_write_set, dead_code_in)
 """
 
 import json
@@ -524,6 +526,8 @@ def _tool_data_lifecycle(args: dict, graph_dir: str) -> dict:
     if not G:
         return {"error": "Graph not loaded"}
     resource = args.get("resource", "")
+    if not resource:
+        return {"error": "Missing required parameter: resource"}
     alloc_nodes = []
     use_nodes = []
     release_nodes = []
@@ -555,6 +559,8 @@ def _tool_domain(args: dict, graph_dir: str) -> dict:
     if not G:
         return {"error": "Graph not loaded"}
     domain_name = args.get("name", "")
+    if not domain_name:
+        return {"error": "Missing required parameter: name"}
     nodes = [{"id": nid, "name": nd.get("name", ""), "labels": nd.get("labels", [])}
              for nid, nd in G.nodes(data=True)
              if nd.get("domain", "") == domain_name and not nd.get("is_empty", False)]
@@ -568,11 +574,14 @@ def _tool_knowledge_query(args: dict, graph_dir: str) -> dict:
     project has code2database.db; falls back to the legacy substring
     search via KnowledgeManager otherwise.
     """
+    topic = args.get("topic", "")
+    if not topic:
+        return {"error": "Missing required parameter: topic"}
     try:
         from _builder.kb_index import query_kb
         results = query_kb(
             graph_dir=graph_dir,
-            query=args.get("topic", ""),
+            query=topic,
             top_n=10,
             kinds=["principle", "fact", "pattern", "glossary"],
             min_weight=0.0,
@@ -601,11 +610,14 @@ def _tool_memory_search(args: dict, graph_dir: str) -> list:
     project has code2database.db; falls back to the legacy Jaccard
     search via MemoryManager otherwise.
     """
+    query = args.get("query", "")
+    if not query:
+        return [{"error": "Missing required parameter: query"}]
     try:
         from _builder.kb_index import query_kb
         results = query_kb(
             graph_dir=graph_dir,
-            query=args.get("query", ""),
+            query=query,
             top_n=int(args.get("top", 5)),
             kinds=["memory_qa", "memory_experience"],
             min_weight=0.0,  # no weight filter; let BM25 rank
@@ -702,13 +714,16 @@ def _tool_sync_foreign(args: dict, graph_dir: str) -> dict:
 def _tool_composite_query(args: dict, graph_dir: str) -> dict:
     """F3: cross-C2D query via ATTACH."""
     from _builder.c2d_phase2 import composite_query
+    query = args.get("query", "")
+    if not query:
+        return {"error": "Missing required parameter: query"}
     foreign_c2ds = []
     fc = args.get("foreign_c2ds", "")
     if fc:
         foreign_c2ds = [s.strip() for s in fc.split(",") if s.strip()]
     return composite_query(
         graph_dir=graph_dir,
-        query=args.get("query", ""),
+        query=query,
         foreign_c2ds=foreign_c2ds,
         top_n=int(args.get("top", 50)),
     )
@@ -964,6 +979,10 @@ def _tool_explain_label(args: dict, graph_dir: str) -> dict:
         return {"error": "Graph not loaded"}
     node_hint = args.get("node", "")
     label = args.get("label", "")
+    if not node_hint:
+        return {"error": "Missing required parameter: node"}
+    if not label:
+        return {"error": "Missing required parameter: label"}
     node_id = _find_node_id(G, node_hint)
     if not node_id:
         return {"error": f"node {node_hint!r} not found"}
@@ -995,7 +1014,7 @@ def _tool_audit_log(args: dict, graph_dir: str) -> dict:
         target_id=args.get("node"),
         command=args.get("command"),
         tx_id=args.get("tx"),
-        limit=args.get("limit", 100),
+        limit=int(args.get("limit", 100)),
     )
 
 
@@ -1622,7 +1641,7 @@ TOOLS = {
         },
         "handler": _tool_extract_signals,
     },
-    # ---- D37: New tools for expanded MCP coverage (16 -> 30+) ----
+    # ---- D37: New tools for expanded MCP coverage (16 -> 34) ----
     "code2database_path_feasible": {
         "description": "Check feasibility of a path under #ifdef conditions using Z3 or heuristics.",
         "inputSchema": {
@@ -2022,8 +2041,12 @@ try:
     from _builder.mcp_report_tools import TOOLS_REPORT
     TOOLS.update(TOOLS_REPORT)
 except ImportError:
-    # mcp_report_tools not available (e.g., older deployment) — skip silently
-    pass
+    # mcp_report_tools not available — log loudly so the user knows
+    # the server is starting with 53 tools instead of the documented 81.
+    logging.getLogger(__name__).error(
+        "mcp_report_tools import failed — MCP server starting with "
+        "%d tools (expected 81). Design-report tools unavailable.",
+        len(TOOLS))
 
 
 # ---------------------------------------------------------------------------

@@ -44,6 +44,13 @@ class TestBuilderModuleImport(unittest.TestCase):
         self.assertTrue(hasattr(cb, 'main'))
         self.assertTrue(callable(cb.main))
 
+    def test_module_has_docstring(self):
+        """Module docstring must not be shadowed by imports."""
+        import code2database_builder as cb
+        self.assertIsNotNone(cb.__doc__,
+                             "module docstring must not be shadowed by imports")
+        self.assertIn("Call graph builder", cb.__doc__)
+
     def test_main_runs_without_subcommand_prints_help_and_exits(self):
         # Call: python3 code2database_builder.py (no args)
         proc = subprocess.run(
@@ -72,7 +79,7 @@ class TestCLICommandRegistration(unittest.TestCase):
             self.assertIn(cmd, self.help_output,
                           f'command missing from --help: {cmd}')
 
-    def test_help_lists_at_least_26_commands(self):
+    def test_help_lists_at_least_200_commands(self):
         # Count distinct command names appearing as `  <name>` lines
         found = set()
         for line in self.help_output.splitlines():
@@ -82,8 +89,17 @@ class TestCLICommandRegistration(unittest.TestCase):
                 name = stripped.split()[0]
                 if name and not name.startswith('-'):
                     found.add(name)
-        self.assertGreaterEqual(len(found), 26,
-                                f'expected >=26 commands, found {len(found)}')
+        self.assertGreaterEqual(len(found), 200,
+                                f'expected >=200 commands, found {len(found)}')
+
+    def test_version_flag_prints_version_and_exits_zero(self):
+        proc = subprocess.run(
+            [sys.executable, os.path.join(SCRIPTS_DIR, 'code2database_builder.py'),
+             '--version'],
+            capture_output=True, text=True, timeout=10,
+        )
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn('code2database_builder', proc.stdout)
 
     def test_help_mentions_cgdb_subcommand_family(self):
         self.assertIn('cgdb-query', self.help_output)

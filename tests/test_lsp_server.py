@@ -65,6 +65,14 @@ class TestLSPServerInitialize(unittest.TestCase):
         # serverInfo
         self.assertEqual(result["serverInfo"]["name"], "code2database-lsp")
 
+    def test_no_unimplemented_capabilities_advertised(self):
+        """ServerCapabilities must NOT advertise unimplemented methods."""
+        caps = self.server.initialize({})["capabilities"]
+        # These were previously advertised but never implemented —
+        # editors would send requests and get -32601 errors.
+        self.assertNotIn("documentSymbolProvider", caps)
+        self.assertNotIn("workspaceSymbolProvider", caps)
+
     def test_handle_initialize_dispatches_to_initialize(self):
         """_handle(initialize) returns a JSON-RPC response with capabilities."""
         resp = self.server._handle({"jsonrpc": "2.0", "id": 1,

@@ -481,8 +481,15 @@ class StreamingGraph:
 
         Uses a single transaction for the entire write to avoid thousands
         of fdatasync calls.
+
+        Idempotent: a second call is a no-op (prevents DELETE FROM functions
+        + writing zero functions → empty table).
         """
         import gc
+
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
 
         # Start a single transaction for the entire write
         self._store._conn.execute("BEGIN TRANSACTION")
@@ -1030,6 +1037,13 @@ class LazySQLiteGraph:
         except Exception:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+
     def __enter__(self):
         return self
 

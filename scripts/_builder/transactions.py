@@ -326,7 +326,12 @@ def list_snapshots(graph_dir: str, limit: int = 50) -> List[Snapshot]:
 
 
 def restore_snapshot(graph_dir: str, snap_id: str) -> Dict:
-    """Restore graph state from a snapshot. Overwrites current files."""
+    """Restore graph state from a snapshot. Overwrites current files.
+
+    Uses temp-file + fsync + os.replace for crash-safety per file: if the
+    process is killed mid-restore, the live DB is left intact (the temp
+    file is orphaned, not the live DB).
+    """
     snap_path = os.path.join(_snapshots_dir(graph_dir), snap_id)
     if not os.path.exists(snap_path):
         return {"restored": False, "reason": f"snapshot {snap_id} not found"}
@@ -337,16 +342,14 @@ def restore_snapshot(graph_dir: str, snap_id: str) -> Dict:
         if not os.path.exists(src):
             continue
         dst = os.path.join(graph_dir, fname)
-        # Remove the current file/directory
-        if os.path.isdir(dst):
-            shutil.rmtree(dst)
-        elif os.path.exists(dst):
-            os.remove(dst)
-        # Copy the snapshot back
-        if os.path.isdir(src):
-            shutil.copytree(src, dst)
-        else:
-            shutil.copy2(src, dst)
+        # Atomic restore: copy to temp, fsync, then os.replace.
+        # os.replace is atomic on the same filesystem — if the process
+        # is killed before os.replace, the live file is untouched.
+        tmp = dst + ".restore.tmp"
+        shutil.copy2(src, tmp)
+        with open(tmp, "rb") as f:
+            os.fsync(f.fileno())
+        os.replace(tmp, dst)
         restored_files.append(fname)
     return {"restored": True, "snapshot_id": snap_id,
             "restored_files": restored_files}
@@ -1058,7 +1061,16 @@ def cmd_tx_restore(args):
     if not snap_id:
         print("Error: --id required", file=sys.stderr)
         sys.exit(1)
-    result = restore_snapshot(graph_dir, snap_id)
+    # Acquire write lock so concurrent writers/readers are excluded.
+    lock = GraphLock(graph_dir)
+    if not lock.acquire_write(timeout=10.0):
+        print("Error: could not acquire write lock for tx-restore — "
+              "another operation may be in progress.", file=sys.stderr)
+        sys.exit(1)
+    try:
+        result = restore_snapshot(graph_dir, snap_id)
+    finally:
+        lock.release()
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
 
 

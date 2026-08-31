@@ -458,6 +458,9 @@ def ingest_l1(
     _token_rows = []      # rows for executemany("INSERT INTO tokens")
     _literal_rows = []    # rows for executemany("INSERT INTO literals")
     _strlit_rows = []     # rows for executemany("INSERT INTO string_literals")
+    # Parallel to _strlit_rows: stores the _literal_rows index for each
+    # string literal, so Phase 2 can look up the correct literal_id.
+    _strlit_literal_indices = []
     _comment_rows = []    # rows for executemany("INSERT INTO comments_freeform")
     # Track literal_id back-references: (token_seq, literal_kind, literal_row_idx)
     _literal_backrefs = []
@@ -497,6 +500,7 @@ def ingest_l1(
                     _literal_rows.append(
                         ("string", spelling, None)  # token_id filled later
                     )
+                    _strlit_literal_indices.append(len(_literal_rows) - 1)
                     _strlit_rows.append(
                         (spelling.encode("utf-8"),
                          _decode_string_literal(spelling),
@@ -646,7 +650,8 @@ def ingest_l1(
         # Batch INSERT string_literals
         if _strlit_rows:
             for _si, _srow in enumerate(_strlit_rows):
-                _lid = _literal_ids.get(_si)
+                _lidx = _strlit_literal_indices[_si]
+                _lid = _literal_ids.get(_lidx)
                 if _lid is not None:
                     # _srow is (raw_bytes, decoded, encoding, is_wide,
                     #           security_flags, token_id_placeholder)

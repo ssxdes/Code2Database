@@ -182,6 +182,38 @@ _STRIP_PP_DIRECTIVE_RE = re.compile(
 # Bare identifier check — was `_BARE_IDENT_RE.match(arg)` at 10+ sites.
 _BARE_IDENT_RE = re.compile(r'^[a-zA-Z_]\w*$')
 
+# Hoisted line-parsing patterns for _extract_func_defs. These were inline
+# re.match/re.search string-pattern calls executed once per source line;
+# moving them to module level avoids per-line regex cache churn.
+_TYPE_PREFIX_RE = re.compile(
+    r'^(?:(?:static|inline|extern|const|unsigned|signed|long|short|'
+    r'struct|enum|union|void|int|char|float|double)\s+)'
+)
+_PAREN_BRACE_RE = re.compile(r'\([^)]*\)\s*\{')
+_BEFORE_PAREN_ARGS_BRACE_RE = re.compile(r'^(.*?)\(([^)]*)\)\s*\{')
+_TRAILING_IDENT_RE = re.compile(r'(\w+)\s*$')
+_PTR_RET_FUNC_NOBRACE_RE = re.compile(
+    r'^((?:static|inline|extern|const|unsigned|signed|long|short|'
+    r'struct|enum|union|void|int|char|float|double)\s+[\w\s\*]+?)'
+    r'\s*\*?\s*(\w+)\s*\(([^)]*)\)\s*$'
+)
+# Preprocessor conditional markers used by _extract_func_defs and
+# _extract_func_bodies to track #ifdef branch depth while scanning for
+# the opening brace.
+_PP_IF_RE = re.compile(r'^\s*#\s*(if|ifdef|ifndef)\b')
+_PP_ELSE_RE = re.compile(r'^\s*#\s*(elif|else)\b')
+_PP_ENDIF_RE = re.compile(r'^\s*#\s*endif\b')
+
+# Generic local-variable declaration pattern. Captures the declared name
+# so the per-argument callback scan can filter by identifier equality
+# (m.group(1) == arg) instead of compiling a re.escape(arg) alternation
+# regex for every argument of every function call.
+_LOCAL_VAR_TYPE_RE = re.compile(
+    r'\b(?:int|long|short|unsigned|char|void|float|double|bool|size_t|'
+    r'uint\d+_t|int\d+_t|struct\s+\w+|enum\s+\w+|\w+_t|const\s+\w+)'
+    r'\s+(\w+)\s*[=;]'
+)
+
 # Generic names that are too ambiguous as callback arguments — they're
 # common local variable/parameter names (like 'init', 'ctx', 'data')
 # and create false positive edges when they coincidentally match a
@@ -822,20 +854,15 @@ def scan_c_file(filepath: str, source_root: str = "", api_prefixes: list = None,
                     caller_body = func_bodies.get(caller_name, {}).get("body", "")
                     if caller_body:
                         # Check for local variable declarations: type arg = or type arg;
-                        # This catches cases like "int entry = 5" where "entry" is a var
-                        _LOCAL_VAR_RE = re.compile(
-                            r'\b(?:int|long|short|unsigned|char|void|float|double|'
-                            r'bool|size_t|uint\d+_t|int\d+_t|struct\s+\w+|enum\s+\w+|'
-                            r'\w+_t|const\s+\w+)\s+' + re.escape(arg) + r'\s*[=;]',
+                        # This catches cases like "int entry = 5" where "entry" is a var.
+                        # Use a single generic pattern (captures the declared name) and
+                        # compare in Python so no per-argument re.compile is needed.
+                        is_local_var = any(
+                            m.group(1) == arg
+                            for m in _LOCAL_VAR_TYPE_RE.finditer(caller_body)
                         )
-                        if _LOCAL_VAR_RE.search(caller_body):
+                        if is_local_var:
                             continue
-                        # Also check if arg is a function parameter: look for the
-                        # function signature and see if arg appears as a non-fn-ptr param
-                        # Pattern: func_name(... type arg ...) where type is not a fn ptr
-                        _PARAM_CHECK_RE = re.compile(
-                            r'\b' + re.escape(invoked_nameb) + r'\s*\([^)]*\b' + re.escape(arg) + r'\b',
-                        )
                         # Check if the arg is used as a function pointer:
                         # If the caller is a known registration function and the
                         # arg position matches the callback position, it's likely valid.
@@ -1281,12 +1308,12 @@ def _extract_func_defs(source: str, rel_path: str, api_prefixes: list = None,
         # Use two-step parsing: match type+name+args+{, then extract name from last word before paren
         # IMPORTANT: pre-check must require a type keyword to avoid intercepting lines
         # that Strategy 4 should handle (e.g., "func_name(args) {" with type on prev line)
-        if re.match(r'^(?:(?:static|inline|extern|const|unsigned|signed|long|short|struct|enum|union|void|int|char|float|double)\s+)', line) and re.search(r'\([^)]*\)\s*\{', line):
-            m_fb = re.match(r'^(.*?)\(([^)]*)\)\s*\{', line)
+        if _TYPE_PREFIX_RE.match(line) and _PAREN_BRACE_RE.search(line):
+            m_fb = _BEFORE_PAREN_ARGS_BRACE_RE.match(line)
             if m_fb:
                 before_paren = m_fb.group(1).rstrip()
                 params = m_fb.group(2)
-                name_match = re.search(r'(\w+)\s*$', before_paren)
+                name_match = _TRAILING_IDENT_RE.search(before_paren)
                 if name_match:
                     func_name = name_match.group(1)
                     ret_type_raw = before_paren[:name_match.start()].strip().rstrip('*').strip()
@@ -1332,7 +1359,7 @@ def _extract_func_defs(source: str, rel_path: str, api_prefixes: list = None,
         # Only try this if Strategy 2 didn't match (pointer return types)
         if not m:
             # Quick check: line has type-like prefix, name, and (args) but no brace
-            m_fb2 = re.match(r'^((?:static|inline|extern|const|unsigned|signed|long|short|struct|enum|union|void|int|char|float|double)\s+[\w\s\*]+?)\s*\*?\s*(\w+)\s*\(([^)]*)\)\s*$', line)
+            m_fb2 = _PTR_RET_FUNC_NOBRACE_RE.match(line)
             if m_fb2:
                 ret_type_raw = m_fb2.group(1).strip().rstrip('*').strip()
                 func_name = m_fb2.group(2)
@@ -1387,13 +1414,13 @@ def _extract_func_defs(source: str, rel_path: str, api_prefixes: list = None,
                     check_line = lines[j].strip()
                     # Track preprocessor branch nesting
                     if check_line.startswith('#'):
-                        if re.match(r'^\s*#\s*(if|ifdef|ifndef)\b', check_line):
+                        if _PP_IF_RE.match(check_line):
                             pp_branch_depth += 1
-                        elif re.match(r'^\s*#\s*(elif|else)\b', check_line):
+                        elif _PP_ELSE_RE.match(check_line):
                             # Entering an alternate branch — skip until matching #endif
                             if pp_branch_depth == 0:
                                 pp_branch_depth = 1  # Start skipping
-                        elif re.match(r'^\s*#\s*endif\b', check_line):
+                        elif _PP_ENDIF_RE.match(check_line):
                             if pp_branch_depth > 0:
                                 pp_branch_depth -= 1
                         continue
@@ -1485,12 +1512,12 @@ def _extract_func_defs(source: str, rel_path: str, api_prefixes: list = None,
                         for j in range(i + 1, min(i + 20, n_lines)):
                             check_line = lines[j].strip()
                             if check_line.startswith('#'):
-                                if re.match(r'^\s*#\s*(if|ifdef|ifndef)\b', check_line):
+                                if _PP_IF_RE.match(check_line):
                                     pp_branch_depth += 1
-                                elif re.match(r'^\s*#\s*(elif|else)\b', check_line):
+                                elif _PP_ELSE_RE.match(check_line):
                                     if pp_branch_depth == 0:
                                         pp_branch_depth = 1
-                                elif re.match(r'^\s*#\s*endif\b', check_line):
+                                elif _PP_ENDIF_RE.match(check_line):
                                     if pp_branch_depth > 0:
                                         pp_branch_depth -= 1
                                 continue
@@ -1526,7 +1553,7 @@ def _extract_func_defs(source: str, rel_path: str, api_prefixes: list = None,
         # This handles cases where [^)]* fails due to nested parens in function pointer params.
         # Match: func_name( at line start, then scan for matching ) counting paren depth.
         if not m and not m2:
-            m3c = re.match(r'^(\w+)\s*\(', line)
+            m3c = _FUNC_NAME_OPEN_PAREN_RE.match(line)
             if m3c and not line.endswith(';') and not line.endswith('{'):
                 func_name_3c = m3c.group(1)
                 if (func_name_3c not in _def_skip and func_name_3c not in seen_names
@@ -1597,7 +1624,7 @@ def _extract_func_defs(source: str, rel_path: str, api_prefixes: list = None,
                 params = m5.group(2)
 
                 # Extract function name: last word-char sequence before the paren
-                name_match = re.search(r'(\w+)\s*$', before_paren)
+                name_match = _TRAILING_IDENT_RE.search(before_paren)
                 if name_match:
                     func_name = name_match.group(1)
                     ret_type_raw = before_paren[:name_match.start()].strip().rstrip('*').strip()
@@ -1833,10 +1860,9 @@ def _extract_func_bodies(source: str, func_defs: list) -> dict:
         line_offsets.append(pos)
         pos += len(line) + 1  # +1 for '\n'
 
-    # Pre-compile regex for detecting preprocessor conditionals
-    _PP_IF_RE = re.compile(r'^\s*#\s*(if|ifdef|ifndef)\b')
-    _PP_ELSE_RE = re.compile(r'^\s*#\s*(elif|else)\b')
-    _PP_ENDIF_RE = re.compile(r'^\s*#\s*endif\b')
+    # Preprocessor conditional patterns are shared module-level definitions
+    # (_PP_IF_RE / _PP_ELSE_RE / _PP_ENDIF_RE) so this function no longer
+    # recompiles them on every call.
 
     for fdef in func_defs:
         start_line = fdef["line"] - 1

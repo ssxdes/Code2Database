@@ -394,6 +394,37 @@ def _remove_checkpoint(checkpoint_path: str) -> None:
     except OSError:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
+
+
+def _build_globals_cache(globals_data: dict):
+    """Build the per-scan globals regex cache from the current global set.
+
+    Compiles a single alternation regex over all global variable names so
+    that state_access extraction can match assign/read accesses in O(1) per
+    body instead of re-scanning the full name list per function.
+    Returns None when globals_data carries no named global variables.
+    """
+    _gv_names = {}
+    for _gv in (globals_data or {}).get("global_vars", []):
+        _gn = _gv.get("name", "")
+        if _gn:
+            _gv_names[_gn] = _gv
+    if not _gv_names:
+        return None
+    import re as _re
+    _assign_ops = _re.compile(
+        r'\b(' + '|'.join(_re.escape(gn) for gn in
+                          sorted(_gv_names.keys(),
+                                 key=len, reverse=True))
+        + r')\s*(\+|-|\*|\/|\||\&|\^|\%|<<|>>)?=\s*[^=]'
+    )
+    return {
+        "var_names": _gv_names,
+        "var_names_keys": set(_gv_names.keys()),
+        "assign_ops_re": _assign_ops,
+    }
+
+
 def _extract_state_access_then_drop_body_text(functions: list,
                                               globals_data: dict,
                                               field_assignments: list) -> int:
@@ -419,26 +450,19 @@ def _extract_state_access_then_drop_body_text(functions: list,
                 dropped += 1
         return dropped
 
-    # Build per-build cache for global var names
-    _gv_names = {}
-    for _gv in (globals_data or {}).get("global_vars", []):
-        _gn = _gv.get("name", "")
-        if _gn:
-            _gv_names[_gn] = _gv
-    _cached_g = None
-    if _gv_names:
-        import re as _re
-        _assign_ops = _re.compile(
-            r'\b(' + '|'.join(_re.escape(gn) for gn in
-                              sorted(_gv_names.keys(),
-                                     key=len, reverse=True))
-            + r')\s*(\+|-|\*|\/|\||\&|\^|\%|<<|>>)?=\s*[^=]'
-        )
-        _cached_g = {
-            "var_names": _gv_names,
-            "var_names_keys": set(_gv_names.keys()),
-            "assign_ops_re": _assign_ops,
-        }
+    # Reuse a function-level cache across calls so the large globals
+    # alternation regex is compiled once and only rebuilt when the set
+    # of global variables grows (globals declared in files scanned after
+    # the first call would otherwise be invisible to state_access).
+    _cur_gv_count = len((globals_data or {}).get("global_vars", []))
+    if (not hasattr(_extract_state_access_then_drop_body_text, '_cached_globals')
+            or _cur_gv_count > getattr(_extract_state_access_then_drop_body_text,
+                                      '_cached_globals_count', 0)):
+        _cached_g = _build_globals_cache(globals_data)
+        _extract_state_access_then_drop_body_text._cached_globals = _cached_g
+        _extract_state_access_then_drop_body_text._cached_globals_count = _cur_gv_count
+    else:
+        _cached_g = _extract_state_access_then_drop_body_text._cached_globals
 
     _sa_count = 0
     _cand_count = 0
@@ -478,8 +502,9 @@ def _extract_state_access_then_drop_body_text(functions: list,
     if _cand_count:
         print(f"[MemoryGuard] Pre-drop state_access: extracted from "
               f"{_sa_count}/{_cand_count} function(s)", file=sys.stderr)
-    # Release per-build cache before returning
-    del _cached_g, _gv_names
+    # The globals cache persists on the function object for reuse across
+    # calls; only drop the local reference so the live object is retained.
+    del _cached_g
     import gc as _gc
     _gc.collect()
     return _dropped
@@ -717,34 +742,20 @@ def scan_directory(source_root: str, lang: str = "auto",
             if all_functions:
                 try:
                     from _builder.graph_build import _extract_state_access
-                    # Reuse the compiled regex across flushes instead of
-                    # recompiling the 30K-branch _ASSIGN_OPS every flush.
-                    # The global variable set doesn't change between
-                    # flushes (all_globals is accumulated, then cleared
-                    # after flush — but the set of unique names grows
-                    # monotonically across the entire scan).
-                    # Use a scan-level cache that persists across flushes.
-                    if not hasattr(_flush_accumulated, '_cached_globals'):
-                        _gv_names = {}
-                        for _gv in all_globals.get("global_vars", []):
-                            _gn = _gv.get("name", "")
-                            if _gn:
-                                _gv_names[_gn] = _gv
-                        _cached_g = None
-                        if _gv_names:
-                            import re as _re
-                            _assign_ops = _re.compile(
-                                r'\b(' + '|'.join(_re.escape(gn) for gn in
-                                                  sorted(_gv_names.keys(),
-                                                         key=len, reverse=True))
-                                + r')\s*(\+|-|\*|\/|\||\&|\^|\%|<<|>>)?=\s*[^=]'
-                            )
-                            _cached_g = {
-                                "var_names": _gv_names,
-                                "var_names_keys": set(_gv_names.keys()),
-                                "assign_ops_re": _assign_ops,
-                            }
+                    # Reuse the compiled globals regex across flushes instead
+                    # of recompiling the large alternation every flush. The
+                    # set of global variable names grows monotonically as more
+                    # files are scanned, so track the count seen when the
+                    # cache was built and rebuild only when new globals have
+                    # arrived — otherwise globals declared after the first
+                    # flush stay invisible to state_access extraction.
+                    _cur_gv_count = len(all_globals.get("global_vars", []))
+                    if (not hasattr(_flush_accumulated, '_cached_globals')
+                            or _cur_gv_count > getattr(_flush_accumulated,
+                                                       '_cached_globals_count', 0)):
+                        _cached_g = _build_globals_cache(all_globals)
                         _flush_accumulated._cached_globals = _cached_g
+                        _flush_accumulated._cached_globals_count = _cur_gv_count
                     else:
                         _cached_g = _flush_accumulated._cached_globals
                     _fa_list = all_field_assignments if isinstance(all_field_assignments, list) else []

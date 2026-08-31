@@ -423,7 +423,7 @@ def _mark_doc_stale_sqlite(db_path: str, node_id: str, reason: str,
         extra["doc_stale_at"] = timestamp
         conn.execute(
             "UPDATE functions SET extra_json=? WHERE id=?",
-            (json.dumps(extra, ensure_ascii=False), node_id))
+            (json.dumps(extra, ensure_ascii=False, separators=(',', ':')), node_id))
         conn.commit()
         return True
     except Exception:

@@ -898,10 +898,13 @@ class LazySQLiteGraph:
             is_empty = False
             node_type = ""
             if extra_raw:
-                # Lightweight string check — avoids json.loads on ~4KB per node
-                if '"is_empty":true' in extra_raw:
+                # Lightweight string check — avoids json.loads on ~4KB per node.
+                # Handles both compact ('"is_empty":true') and spaced
+                # ('"is_empty": true') JSON by normalizing whitespace.
+                _compact = extra_raw.replace(' ', '') if ' ' in extra_raw else extra_raw
+                if '"is_empty":true' in _compact:
                     is_empty = True
-                if '"node_type":"file"' in extra_raw:
+                if '"node_type":"file"' in _compact:
                     node_type = "file"
             result[nid] = {"domain": domain, "is_empty": is_empty, "node_type": node_type}
         return result
@@ -1131,7 +1134,9 @@ class _LazyNodeView:
             cur = self._graph._conn.execute(
                 "SELECT * FROM functions WHERE extra_json IS NULL "
                 "OR (extra_json NOT LIKE '%\"is_empty\":true%' "
-                "AND extra_json NOT LIKE '%\"node_type\":\"file\"%')")
+                "AND extra_json NOT LIKE '%\"is_empty\": true%' "
+                "AND extra_json NOT LIKE '%\"node_type\":\"file\"%' "
+                "AND extra_json NOT LIKE '%\"node_type\": \"file\"%')")
             for row in cur:
                 row_dict = dict(row)
                 nid = row_dict.get("id", "")

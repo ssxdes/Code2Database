@@ -311,7 +311,7 @@ def _sqlite_update_node(graph_dir: str, node_id: str, attrs: Dict,
 
         conn.execute(
             "UPDATE functions SET extra_json=? WHERE id=?",
-            (json.dumps(extra, ensure_ascii=False), node_id))
+            (json.dumps(extra, ensure_ascii=False, separators=(',', ':')), node_id))
 
         # Propagate to cgdb_nodes so cgdb-layer queries see enriched data.
         # Map supplement field names to cgdb_nodes columns where applicable.

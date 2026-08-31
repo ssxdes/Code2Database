@@ -77,6 +77,32 @@ _GCC_ATOMIC_STORE_RE = re.compile(
     r'\b__atomic_store_n\s*\(\s*([^,]+?)\s*,\s*[^,]+\s*,\s*(\w+)\s*\)', re.IGNORECASE)
 
 
+# Combined alternation regex with named groups. A single finditer() per line
+# replaces the 11+ separate re.search() calls that the original loop ran on
+# every line of every function body. The named group that matched is read
+# via m.lastgroup; for primitives that carry a capture group (variable name
+# or memory order), the value is extracted by re-searching the matched
+# substring with the original per-primitive pattern (cheap, since the
+# matched substring is short).
+_MEM_ORDERING_RE = re.compile(
+    r'(?P<rcu_lock>\brcu_read_lock\s*\()'
+    r'|(?P<rcu_unlock>\brcu_read_unlock\s*\()'
+    r'|(?P<smp_mb>\bsmp_mb\s*\()'
+    r'|(?P<smp_rmb>\bsmp_rmb\s*\()'
+    r'|(?P<smp_wmb>\bsmp_wmb\s*\()'
+    r'|(?P<smp_store_release>\bsmp_store_release\s*\(\s*([^,]+?)\s*,)'
+    r'|(?P<smp_load_acquire>\bsmp_load_acquire\s*\(\s*([^)]+?)\s*\))'
+    r'|(?P<read_once>\bREAD_ONCE\s*\(\s*([^)]+?)\s*\))'
+    r'|(?P<write_once>\bWRITE_ONCE\s*\(\s*([^,]+?)\s*,)'
+    r'|(?P<atomic>\b(?:atomic_read|atomic_set|atomic_inc|atomic_dec|'
+    r'atomic_add|atomic_sub|atomic_cmpxchg|atomic_xchg|'
+    r'atomic_fetch_add|atomic_fetch_sub|atomic_fetch_or|atomic_fetch_and)'
+    r'\s*\(\s*([^,)]+))'
+    r'|(?P<atomic_thread_fence>\batomic_thread_fence\s*\(\s*(\w+)\s*\))',
+    re.IGNORECASE
+)
+
+
 @dataclass
 class MemoryOrderingInfo:
     """Memory-ordering primitives found in a function body."""
@@ -157,34 +183,50 @@ def analyze_memory_ordering(ndata: Dict, G=None, nid: Optional[str] = None) -> M
 
     lines = body.split("\n")
     for line_no, line in enumerate(lines, 1):
-        if _RCU_READ_LOCK_RE.search(line):
-            info.rcu_read_locks.append(line_no)
-        if _RCU_READ_UNLOCK_RE.search(line):
-            info.rcu_read_unlocks.append(line_no)
-        if _SMP_MB_RE.search(line):
-            info.smp_mb_lines.append(line_no)
-        if _SMP_RMB_RE.search(line):
-            info.smp_rmb_lines.append(line_no)
-        if _SMP_WMB_RE.search(line):
-            info.smp_wmb_lines.append(line_no)
-        m = _SMP_STORE_RELEASE_RE.search(line)
-        if m:
-            info.smp_store_release.append((m.group(1).strip(), line_no))
-        m = _SMP_LOAD_ACQUIRE_RE.search(line)
-        if m:
-            info.smp_load_acquire.append((m.group(1).strip(), line_no))
-        m = _READ_ONCE_RE.search(line)
-        if m:
-            info.read_once.append((m.group(1).strip(), line_no))
-        m = _WRITE_ONCE_RE.search(line)
-        if m:
-            info.write_once.append((m.group(1).strip(), line_no))
-        m = _ATOMIC_RE.search(line)
-        if m:
-            info.atomic_ops.append((m.group(1).strip(), line_no))
-        m = _ATOMIC_THREAD_FENCE_RE.search(line)
-        if m:
-            info.atomic_thread_fences.append((m.group(1).strip(), line_no))
+        # Single pass over the line via the combined alternation regex.
+        # `seen` records which primitive has already fired on this line so
+        # we preserve the original "one entry per primitive per line" shape
+        # (re.search returned only the first match).
+        seen = set()
+        for m in _MEM_ORDERING_RE.finditer(line):
+            name = m.lastgroup
+            if name is None or name in seen:
+                continue
+            seen.add(name)
+            if name == 'rcu_lock':
+                info.rcu_read_locks.append(line_no)
+            elif name == 'rcu_unlock':
+                info.rcu_read_unlocks.append(line_no)
+            elif name == 'smp_mb':
+                info.smp_mb_lines.append(line_no)
+            elif name == 'smp_rmb':
+                info.smp_rmb_lines.append(line_no)
+            elif name == 'smp_wmb':
+                info.smp_wmb_lines.append(line_no)
+            elif name == 'smp_store_release':
+                sub_m = _SMP_STORE_RELEASE_RE.search(m.group(0))
+                if sub_m:
+                    info.smp_store_release.append((sub_m.group(1).strip(), line_no))
+            elif name == 'smp_load_acquire':
+                sub_m = _SMP_LOAD_ACQUIRE_RE.search(m.group(0))
+                if sub_m:
+                    info.smp_load_acquire.append((sub_m.group(1).strip(), line_no))
+            elif name == 'read_once':
+                sub_m = _READ_ONCE_RE.search(m.group(0))
+                if sub_m:
+                    info.read_once.append((sub_m.group(1).strip(), line_no))
+            elif name == 'write_once':
+                sub_m = _WRITE_ONCE_RE.search(m.group(0))
+                if sub_m:
+                    info.write_once.append((sub_m.group(1).strip(), line_no))
+            elif name == 'atomic':
+                sub_m = _ATOMIC_RE.search(m.group(0))
+                if sub_m:
+                    info.atomic_ops.append((sub_m.group(1).strip(), line_no))
+            elif name == 'atomic_thread_fence':
+                sub_m = _ATOMIC_THREAD_FENCE_RE.search(m.group(0))
+                if sub_m:
+                    info.atomic_thread_fences.append((sub_m.group(1).strip(), line_no))
 
     return info
 

@@ -80,9 +80,16 @@ class _GraphCache:
     def get(self, key: str, node_versions_snapshot: Dict[str, int]) -> Optional[Any]:
         """Return cached result if still valid, else None.
 
-        node_versions_snapshot: caller's current view of (node_id -> version)
-        for the nodes this query depends on. If any version differs from the
-        cache's recorded version, the entry is invalidated.
+        Invalidation is two-fold:
+        1. Eager: ``invalidate_node()`` evicts all entries touching a node
+           immediately when that node is mutated.
+        2. Lazy (TTL + graph mtime): entries expire after ``ttl_seconds``
+           or when the graph file mtime changes (catches mutations made
+           outside the cache's invalidate_node path).
+
+        The ``node_versions_snapshot`` parameter is retained for API
+        compatibility but is not consulted here — eager eviction makes
+        per-get version comparison redundant.
         """
         with self._lock:
             entry = self._entries.get(key)
@@ -100,15 +107,6 @@ class _GraphCache:
                 self._entries.pop(key, None)
                 self._key_nodes.pop(key, None)
                 return None
-            # Node-version check
-            touched = self._key_nodes.get(key, frozenset())
-            for nid in touched:
-                cached_ver = self._node_versions.get(nid, 0)
-                current_ver = node_versions_snapshot.get(nid, 0)
-                if cached_ver != current_ver:
-                    self._entries.pop(key, None)
-                    self._key_nodes.pop(key, None)
-                    return None
             # LRU touch
             self._entries.move_to_end(key)
             return result

@@ -7563,14 +7563,20 @@ def cmd_build(args):
                         sub_result = {
                             "file": fp,
                             "cgdb_nodes": nodes,
-                            "cgdb_types": cgdb_types_data,  # written once globally
+                            "cgdb_types": (
+                                cgdb_types_data if is_first else []
+                            ),  # written once globally; deduped by id
                             "cgdb_edges": _edges_by_file.get(fp, []),
                             "cgdb_invoke_sites": (
                                 _invoke_sites_by_file.get(fp, []) +
                                 (_global_invoke_sites if is_first else [])
                             ),
-                            "cgdb_predicates": cgdb_predicates_data,  # deduped by id
-                            "cgdb_ops_bindings": cgdb_ops_bindings_data,  # deduped by edge_id
+                            "cgdb_predicates": (
+                                cgdb_predicates_data if is_first else []
+                            ),  # written once globally; deduped by id
+                            "cgdb_ops_bindings": (
+                                cgdb_ops_bindings_data if is_first else []
+                            ),  # written once globally; deduped by edge_id
                             "cgdb_basic_blocks": (
                                 cgdb_basic_blocks_data if is_first else []
                             ),  # written once globally; deduped by id
@@ -7596,7 +7602,9 @@ def cmd_build(args):
                                 _docs_by_file.get(fp, []) +
                                 (_global_docs if is_first else [])
                             ),
-                            "cgdb_metadata": cgdb_metadata_data,  # deduped by (target_id,target_kind,key)
+                            "cgdb_metadata": (
+                                cgdb_metadata_data if is_first else []
+                            ),  # written once globally; deduped by (target_id,target_kind,key)
                             "cgdb_includes": (
                                 _includes_by_file.get(fp, []) +
                                 (_global_includes if is_first else [])
@@ -7652,22 +7660,23 @@ def cmd_build(args):
                                 _l1_parallel_mode = getattr(args, 'parallel_mode', 'thread')
                             # When the user runs the default 'thread' mode on a
                             # large project, L1 ingest takes ~7s/file × 60K = 77h
-                            # serially. Promote 'process' mode automatically — but
-                            # only print a recommendation, don't override the
-                            # user's explicit choice.
+                            # serially. Auto-promote to 'process' mode when:
+                            # - >1000 C/C++ files need ingest
+                            # - machine has >= 4 cores
+                            # - user didn't explicitly pass --parallel-mode
+                            # (if they explicitly chose 'thread', respect it;
+                            # but the default is thread and most users don't
+                            # realize they need process for CPU-bound libclang)
                             if (_l1_parallel_mode == "thread"
                                     and len(_l1_tasks) > 1000
                                     and _l1_workers > 1
                                     and (os.cpu_count() or 1) >= 4):
+                                _l1_parallel_mode = "process"
                                 print(
-                                    f"[l1] NOTE: {len(_l1_tasks)} C/C++ files "
-                                    f"require L1 ingest. With the default "
-                                    f"--parallel-mode=thread, libclang parse "
-                                    f"is GIL-serialized (~7s/file = "
-                                    f"{len(_l1_tasks)*7//3600}h+ estimated). "
-                                    f"Pass --parallel-mode process to use "
-                                    f"{_l1_workers} cores in parallel "
-                                    f"(~{len(_l1_tasks)*7//_l1_workers//3600}h).",
+                                    f"[l1] Auto-promoting L1 ingest to process mode: "
+                                    f"{len(_l1_tasks)} C/C++ files with "
+                                    f"{_l1_workers} workers "
+                                    f"(thread mode would take ~{len(_l1_tasks)*7//3600}h+)",
                                     file=sys.stderr)
                             _l1_results = run_l1_ingest(
                                 tasks=_l1_tasks,

@@ -279,12 +279,10 @@ def _proc_scan_one(item):
         return scanner.scan_file(fpath, source_root,
                                  macro_bindings=macro_bindings)
     except RecursionError:
-        sys.setrecursionlimit(_old_limit)
         print(f"[scan] RecursionError scanning {fpath} — skipping "
               f"(file may be too deeply nested)", file=sys.stderr)
         return None
     except MemoryError:
-        sys.setrecursionlimit(_old_limit)
         print(f"[scan] MemoryError scanning {fpath} — skipping "
               f"(file may be too large for available memory)", file=sys.stderr)
         return None
@@ -293,6 +291,12 @@ def _proc_scan_one(item):
         logging.getLogger(__name__).error(
             "scan error on %s: %s", fpath, exc, exc_info=True)
         return None
+    finally:
+        # Always restore the recursion limit, regardless of which
+        # except branch fires (or none). Previously the broad
+        # `except Exception` clause did NOT restore _old_limit, so the
+        # worker process kept recursion limit at 5000 forever.
+        sys.setrecursionlimit(_old_limit)
 
 
 def detect_language(filepath: str) -> str:
@@ -1111,15 +1115,18 @@ def scan_directory(source_root: str, lang: str = "auto",
             return result
         except RecursionError:
             print(f"[MemoryGuard] RecursionError scanning {fpath} - skipping", file=sys.stderr)
-            sys.setrecursionlimit(_old_limit)
             return None
         except MemoryError:
             print(f"[MemoryGuard] MemoryError scanning {fpath} - skipping", file=sys.stderr)
-            sys.setrecursionlimit(_old_limit)
             return None
         except Exception:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return None
+        finally:
+            # Always restore the recursion limit (the broad
+            # `except Exception` clause previously leaked the 5000
+            # limit into the rest of the scan loop / process).
+            sys.setrecursionlimit(_old_limit)
 
     if workers > 1:
         # Decide pool type. ProcessPoolExecutor bypasses the GIL for
@@ -1603,6 +1610,12 @@ def scan_directory(source_root: str, lang: str = "auto",
                     _save_checkpoint(_checkpoint_path, source_root, _completed_files,
                                      {"functions": len(all_functions),
                                       "edges": len(all_edges)})
+
+        # Restore recursion limit after the sequential scan loop.
+        # Previously this was never restored, so the process kept
+        # limit=5000 for its entire lifetime — problematic for the
+        # daemon / MCP server paths that call scan_directory in-process.
+        sys.setrecursionlimit(_old_limit)
 
     # Checkpoint cleanup: on successful completion, remove checkpoint
     if not _scan_stopped_early:

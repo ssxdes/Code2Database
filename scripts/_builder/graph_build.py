@@ -2426,9 +2426,19 @@ def build_graph(extraction: dict, profile: dict = None,
     # Add edges with resolved IDs
     _edge_progress_milestone = 0
     _total_edges = len(raw_edges)
+    # Generic struct_chain names that are used across many modules and cannot
+    # disambiguate dispatch targets on their own. Hoisted outside the loop
+    # to avoid recreating the frozenset on every FN_PTR edge.
+    _GENERIC_STRUCT_CHAINS = frozenset({
+        'ctx', 'req', 'base', 'op', 'args', 'data', 'entry',
+        'obj', 'handle', 'ptr', 'buf', 'result', 'ret',
+    })
     for _edge_idx, edge in enumerate(raw_edges):
         source_id = edge.get("source", "")
         target_name = edge.get("target", "")
+        # Pre-compute source_func (used by FN_PTR dispatch) once per edge
+        # instead of recomputing inside multiple FN_PTR branches.
+        _source_func = source_id.rsplit(".", 1)[-1] if "." in source_id else source_id
         # Progress reporting every 500K edges
         _next_milestone = (_edge_progress_milestone + 1) * 500000
         if _edge_idx >= _next_milestone:
@@ -2460,19 +2470,12 @@ def build_graph(extraction: dict, profile: dict = None,
             # have concrete assignments we should use them.
             if target_name in _field_dispatch_map:
                 # Context-aware dispatch: use struct_chain and domain to narrow targets.
-                source_func = source_id.rsplit(".", 1)[-1] if "." in source_id else source_id
+                source_func = _source_func
                 struct_chain = _fn_ptr_struct_lookup.get((source_func, target_name), "")
                 struct_map = _field_dispatch_map[target_name]
                 source_domain = "root"
                 if source_id in id_registry:
                     source_domain = id_registry[source_id].get("domain", "root")
-
-                # Generic struct_chain names that are used across many modules
-                # and cannot disambiguate dispatch targets on their own.
-                _GENERIC_STRUCT_CHAINS = frozenset({
-                    'ctx', 'req', 'base', 'op', 'args', 'data', 'entry',
-                    'obj', 'handle', 'ptr', 'buf', 'result', 'ret',
-                })
 
                 # Determine dispatch targets with decreasing specificity:
                 # 1. Precise struct_chain match (non-generic name)
@@ -2824,7 +2827,7 @@ def build_graph(extraction: dict, profile: dict = None,
             # If target_name is a field name with a known struct_chain,
             # look up field_assignments for matching target functions.
             if target_name not in _field_dispatch_map:
-                source_func = source_id.rsplit(".", 1)[-1] if "." in source_id else source_id
+                source_func = _source_func
                 struct_chain = _fn_ptr_struct_lookup.get((source_func, target_name), "")
                 fa_targets = set()
                 fa_match_type = ""  # Track how we matched for evidence
@@ -3262,7 +3265,7 @@ def build_graph(extraction: dict, profile: dict = None,
                 continue
             # Name collision check: verify the target function is actually
             # assigned to this field via a field_assignment record.
-            source_func = source_id.rsplit(".", 1)[-1] if "." in source_id else source_id
+            source_func = _source_func
             struct_chain = _fn_ptr_struct_lookup.get((source_func, target_name), "")
             has_fa = False
             # Use pre-computed _fa_by_field_name index instead of scanning

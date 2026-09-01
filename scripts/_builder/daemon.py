@@ -315,6 +315,13 @@ class FileWatcher:
             self._add_watch_recursive(self.source_root, mask)
             if self._inotify_exhausted:
                 self._log("inotify watch limit exhausted; falling back to polling")
+                # Close the inotify fd so it doesn't leak for the daemon's
+                # lifetime — the polling fallback will take over.
+                try:
+                    os.close(self._inotify_fd)
+                except OSError:
+                    pass
+                self._inotify_fd = -1
                 return False
             return True
         except Exception:
@@ -1001,20 +1008,23 @@ class Daemon:
                 self.stop()
             signal.signal(signal.SIGTERM, handler)
             signal.signal(signal.SIGINT, handler)
-            def reload_handler(signum, frame):
-                self._log("SIGHUP received, reloading config")
-                try:
-                    self._apply_env_overrides()
-                    if self.profile_path and os.path.exists(self.profile_path):
-                        from pathlib import Path
-                        import json
-                        profile = json.loads(Path(self.profile_path).read_text(encoding="utf-8"))
-                        self.config = {**type(self)._DEFAULT_CONFIG, **(profile.get("daemon", {}) or {})}
+            # SIGHUP is not available on Windows; only register on POSIX.
+            # Reload is best-effort and may fail silently if config is
+            # being mutated concurrently — see M1/M3 in the audit notes.
+            sighup = getattr(signal, "SIGHUP", None)
+            if sighup is not None:
+                def reload_handler(signum, frame):
+                    self._log("SIGHUP received, reloading config")
+                    try:
                         self._apply_env_overrides()
-                    self._log("config reloaded")
-                except Exception as exc:
-                    self._log(f"reload failed: {exc}")
-            signal.signal(signal.SIGHUP, reload_handler)
+                        if self.profile_path and os.path.exists(self.profile_path):
+                            profile = json.loads(Path(self.profile_path).read_text(encoding="utf-8"))
+                            self.config = {**DEFAULT_CONFIG, **(profile.get("daemon", {}) or {})}
+                            self._apply_env_overrides()
+                        self._log("config reloaded")
+                    except Exception as exc:
+                        self._log(f"reload failed: {exc}")
+                signal.signal(sighup, reload_handler)
         except (ValueError, OSError):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass

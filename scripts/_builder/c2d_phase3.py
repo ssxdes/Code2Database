@@ -443,6 +443,7 @@ def import_foreign_knowledge(graph_dir: str, foreign_c2d_path: str,
         "foreign_c2d_path": foreign_c2d_path,
         "project_name": project_name,
         "files_copied": 0,
+        "files_failed": 0,
     }
     foreign_knowledge_dir = os.path.join(foreign_c2d_path, "knowledge")
     if not os.path.isdir(foreign_knowledge_dir):
@@ -478,6 +479,7 @@ def import_foreign_knowledge(graph_dir: str, foreign_c2d_path: str,
             shutil.copy2(src, dst)
             copied += 1
         except OSError as e:
+            summary["files_failed"] += 1
             if verbose:
                 print(f"[import-foreign-knowledge] failed to copy "
                       f"{fname}: {e}", file=sys.stderr)

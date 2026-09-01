@@ -104,16 +104,23 @@ def _rrf_fusion(sparse_results: List[Dict], dense_results: List[Dict],
         if key not in best_result:
             best_result[key] = r
 
-    # Sort by RRF score
+    # Apply short-code penalty BEFORE sorting so it actually affects
+    # ranking. Previously the penalty was applied to the displayed
+    # `rrf_score` field AFTER the sort and after the `[:limit]` slice,
+    # so a short-code result with high RRF still appeared at the top —
+    # just with a lower displayed score. The intent (per the codeseek
+    # comment) is to down-rank short-code candidates.
+    for key in rrf_scores:
+        body = best_result[key].get("body", "")
+        if len(body) < SHORT_CODE_THRESHOLD:
+            rrf_scores[key] *= SHORT_CODE_PENALTY
+
+    # Sort by RRF score (post-penalty)
     sorted_keys = sorted(rrf_scores.keys(), key=lambda k: -rrf_scores[k])
     results = []
     for key in sorted_keys[:limit]:
         r = best_result[key].copy()
         r["rrf_score"] = rrf_scores[key]
-        # Apply short-code penalty
-        body = r.get("body", "")
-        if len(body) < SHORT_CODE_THRESHOLD:
-            r["rrf_score"] *= SHORT_CODE_PENALTY
         results.append(r)
     return results
 

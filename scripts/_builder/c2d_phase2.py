@@ -52,10 +52,10 @@ def composite_query(graph_dir: str, query: str,
         if query_upper.startswith("CALLERS_OF "):
             target_name = query[len("CALLERS_OF "):].strip()
             # Find callers across local + all attached dbs
-            results = _find_callers(conn, target_name, summary["attached_c2ds"])
+            results = _find_callers(conn, target_name, summary["attached_c2ds"], top_n)
         elif query_upper.startswith("CALLEES_OF "):
             target_name = query[len("CALLEES_OF "):].strip()
-            results = _find_callees(conn, target_name, summary["attached_c2ds"])
+            results = _find_callees(conn, target_name, summary["attached_c2ds"], top_n)
         else:
             # Fallback: full-text search across all dbs
             results = _fts_search_all(conn, query, summary["attached_c2ds"], top_n)
@@ -76,10 +76,11 @@ def composite_query(graph_dir: str, query: str,
 
 
 def _find_callers(conn: sqlite3.Connection, callee_name: str,
-                  attached: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+                  attached: List[Dict[str, str]],
+                  top_n: int = 50) -> List[Dict[str, Any]]:
     """Find all callers of a function across local + attached dbs."""
     results: List[Dict[str, Any]] = []
-    # Local callers
+    # Local callers — P8: add LIMIT for early termination
     try:
         rows = conn.execute(
             "SELECT e.invoker_id, e.invoked_id, e.call_order, "
@@ -90,8 +91,9 @@ def _find_callers(conn: sqlite3.Connection, callee_name: str,
             "JOIN functions f_invoker ON e.invoker_id = f_invoker.id "
             "WHERE e.invoked_id IN (SELECT id FROM functions WHERE name = ?) "
             "OR e.invoked_id LIKE ? "
-            "ORDER BY e.call_order",
-            (callee_name, f"%_{callee_name.lower()}")
+            "ORDER BY e.call_order "
+            "LIMIT ?",
+            (callee_name, f"%_{callee_name.lower()}", top_n)
         ).fetchall()
         for r in rows:
             results.append({
@@ -117,8 +119,9 @@ def _find_callers(conn: sqlite3.Connection, callee_name: str,
                 f"JOIN {alias}.functions f_invoker ON e.invoker_id = f_invoker.id "
                 f"WHERE e.invoked_id IN (SELECT id FROM {alias}.functions WHERE name = ?) "
                 f"OR e.invoked_id LIKE ? "
-                f"ORDER BY e.call_order",
-                (callee_name, f"%_{callee_name.lower()}")
+                f"ORDER BY e.call_order "
+                f"LIMIT ?",
+                (callee_name, f"%_{callee_name.lower()}", top_n)
             ).fetchall()
             for r in rows:
                 results.append({
@@ -136,7 +139,8 @@ def _find_callers(conn: sqlite3.Connection, callee_name: str,
 
 
 def _find_callees(conn: sqlite3.Connection, caller_name: str,
-                  attached: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+                  attached: List[Dict[str, str]],
+                  top_n: int = 50) -> List[Dict[str, Any]]:
     """Find all callees of a function across local + attached dbs."""
     results: List[Dict[str, Any]] = []
     try:
@@ -148,8 +152,9 @@ def _find_callees(conn: sqlite3.Connection, caller_name: str,
             "FROM edges e "
             "JOIN functions f_callee ON e.invoked_id = f_callee.id "
             "WHERE e.invoker_id IN (SELECT id FROM functions WHERE name = ?) "
-            "ORDER BY e.call_order",
-            (caller_name,)
+            "ORDER BY e.call_order "
+            "LIMIT ?",
+            (caller_name, top_n)
         ).fetchall()
         for r in rows:
             results.append({

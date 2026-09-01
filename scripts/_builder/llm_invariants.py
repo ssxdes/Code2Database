@@ -271,7 +271,16 @@ def extract_invariants_with_llm(node_data: Dict,
         agreement_ratios[key[1] or key[0]] = ratio
         if count >= consensus_threshold:
             inv = dict(group_example[key])
-            inv["confidence"] = "INFERRED" if ratio < 1.0 else "EXTRACTED"
+            # A single LLM call has no consensus — the module docstring
+            # says consensus requires ">= 2 of the N responses". With
+            # num_calls=1, ratio=1.0 but there's no corroboration. Force
+            # INFERRED (not EXTRACTED) so a single LLM call's
+            # hallucinations are NOT auto-applied with the highest
+            # confidence label (AGENTS.md: EXTRACTED = auto-apply tier).
+            if num_calls < 2:
+                inv["confidence"] = "INFERRED"
+            else:
+                inv["confidence"] = "INFERRED" if ratio < 1.0 else "EXTRACTED"
             # Continuous confidence_score: agreement ratio * corroboration bonus
             bonus = 1.0
             if key in rule_index:

@@ -355,7 +355,16 @@ def _write_scan_errors_sidecar(streaming_output: str, errors: list, warnings: li
 
 def _save_checkpoint(checkpoint_path: str, source_root: str,
                      completed_files: set, stats: dict) -> None:
-    """Save scan checkpoint for resume after interruption."""
+    """Save scan checkpoint for resume after interruption.
+
+    Writes to a temp file then atomically renames — prevents a partial
+    write (from a crash or signal between ``open()`` truncation and
+    ``json.dump()`` finishing) from corrupting the checkpoint.
+    Previously, a crash mid-write left a partial JSON file on disk,
+    which ``_load_checkpoint`` silently treated as "no checkpoint"
+    (catching JSONDecodeError), restarting the scan from zero and
+    losing all progress.
+    """
     try:
         data = {
             "source_root": source_root,
@@ -364,8 +373,12 @@ def _save_checkpoint(checkpoint_path: str, source_root: str,
             "stats": stats,
         }
         os.makedirs(os.path.dirname(checkpoint_path) or ".", exist_ok=True)
-        with open(checkpoint_path, "w", encoding="utf-8") as f:
+        tmp_path = checkpoint_path + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, checkpoint_path)
     except Exception as e:
         print(f"[Checkpoint] Warning: failed to save checkpoint: {e}", file=sys.stderr)
 
@@ -385,8 +398,12 @@ def _load_checkpoint(checkpoint_path: str, source_root: str):
             print(f"[Checkpoint] Found checkpoint: {len(completed)} files already processed",
                   file=sys.stderr)
         return completed
-    except Exception:
-        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+    except (json.JSONDecodeError, OSError, ValueError):
+        # Corrupt checkpoint — don't silently swallow MemoryError /
+        # RecursionError (which should propagate).
+        logging.getLogger(__name__).warning(
+            "corrupt checkpoint at %s — restarting scan from zero",
+            checkpoint_path, exc_info=True)
         return None
 
 

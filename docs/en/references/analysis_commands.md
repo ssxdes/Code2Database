@@ -817,7 +817,7 @@ Query the graph at a past version (L10 time-travel).
 
 ### `cgdb_list_versions`
 
- List all recorded graph versions.
+List all recorded graph versions.
 
 ```json
 {"tool": "cgdb_list_versions", "arguments": {}}

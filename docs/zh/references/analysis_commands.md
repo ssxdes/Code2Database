@@ -817,7 +817,7 @@ FTS5 搜索 AST 节点（函数、类型、变量）。
 
 ### `cgdb_list_versions`
 
- 列出所有已记录的图谱版本。
+列出所有已记录的图谱版本。
 
 ```json
 {"tool": "cgdb_list_versions", "arguments": {}}

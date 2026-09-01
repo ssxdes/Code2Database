@@ -648,18 +648,12 @@ def transaction(graph_dir: str, description: str = "",
             tx_state.status = "committed"
             tx_state.ended_at = time.time()
             _write_tx_state(graph_dir, tx_state)
-
-            # RPT-P0-15: post-commit consistency check on dirty files.
-            # This is best-effort — if source_renderer isn't importable
-            # (e.g., the graph_dir doesn't have a tokens table yet) we
-            # skip silently rather than fail the commit.
-            if verify_consistency and tx_state.dirty_file_ids:
-                _run_post_commit_consistency_check(graph_dir, tx_state)
-
-            # Prune old snapshots
-            prune_snapshots(graph_dir, keep=keep_snapshots)
         except Exception as exc:
-            # Rollback
+            # Rollback — but ONLY for failures that happened BEFORE the
+            # commit was written to disk. Once tx_state.status="committed"
+            # is persisted, the transaction is durable; post-commit hooks
+            # (consistency check, snapshot pruning) must NOT trigger a
+            # rollback that would discard the just-committed work.
             _restore_result = restore_snapshot(graph_dir, snap.id)
             if not _restore_result.get("restored"):
                 print(f"[tx] WARNING: rollback failed: {_restore_result.get('reason', 'unknown')}",
@@ -670,6 +664,30 @@ def transaction(graph_dir: str, description: str = "",
             tx_state.error = str(exc)
             _write_tx_state(graph_dir, tx_state)
             raise
+
+        # Post-commit hooks — run AFTER the try/except block so that
+        # their failure does NOT trigger a rollback of the just-committed
+        # transaction. Previously these were inside the try block, so a
+        # post-commit consistency check failure or prune_snapshots error
+        # would call restore_snapshot() — discarding the committed work
+        # and marking the tx as "rolled_back" despite a successful commit.
+        # These hooks are best-effort: log on failure but don't undo the
+        # commit.
+        try:
+            # RPT-P0-15: post-commit consistency check on dirty files.
+            if verify_consistency and tx_state.dirty_file_ids:
+                _run_post_commit_consistency_check(graph_dir, tx_state)
+
+            # Prune old snapshots
+            prune_snapshots(graph_dir, keep=keep_snapshots)
+        except Exception as hook_exc:
+            print(f"[tx] WARNING: post-commit hook failed "
+                  f"(transaction was committed successfully): {hook_exc}",
+                  file=sys.stderr)
+            logging.getLogger(__name__).warning(
+                "post-commit hook failed (tx committed): %s",
+                hook_exc, exc_info=True)
+
 
 
 def mark_file_dirty(graph_dir: str, file_id: int) -> None:

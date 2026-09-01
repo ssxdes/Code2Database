@@ -149,13 +149,18 @@ def _detect_locks_held(ndata, profile=None, G=None, nid=None):
     # name does not even appear in the pattern source string — such a pattern
     # cannot match this callee, so the expensive regex call is avoided for the
     # vast majority of callee_args (which are not lock API calls at all).
+    # NOTE: bypass the pre-filter for patterns using alternation (|) or
+    # IGNORECASE ((?i)), because the callee name may not appear as a
+    # contiguous substring (e.g. \b(?:pthread|mutex)_lock — "mutex_lock"
+    # is not a substring of the pattern source).
     for ca in ndata.get("callee_args", []):
         callee_name = ca.get("callee", "")
         if not callee_name:
             continue
         callee_search_target = callee_name + "()"
         for pat in acquire_patterns:
-            if callee_name not in pat.pattern:
+            _src = pat.pattern
+            if callee_name not in _src and '|' not in _src and '(?i' not in _src:
                 continue
             m = pat.search(callee_search_target)
             if m:
@@ -165,7 +170,8 @@ def _detect_locks_held(ndata, profile=None, G=None, nid=None):
                 else:
                     locks_acquired.add("__rcu_read_lock__")
         for pat in release_patterns:
-            if callee_name not in pat.pattern:
+            _src = pat.pattern
+            if callee_name not in _src and '|' not in _src and '(?i' not in _src:
                 continue
             m = pat.search(callee_search_target)
             if m:

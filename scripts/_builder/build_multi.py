@@ -248,6 +248,22 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
     counts = {"functions_imported": 0, "edges_imported": 0}
     try:
         conn.execute(f"ATTACH DATABASE '{existing_db}' AS src")
+        # E6: Verify the attached db has a 'functions' table before querying.
+        # A non-C2D sqlite db (or a corrupted one) will lack this table, and
+        # the SELECT below would raise sqlite3.OperationalError. Currently the
+        # outer except catches it silently, but a proactive check gives the
+        # user a clear error message instead of a generic "no such table".
+        _has_functions = conn.execute(
+            "SELECT name FROM src.sqlite_master "
+            "WHERE type='table' AND name='functions'"
+        ).fetchone()
+        if not _has_functions:
+            conn.execute("DETACH DATABASE src")
+            counts["error"] = (
+                f"existing c2d db has no 'functions' table: {existing_db} "
+                f"(not a valid Code2Database graph?)"
+            )
+            return counts
         _changes_before = conn.total_changes
         # Import functions with re-prefixed domain + regenerated legacy id.
         # Batch with executemany instead of per-row INSERT.

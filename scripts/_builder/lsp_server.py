@@ -207,11 +207,16 @@ class LSPServer:
         while not self._shutdown:
             headers = {}
             while True:
-                line = sys.stdin.readline()
+                # Must use sys.stdin.buffer (binary) for ALL reads.
+                # Mixing sys.stdin.readline() (text TextIOWrapper) with
+                # sys.stdin.buffer.read() (binary) causes the TextIOWrapper
+                # to buffer ahead and consume the body bytes — then the
+                # binary read() sees nothing and hangs indefinitely.
+                line = sys.stdin.buffer.readline()
                 if not line:
                     # EOF — clean exit
                     return
-                line = line.strip()
+                line = line.decode("ascii", errors="replace").strip()
                 if not line:
                     break
                 key, _, val = line.partition(":")

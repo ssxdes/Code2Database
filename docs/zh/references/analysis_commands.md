@@ -817,10 +817,18 @@ FTS5 搜索 AST 节点（函数、类型、变量）。
 
 ### `cgdb_list_versions`
 
-列出所有已记录的图谱版本。
+ 列出所有已记录的图谱版本。
 
 ```json
 {"tool": "cgdb_list_versions", "arguments": {}}
+```
+
+### `cgdb_get_source`
+
+获取节点的源文本（字节级精确归因）。解析顺序：`source_snippet` 列 → 通过 `byte_start`..`byte_end` 读取文件。
+
+```json
+{"tool": "cgdb_get_source", "arguments": {"node": "my_func", "snippet_only": false, "context_bytes": 0}}
 ```
 
 ## 另见

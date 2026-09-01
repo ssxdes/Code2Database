@@ -817,10 +817,18 @@ Query the graph at a past version (L10 time-travel).
 
 ### `cgdb_list_versions`
 
-List all recorded graph versions.
+ List all recorded graph versions.
 
 ```json
 {"tool": "cgdb_list_versions", "arguments": {}}
+```
+
+### `cgdb_get_source`
+
+Get source text for a node with byte-precise attribution. Resolution: `source_snippet` column → file read via `byte_start`..`byte_end`.
+
+```json
+{"tool": "cgdb_get_source", "arguments": {"node": "my_func", "snippet_only": false, "context_bytes": 0}}
 ```
 
 ## See Also

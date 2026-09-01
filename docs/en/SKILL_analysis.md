@@ -87,6 +87,7 @@ When the user wants to query the cgdb layer directly (clang-derived semantic tab
 | `cgdb_index_status` | Show cgdb indexing status (per-file, per-layer) |
 | `cgdb_time_travel_query` | Query the graph at a past version |
 | `cgdb_list_versions` | List all recorded graph versions |
+| `cgdb_get_source` | Get source text for a node with byte-precise attribution |
 
 **Prerequisite**: cgdb tables are populated only when the `clang` extraction backend is enabled (auto-detected when libclang is installed, or forced with `--extraction-backend clang`). In tree-sitter-only mode, cgdb tables are empty and these MCP tools return empty results — fall back to the standard `code2database_*` MCP tools.
 

@@ -87,6 +87,7 @@ parent_skill: Code2Database
 | `cgdb_index_status` | 显示 cgdb 索引状态（按文件、按层） |
 | `cgdb_time_travel_query` | 在过去版本查询图谱 |
 | `cgdb_list_versions` | 列出所有已记录的图谱版本 |
+| `cgdb_get_source` | 获取节点的源文本（字节级精确归因） |
 
 **前置条件**：仅当 `clang` 提取后端启用时（安装 libclang 后自动检测，或用 `--extraction-backend clang` 强制）才会填充 cgdb 表。在 tree-sitter-only 模式下，cgdb 表为空，这些 MCP 工具返回空结果——回退到标准 `code2database_*` MCP 工具。
 

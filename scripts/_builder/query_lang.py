@@ -100,6 +100,22 @@ class Query:
     having: Optional[Any] = None
 
 
+# Identifier validation — prevents SQL injection via Cypher property
+# keys. Cypher allows string-quoted keys (`{"name OR 1=1": 'x'}`),
+# and without validation the key is interpolated directly into the
+# generated SQL via f-strings (`f"n0.{k} = ?"`), producing
+# `n0.name OR 1=1 = ?`. We require keys to match a strict C-like
+# identifier pattern; anything else falls back to the networkx path
+# (where keys are used as dict lookups, not SQL).
+import re as _re_module
+_IDENT_RE = _re_module.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+
+def _is_safe_ident(name: str) -> bool:
+    """Return True if *name* is a safe SQL identifier (no injection risk)."""
+    return bool(_IDENT_RE.match(name))
+
+
 # ---------------------------------------------------------------------------
 # Tokenizer
 # ---------------------------------------------------------------------------
@@ -1068,7 +1084,10 @@ def _hoist_where_to_sql(where: Optional[WhereClause],
             var, attr = parts[0], parts[1]
             # Only single-segment attr (e.g. n.name, n.kind) — deeper paths
             # can't map to a single column safely.
-            if "." not in attr and isinstance(where.right, tuple) and where.right[0] == "lit":
+            # Validate the attr against a strict identifier pattern to
+            # prevent SQL injection via crafted Cypher property keys.
+            if "." not in attr and _is_safe_ident(attr) \
+                    and isinstance(where.right, tuple) and where.right[0] == "lit":
                 lit_val = where.right[1]
                 if var == start_var:
                     start_filters.append(f"n0.{attr} = ?")
@@ -1126,6 +1145,12 @@ def _try_cte_execution(query: Query, cgdb_store) -> Optional[List[Dict]]:
             start_filters.append("n0.kind = ?")
             start_params.append(start_pat.label)
         for k, v in (start_pat.properties or {}).items():
+            # Validate k to prevent SQL injection via crafted property keys
+            # (e.g., `{"name OR 1=1": 'x'}` would otherwise interpolate
+            # into `n0.name OR 1=1 = ?`). Unsafe keys fall back to the
+            # networkx path via the residual WHERE filter.
+            if not _is_safe_ident(k):
+                continue
             start_filters.append(f"n0.{k} = ?")
             start_params.append(v)
 
@@ -1136,6 +1161,9 @@ def _try_cte_execution(query: Query, cgdb_store) -> Optional[List[Dict]]:
             end_filters.append("ndst.kind = ?")
             end_params.append(end_pat.label)
         for k, v in (end_pat.properties or {}).items():
+            # See start_pat.properties comment — same injection guard.
+            if not _is_safe_ident(k):
+                continue
             end_filters.append(f"ndst.{k} = ?")
             end_params.append(v)
 

@@ -14,6 +14,7 @@ Output: markdown with embedded Mermaid code blocks.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Dict, List, Any, Optional
 import logging
 

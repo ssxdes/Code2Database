@@ -456,11 +456,17 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
             # Local import to avoid scanner import side-effects at module load
             from code2database_scanner import scan_directory
             project_data = scan_directory(**scan_kwargs)
+        except (KeyboardInterrupt, SystemExit):
+            raise
         except Exception as e:
+            import traceback
+            _tb_type = type(e).__name__
             summary["projects"].append({
                 "name": project_name, "mode": "scan",
-                "error": f"scan failed: {e}",
+                "error": f"scan failed ({_tb_type}): {e}",
             })
+            if verbose:
+                traceback.print_exc()
             continue
         # Force project-name domain prefix
         n_updated = _prefix_domain_with_project(project_data, project_name)
@@ -515,8 +521,14 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                 memory_crit_threshold=0.85,
             )
             cmd_build(build_args)
+        except (KeyboardInterrupt, SystemExit):
+            raise
         except Exception as e:
-            summary["build_error"] = str(e)
+            import traceback
+            _tb_type = type(e).__name__
+            summary["build_error"] = f"{_tb_type}: {e}"
+            if verbose:
+                traceback.print_exc()
     # Step 6: Import from existing C2Ds (reuse mode)
     joint_db_path = os.path.join(outdir, "code2database.db")
     for p in reuse_projects:

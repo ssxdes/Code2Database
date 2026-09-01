@@ -733,8 +733,10 @@ def scan_directory(source_root: str, lang: str = "auto",
     _split_dir = (streaming_output + ".d") if _use_split else None
 
     # Define streaming helper functions early so scan loop can call _flush_accumulated
+    _flush_lock = None  # Lock to serialize flush vs aggregator (set when _use_split)
     if _use_split:
         _flush_chunk = [0]  # mutable counter for chunk numbering
+        _flush_lock = __import__('threading').Lock()
 
         def _flush_accumulated():
             """Flush accumulated scan data to disk and release memory.
@@ -1237,79 +1239,85 @@ def scan_directory(source_root: str, lang: str = "auto",
                         "warning": result["warning"],
                     })
                 _new_funcs = result.get("functions", [])
-                all_functions.extend(_new_funcs)
-                if no_body_text and _new_funcs:
-                    for f in _new_funcs:
-                        f.pop("body_text", None)
-                all_edges.extend(result.get("edges", []))
-                all_import_edges.extend(result.get("import_edges", []))
-                for key in ("enums", "constants", "typedefs", "global_vars"):
-                    all_globals[key].extend(result.get("globals", {}).get(key, []))
-                vregs = result.get("vtable_registrations", [])
-                if vregs:
-                    all_vtable_registrations.extend(vregs)
-                mregs = result.get("macro_registrations", [])
-                if mregs:
-                    all_macro_registrations.extend(mregs)
-                tpfs = result.get("token_paste_functions", [])
-                if tpfs:
-                    all_token_paste_functions.extend(tpfs)
-                co_usages = result.get("container_of_usages", [])
-                if co_usages:
-                    all_container_of_usages.extend(co_usages)
-                conv_funcs = result.get("conversion_funcs", [])
-                if conv_funcs:
-                    all_conversion_funcs.extend(conv_funcs)
-                s_defs = result.get("struct_defs", [])
-                if s_defs:
-                    all_struct_defs.extend(s_defs)
-                fnpc = result.get("fn_ptr_calls", {})
-                for caller, calls in fnpc.items():
-                    if caller not in all_fn_ptr_calls:
-                        all_fn_ptr_calls[caller] = []
-                    all_fn_ptr_calls[caller].extend(calls)
-                pt_funcs = result.get("passthrough_reg_funcs", {})
-                for func_name, info in pt_funcs.items():
-                    if func_name not in all_passthrough_reg_funcs:
-                        all_passthrough_reg_funcs[func_name] = info
-                fa = result.get("field_assignments", [])
-                if fa:
-                    all_field_assignments.extend(fa)
-                # Aggregate cgdb records
-                if result.get("cgdb_nodes"):
-                    all_cgdb_nodes.extend(result["cgdb_nodes"])
-                if result.get("cgdb_types"):
-                    all_cgdb_types.extend(result["cgdb_types"])
-                if result.get("cgdb_edges"):
-                    all_cgdb_edges.extend(result["cgdb_edges"])
-                if result.get("cgdb_invoke_sites"):
-                    all_cgdb_invoke_sites.extend(result["cgdb_invoke_sites"])
-                if result.get("cgdb_predicates"):
-                    all_cgdb_predicates.extend(result["cgdb_predicates"])
-                if result.get("cgdb_ops_bindings"):
-                    all_cgdb_ops_bindings.extend(result["cgdb_ops_bindings"])
-                if result.get("cgdb_basic_blocks"):
-                    all_cgdb_basic_blocks.extend(result["cgdb_basic_blocks"])
-                if result.get("cgdb_cfg_edges"):
-                    all_cgdb_cfg_edges.extend(result["cgdb_cfg_edges"])
-                if result.get("cgdb_data_flow"):
-                    all_cgdb_data_flow.extend(result["cgdb_data_flow"])
-                if result.get("cgdb_sync_primitives"):
-                    all_cgdb_sync_primitives.extend(result["cgdb_sync_primitives"])
-                if result.get("cgdb_happens_before"):
-                    all_cgdb_happens_before.extend(result["cgdb_happens_before"])
-                if result.get("cgdb_alias_sets"):
-                    all_cgdb_alias_sets.extend(result["cgdb_alias_sets"])
-                if result.get("cgdb_doc_comments"):
-                    all_cgdb_doc_comments.extend(result["cgdb_doc_comments"])
-                if result.get("cgdb_metadata"):
-                    all_cgdb_metadata.extend(result["cgdb_metadata"])
-                if result.get("cgdb_includes"):
-                    all_cgdb_includes.extend(result["cgdb_includes"])
-                if result.get("conditions"):
-                    all_conditions.extend(result["conditions"])
-                if result.get("cgdb_conditions"):
-                    all_conditions.extend(result["cgdb_conditions"])
+                if _flush_lock is not None:
+                    _flush_lock.acquire()
+                try:
+                    all_functions.extend(_new_funcs)
+                    if no_body_text and _new_funcs:
+                        for f in _new_funcs:
+                            f.pop("body_text", None)
+                    all_edges.extend(result.get("edges", []))
+                    all_import_edges.extend(result.get("import_edges", []))
+                    for key in ("enums", "constants", "typedefs", "global_vars"):
+                        all_globals[key].extend(result.get("globals", {}).get(key, []))
+                    vregs = result.get("vtable_registrations", [])
+                    if vregs:
+                        all_vtable_registrations.extend(vregs)
+                    mregs = result.get("macro_registrations", [])
+                    if mregs:
+                        all_macro_registrations.extend(mregs)
+                    tpfs = result.get("token_paste_functions", [])
+                    if tpfs:
+                        all_token_paste_functions.extend(tpfs)
+                    co_usages = result.get("container_of_usages", [])
+                    if co_usages:
+                        all_container_of_usages.extend(co_usages)
+                    conv_funcs = result.get("conversion_funcs", [])
+                    if conv_funcs:
+                        all_conversion_funcs.extend(conv_funcs)
+                    s_defs = result.get("struct_defs", [])
+                    if s_defs:
+                        all_struct_defs.extend(s_defs)
+                    fnpc = result.get("fn_ptr_calls", {})
+                    for caller, calls in fnpc.items():
+                        if caller not in all_fn_ptr_calls:
+                            all_fn_ptr_calls[caller] = []
+                        all_fn_ptr_calls[caller].extend(calls)
+                    pt_funcs = result.get("passthrough_reg_funcs", {})
+                    for func_name, info in pt_funcs.items():
+                        if func_name not in all_passthrough_reg_funcs:
+                            all_passthrough_reg_funcs[func_name] = info
+                    fa = result.get("field_assignments", [])
+                    if fa:
+                        all_field_assignments.extend(fa)
+                    # Aggregate cgdb records
+                    if result.get("cgdb_nodes"):
+                        all_cgdb_nodes.extend(result["cgdb_nodes"])
+                    if result.get("cgdb_types"):
+                        all_cgdb_types.extend(result["cgdb_types"])
+                    if result.get("cgdb_edges"):
+                        all_cgdb_edges.extend(result["cgdb_edges"])
+                    if result.get("cgdb_invoke_sites"):
+                        all_cgdb_invoke_sites.extend(result["cgdb_invoke_sites"])
+                    if result.get("cgdb_predicates"):
+                        all_cgdb_predicates.extend(result["cgdb_predicates"])
+                    if result.get("cgdb_ops_bindings"):
+                        all_cgdb_ops_bindings.extend(result["cgdb_ops_bindings"])
+                    if result.get("cgdb_basic_blocks"):
+                        all_cgdb_basic_blocks.extend(result["cgdb_basic_blocks"])
+                    if result.get("cgdb_cfg_edges"):
+                        all_cgdb_cfg_edges.extend(result["cgdb_cfg_edges"])
+                    if result.get("cgdb_data_flow"):
+                        all_cgdb_data_flow.extend(result["cgdb_data_flow"])
+                    if result.get("cgdb_sync_primitives"):
+                        all_cgdb_sync_primitives.extend(result["cgdb_sync_primitives"])
+                    if result.get("cgdb_happens_before"):
+                        all_cgdb_happens_before.extend(result["cgdb_happens_before"])
+                    if result.get("cgdb_alias_sets"):
+                        all_cgdb_alias_sets.extend(result["cgdb_alias_sets"])
+                    if result.get("cgdb_doc_comments"):
+                        all_cgdb_doc_comments.extend(result["cgdb_doc_comments"])
+                    if result.get("cgdb_metadata"):
+                        all_cgdb_metadata.extend(result["cgdb_metadata"])
+                    if result.get("cgdb_includes"):
+                        all_cgdb_includes.extend(result["cgdb_includes"])
+                    if result.get("conditions"):
+                        all_conditions.extend(result["conditions"])
+                    if result.get("cgdb_conditions"):
+                        all_conditions.extend(result["cgdb_conditions"])
+                finally:
+                    if _flush_lock is not None:
+                        _flush_lock.release()
                 if result.get("domain"):
                     domains.add(result["domain"])
                 lang_stats[_item[1]] += 1
@@ -1381,9 +1389,17 @@ def scan_directory(source_root: str, lang: str = "auto",
                     # blocks the main process and starves child processes).
                     _result_queue.put((result, item))
 
-                # Periodic flush in parallel mode — keep memory bounded
+                # Periodic flush in parallel mode — keep memory bounded.
+                # Acquire _flush_lock to prevent the aggregator thread from
+                # extending the lists while we iterate and clear them.
                 if _use_split and _par_processed % _PAR_FLUSH_INTERVAL < len(_done_futures):
-                    _flush_accumulated()
+                    if _flush_lock is not None:
+                        _flush_lock.acquire()
+                    try:
+                        _flush_accumulated()
+                    finally:
+                        if _flush_lock is not None:
+                            _flush_lock.release()
 
                 # Check memory limit in parallel mode
                 if memory_guard:
@@ -1393,7 +1409,13 @@ def scan_directory(source_root: str, lang: str = "auto",
                             # Flush accumulated data to disk and continue scanning
                             print(f"[MemoryGuard] Memory at {_mem_info['used_mb']/1024:.1f}GB/{memory_limit_gb:.1f}GB "
                                   f"— flushing to disk to continue scanning", file=sys.stderr)
-                            _flush_accumulated()
+                            if _flush_lock is not None:
+                                _flush_lock.acquire()
+                            try:
+                                _flush_accumulated()
+                            finally:
+                                if _flush_lock is not None:
+                                    _flush_lock.release()
                             gc.collect()
                             # Check again after flush
                             _mem_info2 = memory_guard.get_memory_info()

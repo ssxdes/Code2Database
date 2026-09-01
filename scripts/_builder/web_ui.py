@@ -42,7 +42,7 @@ import threading
 import urllib.parse
 import webbrowser
 from collections import defaultdict, deque
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from typing import Optional, List, Dict, Any, Set, Tuple
 import logging
 
@@ -659,6 +659,13 @@ class WebUIHandler(BaseHTTPRequestHandler):
         try:
             if path == "/api/highlight-path":
                 length = int(self.headers.get("Content-Length", 0))
+                # Cap POST body size to prevent memory blow-up / DoS —
+                # a malicious or buggy client can send Content-Length:
+                # 9999999999 and the server would attempt to allocate
+                # ~10GB. 1 MB is plenty for a highlight-path request.
+                if length > 1_048_576:
+                    self._send_json(413, {"error": "Request body too large (max 1MB)"})
+                    return
                 body = self.rfile.read(length).decode("utf-8")
                 data = json.loads(body) if body else {}
                 # Set on the CLASS (not the instance) so all handlers see it
@@ -1431,7 +1438,14 @@ def cmd_web_ui(args):
 
     cache = GraphCache(graph_dir)
     handler_class = _make_handler_class(cache)
-    server = HTTPServer(("0.0.0.0", port), handler_class)
+    # Use ThreadingHTTPServer (not single-threaded HTTPServer) so one
+    # slow request (e.g., /api/tour which scans temp files) doesn't
+    # block every other client. Bind to 127.0.0.1 (not 0.0.0.0) by
+    # default to avoid exposing the code graph to the local network —
+    # the web UI serves source snippets via /api/code, which is a data
+    # leak if reachable from other machines.
+    bind_host = os.environ.get("C2D_WEB_UI_HOST", "127.0.0.1")
+    server = ThreadingHTTPServer((bind_host, port), handler_class)
     _log.info("Web UI: http://localhost:%s", port)
     _log.info("Graph: %s", cache.summary())
     _log.info("Ctrl+C to stop")

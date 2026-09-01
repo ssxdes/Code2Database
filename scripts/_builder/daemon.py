@@ -660,6 +660,11 @@ class Daemon:
         self._last_sync_result: Optional[Dict] = None
         self._last_synced_content = {}
         self._last_synced_content_max = 1000
+        # Lock for the foreign-sync throttle (check-and-set of
+        # _last_foreign_sync_ts) — prevents TOCTOU race where both
+        # the main thread and sync worker thread pass the throttle
+        # check concurrently and both call sync_foreign.
+        self._foreign_sync_lock = threading.Lock()
         self._state_dirty = False
         self._last_state_write = 0.0
 
@@ -1293,12 +1298,19 @@ class Daemon:
         P2 throttle: min 60s between runs to avoid hammering foreign
         dbs when B updates frequently.
         """
-        # Throttle: don't re-sync foreign refs more than once per 60s
+        # Throttle: don't re-sync foreign refs more than once per 60s.
+        # Use a lock to prevent the TOCTOU race where both the main
+        # thread (via _check_watched_foreign_c2ds every 60s) and the
+        # sync worker thread (via _sync_incremental / _sync_bulk)
+        # pass the throttle check concurrently and both call
+        # sync_foreign — causing concurrent ATTACH + UPDATE on
+        # watched_c2ds / foreign_refs from separate connections.
         now = time.time()
-        if hasattr(self, '_last_foreign_sync_ts'):
-            if now - self._last_foreign_sync_ts < 60.0:
+        with self._foreign_sync_lock:
+            if getattr(self, '_last_foreign_sync_ts', 0) and \
+                    now - self._last_foreign_sync_ts < 60.0:
                 return  # throttled
-        self._last_foreign_sync_ts = now
+            self._last_foreign_sync_ts = now
         try:
             from _builder.c2d_foreign import sync_foreign
             summary = sync_foreign(self.graph_dir, verbose=False)

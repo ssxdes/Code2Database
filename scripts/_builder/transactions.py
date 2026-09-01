@@ -331,6 +331,13 @@ def restore_snapshot(graph_dir: str, snap_id: str) -> Dict:
     Uses temp-file + fsync + os.replace for crash-safety per file: if the
     process is killed mid-restore, the live DB is left intact (the temp
     file is orphaned, not the live DB).
+
+    After restoring the main DB, also deletes any live SQLite WAL (-wal)
+    and shared-memory (-shm) files. SQLite in WAL mode keeps uncommitted
+    and recently-committed changes in these sidecar files. Without
+    deleting them, the next SQLite open would replay the live WAL onto
+    the restored (older) DB — re-introducing the rolled-back changes
+    and producing a corrupt hybrid state.
     """
     snap_path = os.path.join(_snapshots_dir(graph_dir), snap_id)
     if not os.path.exists(snap_path):
@@ -351,6 +358,21 @@ def restore_snapshot(graph_dir: str, snap_id: str) -> Dict:
             os.fsync(f.fileno())
         os.replace(tmp, dst)
         restored_files.append(fname)
+
+    # Delete live SQLite WAL/SHM sidecar files so they are NOT replayed
+    # onto the restored (older) DB. The snapshot may or may not have
+    # captured these files (depends on whether WAL was checkpointed
+    # before snapshot); either way, the live sidecars must be removed
+    # to prevent post-snapshot changes from being re-introduced.
+    for sidecar in ("code2database.db-wal", "code2database.db-shm"):
+        sidecar_path = os.path.join(graph_dir, sidecar)
+        if os.path.exists(sidecar_path):
+            try:
+                os.remove(sidecar_path)
+                restored_files.append(sidecar)
+            except OSError:
+                pass
+
     return {"restored": True, "snapshot_id": snap_id,
             "restored_files": restored_files}
 

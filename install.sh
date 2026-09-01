@@ -49,8 +49,9 @@ REPO_NAME="Code2Database"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_DIR="${C2D_INSTALL_DIR:-}"
 LANG="${C2D_LANG:-}"
-TARGET="all"
+TARGET="${C2D_TARGET:-all}"
 ACTION="install"
+FORCE=""
 
 # --- Colors ---
 if [ -t 1 ] && command -v tput &>/dev/null; then
@@ -79,34 +80,73 @@ while [[ $# -gt 0 ]]; do
         --target=*)   TARGET="${1#--target=}" ;;
         --target)     shift; TARGET="$1" ;;
         --uninstall)  ACTION="uninstall" ;;
+        --force|-y)   FORCE=1 ;;
         --help|-h)
-            echo "Usage: install.sh [OPTIONS]"
-            echo ""
-            echo "Options:"
-            echo "  --dir PATH     Install directory or parent directory (default: interactive prompt)"
-            echo "                 If PATH does not end in Code2Database, the skill is installed"
-            echo "                 as <PATH>/Code2Database with sub-skills as <PATH>/Code2Database-{analysis,ops}."
-            echo "                 Examples: --dir ~/.cac/skills  →  ~/.cac/skills/Code2Database"
-            echo "                           --dir ~/.claude/skills/Code2Database  (explicit)"
-            echo "  --lang LANG    Language: en or zh (default: interactive prompt)"
-            echo "  --target TOOL  Target tool: claudecode, cursor, codex, opencode, gemini, all (default: all)"
-            echo "  --uninstall    Remove installation (3 sub-skills + agent configs)"
-            echo "  --help         Show this help"
-            echo ""
-            echo "Environment:"
-            echo "  C2D_INSTALL_DIR  Override install directory"
-            echo "  C2D_LANG         Override language (en/zh)"
-            echo "  C2D_LANGUAGES    Comma-separated language list (c,cpp,go,python,java,rust,all)"
-            echo "                   Default: all. Set to e.g. 'c,go' for a leaner install"
-            echo "                   (only installs the tree-sitter grammars you need)."
-            echo ""
-            echo "Installs 3 sub-skills:"
-            echo "  Code2Database            (core: build + browse — always loaded)"
-            echo "  Code2Database-analysis   (deep semantic analysis — on-demand)"
-            echo "  Code2Database-ops        (graph editing + ops — on-demand)"
-            echo ""
-            echo "Only files needed for agent operation are installed."
-            echo "Developer files (tests, evals, OVERVIEW.md, etc.) are excluded."
+            cat <<'HELP'
+Usage: install.sh [OPTIONS]
+
+Installs the Code2Database skill as 3 sub-skills under <install-parent>/:
+  Code2Database            (core: build + browse — always loaded; owns scripts/)
+  Code2Database-analysis   (deep semantic analysis — on-demand; symlinks scripts/)
+  Code2Database-ops        (graph editing + ops — on-demand; symlinks scripts/)
+
+Default install parent: ~/.claude/skills/ (so Claude Code can discover the
+skill). You may pass any parent via --dir; discovery symlinks are still
+created in ~/.claude/skills/ for Claude Code.
+
+Options:
+  --dir PATH     Install directory or parent (default: interactive prompt).
+                 If PATH does not end in Code2Database, the skill is installed
+                 as <PATH>/Code2Database, with sub-skills as
+                 <PATH>/Code2Database-{analysis,ops}.
+                 Examples:
+                   --dir ~/.cac/skills                      → ~/.cac/skills/Code2Database
+                   --dir ~/.claude/skills/Code2Database     (explicit, no auto-append)
+  --lang LANG    Skill doc language: en or zh (default: interactive prompt).
+  --target TOOL  Agent integration to configure. Configures the corresponding
+                 tool's config files in addition to installing the skill files
+                 themselves (the skill is always installed regardless of --target).
+                 Valid: claudecode, cursor, codex, opencode, gemini, all
+                 Default: all
+                   claudecode → ~/.claude/settings.json (MCP) + ~/.claude/skills/ symlinks
+                   cursor     → ~/.cursor/rules/Code2Database.mdc + ~/.cursor/mcp.json
+                   codex      → ~/.codex/instructions.md
+                   opencode   → ~/.config/opencode/config.jsonc (MCP)
+                   gemini     → ~/.gemini/GEMINI.md
+  --force, -y    Skip the overwrite confirmation prompt. If an existing
+                 Code2Database installation is found at the target path, it is
+                 removed and replaced without asking. Without this flag,
+                 install.sh prompts before overwriting each existing sub-skill
+                 directory. Stale files left over from a previous install
+                 (e.g. removed reference docs, old scripts) are cleaned up
+                 automatically because the entire sub-skill directory is
+                 deleted before the new content is copied in.
+  --uninstall    Remove installation (3 sub-skills + agent configs).
+                 Tries known locations (~/.claude/skills/Code2Database,
+                 ~/.local/share/Code2Database, ~/.cursor/extensions/Code2Database)
+                 unless --dir is given.
+  -h, --help     Show this help and exit.
+
+Environment:
+  C2D_INSTALL_DIR   Same as --dir
+  C2D_LANG          Same as --lang (en/zh)
+  C2D_LANGUAGES     Comma-separated language list (c,cpp,go,python,java,rust,all).
+                    Default: all. Set e.g. C2D_LANGUAGES=c,go for a leaner install —
+                    only the specified tree-sitter grammars are installed.
+  C2D_TARGET        Same as --target
+
+Files installed (per the active sub-skill):
+  SKILL.md, scripts/, references/, skill.json, AGENTS.md, CLAUDE.md,
+  config/runtime.json (core only)
+Not installed (developer-only): tests/, evals/, OVERVIEW.md, skill-self-scan/,
+  code2db-out/, etc.
+
+Examples:
+  bash install.sh                                   # Interactive: prompt for path+lang
+  bash install.sh --dir ~/.cac/skills --lang zh     # Non-interactive, Chinese docs
+  bash install.sh --target cursor --force           # Configure Cursor only, overwrite silently
+  bash install.sh --uninstall --dir ~/.cac/skills   # Uninstall from explicit path
+HELP
             exit 0
             ;;
         *) die "Unknown argument: $1. Use --help for usage." ;;
@@ -239,8 +279,59 @@ fi
 
 # Parent directory holds all three sub-skills (core, analysis, ops).
 INSTALL_PARENT="$(dirname "$INSTALL_DIR")"
+ANALYSIS_DIR="$INSTALL_PARENT/Code2Database-analysis"
+OPS_DIR="$INSTALL_PARENT/Code2Database-ops"
 ok "Install directory: $INSTALL_DIR"
 info "Sub-skills will be installed under: $INSTALL_PARENT"
+info "  core:     $INSTALL_DIR"
+info "  analysis: $ANALYSIS_DIR"
+info "  ops:      $OPS_DIR"
+
+# --- Overwrite check ---
+# If sub-skill directories already exist with content from a previous
+# install, prompt the user ONCE before removing them. This guarantees a
+# clean overwrite — stale files left over from the old install (removed
+# reference docs, deleted scripts, renamed modules, etc.) do not leak
+# into the new install. Use --force / -y to skip the prompt entirely.
+_existing_dirs=()
+_existing_names=()
+_check_existing() {
+    local dir="$1" name="$2"
+    if [ -e "$dir" ] && [ -n "$(ls -A "$dir" 2>/dev/null)" ]; then
+        _existing_dirs+=("$dir")
+        _existing_names+=("$name")
+    fi
+}
+_check_existing "$INSTALL_DIR"   "core"
+_check_existing "$ANALYSIS_DIR"  "analysis"
+_check_existing "$OPS_DIR"       "ops"
+
+if [ "${#_existing_dirs[@]}" -gt 0 ]; then
+    echo ""
+    echo "${BOLD}Checking for existing installation...${RESET}"
+    warn "Found ${#_existing_dirs[@]} existing sub-skill directory(ies):"
+    for i in "${!_existing_dirs[@]}"; do
+        info "  • ${_existing_names[$i]}: ${_existing_dirs[$i]}"
+    done
+    if [ -n "$FORCE" ]; then
+        info "  --force set: removing without prompt"
+        ans="y"
+    else
+        echo ""
+        read -rp "Overwrite? All listed directories will be deleted and replaced. [y/N]: " ans
+    fi
+    case "$ans" in
+        y|Y|yes|YES|Yes)
+            for i in "${!_existing_dirs[@]}"; do
+                rm -rf "${_existing_dirs[$i]}"
+                ok "Removed ${_existing_names[$i]}: ${_existing_dirs[$i]}"
+            done
+            ;;
+        *)
+            die "Aborted. Use --dir to pick a different path, or --force / -y to overwrite."
+            ;;
+    esac
+fi
 
 # --- Check Python ---
 if ! command -v python3 &>/dev/null; then
@@ -343,10 +434,10 @@ fi
 # and references/analysis_commands.md. No scripts/ — uses core's scripts/.
 # =============================================================================
 
-ANALYSIS_DIR="$INSTALL_PARENT/Code2Database-analysis"
-mkdir -p "$ANALYSIS_DIR"
+# ANALYSIS_DIR is computed early (above) so the overwrite check can clean it.
 
 # Install SKILL_analysis.md as SKILL.md in the analysis sub-skill dir
+mkdir -p "$ANALYSIS_DIR"
 if [ -f "$SCRIPT_DIR/docs/$LANG/SKILL_analysis.md" ]; then
     copy_to "$SCRIPT_DIR/docs/$LANG/SKILL_analysis.md" "$ANALYSIS_DIR/SKILL.md"
     ok "SKILL.md ($LANG) [analysis]"
@@ -381,10 +472,10 @@ fi
 # and references/ops_commands.md. No scripts/ — uses core's scripts/.
 # =============================================================================
 
-OPS_DIR="$INSTALL_PARENT/Code2Database-ops"
-mkdir -p "$OPS_DIR"
+# OPS_DIR is computed early (above) so the overwrite check can clean it.
 
 # Install SKILL_ops.md as SKILL.md in the ops sub-skill dir
+mkdir -p "$OPS_DIR"
 if [ -f "$SCRIPT_DIR/docs/$LANG/SKILL_ops.md" ]; then
     copy_to "$SCRIPT_DIR/docs/$LANG/SKILL_ops.md" "$OPS_DIR/SKILL.md"
     ok "SKILL.md ($LANG) [ops]"

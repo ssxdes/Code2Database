@@ -413,13 +413,17 @@ def _multi_strategy_resolve(G: nx.DiGraph, callee_name: str, invoker_id: str,
             # Python/Java: import matches module path
             inc_path = inc.replace(".", "/")
             inc_path_base = os.path.basename(inc_path) or inc_path
-            for sf in basename_to_files.get(inc_path_base, []):
-                if sf.endswith(inc_path + ".py") or sf.endswith(inc_path + ".java"):
-                    entries = file_to_ids.get(sf)
-                    if entries:
-                        for nid, n_lower in entries:
-                            if n_lower == callee_lower:
-                                return (nid, "import_map", 0.85)
+            # basename_to_files is keyed by os.path.basename(sf), which
+            # includes the file extension (e.g., "c.py", not "c").
+            # Look up with extension appended to match the key format.
+            for _ext in (".py", ".java"):
+                for sf in basename_to_files.get(inc_path_base + _ext, []):
+                    if sf.endswith(inc_path + _ext):
+                        entries = file_to_ids.get(sf)
+                        if entries:
+                            for nid, n_lower in entries:
+                                if n_lower == callee_lower:
+                                    return (nid, "import_map", 0.85)
 
     # Strategy 3: same_domain
     if caller_domain in domain_to_ids:

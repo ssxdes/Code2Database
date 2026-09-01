@@ -694,6 +694,22 @@ def cmd_update(args):
                                     "--no-interactive"]
                 if macros_str:
                     scan_cmd.extend(["--macros", macros_str])
+                # Forward scanner-specific parameters from cmd_update argparse
+                # to the scanner subprocess. Without these, incremental re-scans
+                # always use defaults (auto backend, no compile_commands, thread
+                # mode) regardless of what the user intended.
+                _cc = getattr(args, "compile_commands", "") or ""
+                if _cc:
+                    scan_cmd.extend(["--compile-commands", _cc])
+                _ca = getattr(args, "clang_args", "") or ""
+                if _ca:
+                    scan_cmd.extend(["--clang-args", _ca])
+                _eb = getattr(args, "extraction_backend", "") or ""
+                if _eb and _eb != "auto":
+                    scan_cmd.extend(["--extraction-backend", _eb])
+                _pm = getattr(args, "parallel_mode", "") or ""
+                if _pm and _pm != "thread":
+                    scan_cmd.extend(["--parallel-mode", _pm])
                 scan_result = subprocess.run(
                     scan_cmd,
                     capture_output=True, text=True,

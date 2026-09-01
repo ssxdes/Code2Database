@@ -83,8 +83,12 @@ _MACRO_RE = re.compile(r'^[A-Z][A-Z0-9_]{2,}$')
 def _build_indexes_from_sqlite(db_path, outdir):
     """Build all index files from SQLite.
 
-    Merges reverse index, condition index, and concurrency index
-    into a single edges table scan (was 3-5 separate scans).
+    For large graphs (>100K nodes), the reverse index uses an optimized
+    batch streaming approach (_NODE_BATCH=10000 instead of 1000, reducing
+    SQL query count from ~3280 to ~328). The 4 index builders remain
+    sequential because they all scan the same edges table — parallel
+    reads cause I/O contention and cache thrashing, making it slower
+    than sequential on large graphs.
     """
     with _open_db(db_path) as conn:
 
@@ -258,14 +262,14 @@ def _build_reverse_index_small(conn, ri_path):
 
 
 def _build_reverse_index_streaming(conn, ri_path, node_count):
-    """Build reverse index for large graphs — per-node streaming approach.
+    """Build reverse index for large graphs — optimized batch streaming.
 
-    Instead of loading all edges into memory, queries each node's
-    callers and callees from SQLite (leveraging indexes on invoker_id
-    and invoked_id) and writes to disk immediately.
+    Instead of the old per-1000-nodes approach (3280 SQL queries for
+    1.6M nodes), uses larger batches (10000 nodes) to reduce query
+    count to ~328 while keeping memory bounded. Each batch loads only
+    the callers/callees for that subset of nodes.
     """
-    # Batch nodes to reduce per-query overhead (query N nodes at once)
-    _NODE_BATCH = 1000
+    _NODE_BATCH = 10000  # was 1000 — 10x fewer queries, still memory-safe
     all_func_ids = [row[0] for row in conn.execute(
         "SELECT id FROM functions ORDER BY id"
     ).fetchall()]
@@ -316,7 +320,7 @@ def _build_reverse_index_streaming(conn, ri_path, node_count):
 
             # Free batch data
             del _callers, _callees
-            if batch_start % (_NODE_BATCH * 100) == 0:
+            if batch_start % (_NODE_BATCH * 10) == 0:
                 gc.collect()
 
         f.write('}\n')

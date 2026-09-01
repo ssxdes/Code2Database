@@ -371,16 +371,20 @@ def mark_doc_stale(graph_dir: str, node_id: str, reason: str) -> bool:
     import time
     timestamp = str(int(time.time()))
 
-    # Try SQLite backend first (code2database.db)
+    # Try SQLite backend first (code2database.db).
+    # In a dual-backend build (both .db and master.json co-exist), update
+    # BOTH backends so SQLite-side readers (cgdb_* queries, describe-node
+    # via SQLite) see the stale flag — not just the JSON-side readers.
     db_path = os.path.join(graph_dir, "code2database.db")
-    if os.path.exists(db_path) and not os.path.exists(
-            os.path.join(graph_dir, "code2database_master.json")):
-        return _mark_doc_stale_sqlite(db_path, node_id, reason, timestamp)
+    _sqlite_updated = False
+    if os.path.exists(db_path):
+        _sqlite_updated = _mark_doc_stale_sqlite(db_path, node_id, reason, timestamp)
 
     # JSON backend: load full graph, find node, write back via split_by_domain
     master_path = os.path.join(graph_dir, "code2database_master.json")
     if not os.path.exists(master_path):
-        return False
+        # No JSON backend — return the SQLite result
+        return _sqlite_updated
     try:
         from _builder.graph_build import _load_full_graph, split_by_domain
         G = _load_full_graph(graph_dir)
@@ -395,11 +399,13 @@ def mark_doc_stale(graph_dir: str, node_id: str, reason: str) -> bool:
         master = json.loads(Path(master_path).read_text(encoding="utf-8"))
         source_root = master.get("source_root", "")
         split_by_domain(G, graph_dir, source_root,
-                        build_config=master.get("build_config"))
+                        build_info=master.get("build_config"))
         return True
     except Exception as exc:
         # Fallback: try direct domain file edit
-        return _mark_doc_stale_json_fallback(graph_dir, node_id, reason, timestamp)
+        _json_ok = _mark_doc_stale_json_fallback(graph_dir, node_id, reason, timestamp)
+        # If JSON fallback failed but SQLite succeeded earlier, report success
+        return _json_ok or _sqlite_updated
 
 
 def _mark_doc_stale_sqlite(db_path: str, node_id: str, reason: str,

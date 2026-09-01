@@ -1096,8 +1096,16 @@ class ClangScanner(BaseScanner):
                     # Slice from the file's pre-read bytes (set in
                     # _extract_from_tu). Fall back to opening the file
                     # only if the cache is missing or out of range.
+                    # IMPORTANT: verify the function's location file matches
+                    # the cached source path — inline functions defined in
+                    # headers have offsets into the HEADER file, not the
+                    # source file. Without this check, we'd return a slice
+                    # of the source file at the header's offsets (wrong text).
                     sb = getattr(self, '_current_source_bytes', b'')
-                    if sb and 0 <= start < end <= len(sb):
+                    _cache_path = getattr(self, '_current_source_path', None)
+                    _loc_file = child.location.file.name if child.location and child.location.file else None
+                    if (sb and _cache_path == _loc_file
+                            and 0 <= start < end <= len(sb)):
                         return sb[start:end].decode('utf-8', errors='replace')
                     if child.location and child.location.file:
                         try:

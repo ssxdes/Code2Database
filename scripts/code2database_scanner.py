@@ -677,12 +677,15 @@ def scan_directory(source_root: str, lang: str = "auto",
                       f"kept {len(file_list)} / {len(file_list) + _filtered_count} "
                       f"files (dropped {_filtered_count})", file=sys.stderr)
 
-    # Auto-detect large project: if > 5000 source files, treat as large.
+    # Auto-detect large project: if > 2000 source files, treat as large.
     # This auto-enables split-output for better memory management.
-    # Threshold lowered from 10000 to 5000 (Finding 10 fix) to protect
-    # memory on medium-sized projects (5K-10K files) that accumulate
-    # ~500MB+ in all_functions list without split-output.
-    _auto_large = len(file_list) > 5000
+    # Threshold lowered from 5000 to 2000 (Finding 10) to protect memory
+    # on medium-sized projects (2K-5K files) that accumulate ~200-500MB
+    # in all_functions list without split-output. At 2000 files the
+    # accumulated data is ~200MB which is manageable on most systems;
+    # MemoryGuard (stop-scan, body_text dropping, max_functions) provides
+    # additional guardrails for the remaining <2000 case.
+    _auto_large = len(file_list) > 2000
     if _auto_large and not split_output:
         split_output = True
         print(f"[scan] Auto-detected large project ({len(file_list)} source files), "
@@ -693,7 +696,7 @@ def scan_directory(source_root: str, lang: str = "auto",
     if split_output and not streaming_output:
         streaming_output = os.path.join(source_root, "..",
                                         os.path.basename(source_root) + "_extraction.json")
-    _use_split = (streaming_output and (len(file_list) > 5000 or split_output))
+    _use_split = (streaming_output and (len(file_list) > 2000 or split_output))
     # Adaptive flush interval: for small/medium projects, flush more aggressively
     # so progress is visible and memory stays bounded. For large projects, the
     # 2000-file interval keeps per-flush overhead low.

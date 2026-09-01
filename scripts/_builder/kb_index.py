@@ -452,6 +452,9 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
 
     Returns a summary dict with counts. Idempotent: drops existing
     rows and reinserts. Safe to call repeatedly.
+
+    P4 optimization: if no source files changed since last rebuild
+    (compared via max mtime), the rebuild is skipped entirely.
     """
     conn = _kb_connect(graph_dir)
     if conn is None:
@@ -461,6 +464,39 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
         return {"rebuilt": False, "reason": "no_db",
                 "memory_count": 0, "knowledge_count": 0}
     try:
+        # P4: Incremental skip — compute max mtime of all source files
+        # and compare against stored value. If unchanged, skip rebuild.
+        _max_mtime = 0.0
+        _mem_dir = os.path.join(graph_dir, "memory")
+        _know_dir = os.path.join(graph_dir, "knowledge")
+        for _d in (_mem_dir, _know_dir):
+            if os.path.isdir(_d):
+                for _fname in os.listdir(_d):
+                    _fpath = os.path.join(_d, _fname)
+                    if os.path.isfile(_fpath):
+                        try:
+                            _mt = os.path.getmtime(_fpath)
+                            if _mt > _max_mtime:
+                                _max_mtime = _mt
+                        except OSError:
+                            pass
+        try:
+            _row = conn.execute(
+                "SELECT value FROM kb_meta WHERE key = 'last_rebuild_mtime'"
+            ).fetchone()
+            if _row and float(_row["value"]) >= _max_mtime:
+                # Nothing changed — skip rebuild
+                _count_row = conn.execute(
+                    "SELECT COUNT(*) AS c FROM kb_paragraphs"
+                ).fetchone()
+                return {
+                    "rebuilt": False, "reason": "unchanged",
+                    "memory_count": 0, "knowledge_count": 0,
+                    "total_paragraphs": _count_row["c"] if _count_row else 0,
+                }
+        except sqlite3.OperationalError:
+            # kb_meta table may not exist yet — proceed with full rebuild
+            pass
         # Clear FTS5 index first (before DELETE) so triggers don't do
         # redundant work during the DELETE + INSERT cycle. The 'deleteall'
         # command clears the entire FTS5 index in one shot — much faster
@@ -521,6 +557,18 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
             conn.execute("INSERT INTO kb_paragraphs_fts(kb_paragraphs_fts) VALUES ('rebuild')")
         except sqlite3.OperationalError:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
+        # P4: Store max source mtime for incremental skip on next rebuild
+        try:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS kb_meta (key TEXT PRIMARY KEY, value TEXT)"
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO kb_meta (key, value) "
+                "VALUES ('last_rebuild_mtime', ?)",
+                (str(_max_mtime),)
+            )
+        except sqlite3.Error:
             pass
         cur = conn.execute(
             "SELECT source_kind, COUNT(*) FROM kb_paragraphs GROUP BY source_kind"

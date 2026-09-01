@@ -484,14 +484,19 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
 
     # Run scans in parallel (or sequentially if only 1 project)
     if len(_scan_tasks) > 1:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor
         _scan_workers = min(len(_scan_tasks), 4)
         if verbose:
             print(f"[build-multi] scanning {len(_scan_tasks)} projects "
                   f"in parallel ({_scan_workers} workers)", file=sys.stderr)
+        # Submit all tasks, then iterate futures in submission order so
+        # summary["projects"] preserves the manifest's project order.
+        # Using as_completed() would order results by completion time —
+        # non-deterministic across runs, and surprising for users who
+        # expect the summary to mirror the manifest.
         with ThreadPoolExecutor(max_workers=_scan_workers) as pool:
-            futures = {pool.submit(_scan_one_project, t): t for t in _scan_tasks}
-            for fut in as_completed(futures):
+            future_list = [pool.submit(_scan_one_project, t) for t in _scan_tasks]
+            for fut in future_list:
                 result = fut.result()
                 _pn = result["project_name"]
                 if result["error"]:
@@ -518,6 +523,7 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                     "name": _pn, "mode": "scan",
                     "functions": len(project_data.get("functions", [])),
                     "edges": len(project_data.get("edges", [])),
+                    "domain_prefix": _pn,
                 })
     else:
         # Single project or none — sequential is simpler
@@ -546,6 +552,7 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                 "name": _pn, "mode": "scan",
                 "functions": len(project_data.get("functions", [])),
                 "edges": len(project_data.get("edges", [])),
+                "domain_prefix": _pn,
             })
     # Step 4: Write joint extraction JSON
     joint_extraction_path = os.path.join(tmpdir, "joint_extraction.json")

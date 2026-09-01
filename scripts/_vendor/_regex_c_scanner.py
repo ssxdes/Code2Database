@@ -174,7 +174,7 @@ _GENERIC_CB_ARG_RE = re.compile(
 # per-function / per-line loops, causing ~300M recompiles on kernel scans.
 _STRIP_BLOCK_COMMENT_RE = re.compile(r'/\*.*?\*/', re.DOTALL)
 _STRIP_LINE_COMMENT_RE = re.compile(r'//.*$', re.MULTILINE)
-_STRIP_STRING_LIT_RE = re.compile(r'"(?:[^"\\]|\\.)*"')
+_STRIP_STRING_LIT_RE = re.compile(r'"(?:[^"\\\n]|\\.)*"')
 _STRIP_PP_DIRECTIVE_RE = re.compile(
     r'^\s*#\s*(if|ifdef|ifndef|elif|else|endif|define|include)\b.*$',
     re.MULTILINE,
@@ -1887,13 +1887,16 @@ def _extract_func_bodies(source: str, func_defs: list) -> dict:
         # until the matching #endif. This prevents brace imbalance from counting
         # braces in both branches of a conditional.
         #
-        # Pre-strip the body slice ONCE (using _strip_comments_only, which
-        # preserves # directives for PP tracking) and reuse the stripped lines.
+        # Pre-strip the body slice ONCE and reuse the stripped lines.
+        # Must use _strip_comments (NOT _strip_comments_only) so that
+        # #define macros with { } don't throw off brace counting.
+        # PP tracking uses raw_line (original line), not stripped, so
+        # stripping PP directives from the brace-counting text is safe.
         # Previously `_strip_comments(line)` was called PER LINE inside this
         # loop — ~300M recompiles on kernel-scale scans.
         body_end_limit = min(body_start + 500, len(lines))
         raw_slice = lines[body_start:body_end_limit]
-        stripped_slice = _strip_comments_only('\n'.join(raw_slice)).split('\n')
+        stripped_slice = _strip_comments('\n'.join(raw_slice)).split('\n')
         body_lines = []
         brace_count = 0
         found_open = False
@@ -1903,7 +1906,8 @@ def _extract_func_bodies(source: str, func_defs: list) -> dict:
         for i in range(body_start, body_end_limit):
             line = lines[i]
             raw_line = line.strip()
-            stripped = stripped_slice[i - body_start]
+            _si = i - body_start
+            stripped = stripped_slice[_si] if _si < len(stripped_slice) else ''
 
             # Track preprocessor conditional nesting
             if _PP_IF_RE.match(raw_line):

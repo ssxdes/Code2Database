@@ -302,8 +302,16 @@ class StreamingGraph:
             is_new = edge_key not in self._edge_data
             if is_new:
                 self._edge_data[edge_key] = dict(attrs)
-                if self._deferred:
-                    self._edge_set.add(edge_key)
+                # Always update _edge_set — even in non-deferred mode.
+                # Previously this was gated by `if self._deferred:` which
+                # was always False in this else branch (we only reach
+                # here when _deferred is False). The result was that
+                # _edge_set stayed empty in non-deferred mode, so if a
+                # caller later toggled set_deferred(True) then
+                # set_deferred(False), the rebuild at
+                # set_deferred(False) only rebuilt edges present in
+                # _edge_set — silently dropping non-deferred-added edges.
+                self._edge_set.add(edge_key)
                 self._edge_count += 1
                 # Update degree tracking (only for new edges)
                 self._out_degree[u] = self._out_degree.get(u, 0) + 1

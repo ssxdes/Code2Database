@@ -484,7 +484,17 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
             _row = conn.execute(
                 "SELECT value FROM kb_meta WHERE key = 'last_rebuild_mtime'"
             ).fetchone()
-            if _row and float(_row["value"]) >= _max_mtime:
+            # Use strict equality (==), not >=. >= wrongly skips when:
+            #   - A file was deleted → new max < stored → stored >= new_max
+            #     is True, but paragraphs from the deleted file are stale.
+            #   - The directory became empty → new max = 0, stored is from
+            #     a previous non-empty build → stored >= 0 is True, but
+            #     paragraphs are stale.
+            # Strict equality only matches when the set of files is exactly
+            # the same AND no file was modified (mtime is the highest it
+            # was last time). Otherwise, rebuild to drop stale paragraphs.
+            if _row is not None and _max_mtime > 0 \
+                    and float(_row["value"]) == _max_mtime:
                 # Nothing changed — skip rebuild
                 _count_row = conn.execute(
                     "SELECT COUNT(*) AS c FROM kb_paragraphs"

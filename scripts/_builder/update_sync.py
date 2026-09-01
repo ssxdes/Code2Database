@@ -653,6 +653,7 @@ def cmd_update(args):
             _FILES_FROM_THRESHOLD = 200
             files_list_fd = None
             files_list_path = None
+            files_list_path2 = None
             try:
                 if len(to_scan) >= _FILES_FROM_THRESHOLD:
                     files_list_fd, files_list_path = tempfile.mkstemp(
@@ -671,22 +672,18 @@ def cmd_update(args):
                     # #15 fix: byte-length check — even <200 files with
                     # long paths can exceed ARG_MAX (~128KB on Linux).
                     if len(files_arg.encode("utf-8")) > 100_000:
-                        # Fall back to --files-from for safety
-                        import tempfile as _tf2
-                        files_list_fd2, files_list_path2 = _tf2.mkstemp(
+                        # Fall back to --files-from for safety.
+                        # NOTE: tempfile cleanup is deferred to the outer
+                        # finally (after subprocess.run) — removing it
+                        # before the scanner reads it causes FileNotFoundError.
+                        _fd2, files_list_path2 = tempfile.mkstemp(
                             prefix="code2db_files2_", suffix=".txt")
-                        try:
-                            with os.fdopen(files_list_fd2, "w", encoding="utf-8") as _f2:
-                                _f2.write("\n".join(to_scan))
-                            scan_cmd = [sys.executable, scanner_script, "scan",
-                                        "--source", source, "--files-from", files_list_path2,
-                                        "--output", extraction_path,
-                                        "--no-interactive"]
-                        finally:
-                            try: os.close(files_list_fd2)
-                            except OSError: pass  # silent
-                            try: os.remove(files_list_path2)
-                            except OSError: pass  # silent
+                        with os.fdopen(_fd2, "w", encoding="utf-8") as _f2:
+                            _f2.write("\n".join(to_scan))
+                        scan_cmd = [sys.executable, scanner_script, "scan",
+                                    "--source", source, "--files-from", files_list_path2,
+                                    "--output", extraction_path,
+                                    "--no-interactive"]
                     else:
                         scan_cmd = [sys.executable, scanner_script, "scan",
                                     "--source", source, "--files", files_arg,
@@ -730,6 +727,12 @@ def cmd_update(args):
                 if files_list_path and os.path.exists(files_list_path):
                     try:
                         os.remove(files_list_path)
+                    except OSError:
+                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                        pass
+                if files_list_path2 and os.path.exists(files_list_path2):
+                    try:
+                        os.remove(files_list_path2)
                     except OSError:
                         logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass

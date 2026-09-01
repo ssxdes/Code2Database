@@ -7347,6 +7347,7 @@ def cmd_build(args):
             # an extra ~30-60s on a 1.6M-node kernel graph.
             _BATCH_SIZE = 5000
             _func_batch = []
+            _access_batch = []  # accumulate nodes for batch field/global access
             # Finding 9: Accumulate domain counts during the functions pass
             # to avoid a separate full-graph traversal for domain_stats.
             _domain_counter: Counter = Counter()
@@ -7354,21 +7355,34 @@ def cmd_build(args):
             _sqlite_func_start = time.time()
             for nid, nd in G.nodes(data=True):
                 # Batch-accumulate for functions table
-                _func_batch.append(dict(nd, id=nid))
+                node_dict = dict(nd, id=nid)
+                _func_batch.append(node_dict)
                 if len(_func_batch) >= _BATCH_SIZE:
                     store.store_functions(_func_batch)
                     _func_batch.clear()
-                # Populate field_access / global_access for non-empty,
-                # non-file nodes (same filter as the old second pass)
+                # Accumulate non-empty, non-file nodes for batch field/global
+                # access (same filter as the old second pass). Previously
+                # called store_field_access/store_global_access per-function,
+                # which issued ~835K individual executemany calls. Now we
+                # batch them and use store_field_access_batch /
+                # store_global_access_batch for ~167 bulk executemanys.
                 if not nd.get("is_empty", False) and nd.get("node_type") != "file":
-                    store.store_field_access(dict(nd, id=nid), autocommit=False)
-                    store.store_global_access(dict(nd, id=nid), autocommit=False)
+                    _access_batch.append(node_dict)
+                    if len(_access_batch) >= _BATCH_SIZE:
+                        store.store_field_access_batch(_access_batch, autocommit=False)
+                        store.store_global_access_batch(_access_batch, autocommit=False)
+                        _access_batch.clear()
                 # Count domains for domain_stats (merged from separate pass)
                 _domain_counter[nd.get("domain", "root")] += 1
             # Flush remaining function batch
             if _func_batch:
                 store.store_functions(_func_batch)
             del _func_batch
+            # Flush remaining access batch
+            if _access_batch:
+                store.store_field_access_batch(_access_batch, autocommit=False)
+                store.store_global_access_batch(_access_batch, autocommit=False)
+                del _access_batch
             # Flush accumulated field/global access rows
             store._conn.commit()
             print(f"[SQLite] Functions + field/global access exported in "

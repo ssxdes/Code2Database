@@ -488,7 +488,13 @@ def sync_foreign(graph_dir: str, foreign_c2d_path: str = "",
             # ATTACH foreign db (new version) using the context manager
             # for guaranteed DETACH even on exception.
             with with_foreign_attached(conn, fdb_path, "foreign_db"):
+                _sync_ts = datetime.now().isoformat()
                 # Step 1: verify existing resolved refs still exist
+                # Collect per-path update batches for executemany instead of
+                # per-row UPDATE (P5: was 10K single-row UPDATEs on large graphs).
+                _batch_exact_id = []
+                _batch_exact_name = []
+                _batch_deleted = []
                 resolved = conn.execute(
                     "SELECT id, foreign_node_id, invoked_name, "
                     "invoked_signature FROM foreign_refs "
@@ -501,45 +507,55 @@ def sync_foreign(graph_dir: str, foreign_c2d_path: str = "",
                         new_row = _resolve_by_exact_id(
                             conn, r["foreign_node_id"])
                         if new_row:
-                            # Still exists — update metadata
-                            conn.execute(
-                                "UPDATE foreign_refs SET "
-                                "foreign_name = ?, foreign_domain = ?, "
-                                "foreign_source_file = ?, foreign_signature = ?, "
-                                "last_resolved_at = ? WHERE id = ?",
-                                (new_row["name"], new_row["domain"],
-                                 new_row["source_file"], new_row["signature"],
-                                 datetime.now().isoformat(), r["id"])
-                            )
+                            # Still exists — queue metadata update
+                            _batch_exact_id.append((
+                                new_row["name"], new_row["domain"],
+                                new_row["source_file"], new_row["signature"],
+                                _sync_ts, r["id"]
+                            ))
                         else:
                             # Gone — try re-resolve by name
                             new_row = _resolve_by_exact_name(
                                 conn, r["invoked_name"], project_name,
                                 table_prefix="foreign_db.")
                             if new_row:
-                                conn.execute(
-                                    "UPDATE foreign_refs SET "
-                                    "foreign_node_id = ?, foreign_name = ?, "
-                                    "foreign_domain = ?, foreign_source_file = ?, "
-                                    "foreign_signature = ?, "
-                                    "resolution_strategy = 'exact_name', "
-                                    "last_resolved_at = ?, status = 'resolved' "
-                                    "WHERE id = ?",
-                                    (new_row["id"], new_row["name"],
-                                     new_row["domain"], new_row["source_file"],
-                                     new_row["signature"],
-                                     datetime.now().isoformat(), r["id"])
-                                )
-                                summary["stale_marked"] += 0  # auto-recovered
+                                _batch_exact_name.append((
+                                    new_row["id"], new_row["name"],
+                                    new_row["domain"], new_row["source_file"],
+                                    new_row["signature"], _sync_ts, r["id"]
+                                ))
                             else:
                                 # Truly gone — mark as deleted
-                                conn.execute(
-                                    "UPDATE foreign_refs SET status = 'deleted' "
-                                    "WHERE id = ?",
-                                    (r["id"],)
-                                )
-                                summary["deleted_marked"] += 1
+                                _batch_deleted.append((r["id"],))
+                # Batch-execute collected updates
+                if _batch_exact_id:
+                    conn.executemany(
+                        "UPDATE foreign_refs SET "
+                        "foreign_name = ?, foreign_domain = ?, "
+                        "foreign_source_file = ?, foreign_signature = ?, "
+                        "last_resolved_at = ? WHERE id = ?",
+                        _batch_exact_id
+                    )
+                if _batch_exact_name:
+                    conn.executemany(
+                        "UPDATE foreign_refs SET "
+                        "foreign_node_id = ?, foreign_name = ?, "
+                        "foreign_domain = ?, foreign_source_file = ?, "
+                        "foreign_signature = ?, "
+                        "resolution_strategy = 'exact_name', "
+                        "last_resolved_at = ?, status = 'resolved' "
+                        "WHERE id = ?",
+                        _batch_exact_name
+                    )
+                if _batch_deleted:
+                    conn.executemany(
+                        "UPDATE foreign_refs SET status = 'deleted' "
+                        "WHERE id = ?",
+                        _batch_deleted
+                    )
+                    summary["deleted_marked"] += len(_batch_deleted)
                 # Step 2: re-resolve unresolved + deleted + stale
+                _batch_re_resolve = []
                 unresolved = conn.execute(
                     "SELECT id, local_node_id, invoked_name, invoked_signature "
                     "FROM foreign_refs "
@@ -552,20 +568,24 @@ def sync_foreign(graph_dir: str, foreign_c2d_path: str = "",
                         conn, r["invoked_name"], project_name,
                         table_prefix="foreign_db.")
                     if new_row:
-                        conn.execute(
-                            "UPDATE foreign_refs SET "
-                            "foreign_node_id = ?, foreign_name = ?, "
-                            "foreign_domain = ?, foreign_source_file = ?, "
-                            "foreign_signature = ?, status = 'resolved', "
-                            "resolution_strategy = 'exact_name', "
-                            "last_resolved_at = ? WHERE id = ?",
-                            (new_row["id"], new_row["name"], new_row["domain"],
-                             new_row["source_file"], new_row["signature"],
-                             datetime.now().isoformat(), r["id"])
-                        )
-                        summary["newly_resolved"] += 1
+                        _batch_re_resolve.append((
+                            new_row["id"], new_row["name"], new_row["domain"],
+                            new_row["source_file"], new_row["signature"],
+                            _sync_ts, r["id"]
+                        ))
                     else:
                         summary["still_unresolved"] += 1
+                if _batch_re_resolve:
+                    conn.executemany(
+                        "UPDATE foreign_refs SET "
+                        "foreign_node_id = ?, foreign_name = ?, "
+                        "foreign_domain = ?, foreign_source_file = ?, "
+                        "foreign_signature = ?, status = 'resolved', "
+                        "resolution_strategy = 'exact_name', "
+                        "last_resolved_at = ? WHERE id = ?",
+                        _batch_re_resolve
+                    )
+                    summary["newly_resolved"] += len(_batch_re_resolve)
                 # Update watched_c2ds signature
                 conn.execute(
                     "UPDATE watched_c2ds SET "

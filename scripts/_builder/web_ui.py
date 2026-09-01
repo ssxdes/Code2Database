@@ -463,31 +463,6 @@ class GraphCache:
                 deg = self.get_node_degree(nid)
                 degrees[nid] = deg["total"]
             return degrees
-            while queue:
-                cur, depth = queue.pop(0)
-                if depth >= max_depth:
-                    continue
-                for pred in self.G.predecessors(cur):
-                    if pred in visited:
-                        continue
-                    visited.add(pred)
-                    ed = self.G.get_edge_data(pred, cur) or {}
-                    if ed.get("relation") in ("CONTAINS", "IMPORTS"):
-                        continue
-                    nd = self.G.nodes[pred]
-                    affected.append({
-                        "id": pred,
-                        "name": nd.get("name", ""),
-                        "domain": nd.get("domain", ""),
-                        "depth": depth + 1,
-                        "source_file": nd.get("source_file", ""),
-                    })
-                    queue.append((pred, depth + 1))
-            return {
-                "node_id": node_id,
-                "affected_count": len(affected),
-                "affected": affected[:200],
-            }
 
 
 # ---------------------------------------------------------------------------

@@ -264,7 +264,6 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
                 f"(not a valid Code2Database graph?)"
             )
             return counts
-        _changes_before = conn.total_changes
         # Import functions with re-prefixed domain + regenerated legacy id.
         # Batch with executemany instead of per-row INSERT.
         rows = conn.execute(
@@ -290,15 +289,14 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
                 r["body_text_compressed"], r["extra_json"]
             ))
         if _func_batch:
-            conn.executemany(
+            _cur = conn.executemany(
                 "INSERT OR IGNORE INTO functions "
                 "(id, name, domain, source_file, line_number, signature, "
                 "labels, body_text_compressed, extra_json) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 _func_batch
             )
-            counts["functions_imported"] = conn.total_changes - _changes_before
-            _changes_before = conn.total_changes
+            counts["functions_imported"] = _cur.rowcount
         # Import edges with remapped IDs using executemany.
         edge_rows = conn.execute(
             "SELECT invoker_id, invoked_id, relation, call_order, "
@@ -318,7 +316,7 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
                 r["vtable_type"], r["vtable_bound_module"]
             ))
         if _edge_batch:
-            conn.executemany(
+            _cur = conn.executemany(
                 "INSERT OR IGNORE INTO edges (invoker_id, invoked_id, relation, "
                 "call_order, call_condition, concurrency, confidence, "
                 "confidence_score, source, evidence, invoked_arg_json, "
@@ -326,7 +324,7 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 _edge_batch
             )
-            counts["edges_imported"] = conn.total_changes - _changes_before
+            counts["edges_imported"] = _cur.rowcount
         conn.execute("DETACH DATABASE src")
         conn.commit()
     except sqlite3.Error as e:

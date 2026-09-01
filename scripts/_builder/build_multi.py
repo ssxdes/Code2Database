@@ -412,6 +412,18 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                 "error": f"source not found: {source}",
             })
             continue
+        # S5: Warn if source is outside outdir (graph_dir) — common
+        # misconfiguration where source and output overlap unexpectedly.
+        try:
+            _src_abs = os.path.abspath(source)
+            _out_abs = os.path.abspath(outdir)
+            if os.path.commonpath([_src_abs, _out_abs]) == _src_abs:
+                print(f"[build-multi] WARNING: source '{source}' contains "
+                      f"outdir '{outdir}' — output files may be scanned as "
+                      f"source (consider moving outdir outside source)",
+                      file=sys.stderr)
+        except (ValueError, OSError):
+            pass
         if verbose:
             print(f"[build-multi] scanning {project_name} from {source}",
                   file=sys.stderr)

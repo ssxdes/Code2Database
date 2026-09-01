@@ -232,11 +232,17 @@ class LSPServer:
             try:
                 msg = json.loads(body.decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError):
-                if "id" in headers:
-                    self._send({"jsonrpc": "2.0",
-                                "id": None,
-                                "error": {"code": -32700,
-                                          "message": "Parse error"}})
+                # Per JSON-RPC 2.0 §5.1: when JSON cannot be parsed, the
+                # server MUST respond with id=null and error -32700. The
+                # previous guard `if "id" in headers` was always False
+                # because JSON-RPC ids live in the body, not in LSP
+                # transport headers (which only carry Content-Length etc).
+                # That left malformed requests hanging without any
+                # response — many editors retry indefinitely.
+                self._send({"jsonrpc": "2.0",
+                            "id": None,
+                            "error": {"code": -32700,
+                                      "message": "Parse error"}})
                 continue
             response = self._handle(msg)
             if response is not None:

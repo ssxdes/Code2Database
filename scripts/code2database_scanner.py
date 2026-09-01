@@ -968,6 +968,17 @@ def scan_directory(source_root: str, lang: str = "auto",
                 print(f"[Checkpoint] Resuming: skipping {_skipped} already-processed files",
                       file=sys.stderr)
 
+    # Clean stale split-output directory on fresh scans (not resume).
+    # Without this, chunk files from a previous scan that produced more
+    # flushes survive and inflate the final function count. For example,
+    # if the old scan wrote chunks 0-18 and the new scan writes 0-29,
+    # the old chunk files with higher numbers are never overwritten and
+    # get counted in the final sum at the end of the scan.
+    if _use_split and not _completed_files and _split_dir:
+        import shutil
+        if os.path.isdir(_split_dir):
+            shutil.rmtree(_split_dir, ignore_errors=True)
+
     # Auto-detect memory limit from system if not specified
     if memory_limit_gb < 0:
         memory_limit_gb = 0

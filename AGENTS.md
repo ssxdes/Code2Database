@@ -85,6 +85,7 @@ For command details, see `SKILL.md` Quick Reference and `references/usage_refere
 - **Do not pre-load** `scripts/config/profiles/` or `docs/*/references/` into context
 - **Edge confidence** must always be annotated: EXTRACTED / INFERRED / AMBIGUOUS
 - **Never skip** intermediate nodes when tracing invocation chains
+- **DB writes need user confirmation**: before any DB-modifying command (`update-node`/`update-edge`/`patch-profile`/`apply-semantics`/`apply-invariants`/`auto-enhance`/`profile-evolve --apply`/`doc-mark-stale`/`ffi-types`/`merge-changes`/`tx-commit`), prompt the user for explicit confirmation. EXTRACTED+evidence invariants bypass confirmation for `auto-enhance`/`apply-invariants`/`profile-evolve --apply`, but INFERRED still requires it.
 - **ASM scanner** uses regex (not tree-sitter); inline asm edges use INFERRED confidence; syscall edges use synthetic `syscall_$NAME` nodes; GCC extended asm named operands and asm goto are supported; JMP/ARM `b` treated as tail-calls; `__attribute__((naked))` pre-stripped; MSVC `__asm {}` blocks parsed; ERROR node regex fallback for unparseable constructs
 - **Transactional writes**: DB-modifying operations should be wrapped in `tx-begin`/`tx-commit` for multi-step changes. `patch-from-diff`/`patch-from-git` already wrap by default; use `--no-transaction` to bypass.
 - **Daemon freshness**: call `daemon-status` before important queries; if `syncing` or pending events, call `daemon-wait-sync` to block until sync completes. Circuit breaker triggers bulk rebuild above 1000 events/minute.

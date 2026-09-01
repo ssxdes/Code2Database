@@ -62,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tighten `test_help_lists_at_least_26_commands` → `_200` (was too loose for 222 commands).
 - Add `test_no_unimplemented_capabilities_advertised` to test_lsp_server.py.
 - Update intent_router tests for corrected command names.
-- **Test suite**: 1594 tests across 88 files (was 1583/87).
+- **Test suite**: 1605 tests across 88 files (was 1583/87).
 
 ## [Unreleased] - 2026-08-29
 

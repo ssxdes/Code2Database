@@ -183,6 +183,7 @@ def auto_link_ffi_to_foreign(graph_dir: str, verbose: bool = True) -> Dict[str, 
         "ffi_bindings_scanned": 0,
         "auto_linked": 0,
         "unmatched": 0,
+        "attach_failed": 0,
     }
     conn = _connect(graph_dir)
     try:
@@ -216,6 +217,7 @@ def auto_link_ffi_to_foreign(graph_dir: str, verbose: bool = True) -> Dict[str, 
                     f"ATTACH DATABASE 'file:{_escape_sql_path(fdb_path)}?mode=ro' AS ffi_foreign"
                 )
             except sqlite3.Error:
+                summary["attach_failed"] += 1
                 logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
             project_name = w["project_name"] or ""

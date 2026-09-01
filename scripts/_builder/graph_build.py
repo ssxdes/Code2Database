@@ -6712,76 +6712,81 @@ def cmd_build(args):
     # Skip NetworkX-heavy post-processing and go straight to
     # SQLite-based index/doc generation.
     if _use_streaming and _streaming_graph is not None:
-        _node_count = _streaming_graph.number_of_nodes()
-        _edge_count = _streaming_graph.number_of_edges()
+        try:
+            _node_count = _streaming_graph.number_of_nodes()
+            _edge_count = _streaming_graph.number_of_edges()
 
-        # Memory check after streaming build
-        if memory_guard:
-            memory_guard.check_and_adapt()
-            info = memory_guard.get_memory_info()
-            print(f"[MemoryGuard] After streaming build: {info.get('usage_percent', 0)*100:.1f}% memory, "
-                  f"{info.get('used_mb', 0):.0f}MB", file=sys.stderr)
+            # Memory check after streaming build
+            if memory_guard:
+                memory_guard.check_and_adapt()
+                info = memory_guard.get_memory_info()
+                print(f"[MemoryGuard] After streaming build: {info.get('usage_percent', 0)*100:.1f}% memory, "
+                      f"{info.get('used_mb', 0):.0f}MB", file=sys.stderr)
 
-        # Write communities as domain-based (no Leiden for streaming mode)
-        comm_path = os.path.join(outdir, ".code2database_communities.json")
-        _domain_communities = {}
-        _node_community = {}
-        for nid, ndata in _streaming_graph.nodes(data=True):
-            domain = ndata.get("domain", "root")
-            if domain not in _domain_communities:
-                _domain_communities[domain] = {"id": domain, "label": domain,
-                                                "node_ids": []}
-            _domain_communities[domain]["node_ids"].append(nid)
-            _node_community[nid] = domain
-        with open(comm_path, "w", encoding="utf-8") as _cf:
-            json.dump({"total_communities": len(_domain_communities),
-                       "communities": list(_domain_communities.values()),
-                       "node_community": _node_community},
-                      _cf, ensure_ascii=False, separators=(',', ':'))
-        # Write communities to SQLite
-        _streaming_graph._store.store_communities(list(_domain_communities.values()))
-        del _domain_communities, _node_community
-        gc.collect()
+            # Write communities as domain-based (no Leiden for streaming mode)
+            comm_path = os.path.join(outdir, ".code2database_communities.json")
+            _domain_communities = {}
+            _node_community = {}
+            for nid, ndata in _streaming_graph.nodes(data=True):
+                domain = ndata.get("domain", "root")
+                if domain not in _domain_communities:
+                    _domain_communities[domain] = {"id": domain, "label": domain,
+                                                    "node_ids": []}
+                _domain_communities[domain]["node_ids"].append(nid)
+                _node_community[nid] = domain
+            with open(comm_path, "w", encoding="utf-8") as _cf:
+                json.dump({"total_communities": len(_domain_communities),
+                           "communities": list(_domain_communities.values()),
+                           "node_community": _node_community},
+                          _cf, ensure_ascii=False, separators=(',', ':'))
+            # Write communities to SQLite
+            _streaming_graph._store.store_communities(list(_domain_communities.values()))
+            del _domain_communities, _node_community
+            gc.collect()
 
-        # Store entry scores (lightweight — from id_registry only)
-        from _builder.entry_scoring import _score_entry_points_lightweight
-        entry_scores = _score_entry_points_lightweight(
-            _streaming_graph.id_registry, profile=builder_profile)
-        if entry_scores:
-            score_list = [{"id": nid, "name": ndata.get("name", ""),
-                           "score": score, "domain": ndata.get("domain", "")}
-                          for nid, (ndata, score) in entry_scores.items()]
-            _streaming_graph._store.store_entry_scores(score_list)
-            ep_count = len(score_list)
-        else:
-            ep_count = 0
+            # Store entry scores (lightweight — from id_registry only)
+            from _builder.entry_scoring import _score_entry_points_lightweight
+            entry_scores = _score_entry_points_lightweight(
+                _streaming_graph.id_registry, profile=builder_profile)
+            if entry_scores:
+                score_list = [{"id": nid, "name": ndata.get("name", ""),
+                               "score": score, "domain": ndata.get("domain", "")}
+                              for nid, (ndata, score) in entry_scores.items()]
+                _streaming_graph._store.store_entry_scores(score_list)
+                ep_count = len(score_list)
+            else:
+                ep_count = 0
 
-        # Write domain stats
-        _domain_groups = {}
-        for nid, ndata in _streaming_graph.nodes(data=True):
-            dom = ndata.get("domain", "root")
-            _domain_groups.setdefault(dom, 0)
-            _domain_groups[dom] += 1
-        for domain, count in _domain_groups.items():
-            _streaming_graph._store.store_domain_stats(domain, {"funcs": count, "domain": domain})
-        del _domain_groups
+            # Write domain stats
+            _domain_groups = {}
+            for nid, ndata in _streaming_graph.nodes(data=True):
+                dom = ndata.get("domain", "root")
+                _domain_groups.setdefault(dom, 0)
+                _domain_groups[dom] += 1
+            for domain, count in _domain_groups.items():
+                _streaming_graph._store.store_domain_stats(domain, {"funcs": count, "domain": domain})
+            del _domain_groups
 
-        # Store endpoints
-        ep_path = os.path.join(outdir, ".code2database_endpoints.json")
-        _endpoints = []
-        for nid, ndata in _streaming_graph.nodes(data=True):
-            if ndata.get("labels") and "out_end" in ndata.get("labels", []):
-                _endpoints.append({"id": nid, "name": ndata.get("name", ""),
-                                   "domain": ndata.get("domain", "")})
-        Path(ep_path).write_text(
-            json.dumps(_endpoints, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8")
-
-        # Flush and close StreamingGraph
-        _streaming_graph.close()
-        # Free id_registry — biggest remaining in-memory structure
-        del _streaming_graph
-        gc.collect()
+            # Store endpoints
+            ep_path = os.path.join(outdir, ".code2database_endpoints.json")
+            _endpoints = []
+            for nid, ndata in _streaming_graph.nodes(data=True):
+                if ndata.get("labels") and "out_end" in ndata.get("labels", []):
+                    _endpoints.append({"id": nid, "name": ndata.get("name", ""),
+                                       "domain": ndata.get("domain", "")})
+            Path(ep_path).write_text(
+                json.dumps(_endpoints, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8")
+        finally:
+            # Always flush and close StreamingGraph — even on exception.
+            # Without this, an exception in any of the above steps (build
+            # failure, store_communities error, disk full, etc.) would
+            # leak the underlying SQLiteStore connection for the lifetime
+            # of the process and block subsequent writers.
+            _streaming_graph.close()
+            # Free id_registry — biggest remaining in-memory structure
+            del _streaming_graph
+            gc.collect()
 
         if memory_guard:
             info = memory_guard.get_memory_info()

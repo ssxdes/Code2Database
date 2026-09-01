@@ -346,6 +346,12 @@ def scan_rpc_edges(graph_dir: str, verbose: bool = True) -> Dict[str, Any]:
                     url_or_host = m.group(m.lastindex if m.groups() else 0)
                     if not url_or_host:
                         continue
+                    # S3: Sanitize URL/host — strip control chars and
+                    # newlines that could be used for log injection or
+                    # display-layer attacks.
+                    url_or_host = re.sub(r'[\x00-\x1f\x7f\n\r\t]', '', url_or_host).strip()
+                    if not url_or_host:
+                        continue
                     # Construct stub callee node id using SHA-256 hash
                     # (avoids truncation collisions for long URLs)
                     import hashlib

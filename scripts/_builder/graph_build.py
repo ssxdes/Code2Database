@@ -7345,6 +7345,9 @@ def cmd_build(args):
             # an extra ~30-60s on a 1.6M-node kernel graph.
             _BATCH_SIZE = 5000
             _func_batch = []
+            # Finding 9: Accumulate domain counts during the functions pass
+            # to avoid a separate full-graph traversal for domain_stats.
+            _domain_counter: Counter = Counter()
             print(f"[SQLite] Exporting functions + field_access/global_access...", file=sys.stderr)
             _sqlite_func_start = time.time()
             for nid, nd in G.nodes(data=True):
@@ -7358,6 +7361,8 @@ def cmd_build(args):
                 if not nd.get("is_empty", False) and nd.get("node_type") != "file":
                     store.store_field_access(dict(nd, id=nid), autocommit=False)
                     store.store_global_access(dict(nd, id=nid), autocommit=False)
+                # Count domains for domain_stats (merged from separate pass)
+                _domain_counter[nd.get("domain", "root")] += 1
             # Flush remaining function batch
             if _func_batch:
                 store.store_functions(_func_batch)
@@ -7389,18 +7394,15 @@ def cmd_build(args):
                               for nid, score in entry_scores.items()]
                 store.store_entry_scores(score_list)
 
-            # Store domain stats — group by domain first to avoid O(D*N) iteration
-            _domain_groups = {}
-            for nid, nd in G.nodes(data=True):
-                dom = nd.get("domain", "root")
-                _domain_groups.setdefault(dom, []).append((nid, nd))
-            for domain, domain_nodes in _domain_groups.items():
+            # Store domain stats — uses counts accumulated during the
+            # functions pass above (Finding 9: merged from separate pass).
+            for domain, func_count in _domain_counter.items():
                 stats = {
-                    "funcs": len(domain_nodes),
+                    "funcs": func_count,
                     "domain": domain,
                 }
                 store.store_domain_stats(domain, stats)
-            del _domain_groups
+            del _domain_counter
 
             # cgdb (code graph database) 13-layer export — writes cgdb_nodes/
             # cgdb_types/cgdb_edges/cgdb_invoke_sites to the new schema tables

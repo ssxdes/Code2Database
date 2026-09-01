@@ -816,10 +816,16 @@ def _cmd_search_from_sqlite(db_path: str, args):
         conditions = []
         params = []
         for kw in keywords:
-            like = f"%{kw}%"
+            # Escape LIKE special characters in the user keyword.
+            # Without escaping, `_` in `init_task` matches any single
+            # char (`initXtask`), and `%` in `50%` matches any sequence.
+            # Use backslash as the ESCAPE character so we can safely
+            # pass user input containing `%`, `_`, and `\`.
+            esc = kw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            like = f"%{esc}%"
             conditions.append(
-                "(LOWER(name) LIKE ? OR LOWER(id) LIKE ? OR "
-                "LOWER(source_file) LIKE ? OR LOWER(domain) LIKE ?)")
+                "(LOWER(name) LIKE ? ESCAPE '\\' OR LOWER(id) LIKE ? ESCAPE '\\' OR "
+                "LOWER(source_file) LIKE ? ESCAPE '\\' OR LOWER(domain) LIKE ? ESCAPE '\\')")
             params.extend([like, like, like, like])
         where_clause = " OR ".join(conditions)
         sql = (

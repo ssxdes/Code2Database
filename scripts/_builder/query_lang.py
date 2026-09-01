@@ -1147,10 +1147,18 @@ def _try_cte_execution(query: Query, cgdb_store) -> Optional[List[Dict]]:
         for k, v in (start_pat.properties or {}).items():
             # Validate k to prevent SQL injection via crafted property keys
             # (e.g., `{"name OR 1=1": 'x'}` would otherwise interpolate
-            # into `n0.name OR 1=1 = ?`). Unsafe keys fall back to the
-            # networkx path via the residual WHERE filter.
+            # into `n0.name OR 1=1 = ?`). Returning None forces the
+            # networkx path, where property keys are dict lookups
+            # (not SQL interpolation) and the property filter is
+            # applied correctly.
+            #
+            # The previous `continue` here silently dropped the
+            # property filter — the CTE returned all nodes matching
+            # the label, and the residual WHERE (populated from
+            # `query.where`, NOT from pattern properties) didn't
+            # re-apply it.
             if not _is_safe_ident(k):
-                continue
+                return None
             start_filters.append(f"n0.{k} = ?")
             start_params.append(v)
 
@@ -1163,7 +1171,7 @@ def _try_cte_execution(query: Query, cgdb_store) -> Optional[List[Dict]]:
         for k, v in (end_pat.properties or {}).items():
             # See start_pat.properties comment — same injection guard.
             if not _is_safe_ident(k):
-                continue
+                return None
             end_filters.append(f"ndst.{k} = ?")
             end_params.append(v)
 

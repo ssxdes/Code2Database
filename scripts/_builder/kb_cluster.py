@@ -97,6 +97,7 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
         items = [(r["id"], r["title"] or "", r["body"] or "",
                   r["tags"] or "", float(r["weight"]),
                   float(r["confidence"]), r["kind"]) for r in rows]
+        items_skipped = 0
         # Precompute token sets for all items
         token_sets: Dict[int, set] = {}
         for iid, title, body, tags, *_ in items:
@@ -127,6 +128,7 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
                     if sim >= threshold:
                         uf.union(iid, cand_id)
             except sqlite3.Error:
+                items_skipped += 1
                 logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
         scope_map: Dict[int, int] = {}
@@ -182,6 +184,7 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
                     )
                     principle_refs_linked += 1
             except sqlite3.Error:
+                items_skipped += 1
                 logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
         conn.commit()
@@ -197,6 +200,7 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
             "cluster_count": cluster_count,
             "items_clustered": items_clustered,
             "principle_refs_linked": principle_refs_linked,
+            "items_skipped": items_skipped,
         }
     finally:
         conn.close()

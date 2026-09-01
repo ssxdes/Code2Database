@@ -307,6 +307,7 @@ def add_foreign(graph_dir: str, foreign_c2d_path: str,
         "unresolved_count": 0,
         "stale_count": 0,
         "total_foreign_refs": 0,
+        "skipped_empty_name": 0,
     }
     try:
         # Step 1: Insert/update watched_c2ds
@@ -348,6 +349,7 @@ def add_foreign(graph_dir: str, foreign_c2d_path: str,
             invoked_name_guess = edge["invoked_name_guess"] or ""
             # Skip empty guesses (can't resolve without a name)
             if not invoked_name_guess:
+                summary["skipped_empty_name"] += 1
                 continue
             # Try strategies in order
             resolved_row = None

@@ -1216,9 +1216,10 @@ def scan_directory(source_root: str, lang: str = "auto",
                         "lang": _item[1],
                         "warning": result["warning"],
                     })
-                all_functions.extend(result.get("functions", []))
-                if no_body_text:
-                    for f in all_functions[-len(result.get("functions", [])):]:
+                _new_funcs = result.get("functions", [])
+                all_functions.extend(_new_funcs)
+                if no_body_text and _new_funcs:
+                    for f in _new_funcs:
                         f.pop("body_text", None)
                 all_edges.extend(result.get("edges", []))
                 all_import_edges.extend(result.get("import_edges", []))
@@ -1449,9 +1450,10 @@ def scan_directory(source_root: str, lang: str = "auto",
                     "lang": file_lang,
                     "warning": result["warning"],
                 })
-            all_functions.extend(result.get("functions", []))
-            if no_body_text:
-                for f in all_functions[-len(result.get("functions", [])):]:
+            _new_funcs = result.get("functions", [])
+            all_functions.extend(_new_funcs)
+            if no_body_text and _new_funcs:
+                for f in _new_funcs:
                     f.pop("body_text", None)
             all_edges.extend(result.get("edges", []))
             all_import_edges.extend(result.get("import_edges", []))

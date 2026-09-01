@@ -483,97 +483,119 @@ class StreamingGraph:
         of fdatasync calls.
 
         Idempotent: a second call is a no-op (prevents DELETE FROM functions
-        + writing zero functions → empty table).
+        + writing zero functions → empty table). Previously, `_closed` was
+        set to True BEFORE the work, making retry impossible on failure;
+        now it's set AFTER the work succeeds.
         """
         import gc
 
         if getattr(self, "_closed", False):
             return
-        self._closed = True
 
-        # Start a single transaction for the entire write
-        self._store._conn.execute("BEGIN TRANSACTION")
+        try:
+            # Start a single transaction for the entire write
+            self._store._conn.execute("BEGIN TRANSACTION")
 
-        # Clear tables
-        self._store._conn.execute("DELETE FROM functions")
-        if not self._deferred:
-            # Normal mode: edges will be rewritten from _edge_data, so clear
-            # them. Deferred mode: edges were streamed during build — do NOT
-            # clear (would lose the streamed edges).
-            self._store._conn.execute("DELETE FROM edges")
+            # Clear tables
+            self._store._conn.execute("DELETE FROM functions")
+            if not self._deferred:
+                # Normal mode: edges will be rewritten from _edge_data, so clear
+                # them. Deferred mode: edges were streamed during build — do NOT
+                # clear (would lose the streamed edges).
+                self._store._conn.execute("DELETE FROM edges")
 
-        _REWRITE_BATCH = 5000
+            _REWRITE_BATCH = 5000
 
-        # Write functions from id_registry (captures mutations)
-        _rewrite_batch = []
-        _rewritten = 0
-        for nid, attrs in self.id_registry.items():
-            _rewrite_batch.append(attrs)
-            if len(_rewrite_batch) >= _REWRITE_BATCH:
+            # Write functions from id_registry (captures mutations)
+            _rewrite_batch = []
+            _rewritten = 0
+            for nid, attrs in self.id_registry.items():
+                _rewrite_batch.append(attrs)
+                if len(_rewrite_batch) >= _REWRITE_BATCH:
+                    self._store.store_functions(_rewrite_batch, autocommit=False)
+                    _rewritten += len(_rewrite_batch)
+                    _rewrite_batch = []
+
+            if _rewrite_batch:
                 self._store.store_functions(_rewrite_batch, autocommit=False)
                 _rewritten += len(_rewrite_batch)
-                _rewrite_batch = []
 
-        if _rewrite_batch:
-            self._store.store_functions(_rewrite_batch, autocommit=False)
-            _rewritten += len(_rewrite_batch)
+            if _rewritten > 0:
+                print(f"[StreamingGraph] Wrote {_rewritten} functions to SQLite",
+                      file=sys.stderr)
 
-        if _rewritten > 0:
-            print(f"[StreamingGraph] Wrote {_rewritten} functions to SQLite",
-                  file=sys.stderr)
+            # Free id_registry memory before processing edges
+            self.id_registry.clear()
+            gc.collect()
 
-        # Free id_registry memory before processing edges
-        self.id_registry.clear()
-        gc.collect()
-
-        if self._deferred:
-            # Deferred mode: flush residual batch (most edges already streamed
-            # to SQLite during build via add_edge's _flush_edges calls).
-            _edge_written = 0
-            if self._edge_batch:
-                _edge_write_batch = []
-                for edge_dict in self._edge_batch:
-                    _edge_write_batch.append(edge_dict)
-                    if len(_edge_write_batch) >= _REWRITE_BATCH:
+            if self._deferred:
+                # Deferred mode: flush residual batch (most edges already streamed
+                # to SQLite during build via add_edge's _flush_edges calls).
+                _edge_written = 0
+                if self._edge_batch:
+                    _edge_write_batch = []
+                    for edge_dict in self._edge_batch:
+                        _edge_write_batch.append(edge_dict)
+                        if len(_edge_write_batch) >= _REWRITE_BATCH:
+                            self._store.store_edges(_edge_write_batch, autocommit=False)
+                            _edge_written += len(_edge_write_batch)
+                            _edge_write_batch = []
+                    if _edge_write_batch:
                         self._store.store_edges(_edge_write_batch, autocommit=False)
                         _edge_written += len(_edge_write_batch)
-                        _edge_write_batch = []
-                if _edge_write_batch:
-                    self._store.store_edges(_edge_write_batch, autocommit=False)
-                    _edge_written += len(_edge_write_batch)
-                # Free batch memory
-                self._edge_batch.clear()
-                gc.collect()
-            if _edge_written > 0:
-                print(f"[StreamingGraph] Wrote {_edge_written} residual edges to SQLite (deferred)",
-                      file=sys.stderr)
-        else:
-            # Normal mode: rewrite from _edge_data (captures mutations)
-            _edge_rewrite_batch = []
-            _edge_rewritten = 0
-            for (u, v), attrs in self._edge_data.items():
-                _edge_rewrite_batch.append(dict(attrs, caller=u, callee=v))
-                if len(_edge_rewrite_batch) >= _REWRITE_BATCH:
+                    # Free batch memory
+                    self._edge_batch.clear()
+                    gc.collect()
+                if _edge_written > 0:
+                    print(f"[StreamingGraph] Wrote {_edge_written} residual edges to SQLite (deferred)",
+                          file=sys.stderr)
+            else:
+                # Normal mode: rewrite from _edge_data (captures mutations)
+                _edge_rewrite_batch = []
+                _edge_rewritten = 0
+                for (u, v), attrs in self._edge_data.items():
+                    _edge_rewrite_batch.append(dict(attrs, caller=u, callee=v))
+                    if len(_edge_rewrite_batch) >= _REWRITE_BATCH:
+                        self._store.store_edges(_edge_rewrite_batch, autocommit=False)
+                        _edge_rewritten += len(_edge_rewrite_batch)
+                        _edge_rewrite_batch = []
+                if _edge_rewrite_batch:
                     self._store.store_edges(_edge_rewrite_batch, autocommit=False)
                     _edge_rewritten += len(_edge_rewrite_batch)
-                    _edge_rewrite_batch = []
-            if _edge_rewrite_batch:
-                self._store.store_edges(_edge_rewrite_batch, autocommit=False)
-                _edge_rewritten += len(_edge_rewrite_batch)
-            if _edge_rewritten > 0:
-                print(f"[StreamingGraph] Wrote {_edge_rewritten} edges to SQLite (from edge_data)",
-                      file=sys.stderr)
+                if _edge_rewritten > 0:
+                    print(f"[StreamingGraph] Wrote {_edge_rewritten} edges to SQLite (from edge_data)",
+                          file=sys.stderr)
 
-        if _rewritten > 0:
-            print(f"[StreamingGraph] Final: {_rewritten} functions, "
-                  f"{self._edge_count} edges in SQLite", file=sys.stderr)
+            if _rewritten > 0:
+                print(f"[StreamingGraph] Final: {_rewritten} functions, "
+                      f"{self._edge_count} edges in SQLite", file=sys.stderr)
 
-        # Commit the single transaction and checkpoint
-        self._store._conn.execute("COMMIT")
-        # Ensure all writes are flushed to disk before closing
-        # (critical for WAL mode — other connections must see the data)
-        self._store._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        self._store.close()
+            # Commit the single transaction
+            self._store._conn.execute("COMMIT")
+        except Exception:
+            # ROLLBACK the pending transaction so it doesn't block
+            # subsequent writers. Without this, a `store_functions`
+            # or `store_edges` failure would leave the BEGIN
+            # TRANSACTION pending and the SQLite write lock held
+            # until GC closes the connection (which may be much later
+            # in long-running processes).
+            try:
+                self._store._conn.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        finally:
+            # wal_checkpoint is best-effort — don't fail close() if it errors.
+            try:
+                self._store._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except Exception:
+                pass
+            self._store.close()
+            # Only mark as closed AFTER the work succeeds (or the
+            # ROLLBACK in the except branch fires). This allows a
+            # retry of close() if the caller catches the exception
+            # and wants to attempt recovery.
+            self._closed = True
 
     # ---- Memory management ----
 

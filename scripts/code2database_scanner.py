@@ -894,9 +894,58 @@ def scan_directory(source_root: str, lang: str = "auto",
 
             gc.collect()
     else:
-        # Dummy flush for non-split mode (no-op)
+        # Non-split mode: no disk flush, but proactively release body_text
+        # from accumulated functions when memory is tight. This keeps the
+        # post-processing path (disambiguate, cross-file callbacks) working
+        # with all data in memory, while reducing per-function memory cost
+        # by ~80% (body_text is the largest field). State_access is extracted
+        # first so field_access/global_access tables are not lost.
+        _non_split_flush_count = [0]
         def _flush_accumulated():
-            pass
+            if not all_functions:
+                return
+            if memory_guard and memory_guard.is_memory_low():
+                from _builder.graph_build import _extract_state_access
+                _cur_gv_count = len(all_globals.get("global_vars", []))
+                if (not hasattr(_flush_accumulated, '_cached_globals')
+                        or _cur_gv_count > getattr(_flush_accumulated,
+                                                   '_cached_globals_count', 0)):
+                    _cached_g = _build_globals_cache(all_globals)
+                    _flush_accumulated._cached_globals = _cached_g
+                    _flush_accumulated._cached_globals_count = _cur_gv_count
+                else:
+                    _cached_g = _flush_accumulated._cached_globals
+                _fa_list = all_field_assignments if isinstance(all_field_assignments, list) else []
+                _dropped = 0
+                for _func in all_functions:
+                    _body = _func.get("body_text", "")
+                    if not _body:
+                        continue
+                    if not (_func.get("fields_read") or _func.get("fields_written")
+                            or _func.get("globals_read") or _func.get("globals_written")):
+                        _ai = _extract_state_access(
+                            _body, _func.get("local_vars", []),
+                            _func.get("params", []),
+                            all_globals, _fa_list,
+                            _func.get("name", ""),
+                            _cached_globals=_cached_g)
+                        for _k in ("globals_read", "globals_written",
+                                   "fields_read", "fields_written"):
+                            _v = _ai.get(_k, [])
+                            if _v:
+                                _func[_k] = _v
+                    if "body_text" in _func:
+                        del _func["body_text"]
+                        _dropped += 1
+                _non_split_flush_count[0] += _dropped
+                if _dropped:
+                    print(f"[MemoryGuard] Non-split flush: released body_text "
+                          f"from {_dropped} functions (total: "
+                          f"{_non_split_flush_count[0]})", file=sys.stderr)
+                try:
+                    del _cached_g
+                except NameError:
+                    pass
 
     # Checkpoint / resume support
     _checkpoint_dir = os.path.dirname(streaming_output) if streaming_output else None

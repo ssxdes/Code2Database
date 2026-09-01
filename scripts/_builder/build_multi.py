@@ -403,6 +403,12 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
     joint_extraction: Dict[str, Any] = {"functions": [], "edges": [],
                                         "globals": {}, "vtables": [],
                                         "imports": []}
+    # P6: Build scan tasks for parallel execution. Each project's scan
+    # is independent — ThreadPoolExecutor provides I/O parallelism (each
+    # scan_directory releases GIL during tree-sitter parse + file I/O).
+    # Conservative max_workers to avoid resource exhaustion when each
+    # scan also spawns its own ProcessPoolExecutor for file-level work.
+    _scan_tasks: List[Dict[str, Any]] = []
     for p in scan_projects:
         project_name = p["name"]
         source = p.get("source")
@@ -424,9 +430,6 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                       file=sys.stderr)
         except (ValueError, OSError):
             pass
-        if verbose:
-            print(f"[build-multi] scanning {project_name} from {source}",
-                  file=sys.stderr)
         # Build scanner args
         scan_kwargs: Dict[str, Any] = {
             "source_root": source,
@@ -451,41 +454,99 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
             scan_kwargs["compile_commands_path"] = merged_cc_path
         if no_clang:
             scan_kwargs["extraction_backend"] = "tree-sitter"
-        # Run the scan
+        _scan_tasks.append({
+            "project_name": project_name,
+            "source": source,
+            "scan_kwargs": scan_kwargs,
+        })
+
+    def _scan_one_project(task: Dict[str, Any]) -> Dict[str, Any]:
+        """Scan a single project and return result dict."""
+        from code2database_scanner import scan_directory
         try:
-            # Local import to avoid scanner import side-effects at module load
-            from code2database_scanner import scan_directory
-            project_data = scan_directory(**scan_kwargs)
+            project_data = scan_directory(**task["scan_kwargs"])
+            return {
+                "project_name": task["project_name"],
+                "data": project_data,
+                "error": None,
+            }
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
             import traceback
             _tb_type = type(e).__name__
-            summary["projects"].append({
-                "name": project_name, "mode": "scan",
+            return {
+                "project_name": task["project_name"],
+                "data": None,
                 "error": f"scan failed ({_tb_type}): {e}",
+                "traceback": traceback.format_exc() if verbose else None,
+            }
+
+    # Run scans in parallel (or sequentially if only 1 project)
+    if len(_scan_tasks) > 1:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        _scan_workers = min(len(_scan_tasks), 4)
+        if verbose:
+            print(f"[build-multi] scanning {len(_scan_tasks)} projects "
+                  f"in parallel ({_scan_workers} workers)", file=sys.stderr)
+        with ThreadPoolExecutor(max_workers=_scan_workers) as pool:
+            futures = {pool.submit(_scan_one_project, t): t for t in _scan_tasks}
+            for fut in as_completed(futures):
+                result = fut.result()
+                _pn = result["project_name"]
+                if result["error"]:
+                    summary["projects"].append({
+                        "name": _pn, "mode": "scan",
+                        "error": result["error"],
+                    })
+                    if result.get("traceback"):
+                        print(result["traceback"], file=sys.stderr)
+                    continue
+                project_data = result["data"]
+                # Force project-name domain prefix
+                n_updated = _prefix_domain_with_project(project_data, _pn)
+                # Merge into joint extraction
+                joint_extraction["functions"].extend(project_data.get("functions", []))
+                joint_extraction["edges"].extend(project_data.get("edges", []))
+                for k, v in (project_data.get("globals") or {}).items():
+                    joint_extraction["globals"][f"{_pn}.{k}"] = v
+                if project_data.get("vtables"):
+                    joint_extraction["vtables"].extend(project_data["vtables"])
+                if project_data.get("imports"):
+                    joint_extraction["imports"].extend(project_data["imports"])
+                summary["projects"].append({
+                    "name": _pn, "mode": "scan",
+                    "functions": len(project_data.get("functions", [])),
+                    "edges": len(project_data.get("edges", [])),
+                })
+    else:
+        # Single project or none — sequential is simpler
+        for task in _scan_tasks:
+            result = _scan_one_project(task)
+            _pn = result["project_name"]
+            if result["error"]:
+                summary["projects"].append({
+                    "name": _pn, "mode": "scan",
+                    "error": result["error"],
+                })
+                if result.get("traceback"):
+                    print(result["traceback"], file=sys.stderr)
+                continue
+            project_data = result["data"]
+            n_updated = _prefix_domain_with_project(project_data, _pn)
+            joint_extraction["functions"].extend(project_data.get("functions", []))
+            joint_extraction["edges"].extend(project_data.get("edges", []))
+            for k, v in (project_data.get("globals") or {}).items():
+                joint_extraction["globals"][f"{_pn}.{k}"] = v
+            if project_data.get("vtables"):
+                joint_extraction["vtables"].extend(project_data["vtables"])
+            if project_data.get("imports"):
+                joint_extraction["imports"].extend(project_data["imports"])
+            summary["projects"].append({
+                "name": _pn, "mode": "scan",
+                "functions": len(project_data.get("functions", [])),
+                "edges": len(project_data.get("edges", [])),
             })
-            if verbose:
-                traceback.print_exc()
-            continue
-        # Force project-name domain prefix
-        n_updated = _prefix_domain_with_project(project_data, project_name)
-        # Merge into joint extraction
-        joint_extraction["functions"].extend(project_data.get("functions", []))
-        joint_extraction["edges"].extend(project_data.get("edges", []))
-        # Merge globals (project-prefixed keys)
-        for k, v in (project_data.get("globals") or {}).items():
-            joint_extraction["globals"][f"{project_name}.{k}"] = v
-        if project_data.get("vtables"):
-            joint_extraction["vtables"].extend(project_data["vtables"])
-        if project_data.get("imports"):
-            joint_extraction["imports"].extend(project_data["imports"])
-        summary["projects"].append({
-            "name": project_name, "mode": "scan",
-            "functions": len(project_data.get("functions", [])),
-            "edges": len(project_data.get("edges", [])),
-            "domain_prefix": project_name,
-        })
     # Step 4: Write joint extraction JSON
     joint_extraction_path = os.path.join(tmpdir, "joint_extraction.json")
     with open(joint_extraction_path, "w", encoding="utf-8") as f:

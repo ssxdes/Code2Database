@@ -115,13 +115,18 @@ def extract_preconditions(body_text: str, params: List[Dict] = None) -> List[Dic
             line_no = line_for_offset(_line_starts, m.start())
             # The captured first group is the variable being checked
             var = m.group(1)
-            # Only treat as precondition if it's a parameter (not a local)
-            if param_names and var not in param_names:
-                # Still include it but with lower confidence — could be a
-                # local that depends on a parameter indirectly.
-                confidence = "INFERRED"
-            else:
+            # Only treat as a high-confidence (EXTRACTED) precondition
+            # when the variable is actually a parameter. When params is
+            # empty (e.g., `void f(void)` or scan produced no param list),
+            # `param_names` is empty and the `and` short-circuits to
+            # False — so we fall through to INFERRED instead of
+            # EXTRACTED. Previously the empty-params case fell into the
+            # `else → EXTRACTED` branch, auto-applying bogus
+            # preconditions with the highest confidence.
+            if param_names and var in param_names:
                 confidence = "EXTRACTED"
+            else:
+                confidence = "INFERRED"
             # Build the condition string
             if source == "null_check":
                 cond = f"{var} != NULL"

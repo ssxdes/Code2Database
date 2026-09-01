@@ -1039,7 +1039,7 @@ def _add_imports_edges(G, file_nodes: dict) -> None:
                 # O(matches) lookup via pre-computed basename index
                 header_base = os.path.basename(header)
                 for existing_sf, existing_id in _file_by_basename.get(header_base, []):
-                    if existing_sf.endswith(header) or existing_sf == header:
+                    if existing_sf.endswith(header) or os.path.basename(existing_sf) == header_base:
                         header_id = existing_id
                         break
             if header_id in G and header_id != fid and not G.has_edge(fid, header_id):

@@ -193,7 +193,7 @@ def query_blame_for_lines(source_root: str, file_path: str,
     if not out:
         return {}
     result = {}
-    current_line = None
+    current_commit = None
     for line in out.split("\n"):
         if line.startswith("commit "):
             current_commit = line.split()[1]
@@ -203,8 +203,8 @@ def query_blame_for_lines(source_root: str, file_path: str,
             if len(parts) >= 3:
                 try:
                     final_line = int(parts[2])
-                    if current_line:
-                        result[final_line] = current_line
+                    if current_commit:
+                        result[final_line] = current_commit
                 except ValueError:
                     logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass

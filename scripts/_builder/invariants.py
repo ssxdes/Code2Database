@@ -60,6 +60,10 @@ from typing import Optional, List, Dict, Set, Tuple
 from _builder.line_utils import build_line_starts, line_for_offset
 import logging
 
+# Confidence ranking for merge precedence in attach_invariants_to_graph.
+# Higher rank = higher confidence; EXTRACTED > INFERRED > AMBIGUOUS.
+_CONFIDENCE_RANK = {"EXTRACTED": 3, "INFERRED": 2, "AMBIGUOUS": 1}
+
 
 # ---------------------------------------------------------------------------
 # Precondition extraction
@@ -432,15 +436,59 @@ def attach_invariants_to_graph(G, invariants: Dict[str, Dict]):
         nd["state_machine"] = {...}
     Plus provenance:
         nd["_invariant_meta"] = {"source": "static_analysis", ...}
+
+    Merges with existing invariants (deduplicated by
+    (kind, normalized_condition)) instead of destructively replacing
+    them — previously, any prior EXTRACTED preconditions from
+    `extract-invariants --apply` were overwritten when a partial
+    LLM-edited file was applied via `apply-invariants`. The CLI
+    docstring says "LLM reads `.code2database_invariants.json`, fills
+    in additional invariants" — implying merge, not overwrite.
     """
     for nid, inv in invariants.items():
         if nid not in G:
             continue
         nd = G.nodes[nid]
-        nd["preconditions"] = inv.get("preconditions", [])
-        nd["postconditions"] = inv.get("postconditions", [])
-        nd["loop_invariants"] = inv.get("loop_invariants", [])
-        nd["state_machine"] = inv.get("state_machine")
+        # Merge new invariants with existing ones (deduplicate by
+        # (condition) — two invariants with the same condition but
+        # different kinds are kept separately).
+        for kind in ("preconditions", "postconditions", "loop_invariants"):
+            new_items = inv.get(kind, [])
+            existing = nd.get(kind, [])
+            # Deduplicate by condition string, preserving existing
+            # EXTRACTED entries (don't let a new INFERRED overwrite
+            # an existing EXTRACTED for the same condition).
+            seen_conditions = set()
+            merged = []
+            for item in existing:
+                cond = item.get("condition", "")
+                if cond not in seen_conditions:
+                    seen_conditions.add(cond)
+                    merged.append(item)
+            for item in new_items:
+                cond = item.get("condition", "")
+                if cond not in seen_conditions:
+                    seen_conditions.add(cond)
+                    merged.append(item)
+                else:
+                    # Merge: if the new item has higher confidence,
+                    # replace the existing one; otherwise keep
+                    # existing (EXTRACTED > INFERRED > AMBIGUOUS).
+                    for i, m in enumerate(merged):
+                        if m.get("condition", "") == cond:
+                            if _CONFIDENCE_RANK.get(item.get("confidence", ""),
+                                                     0) > \
+                               _CONFIDENCE_RANK.get(m.get("confidence", ""), 0):
+                                merged[i] = item
+                            break
+            nd[kind] = merged
+
+        # state_machine is a single dict — replace only if new one is
+        # non-None (don't clobber existing with None).
+        new_sm = inv.get("state_machine")
+        if new_sm is not None:
+            nd["state_machine"] = new_sm
+
         nd["_invariant_meta"] = {
             "source": "static_analysis",
             "precondition_count": len(nd["preconditions"]),

@@ -131,7 +131,7 @@ When you detect a question about **simple browsing, scanning, building, or gener
 
 | Document | Content |
 |----------|---------|
-| `references/analysis_commands.md` | Full syntax for all 48 analysis commands + 19 cgdb_* MCP tools |
+| `references/analysis_commands.md` | Full syntax for all 50 analysis commands + 19 cgdb_* MCP tools |
 | `references/data_model.md` | Node/edge attributes, context pack tiers, cgdb table schemas |
 | `references/semantic_enhancement.md` | Semantic extraction and enhancement details |
 | `references/endpoint_pipeline.md` | Endpoint classification pipeline |

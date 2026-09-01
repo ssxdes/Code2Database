@@ -131,7 +131,7 @@ parent_skill: Code2Database
 
 | 文档 | 内容 |
 |------|------|
-| `references/analysis_commands.md` | 48 个分析命令 + 19 个 cgdb_* MCP 工具的完整语法 |
+| `references/analysis_commands.md` | 50 个分析命令 + 19 个 cgdb_* MCP 工具的完整语法 |
 | `references/data_model.md` | 节点/边属性、上下文包层级、cgdb 表 schema |
 | `references/semantic_enhancement.md` | 语义提取和增强详情 |
 | `references/endpoint_pipeline.md` | 端点分类流水线 |

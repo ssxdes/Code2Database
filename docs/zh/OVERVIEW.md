@@ -667,7 +667,7 @@ ASM（.s .S .asm）用正则扫描——无需 tree-sitter 语法。
 
 | 组件 | 用途 |
 |------|------|
-| **pytest** | 测试运行器（87 个测试文件，覆盖扫描器/构建器/cgdb/守护进程/MCP/并发等） |
+| **pytest** | 测试运行器（88 个测试文件，覆盖扫描器/构建器/cgdb/守护进程/MCP/并发等） |
 | **evals/evals_en.json** + **evals_zh.json** | 端到端场景评测（多语言扫描 + 查询） |
 | **BUG benchmark** | `bug_benchmark.py`：GraphInvestigator vs GrepInvestigator 召回/精确/token 效率 |
 
@@ -858,6 +858,6 @@ Code2Database 当前能力，按类别组织：
 - Python skill，3 个子 skill（`/Code2Database`、`/Code2Database-analysis`、`/Code2Database-ops`）
 - 一键安装器（`install.sh`），支持 Claude Code / Cursor / Codex / OpenCode / Gemini
 - 按语言安装（`C2D_LANGUAGES` 环境变量或 `setup.sh --languages`）
-- 87 个测试文件（扫描器、构建器、cgdb、守护进程、MCP、并发、FFI 等）
+- 88 个测试文件（扫描器、构建器、cgdb、守护进程、MCP、并发、FFI 等）
 - 中英文端到端评测（`evals/evals_en.json`、`evals/evals_zh.json`）
 - 双语文档（`docs/en/`、`docs/zh/`）

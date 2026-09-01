@@ -93,7 +93,7 @@ C/C++ | Go | Python | Java | Rust | ASM (6 + ASM, C/C++ share scanner)
 python3 scripts/code2database_builder.py serve --graph code2db-out/
 ```
 
-81 tools: 34 `code2database_*` (incl. new `code2database_kb_query` for unified memory+knowledge search) + 19 `cgdb_*` (clang semantic layer).
+81 tools: 34 `code2database_*` (incl. new `code2database_kb_query` for unified memory+knowledge search) + 19 `cgdb_*` (clang semantic layer) + 28 design-report.
 
 ## Constraints
 

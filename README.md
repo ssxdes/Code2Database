@@ -307,7 +307,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 |------------|-------------------|
 | **Languages** | 6 + ASM — C/C++ (shared scanner), Go, Python, Java, Rust, ASM (regex — no tree-sitter grammar) (Python + tree-sitter + ASM regex) |
 | **Storage** | JSON output + optional SQLite backend for large graphs |
-| **MCP server** | stdio transport, **81 query tools** (34 `code2database_*` + 19 `cgdb_*`) for LLM agents |
+| **MCP server** | stdio transport, **81 query tools** (34 `code2database_*` + 19 `cgdb_*` + 28 design-report) for LLM agents |
 | **CLI commands** | **222 commands** organized into 3 sub-skills (`/Code2Database` core, `/Code2Database-analysis`, `/Code2Database-ops`) — Build, Query, Trace, Concurrency, Knowledge, Memory, Provenance, Cypher, Data Flow, Lock Analysis, Path Feasibility, Invariants, Auto-Enhance, Transactions, FFI, Web UI, Benchmark, Profile Health, Doc-Code, Daemon, cgdb (clang backend) |
 | **Call condition parsing** | `if`/`switch`/`#ifdef` branches + empty-node aggregation |
 | **Conditional compilation (`#ifdef`)** | Graph knows which calls exist only under which `CONFIG_*` flags |

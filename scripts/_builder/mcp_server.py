@@ -182,13 +182,22 @@ def _tool_load(args: dict, graph_dir: str) -> dict:
             edges = cur.execute(
                 "SELECT COUNT(*) FROM edges WHERE relation NOT IN ('CONTAINS','IMPORTS')"
             ).fetchone()[0]
-            # Labels are stored as TEXT (JSON or comma-separated). Use LIKE for speed.
-            api_count = cur.execute(
-                "SELECT COUNT(*) FROM functions WHERE labels LIKE '%API_entry%'"
-            ).fetchone()[0]
-            thread_count = cur.execute(
-                "SELECT COUNT(*) FROM functions WHERE labels LIKE '%thread_processor%'"
-            ).fetchone()[0]
+            # Use indexed boolean columns when available, LIKE fallback otherwise
+            _has_lc = "is_api_entry" in {r[1] for r in cur.execute("PRAGMA table_info(functions)").fetchall()}
+            if _has_lc:
+                api_count = cur.execute(
+                    "SELECT COUNT(*) FROM functions WHERE is_api_entry = 1"
+                ).fetchone()[0]
+                thread_count = cur.execute(
+                    "SELECT COUNT(*) FROM functions WHERE is_thread_processor = 1"
+                ).fetchone()[0]
+            else:
+                api_count = cur.execute(
+                    "SELECT COUNT(*) FROM functions WHERE labels LIKE '%API_entry%'"
+                ).fetchone()[0]
+                thread_count = cur.execute(
+                    "SELECT COUNT(*) FROM functions WHERE labels LIKE '%thread_processor%'"
+                ).fetchone()[0]
             domains = cur.execute(
                 "SELECT COUNT(DISTINCT domain) FROM functions WHERE domain != ''"
             ).fetchone()[0]

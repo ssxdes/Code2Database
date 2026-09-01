@@ -6805,18 +6805,47 @@ def cmd_build(args):
         print(f"[build] Indexes built in {time.time() - _indexes_start:.0f}s",
               file=sys.stderr)
 
-        # Generate docs from SQLite
+        # Generate docs from SQLite — parallelize 5 independent generators.
+        # Each opens its own SQLite connection (WAL mode supports concurrent
+        # reads). Previously sequential, costing ~409s on kernel; parallel
+        # should cut wall-clock to the slowest generator (~150-200s).
         tracker.begin("generate_docs")
-        print(f"[build] Generating docs...", file=sys.stderr)
+        print(f"[build] Generating docs (parallel)...", file=sys.stderr)
         _docs_start = time.time()
-        summary_path = _build_callgraph_summary_md_from_sqlite(
-            db_path, outdir, source_root, build_info=build_info)
-        _build_domain_readmes_from_sqlite(db_path, outdir)
-        _build_scenarios_file_from_sqlite(db_path, outdir, build_info=build_info,
-                                          builder_profile=builder_profile)
-        _build_architecture_flows_from_sqlite(db_path, outdir, source_root, build_info=build_info)
-        pack_path = _build_context_pack_from_sqlite(
-            db_path, outdir, source_root, build_info=build_info)
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        _doc_futures = {}
+        with ThreadPoolExecutor(max_workers=5) as _doc_pool:
+            _doc_futures[_doc_pool.submit(
+                _build_callgraph_summary_md_from_sqlite,
+                db_path, outdir, source_root, build_info=build_info)] = "summary"
+            _doc_futures[_doc_pool.submit(
+                _build_domain_readmes_from_sqlite,
+                db_path, outdir)] = "readmes"
+            _doc_futures[_doc_pool.submit(
+                _build_scenarios_file_from_sqlite,
+                db_path, outdir, build_info=build_info,
+                builder_profile=builder_profile)] = "scenarios"
+            _doc_futures[_doc_pool.submit(
+                _build_architecture_flows_from_sqlite,
+                db_path, outdir, source_root, build_info=build_info)] = "arch_flows"
+            _doc_futures[_doc_pool.submit(
+                _build_context_pack_from_sqlite,
+                db_path, outdir, source_root, build_info=build_info)] = "context_pack"
+            # Collect results (log failures but don't abort other generators)
+            summary_path = None
+            pack_path = None
+            for _fut in as_completed(_doc_futures):
+                _label = _doc_futures[_fut]
+                try:
+                    _result = _fut.result()
+                    if _label == "summary":
+                        summary_path = _result
+                    elif _label == "context_pack":
+                        pack_path = _result
+                except Exception as _exc:
+                    logging.getLogger(__name__).error(
+                        "Doc generator '%s' failed: %s", _label, _exc,
+                        exc_info=True)
         doc_files = [os.path.join(outdir, "CODE2DATABASE_SUMMARY.md")]
         doc_files += glob.glob(os.path.join(outdir, "domains/*/README.md"), recursive=True)
         tracker.end_with_files(doc_files)

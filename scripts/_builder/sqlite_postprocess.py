@@ -38,6 +38,41 @@ def _open_db(db_path):
         conn.close()
 
 
+def _has_label_columns(conn) -> bool:
+    """Check whether the functions table has indexed boolean label columns.
+
+    Returns True if is_api_entry column exists (implies all 5 label
+    columns are present). Used to choose between indexed queries
+    (``is_api_entry = 1``) and LIKE fallback (``labels LIKE '%API_entry%'``).
+    """
+    try:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(functions)").fetchall()}
+        return "is_api_entry" in cols
+    except Exception:
+        return False
+
+
+def _label_where(label: str, conn=None, table_alias: str = "") -> str:
+    """Return a WHERE clause fragment for a label, using indexed column
+    if available, otherwise LIKE fallback.
+
+    table_alias: optional prefix like "f." for queries that alias the
+    functions table (e.g. "SELECT ... FROM functions f WHERE ...").
+    """
+    _col_map = {
+        "API_entry": "is_api_entry",
+        "thread_processor": "is_thread_processor",
+        "callback_func": "is_callback_func",
+        "out_end": "is_out_end",
+        "unknown_end": "is_unknown_end",
+    }
+    col = _col_map.get(label)
+    prefix = f"{table_alias}." if table_alias else ""
+    if col and conn and _has_label_columns(conn):
+        return f"{prefix}{col} = 1"
+    return f"{prefix}labels LIKE '%{label}%'"
+
+
 _MACRO_RE = re.compile(r'^[A-Z][A-Z0-9_]{2,}$')
 
 
@@ -381,10 +416,10 @@ def _build_chains_index_sqlite(conn, outdir, chains_path, chains_lite_path):
     """
     # Get API entries — limit to 200 for large graphs
     api_entries = [row[0] for row in conn.execute(
-        "SELECT id FROM functions WHERE labels LIKE '%API_entry%' LIMIT 200"
+        f"SELECT id FROM functions WHERE {_label_where('API_entry', conn)} LIMIT 200"
     ).fetchall()]
     endpoints = set(row[0] for row in conn.execute(
-        "SELECT id FROM functions WHERE labels LIKE '%out_end%' OR labels LIKE '%unknown_end%'"
+        f"SELECT id FROM functions WHERE {_label_where('out_end', conn)} OR {_label_where('unknown_end', conn)}"
     ).fetchall())
 
     if not api_entries or not endpoints:
@@ -503,15 +538,26 @@ def _build_callgraph_summary_md_from_sqlite(db_path, outdir, source_root="", bui
             "WHERE domain IS NOT NULL AND domain != ''"
         ).fetchone()[0]
 
-        # Single-pass label statistics (was 4 separate full-table scans)
-        label_stats = conn.execute(
-            "SELECT "
-            "SUM(CASE WHEN labels LIKE '%API_entry%' THEN 1 ELSE 0 END) as api_count, "
-            "SUM(CASE WHEN labels LIKE '%thread_processor%' THEN 1 ELSE 0 END) as thread_count, "
-            "SUM(CASE WHEN labels LIKE '%callback_func%' THEN 1 ELSE 0 END) as callback_count, "
-            "SUM(CASE WHEN labels LIKE '%out_end%' OR labels LIKE '%unknown_end%' THEN 1 ELSE 0 END) as endpoint_count "
-            "FROM functions"
-        ).fetchone()
+        # Single-pass label statistics using indexed boolean columns
+        # (falls back to LIKE for pre-migration DBs)
+        if _has_label_columns(conn):
+            label_stats = conn.execute(
+                "SELECT "
+                "SUM(is_api_entry) as api_count, "
+                "SUM(is_thread_processor) as thread_count, "
+                "SUM(is_callback_func) as callback_count, "
+                "SUM(CASE WHEN is_out_end = 1 OR is_unknown_end = 1 THEN 1 ELSE 0 END) as endpoint_count "
+                "FROM functions"
+            ).fetchone()
+        else:
+            label_stats = conn.execute(
+                "SELECT "
+                "SUM(CASE WHEN labels LIKE '%API_entry%' THEN 1 ELSE 0 END) as api_count, "
+                "SUM(CASE WHEN labels LIKE '%thread_processor%' THEN 1 ELSE 0 END) as thread_count, "
+                "SUM(CASE WHEN labels LIKE '%callback_func%' THEN 1 ELSE 0 END) as callback_count, "
+                "SUM(CASE WHEN labels LIKE '%out_end%' OR labels LIKE '%unknown_end%' THEN 1 ELSE 0 END) as endpoint_count "
+                "FROM functions"
+            ).fetchone()
         api_count = label_stats[0] or 0
         thread_count = label_stats[1] or 0
         callback_count = label_stats[2] or 0
@@ -686,8 +732,8 @@ def _build_callgraph_summary_md_from_sqlite(db_path, outdir, source_root="", bui
                 logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         api_rows = conn.execute(
-            "SELECT name, domain, source_file FROM functions "
-            "WHERE labels LIKE '%API_entry%' ORDER BY name"
+            f"SELECT name, domain, source_file FROM functions "
+            f"WHERE {_label_where('API_entry', conn)} ORDER BY name"
         ).fetchall()
         if api_rows:
             filtered_apis = [(name, domain, src) for name, domain, src in api_rows
@@ -792,7 +838,7 @@ def _build_scenarios_file_from_sqlite(db_path, outdir, build_info=None,
             "FROM functions f "
             "LEFT JOIN (SELECT invoker_id, COUNT(*) as cnt FROM edges WHERE relation='INVOKES' GROUP BY invoker_id) out_cnt "
             "ON f.id = out_cnt.invoker_id "
-            "WHERE f.labels LIKE '%API_entry%' "
+            f"WHERE {_label_where('API_entry', conn, table_alias='f')} "
             "ORDER BY out_deg DESC, f.name "
             "LIMIT 50"
         ).fetchall()
@@ -982,15 +1028,15 @@ def _build_architecture_flows_from_sqlite(db_path, outdir, source_root="", build
         api_hubs = conn.execute(
             "SELECT f.id, f.name, f.domain, COUNT(e.invoked_id) as out_deg "
             "FROM functions f JOIN edges e ON e.invoker_id = f.id "
-            "WHERE f.labels LIKE '%API_entry%' AND e.relation = 'INVOKES' "
+            f"WHERE {_label_where('API_entry', conn, table_alias='f')} AND e.relation = 'INVOKES' "
             "GROUP BY f.id ORDER BY out_deg DESC LIMIT 10"
         ).fetchall()
 
         # Find endpoints (out_end / unknown_end)
         endpoint_ids = set(
             row[0] for row in conn.execute(
-                "SELECT id FROM functions "
-                "WHERE labels LIKE '%out_end%' OR labels LIKE '%unknown_end%'"
+                f"SELECT id FROM functions "
+                f"WHERE {_label_where('out_end', conn)} OR {_label_where('unknown_end', conn)}"
             ).fetchall()
         )
 
@@ -1220,8 +1266,8 @@ def _build_context_pack_from_sqlite(db_path, outdir, source_root="", build_info=
 
         # Lite pack: top API entries + domain list
         api_rows = conn.execute(
-            "SELECT name, domain, signature, id FROM functions "
-            "WHERE labels LIKE '%API_entry%' ORDER BY name LIMIT 100"
+            f"SELECT name, domain, signature, id FROM functions "
+            f"WHERE {_label_where('API_entry', conn)} ORDER BY name LIMIT 100"
         ).fetchall()
         domains = [row[0] for row in conn.execute(
             "SELECT DISTINCT domain FROM functions ORDER BY domain"
@@ -1286,12 +1332,12 @@ def _build_context_pack_from_sqlite(db_path, outdir, source_root="", build_info=
 
         # Full pack: includes thread entries, callbacks, and domain summaries
         thread_rows = conn.execute(
-            "SELECT name, domain, signature FROM functions "
-            "WHERE labels LIKE '%thread_processor%' LIMIT 100"
+            f"SELECT name, domain, signature FROM functions "
+            f"WHERE {_label_where('thread_processor', conn)} LIMIT 100"
         ).fetchall()
         callback_rows = conn.execute(
-            "SELECT name, domain, signature FROM functions "
-            "WHERE labels LIKE '%callback_func%' LIMIT 100"
+            f"SELECT name, domain, signature FROM functions "
+            f"WHERE {_label_where('callback_func', conn)} LIMIT 100"
         ).fetchall()
         full = dict(standard)
         full["thread_entries"] = [{"name": r[0], "domain": r[1], "signature": r[2] or ""}

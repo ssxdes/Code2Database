@@ -720,13 +720,22 @@ def _extract_key_paths(G: nx.DiGraph, seed_nodes: list, max_paths: int = 5) -> l
         # we LIMIT to keep it bounded. Avoids iterating 1.5M nodes.
         conn = getattr(G, "_conn", None)
         if conn is not None:
-            # labels is stored as JSON array — use LIKE for containment.
-            for row in conn.execute(
-                "SELECT id FROM functions WHERE labels LIKE '%API_entry%' LIMIT 50"):
-                api_nodes.append(row[0])
-            for row in conn.execute(
-                "SELECT id FROM functions WHERE labels LIKE '%out_end%' OR labels LIKE '%unknown_end%' LIMIT 50"):
-                end_nodes.append(row[0])
+            # Use indexed boolean columns when available, LIKE fallback otherwise
+            _has_lc = "is_api_entry" in {r[1] for r in conn.execute("PRAGMA table_info(functions)").fetchall()}
+            if _has_lc:
+                for row in conn.execute(
+                    "SELECT id FROM functions WHERE is_api_entry = 1 LIMIT 50"):
+                    api_nodes.append(row[0])
+                for row in conn.execute(
+                    "SELECT id FROM functions WHERE is_out_end = 1 OR is_unknown_end = 1 LIMIT 50"):
+                    end_nodes.append(row[0])
+            else:
+                for row in conn.execute(
+                    "SELECT id FROM functions WHERE labels LIKE '%API_entry%' LIMIT 50"):
+                    api_nodes.append(row[0])
+                for row in conn.execute(
+                    "SELECT id FROM functions WHERE labels LIKE '%out_end%' OR labels LIKE '%unknown_end%' LIMIT 50"):
+                    end_nodes.append(row[0])
     else:
         for nid, ndata in G.nodes(data=True):
             if ndata.get("is_empty", False):

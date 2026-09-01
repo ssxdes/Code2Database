@@ -396,7 +396,12 @@ class SQLiteStore:
                 signature TEXT,
                 labels TEXT,
                 body_text_compressed BLOB,
-                extra_json TEXT
+                extra_json TEXT,
+                is_api_entry INTEGER DEFAULT 0,
+                is_thread_processor INTEGER DEFAULT 0,
+                is_callback_func INTEGER DEFAULT 0,
+                is_out_end INTEGER DEFAULT 0,
+                is_unknown_end INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS edges (
@@ -738,6 +743,58 @@ class SQLiteStore:
         except Exception:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
+        # Migrate: add boolean label columns for indexed lookups.
+        # Replaces LIKE '%API_entry%' full-table scans with indexed = 1 queries.
+        for _col, _decl in [
+            ("is_api_entry", "INTEGER DEFAULT 0"),
+            ("is_thread_processor", "INTEGER DEFAULT 0"),
+            ("is_callback_func", "INTEGER DEFAULT 0"),
+            ("is_out_end", "INTEGER DEFAULT 0"),
+            ("is_unknown_end", "INTEGER DEFAULT 0"),
+        ]:
+            self._add_column_if_missing("functions", _col, _decl)
+        # Backfill boolean columns from existing labels JSON for migrated DBs.
+        try:
+            self._conn.execute(
+                "UPDATE functions SET is_api_entry = 1 "
+                "WHERE labels LIKE '%API_entry%' AND is_api_entry = 0")
+            self._conn.execute(
+                "UPDATE functions SET is_thread_processor = 1 "
+                "WHERE labels LIKE '%thread_processor%' AND is_thread_processor = 0")
+            self._conn.execute(
+                "UPDATE functions SET is_callback_func = 1 "
+                "WHERE labels LIKE '%callback_func%' AND is_callback_func = 0")
+            self._conn.execute(
+                "UPDATE functions SET is_out_end = 1 "
+                "WHERE labels LIKE '%out_end%' AND is_out_end = 0")
+            self._conn.execute(
+                "UPDATE functions SET is_unknown_end = 1 "
+                "WHERE labels LIKE '%unknown_end%' AND is_unknown_end = 0")
+            self._conn.commit()
+        except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
+        # Create indexes on the boolean columns (after migration backfill)
+        try:
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_functions_api_entry "
+                "ON functions(is_api_entry)")
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_functions_thread_proc "
+                "ON functions(is_thread_processor)")
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_functions_callback "
+                "ON functions(is_callback_func)")
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_functions_out_end "
+                "ON functions(is_out_end)")
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_functions_unknown_end "
+                "ON functions(is_unknown_end)")
+            self._conn.commit()
+        except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
     def close(self):
         """Close database connection."""
         if self._conn:
@@ -764,7 +821,8 @@ class SQLiteStore:
             source = func.get("source_file", "")
             line = func.get("line_number", 0) or func.get("line", 0)
             sig = func.get("signature", "")
-            labels = json.dumps(func.get("labels", []), separators=(',', ':'))
+            labels_raw = func.get("labels", [])
+            labels = json.dumps(labels_raw, separators=(',', ':'))
 
             # Compress body_text to save space
             body = func.get("body_text", "")
@@ -781,11 +839,22 @@ class SQLiteStore:
             extra = {k: func[k] for k in extra_keys}
             extra_json = json.dumps(extra, ensure_ascii=False, separators=(',', ':')) if extra else None
 
-            rows.append((fid, name, domain, source, line, sig, labels, body_compressed, extra_json))
+            # Pre-computed boolean label flags for fast indexed queries
+            # (replaces LIKE '%label_name%' full table scans)
+            _label_set = set(labels_raw) if isinstance(labels_raw, list) else set()
+            is_api = 1 if "API_entry" in _label_set else 0
+            is_thread = 1 if "thread_processor" in _label_set else 0
+            is_callback = 1 if "callback_func" in _label_set else 0
+            is_out = 1 if "out_end" in _label_set else 0
+            is_unknown = 1 if "unknown_end" in _label_set else 0
+
+            rows.append((fid, name, domain, source, line, sig, labels,
+                         body_compressed, extra_json,
+                         is_api, is_thread, is_callback, is_out, is_unknown))
 
             if len(rows) >= batch_size:
                 self._conn.executemany(
-                    "INSERT OR REPLACE INTO functions VALUES (?,?,?,?,?,?,?,?,?)", rows
+                    "INSERT OR REPLACE INTO functions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows
                 )
                 if autocommit:
                     self._conn.commit()
@@ -793,7 +862,7 @@ class SQLiteStore:
 
         if rows:
             self._conn.executemany(
-                "INSERT OR REPLACE INTO functions VALUES (?,?,?,?,?,?,?,?,?)", rows
+                "INSERT OR REPLACE INTO functions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows
             )
             if autocommit:
                 self._conn.commit()
@@ -1304,9 +1373,9 @@ class SQLiteStore:
             ).fetchall()
             return [self._row_to_function(r) for r in rows]
         except sqlite3.OperationalError:
-            # Older SQLite without json1 — fall back to LIKE
+            # Older SQLite without json1 — fall back to indexed boolean column
             rows = self._conn.execute(
-                "SELECT * FROM functions WHERE labels LIKE '%thread_processor%' LIMIT ?",
+                "SELECT * FROM functions WHERE is_thread_processor = 1 LIMIT ?",
                 (limit,)
             ).fetchall()
             return [self._row_to_function(r) for r in rows]

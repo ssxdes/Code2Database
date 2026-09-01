@@ -673,42 +673,53 @@ class Daemon:
         """Start the daemon (foreground; blocks until stop())."""
         self._write_state()
         self._setup_signal_handlers()
-        self._start_socket_server()
-        self._start_sync_worker()
-        if self._recovered_pending_count > 0:
-            self._log(f"recovering {self._recovered_pending_count} pending events via bulk sync")
-            self._enqueue_sync_job("bulk", [])
-            self._recovered_pending_count = 0
-        # Start file watcher. Enable content-hash polling when cgdb is in use
-        # so the daemon's change detection matches the cgdb incremental-sync
-        # baseline (SHA-256 instead of mtime+size).
-        use_content_hash = self.config.get("use_content_hash", False)
-        # Auto-enable content hash if a cgdb-enabled DB exists
-        if not use_content_hash:
-            db_path = Path(self.graph_dir) / "code2database.db"
-            if db_path.exists():
-                try:
-                    import sqlite3
-                    conn = sqlite3.connect(str(db_path))
+        # Wrap setup in try/except so that if any step fails (socket
+        # bind, sync worker thread start, watcher start), _cleanup()
+        # runs and releases all resources acquired so far (socket fd,
+        # thread handle, inotify fd, socket file). Previously, an
+        # exception in any setup step leaked all resources acquired
+        # by earlier steps — the socket file persisted, blocking the
+        # next daemon-start.
+        try:
+            self._start_socket_server()
+            self._start_sync_worker()
+            if self._recovered_pending_count > 0:
+                self._log(f"recovering {self._recovered_pending_count} pending events via bulk sync")
+                self._enqueue_sync_job("bulk", [])
+                self._recovered_pending_count = 0
+            # Start file watcher. Enable content-hash polling when cgdb is in use
+            # so the daemon's change detection matches the cgdb incremental-sync
+            # baseline (SHA-256 instead of mtime+size).
+            use_content_hash = self.config.get("use_content_hash", False)
+            # Auto-enable content hash if a cgdb-enabled DB exists
+            if not use_content_hash:
+                db_path = Path(self.graph_dir) / "code2database.db"
+                if db_path.exists():
                     try:
-                        conn.execute("SELECT 1 FROM cgdb_nodes LIMIT 1").fetchone()
-                        use_content_hash = True
+                        import sqlite3
+                        conn = sqlite3.connect(str(db_path))
+                        try:
+                            conn.execute("SELECT 1 FROM cgdb_nodes LIMIT 1").fetchone()
+                            use_content_hash = True
+                        except Exception:
+                            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                            pass
+                        finally:
+                            conn.close()
                     except Exception:
                         logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
-                    finally:
-                        conn.close()
-                except Exception:
-                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                    pass
-        self._watcher = FileWatcher(
-            self.source_root,
-            self.config.get("exclude_patterns", []),
-            self.config.get("backend", "auto"),
-            use_content_hash=use_content_hash,
-            graph_dir=self.graph_dir,
-        )
-        self._watcher.start(self._on_file_change)
+            self._watcher = FileWatcher(
+                self.source_root,
+                self.config.get("exclude_patterns", []),
+                self.config.get("backend", "auto"),
+                use_content_hash=use_content_hash,
+                graph_dir=self.graph_dir,
+            )
+            self._watcher.start(self._on_file_change)
+        except Exception:
+            self._cleanup()
+            raise
         # Main loop: batch + dispatch sync jobs to the worker thread
         # Apply env-var overrides (D32) — CALLGRAPH_DAEMON_* overrides config
         self._apply_env_overrides()

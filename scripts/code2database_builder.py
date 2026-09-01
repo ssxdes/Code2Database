@@ -861,6 +861,19 @@ def main():
     p_update.add_argument("--source", required=True, help="Source directory")
     p_update.add_argument("--graph", required=True, help="Call graph output directory")
     p_update.add_argument("--extraction", help="Pre-scanned extraction JSON (skip auto-scan if given)")
+    p_update.add_argument("--compile-commands", default="",
+                         help="Path to compile_commands.json for clang parsing during re-scan. "
+                              "Forwarded to the scanner subprocess.")
+    p_update.add_argument("--clang-args", default="",
+                         help="Direct clang compile args for re-scan (e.g. '-I/path -DCONFIG_X=1'). "
+                              "Forwarded to the scanner subprocess.")
+    p_update.add_argument("--extraction-backend", default="auto",
+                         choices=["auto", "clang", "tree-sitter"],
+                         help="C/C++ extraction backend for re-scan. "
+                              "Forwarded to the scanner subprocess.")
+    p_update.add_argument("--parallel-mode", choices=["thread", "process"], default="thread",
+                         help="Parallelism model for re-scan: 'thread' (default) or 'process' "
+                              "(true multi-core via fork). Forwarded to the scanner subprocess.")
 
     # sync
     p_sync = sub.add_parser("sync", help="Sync local code2db-out with git-tracked version (local wins)")

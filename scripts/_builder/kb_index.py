@@ -401,6 +401,11 @@ def _load_knowledge_paragraphs(graph_dir: str) -> List[dict]:
     for fname in sorted(os.listdir(knowledge_dir)):
         if not fname.endswith(".md"):
             continue
+        # C7: Skip merged_*.md files — these are merge artifacts written by
+        # cgdb_merge (merged_<branch>_*.md). They duplicate content from the
+        # source .md files and would be double-counted in kb_paragraphs.
+        if fname.startswith("merged_"):
+            continue
         fpath = os.path.join(knowledge_dir, fname)
         if not os.path.isfile(fpath):
             continue

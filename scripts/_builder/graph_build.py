@@ -930,9 +930,8 @@ def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
 
     # Decide sequential vs parallel
     try:
-        from _builder.parallel import resolve_jobs, cap_for_graph
-        workers = cap_for_graph(resolve_jobs(jobs, max_workers_cap=max_workers), len(candidates),
-                                parallel_mode=parallel_mode)
+        from _builder.parallel import resolve_jobs
+        workers = resolve_jobs(jobs, max_workers_cap=max_workers)
     except ImportError:
         workers = 1
 
@@ -6372,11 +6371,9 @@ def cmd_build(args):
     # during matching, giving modest speedup) or sequential.
     _sa_parallel_mode = getattr(args, 'parallel_mode', 'thread')
     try:
-        from _builder.parallel import resolve_jobs, cap_for_graph
-        _sa_workers = cap_for_graph(resolve_jobs(getattr(args, 'jobs', 0),
-                                                  max_workers_cap=getattr(args, 'max_workers', 0)),
-                                      len(_sa_candidates),
-                                      parallel_mode=_sa_parallel_mode)
+        from _builder.parallel import resolve_jobs
+        _sa_workers = resolve_jobs(getattr(args, 'jobs', 0),
+                                   max_workers_cap=getattr(args, 'max_workers', 0))
     except ImportError:
         _sa_workers = 1
 
@@ -7597,13 +7594,11 @@ def cmd_build(args):
                         try:
                             from _builder.l1_ingest import run_l1_ingest
                             try:
-                                from _builder.parallel import resolve_jobs, cap_for_graph
+                                from _builder.parallel import resolve_jobs
                                 _l1_parallel_mode = getattr(args, 'parallel_mode', 'thread')
-                                _l1_workers = cap_for_graph(
-                                    resolve_jobs(getattr(args, 'jobs', 0),
-                                                  max_workers_cap=getattr(args, 'max_workers', 0)),
-                                    len(_l1_tasks),
-                                    parallel_mode=_l1_parallel_mode)
+                                _l1_workers = resolve_jobs(
+                                    getattr(args, 'jobs', 0),
+                                    max_workers_cap=getattr(args, 'max_workers', 0))
                             except ImportError:
                                 _l1_workers = 1
                                 _l1_parallel_mode = getattr(args, 'parallel_mode', 'thread')

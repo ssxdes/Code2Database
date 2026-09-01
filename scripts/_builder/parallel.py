@@ -33,9 +33,10 @@ The choice is governed by a single ``jobs`` integer:
 * ``jobs == 1`` — sequential (no executor overhead)
 * ``jobs >= 2`` — explicit parallelism
 
-For very large graphs (>= ``LARGE_GRAPH_NODES``), the helper auto-caps worker
-count to avoid memory blow-up from duplicated per-worker state — the caller
-still benefits from parallelism but the cap prevents thrashing.
+Worker count is bounded by ``resolve_jobs`` (which caps at ``cpu_count``
+or the ``C2D_MAX_WORKERS`` / ``--max-workers`` override). No graph-size-
+sensitive cap is applied — threads share memory (no duplication), and
+fork COW keeps process-mode overhead low on modern hardware.
 
 **Configuration**: the hard cap can be overridden via:
   1. Environment variable ``C2D_MAX_WORKERS`` (highest priority)
@@ -94,7 +95,7 @@ def map_files_processpool(
     n = len(file_items)
     if n == 0:
         return []
-    workers = cap_for_graph(resolve_jobs(jobs, max_workers_cap=max_workers_cap), n)
+    workers = resolve_jobs(jobs, max_workers_cap=max_workers_cap)
     if workers <= 1 or n < 2:
         return [work_fn(fp, fl) for fp, fl in file_items]
 
@@ -128,12 +129,6 @@ def map_files_processpool(
     return results
 
 
-
-# Graphs above this node count are considered "large"; parallel loops over
-# their nodes auto-cap workers to avoid per-worker memory duplication.
-LARGE_GRAPH_NODES = 100_000
-
-
 def _proc_map_nodes_wrapper(args):
     """Module-level wrapper for map_nodes ProcessPoolExecutor path.
 
@@ -155,7 +150,6 @@ def _proc_map_nodes_wrapper(args):
 # Now: the default is the machine's actual core count with no artificial
 # cap. This prevents oversubscription on low-core machines (4-core box
 # won't get 16 threads) while fully utilizing high-core machines.
-# cap_for_graph() applies graph-size-sensitive caps for very large graphs.
 # Override via C2D_MAX_WORKERS env var or --max-workers CLI flag.
 DEFAULT_MAX_WORKERS = 0  # 0 = use cpu_count (no artificial cap)
 
@@ -188,7 +182,6 @@ def _get_max_workers_cap(cli_override: int = 0) -> int:
     except (NotImplementedError, OSError):
         cpu = 4
     # No artificial cap — use the machine's full core count.
-    # cap_for_graph() applies graph-size-sensitive caps later.
     return max(2, cpu)
 
 
@@ -211,32 +204,6 @@ def resolve_jobs(jobs: int, max_workers_cap: int = 0) -> int:
     if jobs == 1:
         return 1
     return min(jobs, cap)
-
-
-def cap_for_graph(jobs: int, n_nodes: int, parallel_mode: str = "thread") -> int:
-    """Auto-cap workers when operating on very large graphs.
-
-    On 700K+ node graphs, each thread's per-iteration state (regex match
-    objects, dict copies) can balloon memory. We keep the speedup but cap
-    the worker count so memory pressure stays bounded.
-
-    The caps here are LOWER bounds — they never reduce below 2, and they
-    only apply to graphs above LARGE_GRAPH_NODES. For smaller graphs, the
-    full requested jobs count is used (bounded by resolve_jobs).
-
-    When ``parallel_mode='process'`` (Linux fork start method), child
-    processes inherit the read-only graph and module globals via
-    copy-on-write, so per-worker memory pressure is much lower than in
-    thread mode (where every worker mutates shared state on the same
-    heap). Allow up to 16 workers on the largest graphs instead of 4.
-    """
-    if n_nodes < 200_000:
-        return jobs
-    if parallel_mode == "process":
-        return max(2, min(jobs, 16))
-    if n_nodes >= 500_000:
-        return max(2, min(jobs, 8))
-    return max(2, min(jobs, 12))
 
 
 def map_nodes(
@@ -284,8 +251,7 @@ def map_nodes(
     n = len(items)
     if n == 0:
         return []
-    workers = cap_for_graph(resolve_jobs(jobs, max_workers_cap=max_workers_cap), n,
-                            parallel_mode=parallel_mode)
+    workers = resolve_jobs(jobs, max_workers_cap=max_workers_cap)
     if workers <= 1 or n < 2:
         return [work_fn(nid, nd) for nid, nd in items]
 
@@ -388,11 +354,9 @@ def merge_node_attributes(
 
 
 __all__ = [
-    "LARGE_GRAPH_NODES",
     "DEFAULT_MAX_WORKERS",
     "_get_max_workers_cap",
     "resolve_jobs",
-    "cap_for_graph",
     "map_nodes",
     "merge_node_attributes",
     "map_files_processpool",

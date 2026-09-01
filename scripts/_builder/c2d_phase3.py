@@ -310,6 +310,7 @@ def scan_rpc_edges(graph_dir: str, verbose: bool = True) -> Dict[str, Any]:
         "stub_nodes_created": 0,
         "foreign_refs_created": 0,
         "rpc_endpoints": [],
+        "skipped_no_body": 0,
     }
     conn = _connect(graph_dir)
     try:
@@ -336,6 +337,7 @@ def scan_rpc_edges(graph_dir: str, verbose: bool = True) -> Dict[str, Any]:
                 logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
             if not body:
+                summary["skipped_no_body"] += 1
                 continue
             # Scan body for RPC patterns
             for pattern, proto in _RPC_PATTERNS:

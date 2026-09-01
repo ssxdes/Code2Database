@@ -870,53 +870,58 @@ def cmd_tx_begin(args):
               "may be in progress. Use 'tx-status' to check.", file=sys.stderr)
         sys.exit(1)
 
-    snap = create_snapshot(graph_dir, description=description or "manual tx_begin")
-    tx_state = TransactionState(
-        tx_id=f"tx_{int(time.time() * 1000)}",
-        started_at=time.time(), description=description,
-        snapshot_id=snap.id, status="active",
-    )
-    _write_tx_state(graph_dir, tx_state)
+    try:
+        snap = create_snapshot(graph_dir, description=description or "manual tx_begin")
+        tx_state = TransactionState(
+            tx_id=f"tx_{int(time.time() * 1000)}",
+            started_at=time.time(), description=description,
+            snapshot_id=snap.id, status="active",
+        )
+        _write_tx_state(graph_dir, tx_state)
 
-    response: Dict[str, Any] = {
-        "tx_id": tx_state.tx_id, "snapshot_id": snap.id,
-        "started_at": tx_state.started_at, "status": "active",
-    }
+        response: Dict[str, Any] = {
+            "tx_id": tx_state.tx_id, "snapshot_id": snap.id,
+            "started_at": tx_state.started_at, "status": "active",
+        }
 
-    # RPT-P0-16: If --file-id given, also register a write-back tx.
-    if file_id is not None:
-        try:
-            import sqlite3 as _sqlite3
-            from _builder.writeback_pipeline import WritebackPipeline
-            db_path = os.path.join(graph_dir, "code2database.db")
-            conn = _sqlite3.connect(db_path)
+        # RPT-P0-16: If --file-id given, also register a write-back tx.
+        if file_id is not None:
             try:
-                pipe = WritebackPipeline(conn, graph_dir, graph_dir)
-                writeback_tx_id = pipe.begin(int(file_id))
-                # Stash the writeback_tx_id in tx_state so cmd_tx_commit
-                # can find it later. We use the `error` field as a scratch
-                # pad — actually no, let's add it to dirty_file_ids-style
-                # by storing it in the description suffix. Simpler: write
-                # it to a separate key in tx_state.json via _write_tx_state.
-                # Easiest: append to description so it round-trips.
-                tx_state.description = (
-                    f"{description} [writeback_tx={writeback_tx_id}]"
-                ).strip()
-                _write_tx_state(graph_dir, tx_state)
-                response["writeback_tx_id"] = writeback_tx_id
-                response["file_id"] = int(file_id)
-            finally:
-                conn.close()
-        except Exception as exc:
-            # Don't fail the whole tx-begin if writeback init fails —
-            # just warn. The graph-level tx is still active.
-            print(f"[tx-begin] WARNING: writeback init failed: {exc}",
-                  file=sys.stderr)
+                import sqlite3 as _sqlite3
+                from _builder.writeback_pipeline import WritebackPipeline
+                db_path = os.path.join(graph_dir, "code2database.db")
+                conn = _sqlite3.connect(db_path)
+                try:
+                    pipe = WritebackPipeline(conn, graph_dir, graph_dir)
+                    writeback_tx_id = pipe.begin(int(file_id))
+                    # Stash the writeback_tx_id in tx_state so cmd_tx_commit
+                    # can find it later. We use the `error` field as a scratch
+                    # pad — actually no, let's add it to dirty_file_ids-style
+                    # by storing it in the description suffix. Simpler: write
+                    # it to a separate key in tx_state.json via _write_tx_state.
+                    # Easiest: append to description so it round-trips.
+                    tx_state.description = (
+                        f"{description} [writeback_tx={writeback_tx_id}]"
+                    ).strip()
+                    _write_tx_state(graph_dir, tx_state)
+                    response["writeback_tx_id"] = writeback_tx_id
+                    response["file_id"] = int(file_id)
+                finally:
+                    conn.close()
+            except Exception as exc:
+                # Don't fail the whole tx-begin if writeback init fails —
+                # just warn. The graph-level tx is still active.
+                print(f"[tx-begin] WARNING: writeback init failed: {exc}",
+                      file=sys.stderr)
 
-    print(json.dumps(response, ensure_ascii=False, indent=2, default=str))
-
-    # Release write lock acquired at the start of cmd_tx_begin
-    lock.release()
+        print(json.dumps(response, ensure_ascii=False, indent=2, default=str))
+    finally:
+        # Release write lock acquired at the start of cmd_tx_begin.
+        # Must run even if create_snapshot, _write_tx_state, or the
+        # JSON print raises — otherwise the fcntl lock leaks and all
+        # subsequent transactions on this graph_dir block for the
+        # full 60s timeout.
+        lock.release()
 
 
 def cmd_tx_commit(args):

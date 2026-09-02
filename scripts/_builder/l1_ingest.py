@@ -247,7 +247,7 @@ _TOKEN_KIND_MAP = {
 # Regex for refining LITERAL tokens
 _INT_LITERAL_RE = re.compile(r'^[0-9]+(?:[0-9a-fA-F]*|[LULuU]+$)|0[xX][0-9a-fA-F]+')
 _FLOAT_LITERAL_RE = re.compile(r'^[0-9]*\.[0-9]+([eE][+-]?[0-9]+)?[fFlL]?$|^[0-9]+[eE][+-]?[0-9]+[fFlL]?$')
-_CHAR_LITERAL_RE = re.compile(r"^(L?'(?:\\.|[^'\\])*'|u8?'(?:\\.|[^'\\])*'|U'?\"(?:\\.|[^\"\\])*\"|L\"(?:\\.|[^\"\\])*\"|\"(?:\\.|[^\"\\])*\")")
+_CHAR_LITERAL_RE = re.compile(r"^(?:L?'(?:\\.|[^'\\])*'|u8?'(?:\\.|[^'\\])*'|U?'(?:\\.|[^'\\])*')")
 _STRING_LITERAL_RE = re.compile(r'^(u8?\"|U\"|L\"|\")(?:\\.|[^\"\\])*\"$|^(u8?\"|U\"|L\"|\")(?:\\.|[^\"\\])*\"$')
 
 # Regex for #ifdef / #if / etc detection

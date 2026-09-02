@@ -216,7 +216,9 @@ def run_l1_ingest(tasks, db_path, source_root, commit_hash,
         try:
             conn.commit()
         except Exception:
-            pass
+            logging.getLogger(__name__).warning(
+                "l1_ingest serial: batch commit failed — L1 data may be incomplete",
+                exc_info=True)
     finally:
         if own_conn:
             try:

@@ -922,7 +922,7 @@ class LazySQLiteGraph:
             "call_condition": row_dict.get("call_condition", "") or "",
             "concurrency": row_dict.get("concurrency", "") or "",
             "confidence": row_dict.get("confidence", "EXTRACTED") or "EXTRACTED",
-            "confidence_score": row_dict.get("confidence_score", 1.0) or 1.0,
+            "confidence_score": row_dict.get("confidence_score") if row_dict.get("confidence_score") is not None else 1.0,
             "source": row_dict.get("source", "ast") or "ast",
             "evidence": evidence,
             "relation": row_dict.get("relation", "INVOKES") or "INVOKES",
@@ -1054,11 +1054,11 @@ class LazySQLiteGraph:
                     "call_order": row_dict.get("call_order"),
                     "call_condition": row_dict.get("call_condition", "") or "",
                     "concurrency": row_dict.get("concurrency", "") or "",
-                    "confidence": row_dict.get("confidence", "EXTRACTED") or "EXTRACTED",
-                    "confidence_score": row_dict.get("confidence_score", 1.0) or 1.0,
-                    "source": row_dict.get("source", "ast") or "ast",
+                    "confidence": row_dict.get("confidence") or "EXTRACTED",
+                    "confidence_score": row_dict.get("confidence_score") if row_dict.get("confidence_score") is not None else 1.0,
+                    "source": row_dict.get("source") or "ast",
                     "evidence": evidence,
-                    "relation": row_dict.get("relation", "INVOKES") or "INVOKES",
+                    "relation": row_dict.get("relation") or "INVOKES",
                 }
                 yield (row_dict["invoker_id"], row_dict["invoked_id"], attrs)
         else:
@@ -1089,11 +1089,11 @@ class LazySQLiteGraph:
                     "call_order": row_dict.get("call_order"),
                     "call_condition": row_dict.get("call_condition", "") or "",
                     "concurrency": row_dict.get("concurrency", "") or "",
-                    "confidence": row_dict.get("confidence", "EXTRACTED") or "EXTRACTED",
-                    "confidence_score": row_dict.get("confidence_score", 1.0) or 1.0,
-                    "source": row_dict.get("source", "ast") or "ast",
+                    "confidence": row_dict.get("confidence") or "EXTRACTED",
+                    "confidence_score": row_dict.get("confidence_score") if row_dict.get("confidence_score") is not None else 1.0,
+                    "source": row_dict.get("source") or "ast",
                     "evidence": evidence,
-                    "relation": row_dict.get("relation", "INVOKES") or "INVOKES",
+                    "relation": row_dict.get("relation") or "INVOKES",
                 }
                 yield (row_dict["invoker_id"], row_dict["invoked_id"], attrs)
         else:
@@ -1124,11 +1124,11 @@ class LazySQLiteGraph:
                     "call_order": row_dict.get("call_order"),
                     "call_condition": row_dict.get("call_condition", "") or "",
                     "concurrency": row_dict.get("concurrency", "") or "",
-                    "confidence": row_dict.get("confidence", "EXTRACTED") or "EXTRACTED",
-                    "confidence_score": row_dict.get("confidence_score", 1.0) or 1.0,
-                    "source": row_dict.get("source", "ast") or "ast",
+                    "confidence": row_dict.get("confidence") or "EXTRACTED",
+                    "confidence_score": row_dict.get("confidence_score") if row_dict.get("confidence_score") is not None else 1.0,
+                    "source": row_dict.get("source") or "ast",
                     "evidence": evidence,
-                    "relation": row_dict.get("relation", "INVOKES") or "INVOKES",
+                    "relation": row_dict.get("relation") or "INVOKES",
                 }
                 yield (row_dict["invoker_id"], row_dict["invoked_id"], attrs)
         else:

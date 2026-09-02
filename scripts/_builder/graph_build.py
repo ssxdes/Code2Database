@@ -3451,6 +3451,8 @@ def build_graph(extraction: dict, profile: dict = None,
 
     # Skip vtable dispatch entirely when there are no fn_ptr_calls
     # (no dispatch targets to create edges for)
+    vtable_index = None
+    _field_to_structs = None
     if vtable_regs and fn_ptr_calls:
         # Build struct_type → {field → [func_name]} index
         vtable_index = defaultdict(lambda: defaultdict(list))
@@ -3929,9 +3931,7 @@ def build_graph(extraction: dict, profile: dict = None,
     if vtable_regs:
         # Build vtable_index if not already built (may already exist from
         # the fn_ptr_calls processing block above)
-        try:
-            vtable_index
-        except NameError:
+        if vtable_index is None:
             vtable_index = defaultdict(lambda: defaultdict(list))
             var_to_struct = {}
             for vtable in vtable_regs:
@@ -3951,9 +3951,7 @@ def build_graph(extraction: dict, profile: dict = None,
                         "source_file": vtable.get("source_file", ""),
                         "var_name": vtable.get("var_name", vn),
                     })
-        try:
-            _field_to_structs
-        except NameError:
+        if _field_to_structs is None:
             _field_to_structs = defaultdict(list)
             for st, fields in vtable_index.items():
                 for fname in fields:

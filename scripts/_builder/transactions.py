@@ -505,12 +505,23 @@ def append_wal_entry(graph_dir: str, operation: str, target_id: str,
     return next_seq
 
 
-def mark_wal_entry_applied(graph_dir: str, seq: int):
-    """Mark a WAL entry as applied (committed to live db)."""
+def mark_wal_entry_applied(graph_dir: str, seq):
+    """Mark WAL entry/entries as applied (committed to live db).
+
+    Args:
+        seq: a single sequence number or an iterable of them. Passing
+             an iterable marks all of them in ONE WAL rewrite — the
+             per-seq form is O(N) per call (O(N²) for a full tx), the
+             batch form is O(N) total.
+    """
     wal_path = _wal_path(graph_dir)
     if not os.path.exists(wal_path):
         return
-    # Rewrite the WAL with the applied flag flipped for the given seq.
+    if isinstance(seq, int):
+        seqs = {seq}
+    else:
+        seqs = set(seq)
+    # Rewrite the WAL with the applied flag flipped for the given seqs.
     # Uses an atomic temp-file rename to avoid leaving a partial WAL
     # if the process crashes mid-rewrite.
     tmp_path = wal_path + ".tmp"
@@ -521,7 +532,7 @@ def mark_wal_entry_applied(graph_dir: str, seq: int):
                 continue
             try:
                 entry = json.loads(line)
-                if entry.get("seq") == seq:
+                if entry.get("seq") in seqs:
                     entry["applied"] = True
                 f_out.write(json.dumps(entry, ensure_ascii=False,
                                        default=str) + "\n")

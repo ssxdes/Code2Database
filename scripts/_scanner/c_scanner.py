@@ -908,15 +908,12 @@ class CTreeSitterScanner(BaseScanner):
         if not self._macro_bindings:
             return []  # No bindings — everything is alive
 
-        # Build complete list of pp directives with positions
-        # Use [^\S\n]* instead of \s* to prevent crossing line boundaries
-        all_pp = []
-        for m in _PP_ELSE_RE.finditer(source_text):
-            all_pp.append((m.start(), m.group(1), m.group(2).strip()))
-        for m in _PP_ELSE_RE.finditer(source_text):
-            all_pp.append((m.start(), m.group(1), m.group(2).strip()))
-        for m in _PP_ENDIF_RE.finditer(source_text):
-            all_pp.append((m.start(), "endif", ""))
+        # pp_conds is already extracted by the caller via _PP_COND_RE,
+        # which matches if|ifdef|ifndef|elif|else|endif in source order.
+        # Use it directly — re-extracting from source_text with a narrower
+        # regex would miss #if/#ifdef/#ifndef directives and duplicate
+        # else/elif entries (the previous implementation's bug).
+        all_pp = list(pp_conds)
         all_pp.sort(key=lambda x: x[0])
 
         # Walk directives to build dead ranges

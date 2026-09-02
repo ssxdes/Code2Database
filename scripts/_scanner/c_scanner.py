@@ -3131,6 +3131,21 @@ class CTreeSitterScanner(BaseScanner):
 
         if func_node.type == 'identifier':
             return self._node_text(func_node, source_bytes)
+        if func_node.type == 'qualified_identifier':
+            # C++ ns::func / MyClass::staticMethod / ns::inner::deep —
+            # take the LAST segment (the function name), matching the
+            # field_expression convention below. Without this branch the
+            # generic first-identifier fallback resolved ns::func(1) to
+            # "ns" — every namespace/class-qualified static call edge
+            # pointed at the wrong node.
+            _qtext = self._node_text(func_node, source_bytes)
+            _last = _qtext.split('::')[-1].strip()
+            if _last:
+                return _last
+            for child in reversed(func_node.children):
+                if child.type in ('identifier', 'namespace_identifier'):
+                    return self._node_text(child, source_bytes)
+            return _qtext
         if func_node.type == 'field_expression':
             # obj->method or Class::method → extract the field identifier
             for child in func_node.children:

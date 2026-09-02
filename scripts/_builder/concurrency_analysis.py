@@ -586,7 +586,8 @@ def cmd_detect_races(args):
             sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
             from _profile import ProfileSchema
             profile = ProfileSchema.load(profile_arg).to_builder_config()
-        except Exception as _e:
+        except (OSError, ValueError, KeyError, TypeError,
+                ImportError, AttributeError) as _e:
             print(f"[detect-races] Warning: failed to load --profile {profile_arg}: {_e}",
                   file=sys.stderr)
     if profile is None:
@@ -1086,7 +1087,8 @@ def cmd_concurrency_analyze(args):
             sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
             from _profile import ProfileSchema
             profile = ProfileSchema.load(profile_arg).to_builder_config()
-        except Exception as _e:
+        except (OSError, ValueError, KeyError, TypeError,
+                ImportError, AttributeError) as _e:
             print(f"[concurrency-analyze] Warning: failed to load --profile {profile_arg}: {_e}",
                   file=sys.stderr)
     if profile is None:

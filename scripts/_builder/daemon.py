@@ -162,11 +162,24 @@ class DaemonState:
         """Atomically write state to <graph_dir>/.daemon_status.json."""
         path = Path(graph_dir) / ".daemon_status.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Atomic write: write to tmp then rename
-        tmp = path.with_suffix(".json.tmp")
+        # Atomic write: write to a PER-WRITER tmp file then rename. The old
+        # fixed '.json.tmp' name is shared by the main loop, the sync worker
+        # and the watcher callback — two concurrent writers could race so
+        # one rename raised FileNotFoundError (which used to kill the
+        # sync-worker thread or abandon the inotify event buffer).
+        tmp = path.with_suffix(
+            f".json.tmp.{os.getpid()}.{threading.get_ident()}")
         tmp.write_text(json.dumps(self.to_dict(), ensure_ascii=False, indent=2),
                        encoding="utf-8")
-        tmp.rename(path)
+        try:
+            tmp.replace(path)
+        except OSError:
+            # Best effort: another writer may have removed our tmp (or the
+            # target moved). The other writer's rename covers the update.
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     @classmethod
     def read(cls, graph_dir: str) -> "DaemonState":
@@ -450,7 +463,17 @@ class FileWatcher:
                                 ext = Path(full_path).suffix.lower()
                                 if ext in MONITORED_EXTS or not ext:
                                     if self._callback:
-                                        self._callback(full_path)
+                                        # Guard EACH callback: an exception
+                                        # here used to bubble to the outer
+                                        # 'except Exception', abandoning the
+                                        # rest of the already-read event
+                                        # buffer — inotify never re-delivers
+                                        # dropped events.
+                                        try:
+                                            self._callback(full_path)
+                                        except Exception:
+                                            logging.getLogger(__name__).debug(
+                                                "silent exception", exc_info=True)
                         offset += 16 + name_len
             except Exception:
                 time.sleep(0.1)
@@ -991,37 +1014,52 @@ class Daemon:
             if job is None:
                 time.sleep(0.2)
                 continue
-            with self._sync_busy_lock:
-                self._sync_busy = True
-            self.state.status = STATUS_SYNCING
-            self._write_state()
+            # Guard the ENTIRE per-job body: an exception outside the inner
+            # try (e.g. _write_state on a transient disk error) used to
+            # propagate out of the loop and permanently kill the sync-worker
+            # thread — jobs then queued forever while status claimed
+            # 'running'.
             try:
-                if job.get("kind") == "bulk":
-                    result = self._sync_bulk()
-                else:
-                    # Restore pending paths for incremental sync
-                    with self._pending_lock:
-                        self._pending.update(job.get("paths", []))
-                    result = self._sync_incremental()
-                self._last_sync_result = {
-                    "kind": job["kind"],
-                    "completed_at": time.time(),
-                    "path_count": len(job.get("paths", [])),
-                    "ok": True,
-                }
-            except Exception as exc:
-                self._last_sync_result = {
-                    "kind": job["kind"],
-                    "completed_at": time.time(),
-                    "path_count": len(job.get("paths", [])),
-                    "ok": False,
-                    "error": str(exc),
-                }
-            finally:
+                with self._sync_busy_lock:
+                    self._sync_busy = True
+                self.state.status = STATUS_SYNCING
+                self._write_state()
+                try:
+                    if job.get("kind") == "bulk":
+                        result = self._sync_bulk()
+                    else:
+                        # Restore pending paths for incremental sync
+                        with self._pending_lock:
+                            self._pending.update(job.get("paths", []))
+                        result = self._sync_incremental()
+                    self._last_sync_result = {
+                        "kind": job["kind"],
+                        "completed_at": time.time(),
+                        "path_count": len(job.get("paths", [])),
+                        "ok": True,
+                    }
+                except Exception as exc:
+                    self._last_sync_result = {
+                        "kind": job["kind"],
+                        "completed_at": time.time(),
+                        "path_count": len(job.get("paths", [])),
+                        "ok": False,
+                        "error": str(exc),
+                    }
+                finally:
+                    with self._sync_busy_lock:
+                        self._sync_busy = False
+                    self.state.status = STATUS_RUNNING
+                    self._write_state()
+            except Exception:
+                # Never let the worker thread die: release busy flag and
+                # keep processing the queue.
                 with self._sync_busy_lock:
                     self._sync_busy = False
                 self.state.status = STATUS_RUNNING
-                self._write_state()
+                logging.getLogger(__name__).warning(
+                    "daemon: sync job crashed worker loop (recovered)",
+                    exc_info=True)
 
     def _enqueue_sync_job(self, kind: str, paths: List[str]):
         """Add a sync job to the worker queue."""

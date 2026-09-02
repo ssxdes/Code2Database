@@ -77,18 +77,22 @@ _FRAMEWORK_PATTERNS = [
     (r'/fastify/', FrameworkHint("fastify", "web", 0.7, 1.5)),
 ]
 
-# Entry point name patterns per framework (function names that are likely entry points)
-# Note: project-specific entry patterns should come from profile JSON, not hardcoded.
+# Entry point name patterns per framework (patterns that match FUNCTION
+# NAMES). Note: decorator patterns like '^@app\.route' were removed —
+# get_entry_multiplier matches against func_name, and function names
+# never start with '@' (decorators live on a different line), so those
+# patterns could never match (dead logic). Project-specific entry
+# patterns should come from profile JSON, not hardcoded.
 _ENTRY_PATTERNS = {
     "django": [r'^views\.', r'^urls\.', r'^admin\.', r'^models\.'],
-    "flask": [r'^route_', r'^@app\.route'],
-    "fastapi": [r'^@app\.', r'^@router\.'],
-    "spring": [r'^@RequestMapping', r'^@GetMapping', r'^@PostMapping'],
-    "gin": [r'^HandleFunc', r'^GET\(', r'^POST\('],
-    "actix": [r'^handle\b', r'^HttpServer'],
-    "rocket": [r'^@get\b', r'^@post\b', r'^launch\b'],
-    "tokio": [r'^main\b.*async', r'^tokio::spawn'],
-    "express": [r'^app\.(get|post|put|delete)', r'^router\.'],
+    "flask": [r'^route_'],
+    "fastapi": [r'^handle_'],
+    "spring": [],
+    "gin": [r'^HandleFunc', r'^Handle\b'],
+    "actix": [r'^handle\b'],
+    "rocket": [r'^launch\b'],
+    "tokio": [r'^main\b.*async', r'^spawn_'],
+    "express": [r'^handler_'],
     "nextjs": [r'^getServerSideProps', r'^getStaticProps', r'^handler\b'],
 }
 

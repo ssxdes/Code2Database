@@ -437,6 +437,10 @@ def ingest_l1(
     disk_sha = hashlib.sha256(source_bytes).hexdigest()
     stats["disk_sha256"] = disk_sha
 
+    # Derive language from file extension instead of hardcoding 'c'
+    _ext = os.path.splitext(file_path)[1].lower()
+    _lang = 'cpp' if _ext in ('.cpp', '.cc', '.cxx', '.c++', '.hpp', '.hh', '.hxx') else 'c'
+
     # Detect BOM + line ending
     has_bom = source_bytes.startswith(b"\xef\xbb\xbf")
     if b"\r\n" in source_bytes:
@@ -547,7 +551,7 @@ def ingest_l1(
             _token_rows.append(
                 (file_id, seq, db_kind, spelling, line, col, end_line, end_col,
                  start_off, end_off - start_off, preceding_ws,
-                 literal_placeholder, 'c')
+                 literal_placeholder, _lang)
             )
 
             # Handle comments
@@ -555,7 +559,7 @@ def ingest_l1(
                 comment_kind = _classify_comment_kind(spelling)
                 _comment_rows.append(
                     (file_id, line, end_line, col, end_col,
-                     spelling, comment_kind, None, 'c')
+                     spelling, comment_kind, None, _lang)
                 )
                 stats["comments"] += 1
 
@@ -956,7 +960,7 @@ def _collect_pp_info(cursor, file_path, file_id, source_bytes,
                     (name, file_id, line, col, int(is_function_like),
                      int(name.endswith("...")),
                      str(params) if params else "[]",
-                     body_text or "", 0, 'c')
+                     body_text or "", 0, _lang)
                 )
 
             elif kind == CursorKind.MACRO_INSTANTIATION:
@@ -1031,7 +1035,7 @@ def _collect_pp_branch_tree(file_id, source_bytes, _pp_branch_rows):
         if d_kind in ("ifdef", "ifndef", "if"):
             row_idx = len(_pp_branch_rows)
             _pp_branch_rows.append(
-                (file_id, parent_idx, d_kind, d_rest, line_idx, 0, 1, 'c')
+                (file_id, parent_idx, d_kind, d_rest, line_idx, 0, 1, _lang)
             )
             stack.append(row_idx)
 
@@ -1047,7 +1051,7 @@ def _collect_pp_branch_tree(file_id, source_bytes, _pp_branch_rows):
                 parent_idx = stack[-1] if stack else None
                 row_idx = len(_pp_branch_rows)
                 _pp_branch_rows.append(
-                    (file_id, parent_idx, "elif", d_rest, line_idx, 0, 1, 'c')
+                    (file_id, parent_idx, "elif", d_rest, line_idx, 0, 1, _lang)
                 )
                 stack.append(row_idx)
 
@@ -1062,7 +1066,7 @@ def _collect_pp_branch_tree(file_id, source_bytes, _pp_branch_rows):
                 parent_idx = stack[-1] if stack else None
                 row_idx = len(_pp_branch_rows)
                 _pp_branch_rows.append(
-                    (file_id, parent_idx, "else", "", line_idx, 0, 1, 'c')
+                    (file_id, parent_idx, "else", "", line_idx, 0, 1, _lang)
                 )
                 stack.append(row_idx)
 

@@ -96,6 +96,33 @@ _ASM_INDIRECT_CALL_REG_RE = _MACRO_ASM_CALL_RES[11][0]    # call *%reg
 _IDENT_CALL_RE = re.compile(r'\b([a-zA-Z_]\w*)\s*\(')
 
 
+def _char_offsets_to_bytes(source_text: str, offsets):
+    """Convert char offsets in source_text to byte offsets in its UTF-8 form.
+
+    Tree-sitter node offsets are BYTE offsets into the parse input, while
+    regex matches over the decoded text yield CHAR offsets. For pure-ASCII
+    text both are identical (fast path — no conversion cost). For text with
+    multi-byte characters (valid UTF-8 content, or U+FFFD from
+    errors='replace' decoding), the two diverge and every comparison of a
+    node offset against a regex offset after the first multi-byte char is
+    wrong without this conversion.
+    """
+    offsets = list(offsets)
+    if not offsets:
+        return offsets
+    if source_text.isascii():
+        return offsets
+    uniq = sorted(set(offsets))
+    byte_map = {}
+    byte_pos = 0
+    char_pos = 0
+    for u in uniq:
+        byte_pos += len(source_text[char_pos:u].encode('utf-8'))
+        char_pos = u
+        byte_map[u] = byte_pos
+    return [byte_map[o] for o in offsets]
+
+
 class CTreeSitterScanner(BaseScanner):
     """Scanner for C and C++ using tree-sitter."""
 
@@ -155,14 +182,28 @@ class CTreeSitterScanner(BaseScanner):
         for m in self._MSVC_ASM_RE.finditer(source_text):
             self._msvc_asm_blocks.append({
                 "body": m.group(1).strip(),
-                "start_byte": m.start(),
-                "end_byte": m.end(),
+                # m.start()/m.end() are CHAR offsets in the decoded text,
+                # but consumers compare these against tree node start_byte
+                # (byte offsets) — convert so the containment check works
+                # on files with multi-byte characters.
+                "start_byte": _char_offsets_to_bytes(
+                    source_text, [m.start()])[0],
+                "end_byte": _char_offsets_to_bytes(
+                    source_text, [m.end()])[0],
             })
         source_text = self._MSVC_ASM_RE.sub(lambda m: ' ' * len(m.group(0)), source_text)
         # Cache the preprocessed text so _extract can reuse it
         # without decoding source_bytes a second time.
         self._cached_source_text = source_text
-        return self.parser.parse(source_text.encode('utf-8'))
+        # The EXACT bytes the tree is parsed over. Node byte offsets refer
+        # to these bytes, NOT the raw file bytes: invalid UTF-8 becomes
+        # U+FFFD (3 bytes when re-encoded), and attr/asm spans containing
+        # multi-byte chars are replaced by a CHAR-count of spaces. Slicing
+        # the raw file bytes with tree offsets produced garbage names for
+        # everything after the first divergence point. _extract rebinds its
+        # source_bytes to these so all _node_text slicing stays aligned.
+        self._parse_bytes = source_text.encode('utf-8')
+        return self.parser.parse(self._parse_bytes)
 
     def _extract_vtable_registrations(self, tree, source_bytes: bytes,
                                        filepath: str, source_root: str) -> list:
@@ -332,6 +373,14 @@ class CTreeSitterScanner(BaseScanner):
                  source_root: str, domain: str):
         functions = []
         edges = []
+        # The tree was parsed over _parse()'s transformed bytes (attr/asm
+        # stripping, 'replace'-decoding re-encoded to UTF-8) — its byte
+        # offsets refer to THOSE bytes, not the raw file bytes. Rebind so
+        # every _node_text slice and byte-offset comparison below uses the
+        # parse-time bytes; without this, anything after an invalid-UTF-8
+        # byte or a stripped multi-byte __attribute__ span is shifted and
+        # names/edges turn to garbage.
+        source_bytes = getattr(self, '_parse_bytes', source_bytes)
         # Reuse the preprocessed text from _parse if available (avoids
         # re-decoding source_bytes). The _parse method already decoded
         # source_bytes and applied attribute stripping / asm_inline
@@ -705,7 +754,10 @@ class CTreeSitterScanner(BaseScanner):
                     results.extend(_collect_preproc_defs(child))
             return results
 
-        code_slice = lambda s, e: source_text[s:e]
+        # Slice the parse-time BYTES with tree byte offsets (then decode),
+        # not the decoded text — char offsets and byte offsets diverge on
+        # files with multi-byte characters.
+        code_slice = lambda s, e: source_bytes[s:e].decode('utf-8', errors='replace')
         preproc_macros = _collect_preproc_defs(root)
 
         if preproc_macros:
@@ -974,6 +1026,14 @@ class CTreeSitterScanner(BaseScanner):
         if cur_range_start is not None:
             dead_ranges.append((cur_range_start, len(source_text)))
 
+        # pp_conds offsets are CHAR offsets in the decoded source_text, but
+        # _is_in_dead_range consumers pass tree BYTE offsets. Convert the
+        # range endpoints once (no-op for pure-ASCII text).
+        if dead_ranges:
+            _flat = _char_offsets_to_bytes(
+                source_text, [p for r in dead_ranges for p in r])
+            dead_ranges = [(_flat[i * 2], _flat[i * 2 + 1])
+                           for i in range(len(dead_ranges))]
         return dead_ranges
 
     def _is_in_dead_range(self, byte_offset: int, dead_ranges: list) -> bool:
@@ -1671,6 +1731,14 @@ class CTreeSitterScanner(BaseScanner):
                 _last_cond = _c.strip() if _c else _d
             _pp_cond_positions.append(_pos)
             _pp_cond_snapshots.append((_pos, _last_cond))
+
+        # _pos values are CHAR offsets in the decoded source_text, but
+        # _get_pp_condition receives tree BYTE offsets (node.start_byte).
+        # Convert both parallel arrays (no-op for pure-ASCII text).
+        _byte_pos = _char_offsets_to_bytes(source_text, _pp_cond_positions)
+        _pp_cond_positions = _byte_pos
+        _pp_cond_snapshots = [
+            (_byte_pos[i], _snap[1]) for i, _snap in enumerate(_pp_cond_snapshots)]
 
         def _get_pp_condition(byte_offset):
             """Find active preprocessor condition at a byte offset."""

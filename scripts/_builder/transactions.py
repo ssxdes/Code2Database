@@ -269,13 +269,18 @@ class Snapshot:
     total_size: int = 0
 
 
+_SNAP_SEQ = 0  # process-local counter to prevent same-ms collisions
+
+
 def create_snapshot(graph_dir: str, description: str = "") -> Snapshot:
     """Snapshot the current graph state by copying key files.
 
     Returns a Snapshot handle. The snapshot directory is timestamped
     so multiple snapshots don't collide.
     """
-    snap_id = f"snap_{int(time.time() * 1000)}_{os.getpid()}"  # ms + PID for uniqueness
+    global _SNAP_SEQ
+    _SNAP_SEQ += 1
+    snap_id = f"snap_{int(time.time() * 1000)}_{os.getpid()}_{_SNAP_SEQ}"
     snap_path = os.path.join(_snapshots_dir(graph_dir), snap_id)
     os.makedirs(snap_path, exist_ok=True)
 

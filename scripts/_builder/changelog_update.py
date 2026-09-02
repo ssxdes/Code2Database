@@ -183,6 +183,11 @@ def export_change_graph(source_root: str, graph_dir: str,
         "changed_files": [os.path.relpath(f, source_root) for f in changed_files],
     }
 
+    # Pre-build id_registry and suffix_index ONCE (not per-file) —
+    # the graph (G) doesn't change during the scan loop.
+    _chg_id_registry = {n: G.nodes[n] for n in G.nodes}
+    _chg_suffix_index = _build_suffix_index(_chg_id_registry)
+
     # Scan each changed file
     for fpath in changed_files:
         if not os.path.exists(fpath):
@@ -244,10 +249,7 @@ def export_change_graph(source_root: str, graph_dir: str,
                         "domain": func.get("domain", "root"),
                     })
 
-            # Pre-build id_registry and suffix_index once for this file's edges
-            _chg_id_registry = {n: G.nodes[n] for n in G.nodes}
-            _chg_suffix_index = _build_suffix_index(_chg_id_registry)
-
+            # Use the pre-built id_registry and suffix_index (built once above)
             for edge in result.get("edges", []):
                 source_id = edge.get("source", "")
                 target_name = edge.get("target", "")

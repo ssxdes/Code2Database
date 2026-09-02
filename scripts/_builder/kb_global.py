@@ -169,13 +169,16 @@ def global_share(output_path: str) -> str:
     S1: rejects paths containing '..' (path traversal) and requires
     either an absolute path or a path under the current working directory.
     """
-    # S1: path traversal check
-    if ".." in output_path:
-        print(f"[kb-global-share] rejecting path with '..': {output_path}",
+    # S1: path traversal check — use normpath + abspath to detect
+    # real traversal, not substring '..' (which false-positives on
+    # filenames like 'file..name.json').
+    _resolved = os.path.realpath(os.path.join(os.getcwd(), output_path))
+    _cwd = os.path.realpath(os.getcwd())
+    if not _resolved.startswith(_cwd):
+        print(f"[kb-global-share] rejecting path outside CWD: {output_path}",
               file=sys.stderr)
         return ""
-    if not os.path.isabs(output_path):
-        output_path = os.path.join(os.getcwd(), output_path)
+    output_path = _resolved
     # Ensure parent dir exists
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     conn = _global_kb_connect()

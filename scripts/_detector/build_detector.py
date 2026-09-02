@@ -853,36 +853,6 @@ def evaluate_pp_condition(condition: str, directive: str, macro_bindings: dict) 
     return True  # Conservative
 
 
-def _has_depth0_op(expr: str, op: str) -> bool:
-    """Check if operator appears at parenthesis depth 0."""
-    depth = 0
-    i = 0
-    while i < len(expr):
-        if expr[i] == '(':
-            depth += 1
-        elif expr[i] == ')':
-            depth -= 1
-        elif depth == 0 and expr[i:i+len(op)] == op:
-            return True
-        i += 1
-    return False
-
-
-def _split_depth0(expr: str, op: str) -> list:
-    """Split expr on first occurrence of operator at parenthesis depth 0."""
-    depth = 0
-    i = 0
-    while i < len(expr):
-        if expr[i] == '(':
-            depth += 1
-        elif expr[i] == ')':
-            depth -= 1
-        elif depth == 0 and expr[i:i+len(op)] == op:
-            return [expr[:i], expr[i+len(op):]]
-        i += 1
-    return [expr]
-
-
 def _eval_pp_expr(expr: str, bindings: dict) -> bool:
     """Evaluate a simple preprocessor expression.
 
@@ -913,9 +883,6 @@ def _eval_pp_expr(expr: str, bindings: dict) -> bool:
             break
 
     # Single-pass depth-0 operator search: find the first || or && at
-    # parenthesis depth 0. || has lower precedence, so if found, split
-    # there; otherwise split on &&. Replaces the previous 4-pass approach
-    # (_has_depth0_op + _split_depth0 for each of || and &&) with 1 pass.
     depth = 0
     or_pos = -1
     and_pos = -1

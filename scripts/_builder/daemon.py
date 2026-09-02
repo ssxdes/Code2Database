@@ -1247,10 +1247,21 @@ class Daemon:
                         "WHERE source_file = ? OR source_file LIKE ?",
                         (norm_file, f"%/{base_name}")
                     )
+                    # Keep extra_json in sync — consumers that read
+                    # extra_json.stale (validate.py _load_all_functions)
+                    # would otherwise see stale=false despite the column
+                    # being set. Same pattern as update_cmd's sync fix.
+                    conn.execute(
+                        "UPDATE functions SET extra_json = json_set("
+                        "extra_json, '$.stale', json('1')) "
+                        "WHERE (source_file = ? OR source_file LIKE ?) "
+                        "AND extra_json IS NOT NULL",
+                        (norm_file, f"%/{base_name}")
+                    )
                     conn.commit()
                 except sqlite3.Error:
-                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                    pass
+                    logging.getLogger(__name__).warning(
+                        "daemon: stale-mark UPDATE failed", exc_info=True)
                 finally:
                     conn.close()
                 return

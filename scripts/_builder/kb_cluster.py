@@ -129,7 +129,9 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
                         uf.union(iid, cand_id)
             except sqlite3.Error:
                 items_skipped += 1
-                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                logging.getLogger(__name__).warning(
+                    "kb_cluster: FTS5 query failed, item skipped from "
+                    "clustering", exc_info=True)
                 continue
         scope_map: Dict[int, int] = {}
         next_scope_id = 1
@@ -185,7 +187,9 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
                     principle_refs_linked += 1
             except sqlite3.Error:
                 items_skipped += 1
-                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                logging.getLogger(__name__).warning(
+                    "kb_cluster: FTS5 query failed, item skipped from "
+                    "clustering", exc_info=True)
                 continue
         conn.commit()
         cluster_count = len(scope_map)

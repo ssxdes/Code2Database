@@ -169,13 +169,19 @@ def global_share(output_path: str) -> str:
     S1: rejects paths containing '..' (path traversal) and requires
     either an absolute path or a path under the current working directory.
     """
-    # S1: path traversal check — use normpath + abspath to detect
-    # real traversal, not substring '..' (which false-positives on
-    # filenames like 'file..name.json').
-    _resolved = os.path.realpath(os.path.join(os.getcwd(), output_path))
-    _cwd = os.path.realpath(os.getcwd())
-    if not _resolved.startswith(_cwd):
-        print(f"[kb-global-share] rejecting path outside CWD: {output_path}",
+    # S1: path traversal check — resolve relative paths against CWD and
+    # reject '..' components (via normpath comparison), without rejecting
+    # legitimate absolute paths outside CWD (e.g., a tempfile export dir).
+    # The old substring '..' check false-positived on 'file..name.json';
+    # the realpath+startswith(CWD) variant wrongly rejected absolute paths.
+    if not os.path.isabs(output_path):
+        _resolved = os.path.realpath(os.path.join(os.getcwd(), output_path))
+    else:
+        _resolved = os.path.realpath(output_path)
+    _base = os.path.realpath(os.getcwd())
+    _rel = os.path.relpath(_resolved, _base)
+    if _rel.startswith("..") and os.path.isabs(os.path.normpath(output_path)) is False:
+        print(f"[kb-global-share] rejecting relative path escaping CWD: {output_path}",
               file=sys.stderr)
         return ""
     output_path = _resolved

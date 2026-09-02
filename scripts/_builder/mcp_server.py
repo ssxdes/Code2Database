@@ -211,7 +211,12 @@ def _tool_load(args: dict, graph_dir: str) -> dict:
                 "_source": "sqlite",
             }
         except sqlite3.Error:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            # Graceful degradation to the NetworkX path is intentional, but
+            # log at WARNING so users see why SQLite queries fail instead
+            # of silently falling back.
+            logging.getLogger(__name__).warning(
+                "mcp overview: sqlite backend failed, falling back to "
+                "NetworkX load", exc_info=True)
         finally:
             if conn is not None:
                 conn.close()
@@ -1111,8 +1116,11 @@ def _cgdb_store(graph_dir: str):
         conn.execute("SELECT 1 FROM cgdb_nodes LIMIT 1").fetchone()
         _CGDB_STORE_CACHE[graph_dir] = store
         return store
-    except Exception:
-        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+    except sqlite3.Error:
+        # Expected when cgdb tables are absent (tree-sitter builds) or the
+        # db doesn't exist — narrow to sqlite3.Error so programming errors
+        # (AttributeError/NameError from typos) surface instead of being
+        # swallowed as 'cgdb unavailable'.
         return None
 
 

@@ -478,8 +478,9 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
                             _mt = os.path.getmtime(_fpath)
                             if _mt > _max_mtime:
                                 _max_mtime = _mt
-                        except OSError:
-                            pass
+                        except OSError as _e:
+                            logging.getLogger(__name__).debug(
+                                "getmtime failed for %s: %s", _fpath, _e)
         try:
             _row = conn.execute(
                 "SELECT value FROM kb_meta WHERE key = 'last_rebuild_mtime'"

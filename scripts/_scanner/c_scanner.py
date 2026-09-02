@@ -1330,18 +1330,30 @@ class CTreeSitterScanner(BaseScanner):
         params = macro_def.get("params", [])
         if not params or not body:
             return body
-        # Substitute parameters with actual arguments
-        # Use word-boundary regex to avoid partial matches.
-        # Use a lambda replacer instead of a string template so backslashes
-        # in arg (e.g., C string literals like "\x00") are not interpreted
-        # as regex escape sequences.
-        result = body
-        for i, p in enumerate(params):
-            if i < len(call_args):
-                arg = call_args[i]
-                result = re.sub(r'\b' + re.escape(p) + r'\b',
-                                lambda m, _arg=arg: _arg, result)
-        return result
+        # Single-pass substitution: combine all params into one alternation
+        # regex so each position is only substituted once. The previous
+        # per-param loop carried 'result' forward, so if one arg's value
+        # contained another param name, it was substituted twice
+        # (e.g., #define FOO(a,b) a+b called as FOO(b,5) produced 5+5
+        # instead of b+5).
+        #
+        # We also skip substitution inside string and char literals
+        # (basic heuristic: split on "..." and '...' and only substitute
+        # in odd-indexed segments — the non-literal parts).
+        mapping = dict(zip(params, call_args))
+        param_pat = re.compile(
+            r'\b(' + '|'.join(re.escape(p) for p in params) + r')\b')
+
+        # Split body into literal / non-literal segments to avoid
+        # substituting inside "..." and '...' (C standard: macro params
+        # are NOT substituted inside string/char literals).
+        segments = re.split(r'("(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\')', body)
+        for i, seg in enumerate(segments):
+            # Even indices = non-literal code; odd = string/char literals
+            if i % 2 == 0:
+                segments[i] = param_pat.sub(
+                    lambda m: mapping[m.group(1)], seg)
+        return ''.join(segments)
 
     def _extract_macro_calls_from_body(self, expanded_text: str) -> list:
         """Extract function call names from an expanded macro body.

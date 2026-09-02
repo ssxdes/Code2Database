@@ -31,6 +31,21 @@ except ImportError:
     _get_file_includes = None
 
 
+def _open_tuned_conn(db_path: str) -> sqlite3.Connection:
+    """Open a connection with read/write PRAGMA tuning.
+
+    Without this, SQLite defaults to synchronous=FULL (fsync on every
+    commit) and 2MB cache — slow for both writes (mark_clean) and
+    full-table scans (detect_changes on 700K-row cgdb_files).
+    """
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=-16384")  # 16MB
+    conn.execute("PRAGMA temp_store=MEMORY")
+    return conn
+
+
 # Regex for C/C++ #include — kept here too so this module works standalone
 # (import_resolve._get_file_includes already does this, but we cache the regex
 # for fast in-memory lookups when iterating many files).
@@ -160,7 +175,7 @@ class IncrementalSync:
         if not os.path.exists(db_path):
             # No DB yet — everything is new
             return list(self._include_graph.keys())
-        conn = sqlite3.connect(db_path)
+        conn = _open_tuned_conn(db_path)
         try:
             stored = {}
             try:
@@ -254,7 +269,7 @@ class IncrementalSync:
         """
         if not os.path.exists(db_path):
             return 0
-        conn = sqlite3.connect(db_path)
+        conn = _open_tuned_conn(db_path)
         rows = 0
         try:
             # Split into delete and update batches, computing hashes in
@@ -293,7 +308,7 @@ class IncrementalSync:
         """Return the stored content_hash for a file, or '' if not present."""
         if not os.path.exists(db_path):
             return ''
-        conn = sqlite3.connect(db_path)
+        conn = _open_tuned_conn(db_path)
         try:
             row = conn.execute(
                 "SELECT content_hash FROM cgdb_files WHERE path = ?",

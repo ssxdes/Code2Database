@@ -53,6 +53,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import logging
+import sys
 
 
 def map_files_processpool(
@@ -255,7 +256,20 @@ def map_nodes(
         return [work_fn(nid, nd) for nid, nd in items]
 
     # ProcessPoolExecutor path: for pure-Python CPU-bound workloads.
-    if parallel_mode == "process" and n > 100:
+    # Auto-promote from thread to process when the workload is large,
+    # the machine has enough cores, and the user didn't explicitly
+    # choose thread mode. This mirrors the L1 ingest auto-promotion
+    # in graph_build.py. If work_fn is not picklable (lambda/closure),
+    # the ProcessPoolExecutor will raise AttributeError on the first
+    # task and fall through to the ThreadPoolExecutor path below.
+    _auto_promote = (
+        parallel_mode == "thread"
+        and n > 1000
+        and workers > 1
+        and (os.cpu_count() or 1) >= 4
+        and "--parallel-mode" not in sys.argv
+    )
+    if (parallel_mode == "process" or _auto_promote) and n > 100:
         try:
             from concurrent.futures import ProcessPoolExecutor
             import multiprocessing as _mp
@@ -275,6 +289,11 @@ def map_nodes(
                 ))
             return results
         except (ImportError, OSError, BrokenPipeError, AttributeError):
+            if _auto_promote:
+                logging.getLogger(__name__).warning(
+                    "map_nodes: auto-promotion to process mode failed "
+                    "(work_fn may not be picklable); falling back to "
+                    "thread mode (GIL-serialized). desc=%s, n=%d", desc, n)
             pass  # fall back to ThreadPoolExecutor
 
     # ThreadPoolExecutor path (default or fallback).

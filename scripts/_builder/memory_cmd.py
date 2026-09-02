@@ -159,7 +159,7 @@ def cmd_save_memory(args):
     if best_match_id and args.no_merge is not True:
         # Merge: append new info to existing entry
         # Try root/leaf paths first, then fall back to old flat path
-        best_meta = next((e for e in index["entries"] if e["id"] == best_match_id), {})
+        best_meta = next((e for e in index["entries"] if e.get("id") == best_match_id), {})
         is_root = best_meta.get("root_id") == best_match_id
         if is_root:
             entry_path = os.path.join(mem_dir, "root", f"root_{best_match_id}.json")

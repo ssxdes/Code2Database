@@ -754,26 +754,43 @@ class SQLiteStore:
         ]:
             self._add_column_if_missing("functions", _col, _decl)
         # Backfill boolean columns from existing labels JSON for migrated DBs.
+        # Guard with a meta flag so the 5 LIKE '%label%' full-table scans only
+        # run once (first connect on a migrated DB). Without this, every
+        # connect() pays 5 full scans on 700K rows even when all rows are
+        # already backfilled (the WHERE is_X = 0 clause matches nothing but
+        # SQLite still scans every row to check).
+        _backfill_done = False
         try:
-            self._conn.execute(
-                "UPDATE functions SET is_api_entry = 1 "
-                "WHERE labels LIKE '%API_entry%' AND is_api_entry = 0")
-            self._conn.execute(
-                "UPDATE functions SET is_thread_processor = 1 "
-                "WHERE labels LIKE '%thread_processor%' AND is_thread_processor = 0")
-            self._conn.execute(
-                "UPDATE functions SET is_callback_func = 1 "
-                "WHERE labels LIKE '%callback_func%' AND is_callback_func = 0")
-            self._conn.execute(
-                "UPDATE functions SET is_out_end = 1 "
-                "WHERE labels LIKE '%out_end%' AND is_out_end = 0")
-            self._conn.execute(
-                "UPDATE functions SET is_unknown_end = 1 "
-                "WHERE labels LIKE '%unknown_end%' AND is_unknown_end = 0")
-            self._conn.commit()
+            _row = self._conn.execute(
+                "SELECT value FROM meta WHERE key = 'label_backfill_done'"
+            ).fetchone()
+            _backfill_done = bool(_row and _row[0] == "1")
         except Exception:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
+        if not _backfill_done:
+            try:
+                self._conn.execute(
+                    "UPDATE functions SET is_api_entry = 1 "
+                    "WHERE labels LIKE '%API_entry%' AND is_api_entry = 0")
+                self._conn.execute(
+                    "UPDATE functions SET is_thread_processor = 1 "
+                    "WHERE labels LIKE '%thread_processor%' AND is_thread_processor = 0")
+                self._conn.execute(
+                    "UPDATE functions SET is_callback_func = 1 "
+                    "WHERE labels LIKE '%callback_func%' AND is_callback_func = 0")
+                self._conn.execute(
+                    "UPDATE functions SET is_out_end = 1 "
+                    "WHERE labels LIKE '%out_end%' AND is_out_end = 0")
+                self._conn.execute(
+                    "UPDATE functions SET is_unknown_end = 1 "
+                    "WHERE labels LIKE '%unknown_end%' AND is_unknown_end = 0")
+                self._conn.execute(
+                    "INSERT OR REPLACE INTO meta (key, value) "
+                    "VALUES ('label_backfill_done', '1')")
+                self._conn.commit()
+            except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                pass
         # Create indexes on the boolean columns (after migration backfill)
         try:
             self._conn.execute(

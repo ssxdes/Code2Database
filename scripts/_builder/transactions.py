@@ -152,7 +152,10 @@ class GraphLock:
         # Open the lock file. If anything fails between open and the lock
         # call below, the fd must be closed — wrap in try/except to avoid
         # leaking file descriptors on partial-failure paths.
-        fd = open(path, "w")
+        # Open in "a+" mode to avoid truncating an existing lock file
+        # before the lock is acquired. "w" would zero the file on open,
+        # which races with other readers checking the file's existence.
+        fd = open(path, "a+")
         try:
             while True:
                 try:
@@ -181,7 +184,13 @@ class GraphLock:
                     self._lock_fd = fd
                     self._mode = mode
                     return True
-                except (BlockingIOError, OSError):
+                except (BlockingIOError, OSError) as _lock_err:
+                    # Only retry on lock contention (EAGAIN/EACCES),
+                    # not on real errors like EBADF/ENOSPC.
+                    if isinstance(_lock_err, OSError) and not isinstance(_lock_err, BlockingIOError):
+                        if not hasattr(_lock_err, 'errno') or _lock_err.errno not in (None, 11, 13, 35):
+                            fd.close()
+                            raise
                     if _time.time() >= deadline:
                         fd.close()
                         return False

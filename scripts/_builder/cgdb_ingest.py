@@ -720,15 +720,32 @@ def _synthesize_from_legacy(scan_result: dict, batch: IngestBatch,
     try:
         from _scanner.unified_id import unified_node_id, unified_edge_id
     except ImportError:
-        # Fallback: simple md5 hash (legacy behavior)
+        # Fallback: replicate the real unified_id algorithm bit-for-bit
+        # (SHA-256, 16 hex chars, 63-bit mask, sig:/off: prefixes, L line).
+        # The previous md5/15-hex/60-bit fallback produced DIFFERENT IDs
+        # than the real module, silently diverging every cross-reference
+        # when the import failed.
+        _FB_MASK = 0x7FFF_FFFF_FFFF_FFFF
+
         def unified_node_id(language, fqn, signature="", byte_offset=None):
-            return int(hashlib.md5(
-                f"{language}|{fqn}|{signature}".encode()
-            ).hexdigest()[:15], 16) & 0x0FFF_FFFF_FFFF_FFFF
+            if not fqn and byte_offset is None:
+                return 0
+            parts = [language, fqn or '']
+            if signature:
+                parts.append(f'sig:{signature}')
+            if byte_offset is not None:
+                parts.append(f'off:{byte_offset}')
+            src = '|'.join(parts)
+            return int(hashlib.sha256(
+                src.encode('utf-8')).hexdigest()[:16], 16) & _FB_MASK
+
         def unified_edge_id(src_id, dst_id, kind, line=None):
-            return int(hashlib.md5(
-                f"{src_id}|{dst_id}|{kind}|{line}".encode()
-            ).hexdigest()[:15], 16) & 0x0FFF_FFFF_FFFF_FFFF
+            parts = [str(src_id), str(dst_id), kind]
+            if line is not None:
+                parts.append(f'L{line}')
+            src = '|'.join(parts)
+            return int(hashlib.sha256(
+                src.encode('utf-8')).hexdigest()[:16], 16) & _FB_MASK
 
     filepath = scan_result.get('file', '') or ''
     language = _language_for(filepath)

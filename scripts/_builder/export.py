@@ -44,8 +44,11 @@ def _build_mermaid_graph(G: nx.DiGraph) -> str:
     node_classes = {}
 
     for domain, nodes_list in domain_groups.items():
-        safe_domain = domain.replace(".", "_").replace("-", "_")
-        lines.append(f"    subgraph {safe_domain}[{domain}]")
+        # ID must be a safe identifier (whitelist), label must be escaped —
+        # domain derives from directory paths and may contain ] " etc.,
+        # either of which corrupts the diagram syntax.
+        safe_domain = _safe_domain_filename(domain)
+        lines.append(f"    subgraph {safe_domain}[{_mermaid_label(domain, max_len=60)}]")
         for nid, ndata in nodes_list:
             mid = _mermaid_node_id(nid)
             name = ndata.get("name", nid)
@@ -97,8 +100,12 @@ def _build_mermaid_graph(G: nx.DiGraph) -> str:
         if order is not None:
             label_parts.append(f"#{order}")
         if cond:
-            label_parts.append(cond)
-        label = "|".join(label_parts) if label_parts else ""
+            # Escape the condition: it is a raw C expression and routinely
+            # contains '"' (string compares) and '||' — either breaks the
+            # quoted edge-label syntax and the whole diagram fails to
+            # render. _mermaid_label swaps '"' for "'" and escapes | ] } < >.
+            label_parts.append(_mermaid_label(cond, max_len=60))
+        label = " ".join(label_parts) if label_parts else ""
         if cond:
             # Dashed line for conditional
             if label:

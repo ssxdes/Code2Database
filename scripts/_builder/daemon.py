@@ -20,7 +20,7 @@ This module provides:
 2. **State file**: <graph_dir>/.daemon_status.json with pid, status,
    last_sync_at, pending_events, stale_nodes.
 
-3. **Unix socket API**: /tmp/code2database-daemon-<project>.sock exposes
+3. **Unix socket API**: /tmp/code2database-daemon-<hash>.sock (hash of graph_dir) exposes
    - status: get current daemon state
    - force-refresh <path>: trigger immediate rescan of path
    - pause / resume: coordinate with manual updates
@@ -648,14 +648,7 @@ class Daemon:
         # Respects system conventions: macOS sets TMPDIR automatically,
         # Linux defaults to /tmp, sandboxes/container runtimes may use
         # a private tmpdir that the daemon MUST use (not /tmp).
-        _tmpdir = os.environ.get("TMPDIR") or "/tmp"
-        # Hash the full graph_dir path to prevent socket collisions
-        # between two graphs with the same basename (e.g.,
-        # /a/proj/graph and /b/proj/graph).
-        import hashlib as _hashlib
-        _path_hash = _hashlib.md5(self.graph_dir.encode()).hexdigest()[:8]
-        self._socket_path = os.path.join(
-            _tmpdir, f"code2database-daemon-{_path_hash}.sock")
+        self._socket_path = _daemon_socket_path(self.graph_dir)
         self._socket_thread: Optional[threading.Thread] = None
         self._server_socket: Optional[socket.socket] = None
         self._stop = False
@@ -1565,15 +1558,26 @@ class Daemon:
 # Daemon client (for daemon-status/force-refresh/etc. CLI commands)
 # ---------------------------------------------------------------------------
 
+def _daemon_socket_path(graph_dir: str) -> str:
+    """Compute the daemon socket path for a graph_dir.
+
+    Shared by the daemon (server bind) and daemon_query (client connect)
+    so they can never diverge again (a previous fix changed only the
+    server side, breaking the whole socket API).
+    """
+    import hashlib as _hashlib
+    _tmpdir = os.environ.get("TMPDIR") or "/tmp"
+    _path_hash = _hashlib.md5(os.path.abspath(graph_dir).encode()).hexdigest()[:8]
+    return os.path.join(_tmpdir, f"code2database-daemon-{_path_hash}.sock")
+
+
 def daemon_query(graph_dir: str, cmd: str, **kwargs) -> Dict:
     """Send a command to a running daemon via Unix socket.
 
     Returns the daemon's response dict. If daemon is not running, returns
     {"error": "daemon not running"}.
     """
-    _tmpdir = os.environ.get("TMPDIR") or "/tmp"
-    socket_path = os.path.join(
-        _tmpdir, f"code2database-daemon-{Path(graph_dir).name}.sock")
+    socket_path = _daemon_socket_path(graph_dir)
     if not os.path.exists(socket_path):
         # Check if daemon is supposed to be running
         state = DaemonState.read(graph_dir)
@@ -1637,8 +1641,7 @@ def cmd_daemon_start(args):
     daemon = Daemon(graph_dir, source_root, config=config,
                     profile_path=profile_path)
     print(f"[daemon] starting: graph={graph_dir} source={source_root}", file=sys.stderr)
-    _tmpdir = os.environ.get("TMPDIR") or "/tmp"
-    _sock = os.path.join(_tmpdir, f"code2database-daemon-{Path(graph_dir).name}.sock")
+    _sock = _daemon_socket_path(graph_dir)
     print(f"[daemon] socket: {_sock}", file=sys.stderr)
     print(f"[daemon] status file: {graph_dir}/.daemon_status.json", file=sys.stderr)
     print(f"[daemon] log file: ~/.code2database/daemon-{Path(graph_dir).name}.log",

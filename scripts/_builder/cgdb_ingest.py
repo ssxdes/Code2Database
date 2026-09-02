@@ -306,7 +306,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
         except (KeyError, ValueError, TypeError):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
-        if not invoker_id or not invoked_id:
+        if invoker_id is None or invoked_id is None:
             continue
         # Read dispatch_candidates and arg_bindings if present (set by
         # _emit_cgdb_records when fn_ptr_calls + vtable_registrations match).

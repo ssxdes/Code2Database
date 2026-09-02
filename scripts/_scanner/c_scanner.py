@@ -622,9 +622,6 @@ class CTreeSitterScanner(BaseScanner):
         # The gnu_asm_expression nodes end up as siblings at the translation_unit level.
         # We detect these orphaned asm nodes and recover the caller function name
         # via regex from the surrounding source text.
-        _processed_asm_ranges = set()  # Track byte ranges already processed by _process_function
-        for func_node, _ in func_nodes:
-            _processed_asm_ranges.add((func_node.start_byte, func_node.end_byte))
 
         def _find_orphan_asm_nodes(node, depth=0):
             """Find gnu_asm_expression nodes not inside any function_definition."""
@@ -1229,7 +1226,7 @@ class CTreeSitterScanner(BaseScanner):
         goto_jumps_list = []
         goto_labels_list = []
         self._extract_calls(body_node, source_bytes, func_id, domain,
-                            edges, pp_conds, source_text, func_node.start_byte,
+                            edges, pp_conds, source_text,
                             callee_args_list, cond_vars_list, pp_liveness,
                             ifdef_conds, fn_ptr_calls_global, macro_regs_global,
                             goto_jumps_list, goto_labels_list)
@@ -1700,14 +1697,7 @@ class CTreeSitterScanner(BaseScanner):
             if child.type in ('type_identifier', 'qualified_identifier'):
                 base_name = self._node_text(child, source_bytes)
                 base_id = self._make_func_id("external", base_name)
-                # Check if base class is in same domain (same file or directory pattern)
                 base_source = os.path.relpath(filepath, source_root)
-                base_dir = os.path.dirname(base_source)
-                # Try to resolve base class to a local domain
-                for d in [domain, domain.rsplit(".", 1)[0] if "." in domain else domain]:
-                    test_id = self._make_func_id(d, base_name)
-                    # We'll resolve these later; for now use external as placeholder
-                    break
                 edges.append({
                     "source": class_id,
                     "target": base_id,
@@ -1718,7 +1708,7 @@ class CTreeSitterScanner(BaseScanner):
                 })
 
     def _extract_calls(self, body_node, source_bytes, invoker_id, domain,
-                       edges, pp_conds, source_text, func_start_byte,
+                       edges, pp_conds, source_text,
                        callee_args_list, cond_vars_list, pp_liveness=None,
                        ifdef_conds=None, fn_ptr_calls_global=None,
                        macro_regs_global=None,
@@ -1730,13 +1720,13 @@ class CTreeSitterScanner(BaseScanner):
         # Walk the body's direct children in order (statement by statement)
         self._walk_body(body_node, source_bytes, invoker_id, domain, edges,
                         cond_stack, pp_conds, source_text,
-                        func_start_byte, callee_args_list, cond_vars_list,
+                        callee_args_list, cond_vars_list,
                         pp_liveness, ifdef_conds, fn_ptr_calls_global,
                         macro_regs_global, goto_jumps_list, goto_labels_list)
 
     def _walk_body(self, body_node, source_bytes, invoker_id, domain, edges,
                    cond_stack, pp_conds, source_text,
-                   func_start_byte, callee_args_list, cond_vars_list,
+                   callee_args_list, cond_vars_list,
                    pp_liveness=None, ifdef_conds=None, fn_ptr_calls_global=None,
                    macro_regs_global=None,
                    goto_jumps_list=None, goto_labels_list=None):

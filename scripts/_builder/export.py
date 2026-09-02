@@ -9,6 +9,15 @@ import networkx as nx
 from _builder.graph_build import _load_full_graph
 import logging
 
+# Filesystem- and URL-safe name for a domain: domain names derive from
+# directory paths and may contain quotes, angle brackets, spaces, etc.
+# The old '.'-only replacement let those through into href="" attributes.
+_DOMAIN_SAFE_RE = re.compile(r'[^A-Za-z0-9_\-]')
+
+
+def _safe_domain_filename(domain: str) -> str:
+    return _DOMAIN_SAFE_RE.sub('_', domain)
+
 
 def _build_mermaid_graph(G: nx.DiGraph) -> str:
     """Build a Mermaid flowchart definition from a networkx DiGraph."""
@@ -141,7 +150,7 @@ def _export_mermaid(G, output, max_nodes, domain_nodes, total_nodes):
             nodes = domain_nodes[domain]
             sub_G = _build_domain_subgraph(G, nodes)
 
-            safe_name = domain.replace(".", "_")
+            safe_name = _safe_domain_filename(domain)
             domain_html = os.path.join(html_dir, f"domain_{safe_name}_mermaid.html")
             _write_mermaid_html(sub_G, domain_html, f"Call Graph — {domain}")
             index_links.append((domain, f"html/domain_{safe_name}_mermaid.html", sub_G.number_of_nodes()))
@@ -166,7 +175,7 @@ def _export_vis_network(G, output, max_nodes, domain_nodes, total_nodes):
             nodes = domain_nodes[domain]
             sub_G = _build_domain_subgraph(G, nodes)
 
-            safe_name = domain.replace(".", "_")
+            safe_name = _safe_domain_filename(domain)
             domain_html = os.path.join(html_dir, f"domain_{safe_name}.html")
             _write_html_file(sub_G, domain_html, f"Call Graph — {domain}", full_graph=False)
             index_links.append((domain, f"html/domain_{safe_name}.html", sub_G.number_of_nodes()))
@@ -462,9 +471,13 @@ def _write_html_file(G: nx.DiGraph, output_path: str, title: str, full_graph: bo
 
 def _write_index_html(html_dir: str, links: list, index_path: str, total_nodes: int):
     """Write an index HTML that links to per-domain graph pages."""
+    import html as html_module
     items = []
     for domain, href, count in links:
-        items.append(f'<li><a href="{href}">{domain}</a> ({count} nodes)</li>')
+        # domain derives from a directory path — escape for HTML text and
+        # keep the href restricted to the sanitized filename.
+        items.append(f'<li><a href="{html_module.escape(href, quote=True)}">'
+                     f'{html_module.escape(domain)}</a> ({count} nodes)</li>')
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -592,9 +605,14 @@ def _write_mermaid_html(G: nx.DiGraph, output_path: str, title: str):
 
 def _write_mermaid_index_html(html_dir: str, links: list, index_path: str, total_nodes: int):
     """Write an index HTML for per-domain Mermaid graph pages."""
+    import html as html_module
     items = []
     for domain, href, count in links:
-        items.append(f'<li class="py-2"><a href="{href}" class="text-blue-600 hover:underline text-base">{domain}</a> <span class="text-sm text-slate-500">({count} nodes)</span></li>')
+        # domain derives from a directory path — escape for HTML text and
+        # keep the href restricted to the sanitized filename.
+        items.append(f'<li class="py-2"><a href="{html_module.escape(href, quote=True)}" '
+                     f'class="text-blue-600 hover:underline text-base">{html_module.escape(domain)}</a> '
+                     f'<span class="text-sm text-slate-500">({count} nodes)</span></li>')
 
     link_html = "\n".join(items)
 

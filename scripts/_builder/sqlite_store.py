@@ -1214,7 +1214,7 @@ class SQLiteStore:
             "WHERE e.invoked_id = ? AND e.relation NOT IN ('CONTAINS', 'IMPORTS') "
             "LIMIT ?", (func_id, limit)
         ).fetchall()
-        return [self._row_to_function(r, edge_offset=9) for r in rows]
+        return [self._row_to_function(r, edge_offset=16) for r in rows]
 
     def get_callees(self, func_id: str, limit: int = 50) -> List[Dict]:
         """Get all functions called by the given function."""
@@ -1224,7 +1224,7 @@ class SQLiteStore:
             "WHERE e.invoker_id = ? AND e.relation NOT IN ('CONTAINS', 'IMPORTS') "
             "LIMIT ?", (func_id, limit)
         ).fetchall()
-        return [self._row_to_function(r, edge_offset=9) for r in rows]
+        return [self._row_to_function(r, edge_offset=16) for r in rows]
 
     def search_functions(self, keyword: str, limit: int = 10) -> List[Dict]:
         """Search functions by keyword (name or domain)."""

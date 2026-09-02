@@ -217,10 +217,11 @@ _IDENTITY_EQ_RE = re.compile(
     r'\b(\w+)\s*==\s*(\w+(?:\s*->\s*\w+)?)'
 )
 
-# mutex_is_locked(&m) or spin_is_locked(&m)
+# mutex_is_locked(&m) or spin_is_locked(&m) or mutex_is_locked(&dev->lock)
 _LOCK_STATE_RE = re.compile(
     r'(mutex_is_locked|spin_is_locked|rwsem_is_locked|'
-    r'lockdep_is_held|lock_is_held)\s*\(\s*&?\s*(\w+)\s*\)'
+    r'lockdep_is_held|lock_is_held)\s*\(\s*&?\s*'
+    r'([\w\->.]+)\s*\)'
 )
 
 

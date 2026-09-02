@@ -259,7 +259,7 @@ _LOCAL_DECL_RE = re.compile(
 )
 _LOCAL_DECL_TYPE_RE = re.compile(r'(?:var\s+|let\s+(?:mut\s+)?)?\w+\s*[:]\s*(\w+)')
 _INFER_COMMENT_SPLIT_RE = re.compile(r'\s+#')
-_DOC_COMMENT_BLOCK_RE = re.compile(r'/\*\*?(.*?)\*/\s*$', re.DOTALL)
+_DOC_COMMENT_BLOCK_RE = re.compile(r'/\*\*?(.*?)\*/', re.DOTALL)
 _DOC_COMMENT_LINE_RE = re.compile(r'^\s*\*\s?')
 _NORMALIZE_NAME_RE = re.compile(r'[^A-Za-z0-9_]')
 
@@ -2310,10 +2310,13 @@ class BaseScanner(ABC):
         if not stripped:
             return BaseScanner._extract_python_docstring(func_node, source_bytes)
 
-        # /** ... */ block comment (must end at the very end of `stripped`)
-        block_match = _DOC_COMMENT_BLOCK_RE.search(stripped)
-        if block_match:
-            inner = block_match.group(1)
+        # /** ... */ block comment — take the LAST one (closest to the function).
+        # Using findall + last match instead of search, because search with
+        # \s*$ anchor would greedily span from the first /** to the last */,
+        # including intermediate code in the capture group.
+        block_matches = _DOC_COMMENT_BLOCK_RE.findall(stripped)
+        if block_matches:
+            inner = block_matches[-1]
             # Strip leading * on each line (Javadoc-style)
             lines = []
             for line in inner.split('\n'):

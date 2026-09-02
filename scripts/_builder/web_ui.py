@@ -493,7 +493,12 @@ class WebUIHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        # No 'Access-Control-Allow-Origin: *'. The server binds 127.0.0.1
+        # specifically to keep source snippets local, but the wildcard
+        # re-opened it to any website in the victim's browser (fetch() to
+        # localhost + read response = source exfiltration). The bundled UI
+        # is served from this same origin, so it needs no CORS at all.
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(body)
 
@@ -637,16 +642,52 @@ class WebUIHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             logging.getLogger(__name__).warning("web_ui handler error", exc_info=True); self._send_json(500, {"error": "internal error"})
 
+    def _origin_allowed(self) -> bool:
+        """True unless the request is a cross-origin BROWSER request.
+
+        Non-browser clients (curl, MCP servers, agents) send no Origin
+        header and are always allowed. Browsers always attach Origin to
+        cross-origin POSTs — reject those so a malicious page can't drive
+        /api/reload (or other POSTs) from the victim's browser.
+        """
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True
+        # Same-origin check against the Host the client connected to.
+        host = self.headers.get("Host", "")
+        try:
+            from urllib.parse import urlparse
+            o = urlparse(origin)
+            return (o.netloc == host) or (o.hostname in ("127.0.0.1", "localhost")
+                                          and host.startswith(("127.0.0.1", "localhost")))
+        except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            return False
+
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         try:
+            if not self._origin_allowed():
+                self._send_json(403, {"error": "cross-origin requests are not allowed"})
+                return
             if path == "/api/highlight-path":
-                length = int(self.headers.get("Content-Length", 0))
+                _cl = self.headers.get("Content-Length", 0)
+                try:
+                    length = int(_cl)
+                except (TypeError, ValueError):
+                    self._send_json(400, {"error": "invalid Content-Length"})
+                    return
                 # Cap POST body size to prevent memory blow-up / DoS —
                 # a malicious or buggy client can send Content-Length:
                 # 9999999999 and the server would attempt to allocate
                 # ~10GB. 1 MB is plenty for a highlight-path request.
+                # Negative values are rejected too: read(-1) on a socket
+                # means 'read until EOF' — the exact unbounded read the
+                # cap is meant to prevent.
+                if length < 0:
+                    self._send_json(400, {"error": "invalid Content-Length"})
+                    return
                 if length > 1_048_576:
                     self._send_json(413, {"error": "Request body too large (max 1MB)"})
                     return
@@ -665,9 +706,9 @@ class WebUIHandler(BaseHTTPRequestHandler):
             logging.getLogger(__name__).warning("web_ui handler error", exc_info=True); self._send_json(500, {"error": "internal error"})
 
     def do_OPTIONS(self):
-        # CORS preflight
+        # CORS preflight: same-origin only (see _send_json note — the
+        # bundled UI is served from this origin and needs no CORS).
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
@@ -904,6 +945,14 @@ async function api(path, opts) { const r = await fetch(path, opts || {}); return
 function showLoading() { document.getElementById('loading').style.display = 'block'; }
 function hideLoading() { document.getElementById('loading').style.display = 'none'; }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+// Safe interpolation of a string into an inline JS handler attribute
+// (onclick="fn(...)"). escapeHtml alone is WRONG there: the HTML parser
+// decodes entities BEFORE the JS engine parses the attribute, so
+// escapeHtml("x');alert(1);//") breaks back out of the JS string.
+// JSON.stringify quotes/escapes for the JS layer, escapeHtml for the
+// HTML-attribute layer. Usage: onclick="fn(' + jsAttr(v) + ')" — note
+// jsAttr already includes the surrounding double quotes.
+function jsAttr(s) { return escapeHtml(JSON.stringify(String(s == null ? '' : s))); }
 
 async function loadSummary() {
   const s = await api('/api/graph/summary');
@@ -913,7 +962,7 @@ async function loadSummary() {
   let lh = '';
   s.communities.forEach((c, i) => {
     const color = COMMUNITY_COLORS[i % COMMUNITY_COLORS.length];
-    lh += '<div class="legend-item" onclick="toggleCommunity(\'' + escapeHtml(c.id) + '\')">' +
+    lh += '<div class="legend-item" onclick="toggleCommunity(' + jsAttr(c.id) + ')">' +
       '<div class="legend-color" style="background:' + color + '"></div>' +
       '<span class="legend-label">' + escapeHtml(c.id) + ' (' + c.node_count + ')</span></div>';
   });
@@ -1159,11 +1208,11 @@ async function loadNodeDetails(nodeId) {
     if (callers.callers && callers.callers.length > 0) {
       html += '<div class="call-list"><div class="call-list-title">Callers (' + callers.callers.length + ')</div>';
       callers.callers.forEach(c => {
-        html += '<div class="call-item" onclick="focusNode(\'' + escapeHtml(c.id) + '\',' + 
+        html += '<div class="call-item" onclick="focusNode(' + jsAttr(c.id) + ',' +
           (document.getElementById('depth-slider').value) + ')">' +
           '<span class="call-name mono">' + escapeHtml(c.name) + '</span>' +
           (c.call_condition ? '<span class="call-cond">' + escapeHtml(c.call_condition.substring(0,20)) + '</span>' : '') +
-          (c.confidence !== 'EXTRACTED' ? '<span class="call-conf" style="color:#f59e0b">' + c.confidence.substring(0,3) + '</span>' : '') +
+          (c.confidence !== 'EXTRACTED' ? '<span class="call-conf" style="color:#f59e0b">' + escapeHtml(String(c.confidence || '').substring(0,3)) + '</span>' : '') +
           '</div>';
       });
       html += '</div>';
@@ -1172,19 +1221,19 @@ async function loadNodeDetails(nodeId) {
     if (callees.callees && callees.callees.length > 0) {
       html += '<div class="call-list"><div class="call-list-title">Callees (' + callees.callees.length + ')</div>';
       callees.callees.forEach(c => {
-        html += '<div class="call-item" onclick="focusNode(\'' + escapeHtml(c.id) + '\',' +
+        html += '<div class="call-item" onclick="focusNode(' + jsAttr(c.id) + ',' +
           (document.getElementById('depth-slider').value) + ')">' +
           '<span class="call-name mono">' + escapeHtml(c.name) + '</span>' +
           (c.call_condition ? '<span class="call-cond">' + escapeHtml(c.call_condition.substring(0,20)) + '</span>' : '') +
-          (c.confidence !== 'EXTRACTED' ? '<span class="call-conf" style="color:#f59e0b">' + c.confidence.substring(0,3) + '</span>' : '') +
+          (c.confidence !== 'EXTRACTED' ? '<span class="call-conf" style="color:#f59e0b">' + escapeHtml(String(c.confidence || '').substring(0,3)) + '</span>' : '') +
           '</div>';
       });
       html += '</div>';
     }
     // Action buttons
     html += '<div class="action-btns">' +
-      '<button class="action-btn" onclick="loadCode(\''+escapeHtml(nodeId)+'\')">View Code</button>' +
-      '<button class="action-btn" onclick="loadImpact(\''+escapeHtml(nodeId)+'\')">Impact</button>' +
+      '<button class="action-btn" onclick="loadCode(' + jsAttr(nodeId) + ')">View Code</button>' +
+      '<button class="action-btn" onclick="loadImpact(' + jsAttr(nodeId) + ')">Impact</button>' +
       '<button class="action-btn" onclick="exportPNG()">PNG</button>' +
       '</div>';
     document.getElementById('node-details').innerHTML = html;

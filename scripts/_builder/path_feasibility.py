@@ -324,6 +324,33 @@ def _split_disjunctions(conjunct: str) -> List[str]:
     return [p for p in parts if p]
 
 
+def _value_satisfies_range(val: Any, range_str: str) -> bool:
+    """Check if val satisfies all constraints in a range string (e.g., '>10,<20')."""
+    try:
+        v = int(val, 0) if isinstance(val, str) and val.startswith('0x') else int(val)
+    except (ValueError, TypeError):
+        return True  # Can't evaluate — be conservative
+    parts = [p.strip() for p in range_str.split(',') if p.strip()]
+    for p in parts:
+        m = re.match(r'^(>=|<=|>|<)(.+)$', p)
+        if not m:
+            continue
+        op, val_s = m.group(1), m.group(2)
+        try:
+            bound = int(val_s, 0) if val_s.startswith('0x') else int(val_s)
+        except ValueError:
+            continue
+        if op == '>' and not (v > bound):
+            return False
+        if op == '<' and not (v < bound):
+            return False
+        if op == '>=' and not (v >= bound):
+            return False
+        if op == '<=' and not (v <= bound):
+            return False
+    return True
+
+
 def _merge_range_constraint(existing: Any, op: str, val: Any) -> Tuple[Optional[str], Optional[str]]:
     """Combine an existing range binding (e.g., '>5') with a new comparison
     into a tighter range string.
@@ -455,10 +482,23 @@ def solve_with_heuristic(conditions: List[str]) -> Dict:
                     op = atom["op"]
                     val = atom["value"]
                     if op == "==":
-                        if var in bindings and bindings[var] != val:
-                            contradictions.append(f"{var}: {bindings[var]} vs {val}")
-                        else:
+                        existing = bindings.get(var)
+                        if existing is None:
                             bindings[var] = val
+                        elif isinstance(existing, str) and existing[:1] in ('>', '<'):
+                            # Existing is a range string (e.g., '>10,<20')
+                            # from a prior <,>,<=,>= constraint. Check if
+                            # val satisfies the range instead of string != int
+                            # comparison (which would always report a
+                            # contradiction and mark feasible paths infeasible).
+                            if _value_satisfies_range(val, existing):
+                                # Value satisfies range — narrow to concrete
+                                bindings[var] = val
+                            else:
+                                contradictions.append(
+                                    f"{var}: {existing} vs == {val}")
+                        elif existing != val:
+                            contradictions.append(f"{var}: {existing} vs {val}")
                     elif op == "!=":
                         if bindings.get(var) == val:
                             contradictions.append(f"{var} != {val} but already = {val}")

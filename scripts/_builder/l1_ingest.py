@@ -583,8 +583,8 @@ def ingest_l1(
     _pp_branch_rows = []
     _collect_pp_info(tu.cursor, file_path, file_id, source_bytes,
                      _macro_rows, _macro_inv_rows, _pp_directive_rows,
-                     _pragma_rows)
-    _collect_pp_branch_tree(file_id, source_bytes, _pp_branch_rows)
+                     _pragma_rows, language=_lang)
+    _collect_pp_branch_tree(file_id, source_bytes, _pp_branch_rows, language=_lang)
     stats["macros"] = len(_macro_rows)
     stats["macro_invocations"] = len(_macro_inv_rows)
     stats["pp_directives"] = len(_pp_directive_rows)
@@ -929,7 +929,7 @@ def _ingest_l1_fallback(
 
 def _collect_pp_info(cursor, file_path, file_id, source_bytes,
                     _macro_rows, _macro_inv_rows, _pp_directive_rows,
-                    _pragma_rows):
+                    _pragma_rows, language='c'):
     """Walk cursor tree for MACRO_DEFINITION / MACRO_INSTANTIATION /
     INCLUDE_DIRECTIVE / PREPROCESSING_DIRECTIVE — collect data into lists
     for later batch INSERT.
@@ -969,7 +969,7 @@ def _collect_pp_info(cursor, file_path, file_id, source_bytes,
                     (name, file_id, line, col, int(is_function_like),
                      int("..." in params),  # variadic: '...' appears in the param list
                      str(params) if params else "[]",
-                     body_text or "", 0, _lang)
+                     body_text or "", 0, language)
                 )
 
             elif kind == CursorKind.MACRO_INSTANTIATION:
@@ -1017,7 +1017,7 @@ def _collect_pp_info(cursor, file_path, file_id, source_bytes,
             continue
 
 
-def _collect_pp_branch_tree(file_id, source_bytes, _pp_branch_rows):
+def _collect_pp_branch_tree(file_id, source_bytes, _pp_branch_rows, language='c'):
     """Build pp_branches data from regex on source lines.
 
     Walks the source code line by line, detects #ifdef/#ifndef/#if/#elif/
@@ -1044,7 +1044,7 @@ def _collect_pp_branch_tree(file_id, source_bytes, _pp_branch_rows):
         if d_kind in ("ifdef", "ifndef", "if"):
             row_idx = len(_pp_branch_rows)
             _pp_branch_rows.append(
-                (file_id, parent_idx, d_kind, d_rest, line_idx, 0, 1, _lang)
+                (file_id, parent_idx, d_kind, d_rest, line_idx, 0, 1, language)
             )
             stack.append(row_idx)
 
@@ -1060,7 +1060,7 @@ def _collect_pp_branch_tree(file_id, source_bytes, _pp_branch_rows):
                 parent_idx = stack[-1] if stack else None
                 row_idx = len(_pp_branch_rows)
                 _pp_branch_rows.append(
-                    (file_id, parent_idx, "elif", d_rest, line_idx, 0, 1, _lang)
+                    (file_id, parent_idx, "elif", d_rest, line_idx, 0, 1, language)
                 )
                 stack.append(row_idx)
 
@@ -1075,7 +1075,7 @@ def _collect_pp_branch_tree(file_id, source_bytes, _pp_branch_rows):
                 parent_idx = stack[-1] if stack else None
                 row_idx = len(_pp_branch_rows)
                 _pp_branch_rows.append(
-                    (file_id, parent_idx, "else", "", line_idx, 0, 1, _lang)
+                    (file_id, parent_idx, "else", "", line_idx, 0, 1, language)
                 )
                 stack.append(row_idx)
 

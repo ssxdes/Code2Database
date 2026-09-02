@@ -197,7 +197,7 @@ def query_blame_for_lines(source_root: str, file_path: str,
     for line in out.split("\n"):
         if line.startswith("commit "):
             current_commit = line.split()[1]
-        elif re.match(r"^\S+ \d+ \d+ \d+", line):
+        elif re.match(r"^([0-9a-f]{40}) (\d+) (\d+) (\d+)", line):
             # Format: <hash> <orig-line> <final-line> <line-count>
             parts = line.split()
             if len(parts) >= 3:

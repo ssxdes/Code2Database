@@ -612,6 +612,17 @@ def ingest_l1(
          encoding, line_ending, int(has_bom), disk_sha)
     )
 
+    # Delete any prior L1 rows for this file so re-ingest doesn't fail
+    # on UNIQUE(file_id, seq) / UNIQUE(file_id, name, line) constraints.
+    # Mirrors what cgdb "wipe per file" does for L2+ tables.
+    for _tbl in ("tokens", "literals", "comments_freeform", "macros",
+                 "macro_invocations", "pp_directives", "pragmas",
+                 "attributes", "pp_branches"):
+        try:
+            conn.execute(f"DELETE FROM {_tbl} WHERE file_id = ?", (file_id,))
+        except sqlite3.OperationalError:
+            pass  # table may not exist on fresh schema
+
     # Batch INSERT tokens
     if _token_rows:
         conn.executemany(

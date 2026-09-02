@@ -5540,7 +5540,9 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
     if _is_lazy:
         all_node_ids = _cached_node_ids
     else:
-        all_node_ids = set(G.nodes())
+        # NetworkX DiGraph supports `nid in G` via O(1) dict lookup.
+        # Don't materialize a 700K-element set just for membership tests.
+        all_node_ids = G
     before_dangling = len(cross_domain_edges)
     cross_domain_edges = [e for e in cross_domain_edges
                           if e.get("source", "") in all_node_ids

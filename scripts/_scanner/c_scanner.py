@@ -366,16 +366,40 @@ class CTreeSitterScanner(BaseScanner):
                     # convert to a line number to compare with node.start_point[0].
                     pp_conds = [(m.start(), m.group(1), m.group(2).strip())
                                 for m in _PP_COND_RE.finditer(source_text)]
+                    # Find the INNERMOST #if-family block ENCLOSING the vtable.
+                    # The old loop broke at the FIRST directive whose line
+                    # preceded the vtable — i.e. the earliest #if in the file,
+                    # even a closed unrelated one (a vtable after
+                    # '#if EARLY ... #endif' got cond='EARLY', and one inside
+                    # '#ifdef CONFIG_ADV' nested after other blocks got the
+                    # outermost condition).
                     vtable_condition = ""
                     node_start_line = node.start_point[0]
-                    for cond_offset, _cond_dir, cond_text in pp_conds:
-                        # Convert character offset → 0-based line number
+                    _cond_stack = []
+                    for cond_offset, _cond_dir, _cond_text in pp_conds:
                         cond_line = source_text.count('\n', 0, cond_offset)
-                        # Approximate: check if vtable start is within condition range
-                        if cond_line <= node_start_line:
-                            # Find the matching #endif
-                            vtable_condition = cond_text
+                        if cond_line > node_start_line:
                             break
+                        if _cond_dir in ('if', 'ifdef', 'ifndef'):
+                            _cond_stack.append((_cond_dir, _cond_text))
+                        elif _cond_dir in ('elif', 'else') and _cond_stack:
+                            _prev_d, _prev_c = _cond_stack[-1]
+                            if _cond_dir == 'elif':
+                                _cond_stack[-1] = ('elif', _cond_text)
+                            elif _prev_d == 'ifdef':
+                                _cond_stack[-1] = ('ifndef', _prev_c)
+                            elif _prev_d == 'ifndef':
+                                _cond_stack[-1] = ('ifdef', _prev_c)
+                            else:  # if / elif -> else branch is the negation
+                                _cond_stack[-1] = ('ifndef', _prev_c)
+                        elif _cond_dir == 'endif' and _cond_stack:
+                            _cond_stack.pop()
+                    if _cond_stack:
+                        _d, _c = _cond_stack[-1]
+                        if _c:
+                            vtable_condition = f"!{_c}" if _d == 'ifndef' else _c
+                        else:
+                            vtable_condition = _d
 
                     results.append({
                         "struct_type": struct_name,

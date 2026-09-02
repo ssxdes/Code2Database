@@ -260,11 +260,21 @@ class StreamingGraph:
     # ---- Write operations ----
 
     def add_node(self, node_id: str, **attrs):
-        """Add a node and queue it for SQLite batch write."""
-        self.id_registry[node_id] = dict(attrs, id=node_id)
-        self._node_count += 1
-        # Queue for batch write
-        self._func_batch.append(dict(attrs, id=node_id))
+        """Add a node and queue it for SQLite batch write.
+
+        Merges attributes like NetworkX's add_node (progressive enrichment):
+        calling add_node(nid, x=1) then add_node(nid, y=2) results in
+        {id: nid, x: 1, y: 2}, not {id: nid, y: 2}.
+        """
+        _existing = self.id_registry.get(node_id)
+        if _existing is not None:
+            _existing.update(attrs)
+            _merged = dict(_existing)
+        else:
+            _merged = dict(attrs, id=node_id)
+            self.id_registry[node_id] = _merged
+            self._node_count += 1
+        self._func_batch.append(dict(_merged))
         if len(self._func_batch) >= self._func_batch_size:
             self._flush_functions()
         # Initialize degree/adjacency tracking

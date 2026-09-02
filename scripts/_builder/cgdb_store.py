@@ -620,13 +620,16 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         indirect_invokers: List[Dict[str, Any]] = []
         seen_ids = {node_id}
 
-        # Source 1: invoke_sites with dispatch_candidates containing node_id
+        # Source 1: invoke_sites with dispatch_candidates containing node_id.
+        # Use json_each for exact member matching — LIKE '%"5"%' matches
+        # substrings inside larger numbers (e.g., node_id=5 matches [15, 25]).
         try:
             invoke_site_rows = conn.execute(
                 "SELECT DISTINCT invoker_id FROM invoke_sites "
                 "WHERE invoke_kind IN ('ops_bind', 'virtual', 'function_pointer') "
-                "AND (dispatch_candidates LIKE ? OR invoked_id = ?)",
-                (f'%"{node_id}"%', node_id)
+                "AND (EXISTS (SELECT 1 FROM json_each(invoke_sites.dispatch_candidates) "
+                "WHERE value = ?) OR invoked_id = ?)",
+                (node_id, node_id)
             ).fetchall()
             for r in invoke_site_rows:
                 invoker_id = r[0]

@@ -196,6 +196,7 @@ def run_l1_ingest(tasks, db_path, source_root, commit_hash,
                     file_id=fid,
                     commit_hash=commit_hash,
                     source_root=source_root,
+                    commit=False,
                 )
                 stats.setdefault("file_path", fp)
                 results.append(stats)
@@ -209,6 +210,13 @@ def run_l1_ingest(tasks, db_path, source_root, commit_hash,
                     "comments": 0, "disk_sha256": "", "rendered_sha256": "",
                     "consistency_ok": False,
                 })
+        # Commit all files in one transaction after the serial loop.
+        # Without this, each ingest_l1 call commits individually —
+        # 40K commits for 40K files on the serial fallback path.
+        try:
+            conn.commit()
+        except Exception:
+            pass
     finally:
         if own_conn:
             try:
@@ -359,6 +367,7 @@ def ingest_l1(
     compile_args: Optional[list[str]] = None,
     commit_hash: str = 'unknown',
     source_root: Optional[str] = None,
+    commit: bool = True,
 ) -> dict:
     """Ingest L1 token stream + preprocessing info for a file.
 
@@ -779,7 +788,8 @@ def ingest_l1(
         )
 
     # Commit all writes in one transaction
-    conn.commit()
+    if commit:
+        conn.commit()
 
     # RPT-P0-21: L1↔L2 alignment — link identifier tokens to cgdb_nodes
     # This runs AFTER the main commit so it doesn't hold the write lock
@@ -818,7 +828,7 @@ def ingest_l1(
                 )
                 linked += 1
         stats["l1_l2_linked"] = linked
-        if linked:
+        if linked and commit:
             conn.commit()
     except Exception as _align_exc:
         # Best-effort — alignment is a P0-21 enhancement, not a correctness

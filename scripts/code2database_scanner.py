@@ -769,19 +769,29 @@ def scan_directory(source_root: str, lang: str = "auto",
                 try:
                     from _builder.graph_build import _extract_state_access
                     # Reuse the compiled globals regex across flushes instead
-                    # of recompiling the large alternation every flush. The
-                    # set of global variable names grows monotonically as more
-                    # files are scanned, so track the count seen when the
-                    # cache was built and rebuild only when new globals have
-                    # arrived — otherwise globals declared after the first
-                    # flush stay invisible to state_access extraction.
-                    _cur_gv_count = len(all_globals.get("global_vars", []))
+                    # of recompiling the large alternation every flush. The set
+                    # of global variable names grows monotonically as more
+                    # files are scanned, so track the cumulative set across
+                    # flushes (all_globals is reset after each flush, so per-
+                    # chunk count is NOT monotonic — the previous > comparison
+                    # was broken: chunk 2 with fewer globals than chunk 1 would
+                    # reuse a stale cache missing chunk 2's new globals).
+                    if not hasattr(_flush_accumulated, '_cumulative_gv_names'):
+                        _flush_accumulated._cumulative_gv_names = {}
+                    _cur_gv_names = {}
+                    for _gv in all_globals.get("global_vars", []):
+                        _gn = _gv.get("name", "")
+                        if _gn:
+                            _cur_gv_names[_gn] = _gv
+                    _new_names = (set(_cur_gv_names.keys())
+                                  - set(_flush_accumulated._cumulative_gv_names.keys()))
                     if (not hasattr(_flush_accumulated, '_cached_globals')
-                            or _cur_gv_count > getattr(_flush_accumulated,
-                                                       '_cached_globals_count', 0)):
-                        _cached_g = _build_globals_cache(all_globals)
+                            or _new_names):
+                        _flush_accumulated._cumulative_gv_names.update(_cur_gv_names)
+                        _cached_g = _build_globals_cache(
+                            {"global_vars": list(
+                                _flush_accumulated._cumulative_gv_names.values())})
                         _flush_accumulated._cached_globals = _cached_g
-                        _flush_accumulated._cached_globals_count = _cur_gv_count
                     else:
                         _cached_g = _flush_accumulated._cached_globals
                     _fa_list = all_field_assignments if isinstance(all_field_assignments, list) else []

@@ -175,8 +175,9 @@ def _tool_load(args: dict, graph_dir: str) -> dict:
     db_path = os.path.join(graph_dir, "code2database.db")
     if os.path.exists(db_path) and os.path.getsize(db_path) > 0:
         import sqlite3
-        conn = sqlite3.connect(db_path)
+        conn = None
         try:
+            conn = sqlite3.connect(db_path)
             cur = conn.cursor()
             nodes = cur.execute("SELECT COUNT(*) FROM functions").fetchone()[0]
             edges = cur.execute(
@@ -212,7 +213,8 @@ def _tool_load(args: dict, graph_dir: str) -> dict:
         except sqlite3.Error:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
         finally:
-            conn.close()
+            if conn is not None:
+                conn.close()
     from _builder.graph_build import _load_full_graph
     G = _get_graph(graph_dir)
     api_count = sum(1 for _, d in G.nodes(data=True) if "API_entry" in d.get("labels", []))
@@ -241,8 +243,9 @@ def _tool_search(args: dict, graph_dir: str) -> list:
     db_path = os.path.join(graph_dir, "code2database.db")
     if os.path.exists(db_path) and os.path.getsize(db_path) > 0:
         import sqlite3
-        conn = sqlite3.connect(db_path)
+        conn = None
         try:
+            conn = sqlite3.connect(db_path)
             cur = conn.cursor()
             tokens = [t.strip() for t in keywords.replace(",", " ").split() if t.strip()]
             if not tokens:
@@ -278,7 +281,8 @@ def _tool_search(args: dict, graph_dir: str) -> list:
         except sqlite3.Error:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
         finally:
-            conn.close()
+            if conn is not None:
+                conn.close()
     from _builder.graph_build import _load_full_graph
     from _builder.utils import _simple_tokenize, _similarity_score, _find_node_id
     G = _get_graph(graph_dir)

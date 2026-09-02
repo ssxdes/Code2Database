@@ -961,9 +961,13 @@ def _eval_pp_expr(expr: str, bindings: dict) -> bool:
     if m:
         macro = m.group(1)
         rhs = m.group(2)
-        val = bindings.get(macro)
-        if val is None:
-            return False  # Undefined macro — condition false
+        # C standard: undefined macros evaluate to 0 in #if expressions.
+        # So #if UNDEFINED == 0 is 0 == 0 → True (alive code).
+        val = bindings.get(macro, "0")
+        # If rhs is a macro name (not a numeric literal), resolve it too
+        # (undefined rhs macros also evaluate to 0).
+        if not re.match(r'(\d+|0x[\da-fA-F]+)$', rhs):
+            rhs = bindings.get(rhs, "0")
         return val.strip() == rhs or _numeric_eq(val, rhs)
 
     # MACRO != value
@@ -971,10 +975,10 @@ def _eval_pp_expr(expr: str, bindings: dict) -> bool:
     if m:
         macro = m.group(1)
         rhs = m.group(2)
-        val = bindings.get(macro)
-        if val is None:
-            return True  # Undefined != value — might be true
-        return not _numeric_eq(val, rhs)
+        val = bindings.get(macro, "0")
+        if not re.match(r'(\d+|0x[\da-fA-F]+)$', rhs):
+            rhs = bindings.get(rhs, "0")
+        return not (val.strip() == rhs or _numeric_eq(val, rhs))
 
     # MACRO > value / MACRO >= value / MACRO < value / MACRO <= value
     m = re.match(r'(\w+)\s*([><]=?)\s*(\d+)', expr)

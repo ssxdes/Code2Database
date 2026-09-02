@@ -7370,6 +7370,7 @@ def cmd_build(args):
 
     # Post-build validation: check all output files for correctness
     tracker.begin("validate")
+    val_result = None
     try:
         from _builder.validate import validate_all
         val_result = validate_all(outdir, profile=builder_profile)
@@ -7380,7 +7381,8 @@ def cmd_build(args):
         print(f"Warning: post-build validation failed ({e})", file=sys.stderr)
     tracker.end()
     # Release validation caches before SQLite export to reduce peak memory
-    del val_result
+    if val_result is not None:
+        del val_result
     gc.collect()
 
     # Export to SQLite if requested

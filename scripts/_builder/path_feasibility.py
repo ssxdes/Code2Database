@@ -87,15 +87,24 @@ def parse_condition(cond: str) -> List[Dict]:
     cond = re.sub(r'^#if\s+', '', cond)
     cond = re.sub(r'^#elif\s+', '', cond)
 
-    # Handle defined() macros
-    for m in _DEFINED_RE.finditer(cond):
-        atoms.append({"var": m.group(1), "op": "defined", "value": True,
-                      "type": "macro"})
-
-    # Handle negated defined() — !defined(X)
+    # Handle defined() macros — but first strip !defined() to avoid
+    # double-counting. _DEFINED_RE matches 'defined(X)' inside '!defined(X)'
+    # too, producing contradictory atoms (defined=True AND defined=False
+    # for the same variable), which makes the heuristic solver report a
+    # contradiction and mark any path with !defined(X) as infeasible.
+    negated_vars = set()
     for m in re.finditer(r'!\s*defined\s*\(\s*(\w+)\s*\)', cond):
         atoms.append({"var": m.group(1), "op": "defined", "value": False,
                       "type": "macro"})
+        negated_vars.add(m.group(1))
+
+    # Strip !defined(...) from cond before matching plain defined()
+    # to prevent the double-count.
+    cond_clean = re.sub(r'!\s*defined\s*\(\s*\w+\s*\)', ' ', cond)
+    for m in _DEFINED_RE.finditer(cond_clean):
+        if m.group(1) not in negated_vars:
+            atoms.append({"var": m.group(1), "op": "defined", "value": True,
+                          "type": "macro"})
 
     # Handle comparisons
     for m in _COMPARISON_RE.finditer(cond):

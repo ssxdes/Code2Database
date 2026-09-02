@@ -85,8 +85,11 @@ _GCC_ATOMIC_STORE_RE = re.compile(
 # substring with the original per-primitive pattern (cheap, since the
 # matched substring is short).
 _MEM_ORDERING_RE = re.compile(
-    r'(?P<rcu_lock>\brcu_read_lock\s*\()'
+    r'(?P<rcu_lock_bh>\brcu_read_lock_bh\s*\()'
+    r'|(?P<rcu_unlock_bh>\brcu_read_unlock_bh\s*\()'
+    r'|(?P<rcu_lock>\brcu_read_lock\s*\()'
     r'|(?P<rcu_unlock>\brcu_read_unlock\s*\()'
+    r'|(?P<smp_store_mb>\bsmp_store_mb\s*\(\s*([^,]+?)\s*,)'
     r'|(?P<smp_mb>\bsmp_mb\s*\()'
     r'|(?P<smp_rmb>\bsmp_rmb\s*\()'
     r'|(?P<smp_wmb>\bsmp_wmb\s*\()'
@@ -206,9 +209,9 @@ def analyze_memory_ordering(ndata: Dict, G=None, nid: Optional[str] = None) -> M
             if name is None or name in seen:
                 continue
             seen.add(name)
-            if name == 'rcu_lock':
+            if name == 'rcu_lock' or name == 'rcu_lock_bh':
                 info.rcu_read_locks.append(line_no)
-            elif name == 'rcu_unlock':
+            elif name == 'rcu_unlock' or name == 'rcu_unlock_bh':
                 info.rcu_read_unlocks.append(line_no)
             elif name == 'smp_mb':
                 info.smp_mb_lines.append(line_no)
@@ -216,6 +219,10 @@ def analyze_memory_ordering(ndata: Dict, G=None, nid: Optional[str] = None) -> M
                 info.smp_rmb_lines.append(line_no)
             elif name == 'smp_wmb':
                 info.smp_wmb_lines.append(line_no)
+            elif name == 'smp_store_mb':
+                sub_m = _SMP_STORE_MB_RE.search(m.group(0))
+                if sub_m:
+                    info.smp_store_release.append((sub_m.group(1).strip(), line_no))
             elif name == 'smp_store_release':
                 sub_m = _SMP_STORE_RELEASE_RE.search(m.group(0))
                 if sub_m:

@@ -613,7 +613,7 @@ def interprocedural_value_flow(G, start_id: str, value_pattern: str,
             for _, dst, ed in G.out_edges(cur_id, data=True):
                 rel = ed.get("relation", "INVOKES")
                 if rel == "DATA_FLOW":
-                    via = ed.get("via_arg", "?")
+                    via = ed.get("arg_pos", "?")  # edges carry arg_pos, not via_arg
                     next_hops.append((dst, f"DATA_FLOW via {via}", resolved))
                 elif rel == "INVOKES":
                     # Check if any arg references the resolved pattern
@@ -633,7 +633,10 @@ def interprocedural_value_flow(G, start_id: str, value_pattern: str,
             for src, _, ed in G.in_edges(cur_id, data=True):
                 rel = ed.get("relation", "INVOKES")
                 if rel == "RETURN_FLOW":
-                    ret_expr = ed.get("returns", "")
+                    # Edges carry 'return_expr' (set at creation, line ~260) —
+                    # the old 'returns' key never existed, making this whole
+                    # branch dead.
+                    ret_expr = ed.get("return_expr", "")
                     if ret_expr and _value_references(ret_expr, resolved):
                         next_hops.append((src, "RETURN_FLOW", ret_expr))
                 elif rel == "INVOKES":

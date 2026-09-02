@@ -109,17 +109,16 @@ def _detect_resource_calls(body_text: str, patterns: List[re.Pattern]) -> List[s
     return found
 
 
-def _detect_lock_var(body_text: str, lock_pattern: re.Pattern) -> Optional[str]:
-    """Try to extract the lock variable name from a lock call.
+def _detect_lock_arg(body_text: str, arg_start: int) -> Optional[str]:
+    """Extract the lock variable name from the argument list at arg_start.
 
-    e.g., 'mutex_lock(&my_lock)' -> 'my_lock'
+    arg_start is m.end() of the CURRENT lock-call match (position just
+    after the opening paren). The old _detect_lock_var re-searched the
+    pattern from position 0, so 'mutex_lock(&a); ... mutex_lock(&b);'
+    produced two edges both targeting 'a' — 'b' was never recorded
+    (dedup collapsed them).
     """
-    m = lock_pattern.search(body_text)
-    if not m:
-        return None
-    # The pattern matches up to and including '('. Look at what's after.
-    end = m.end()
-    rest = body_text[end:end + 80]
+    rest = body_text[arg_start:arg_start + 80]
     # Skip optional '&' (address-of) and extract identifier
     arg_match = re.match(r'\s*&\s*([A-Za-z_][A-Za-z_0-9]*)', rest)
     if arg_match:
@@ -175,7 +174,7 @@ def detect_semantic_edges(node_data: Dict, profile: Optional[Dict] = None) -> Li
     for lock_pat in _compile_patterns(lock_pats):
         for m in lock_pat.finditer(body_text):
             lock_func = m.group(0).rstrip("(").strip()
-            lock_var = _detect_lock_var(body_text, lock_pat)
+            lock_var = _detect_lock_arg(body_text, m.end())
             target = lock_var or lock_func
             edges.append({
                 "invoker_id": invoker_id,
@@ -190,7 +189,7 @@ def detect_semantic_edges(node_data: Dict, profile: Optional[Dict] = None) -> Li
     for unlock_pat in _compile_patterns(unlock_pats):
         for m in unlock_pat.finditer(body_text):
             unlock_func = m.group(0).rstrip("(").strip()
-            unlock_var = _detect_lock_var(body_text, unlock_pat)
+            unlock_var = _detect_lock_arg(body_text, m.end())
             target = unlock_var or unlock_func
             edges.append({
                 "invoker_id": invoker_id,

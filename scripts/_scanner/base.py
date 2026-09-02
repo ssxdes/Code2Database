@@ -1340,22 +1340,18 @@ class BaseScanner(ABC):
                 callee_name = call.get('callee_name', '') or ''
                 if not field_name:
                     continue
-                # Look up candidate impls by (struct_chain, field_name) —
-                # struct_chain is the variable name in the call site, which
-                # may match the vtable var_name. Try both struct_chain and
-                # any registered struct_type that matches the chain prefix.
+                # Look up candidate impls by field_name. NOTE: the call
+                # site's struct_chain (a variable path like 'dev->ops')
+                # cannot be mapped reliably to the vtable's struct_type
+                # (e.g. 'file_operations') without type information, so
+                # all same-field impls are candidates — dispatch is
+                # disambiguated downstream by domain. (The previous code
+                # had a self-comparison here that never filtered, plus a
+                # redundant fallback loop that repeated the same match.)
                 candidates = []
                 for (struct_type, f_name), impls in ops_field_to_impls.items():
-                    if f_name != field_name:
-                        continue
-                    if struct_chain and struct_chain.split('->')[0].split('.')[0] != struct_chain.split('->')[0].split('.')[0]:
-                        pass
-                    candidates.extend(impls)
-                if not candidates:
-                    # Fall back: any registration with matching field_name
-                    for (struct_type, f_name), impls in ops_field_to_impls.items():
-                        if f_name == field_name:
-                            candidates.extend(impls)
+                    if f_name == field_name:
+                        candidates.extend(impls)
                 # Update or insert invoke_site for this call
                 invoked_nid = unified_node_id(language, callee_name) if callee_name else 0
                 line = int(call.get('line', 0) or 0)

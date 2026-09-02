@@ -247,7 +247,11 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
     conn.row_factory = sqlite3.Row
     counts = {"functions_imported": 0, "edges_imported": 0}
     try:
-        conn.execute(f"ATTACH DATABASE '{existing_db}' AS src")
+        # Escape single quotes in the path to prevent SQL injection via
+        # path components containing apostrophes. SQLite's ATTACH DATABASE
+        # does not accept bound parameters for the filename.
+        _safe_db = existing_db.replace("'", "''")
+        conn.execute(f"ATTACH DATABASE '{_safe_db}' AS src")
         # E6: Verify the attached db has a 'functions' table before querying.
         # A non-C2D sqlite db (or a corrupted one) will lack this table, and
         # the SELECT below would raise sqlite3.OperationalError. Currently the

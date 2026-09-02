@@ -1427,26 +1427,27 @@ class SQLiteStore:
     def query_thread_processors_sql(self, limit: int = 200) -> List[Dict]:
         """Find all thread_processor functions via SQL.
 
-        Labels are stored as JSON array in functions.labels. SQLite json_each
-        unpacks the array so we can filter by label without Python iteration.
+        Uses the indexed boolean column is_thread_processor (fast O(log n)
+        index lookup). Falls back to json_each cross-join or LIKE scan
+        only when the column is missing (pre-migration DBs).
         """
         try:
             rows = self._conn.execute(
-                "SELECT f.* FROM functions f, json_each(f.labels) "
-                "WHERE json_each.value = 'thread_processor' LIMIT ?",
+                "SELECT * FROM functions WHERE is_thread_processor = 1 LIMIT ?",
                 (limit,)
             ).fetchall()
             return [self._row_to_function(r) for r in rows]
         except sqlite3.OperationalError:
-            # Older SQLite without json1 — fall back to indexed boolean column
+            # Column missing (migration failed) — try json_each, then LIKE
             try:
                 rows = self._conn.execute(
-                    "SELECT * FROM functions WHERE is_thread_processor = 1 LIMIT ?",
+                    "SELECT f.* FROM functions f, json_each(f.labels) "
+                    "WHERE json_each.value = 'thread_processor' LIMIT ?",
                     (limit,)
                 ).fetchall()
                 return [self._row_to_function(r) for r in rows]
             except sqlite3.OperationalError:
-                # Column missing (migration failed) — LIKE scan always works
+                # Older SQLite without json1 — LIKE scan always works
                 rows = self._conn.execute(
                     "SELECT * FROM functions WHERE labels LIKE '%thread_processor%' LIMIT ?",
                     (limit,)

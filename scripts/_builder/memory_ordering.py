@@ -406,7 +406,16 @@ def happens_before_analysis(G, writer_id: str, reader_id: str,
     # Mechanism 2: RCU — reader in rcu_read_lock, writer has release semantics
     # or invoked synchronize_rcu (which is the canonical RCU writer primitive)
     if reader_mo.rcu_read_locks:
-        writer_body = writer_nd.get("body_text", "")
+        # Use the lazy fetch (analyze_memory_ordering does this two lines
+        # above): on LazySQLiteGraph/StreamingGraph backends body_text is
+        # compressed/not in cached attrs, and the raw .get() read was always
+        # empty there — silently missing synchronize_rcu() and reporting a
+        # false 'possible data race' on exactly the kernel-scale graphs
+        # this analysis targets.
+        if G is not None and writer_id is not None:
+            writer_body = _get_body_text(G, writer_id)
+        else:
+            writer_body = writer_nd.get("body_text", "")
         has_sync_rcu = bool(_SYNC_RCU_RE.search(writer_body))
         if has_sync_rcu:
             result.has_happens_before = True

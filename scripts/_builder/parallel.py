@@ -53,7 +53,6 @@ import os
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import logging
-import sys
 
 
 def map_files_processpool(
@@ -214,6 +213,7 @@ def map_nodes(
     desc: str = "",
     batch_size: int = 200,
     parallel_mode: str = "thread",
+    explicit_parallel_mode: bool = False,
 ) -> List[Any]:
     """Apply ``work_fn(node_id, node_data)`` to each item, returning results in order.
 
@@ -267,7 +267,7 @@ def map_nodes(
         and n > 1000
         and workers > 1
         and (os.cpu_count() or 1) >= 4
-        and "--parallel-mode" not in sys.argv
+        and not explicit_parallel_mode
     )
     if (parallel_mode == "process" or _auto_promote) and n > 100:
         try:
@@ -337,6 +337,7 @@ def merge_node_attributes(
     desc: str = "",
     batch_size: int = 200,
     parallel_mode: str = "thread",
+    explicit_parallel_mode: bool = False,
 ) -> int:
     """Parallel map then merge per-node results back into the graph.
 
@@ -349,7 +350,8 @@ def merge_node_attributes(
     results = map_nodes(items, work_fn, jobs=jobs,
                         max_workers_cap=max_workers_cap,
                         desc=desc, batch_size=batch_size,
-                        parallel_mode=parallel_mode)
+                        parallel_mode=parallel_mode,
+                        explicit_parallel_mode=explicit_parallel_mode)
     count = 0
     for (nid, _nd), res in zip(items, results):
         if not res:

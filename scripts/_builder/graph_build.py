@@ -852,7 +852,8 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
 def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
                               jobs: int = 0,
                               max_workers: int = 0,
-                              parallel_mode: str = "thread") -> None:
+                              parallel_mode: str = "thread",
+                              explicit_parallel_mode: bool = False) -> None:
     """Extract shared state access info for all non-empty nodes in the graph.
 
     When parallel_mode='process', uses ProcessPoolExecutor with fork()
@@ -983,6 +984,7 @@ def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
     from _builder.parallel import merge_node_attributes
     merge_node_attributes(G, candidates, _work, jobs=workers,
                           max_workers_cap=max_workers,
+                          explicit_parallel_mode=explicit_parallel_mode,
                           desc="state_access")
 
 
@@ -1956,7 +1958,8 @@ def _disambiguate_struct_chain(struct_chain: str, candidate_structs: list,
 
 def _detect_thread_models(G: nx.DiGraph, builder_profile: dict = None,
                            jobs: int = 0, max_workers: int = 0,
-                           parallel_mode: str = "thread") -> dict:
+                           parallel_mode: str = "thread",
+                           explicit_parallel_mode: bool = False) -> dict:
     """Detect threading models used by functions in the graph.
 
     Scans all nodes for threading API usage in body_text and callee_args,
@@ -2040,6 +2043,7 @@ def _detect_thread_models(G: nx.DiGraph, builder_profile: dict = None,
             jobs=jobs,
             max_workers_cap=max_workers,
             parallel_mode=parallel_mode,
+            explicit_parallel_mode=explicit_parallel_mode,
             desc="thread_model_detection",
         )
         for nid, model in _thread_results:
@@ -6940,7 +6944,8 @@ def cmd_build(args):
     thread_models = _detect_thread_models(G, builder_profile=builder_profile,
                                             jobs=getattr(args, 'jobs', 0),
                                             max_workers=getattr(args, 'max_workers', 0),
-                                            parallel_mode=getattr(args, 'parallel_mode', 'thread'))
+                                            parallel_mode=getattr(args, 'parallel_mode', 'thread'),
+                                            explicit_parallel_mode=getattr(args, 'parallel_mode', None) is not None)
     if thread_models:
         inherited_count = _propagate_thread_models(G, thread_models)
         model_counts = {}
@@ -6955,7 +6960,8 @@ def cmd_build(args):
     tracker.begin("extract_state_access")
     _extract_state_access_all(G, data, jobs=getattr(args, 'jobs', 0) or 0,
                               max_workers=getattr(args, 'max_workers', 0) or 0,
-                              parallel_mode=getattr(args, 'parallel_mode', 'thread'))
+                              parallel_mode=getattr(args, 'parallel_mode', 'thread'),
+                              explicit_parallel_mode=getattr(args, 'parallel_mode', None) is not None)
     state_count = sum(1 for _, nd in G.nodes(data=True)
                       if nd.get("globals_read") or nd.get("globals_written")
                       or nd.get("fields_read") or nd.get("fields_written"))

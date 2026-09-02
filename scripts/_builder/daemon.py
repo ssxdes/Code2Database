@@ -649,8 +649,13 @@ class Daemon:
         # Linux defaults to /tmp, sandboxes/container runtimes may use
         # a private tmpdir that the daemon MUST use (not /tmp).
         _tmpdir = os.environ.get("TMPDIR") or "/tmp"
+        # Hash the full graph_dir path to prevent socket collisions
+        # between two graphs with the same basename (e.g.,
+        # /a/proj/graph and /b/proj/graph).
+        import hashlib as _hashlib
+        _path_hash = _hashlib.md5(self.graph_dir.encode()).hexdigest()[:8]
         self._socket_path = os.path.join(
-            _tmpdir, f"code2database-daemon-{Path(self.graph_dir).name}.sock")
+            _tmpdir, f"code2database-daemon-{_path_hash}.sock")
         self._socket_thread: Optional[threading.Thread] = None
         self._server_socket: Optional[socket.socket] = None
         self._stop = False

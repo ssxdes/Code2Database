@@ -637,11 +637,22 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 try:
                     from _builder.cgdb_tour import generate_tour
                     import tempfile
+                    # Per-request private temp file. The old FIXED path
+                    # (/tmp/c2d_tour.md) let two concurrent requests read
+                    # while the other truncated the shared file (torn
+                    # output), and a pre-created symlink there let a local
+                    # attacker overwrite an arbitrary file with tour text.
+                    _td = tempfile.mkdtemp(prefix="c2d_tour_")
                     tour_path = generate_tour(self.cache.graph_dir,
                                               output_path=os.path.join(
-                                                  tempfile.gettempdir(), "c2d_tour.md"))
+                                                  _td, "tour.md"))
                     with open(tour_path, "r", encoding="utf-8") as f:
                         tour_content = f.read()
+                    try:
+                        os.unlink(tour_path)
+                        os.rmdir(_td)
+                    except OSError:
+                        pass
                     self._send_json(200, {"tour": tour_content})
                 except Exception as exc:
                     logging.getLogger(__name__).warning("tour generation failed", exc_info=True)

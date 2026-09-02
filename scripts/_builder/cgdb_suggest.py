@@ -130,7 +130,18 @@ def _load_functions(graph_dir: str) -> Dict[str, dict]:
         return {}
     funcs = {}
     for domain, domain_info in master.get("domains", {}).items():
-        domain_file = domain_info.get("file", "")
+        # Build writes domains as {name: "domains/<subdir>/<file>.json"}
+        # (a STRING relpath — see graph_build.py domain_map[domain] =
+        # rel_path). Accept the string form as well as a dict form
+        # {name: {"file": ...}} for robustness; the old dict-only read
+        # raised AttributeError on every real master.json, so the JSON
+        # fallback never loaded any function.
+        if isinstance(domain_info, str):
+            domain_file = domain_info
+        elif isinstance(domain_info, dict):
+            domain_file = domain_info.get("file", "")
+        else:
+            domain_file = ""
         if not domain_file:
             continue
         domain_path = os.path.join(graph_dir, domain_file)

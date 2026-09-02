@@ -3466,8 +3466,15 @@ def build_graph(extraction: dict, profile: dict = None,
                     "source_file": vtable.get("source_file", ""),
                     "var_name": vtable.get("var_name", vn),
                 })
-
-        # For each fn_ptr_call, find matching vtable registrations and create edges
+        # Build reverse index: field_name → [struct_types that have this field].
+        # Without this, each fn_ptr_call scans all struct types via
+        # [st for st, fields in vtable_index.items() if field_name in fields]
+        # — O(calls × struct_types) on large vtable-heavy codebases.
+        _field_to_structs = defaultdict(list)
+        for st, fields in vtable_index.items():
+            for fname in fields:
+                _field_to_structs[fname].append(st)
+        # For each fn_ptr_call, find matching vtable registrations and create edges.
         # When the caller is a static inline (no node ID in the graph), we
         # "flatten" the dispatch: create edges from the callers OF the inline
         # function instead. This handles patterns like inline_accessor() in
@@ -3489,8 +3496,7 @@ def build_graph(extraction: dict, profile: dict = None,
                     for call_info in calls:
                         field_name = call_info["field_name"]
                         struct_chain = call_info["struct_chain"]
-                        candidate_structs = [st for st, fields in vtable_index.items()
-                                             if field_name in fields]
+                        candidate_structs = list(_field_to_structs.get(field_name, []))
                         matched_structs = _disambiguate_struct_chain(
                             struct_chain, candidate_structs, var_to_struct,
                             caller_domain=inline_domain,
@@ -3536,8 +3542,7 @@ def build_graph(extraction: dict, profile: dict = None,
                 struct_chain = call_info["struct_chain"]
 
                 # Find which struct types have this field
-                candidate_structs = [st for st, fields in vtable_index.items()
-                                     if field_name in fields]
+                candidate_structs = list(_field_to_structs.get(field_name, []))
 
                 # Disambiguate using struct_chain: if the chain hints at a
                 # specific struct type, only match that one (or those).
@@ -3939,6 +3944,13 @@ def build_graph(extraction: dict, profile: dict = None,
                         "source_file": vtable.get("source_file", ""),
                         "var_name": vtable.get("var_name", vn),
                     })
+        try:
+            _field_to_structs
+        except NameError:
+            _field_to_structs = defaultdict(list)
+            for st, fields in vtable_index.items():
+                for fname in fields:
+                    _field_to_structs[fname].append(st)
         for nid, ndata in list(G.nodes(data=True)):
             node_name = ndata.get("name", "")
             if not node_name:

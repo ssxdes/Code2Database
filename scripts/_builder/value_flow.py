@@ -59,6 +59,32 @@ _NULL_PATTERNS = [
     (r'\bERR_PTR\s*\(', 'err_ptr'),
 ]
 
+# Known security sink function name patterns. Functions matching these
+# names are true sinks (dangerous operations where taint reaching them
+# is a security concern). Leaf functions NOT matching these patterns
+# are "terminals" — the taint flow ends there, but they are not
+# inherently dangerous (e.g., a utility like max(a,b) is a leaf but
+# not a sink).
+_SINK_NAME_RE = re.compile(
+    r'^(?:'
+    r'memcpy|memmove|memset|memchr|memcmp|strcpy|strncpy|strcat|strncat|'  # memory
+    r'strcpy|strlen|strchr|strstr|strtok|sprintf|snprintf|vsprintf|vsnprintf|'  # string
+    r'gets|fgets|fread|recv|read|readlink|fscanf|sscanf|'  # input
+    r'system|popen|exec|execl|execv|execve|execvp|fork|'  # exec
+    r'free|realloc|'  # memory mgmt
+    r'write|fwrite|send|sendto|sendmsg|printf|fprintf|vfprintf|'  # output
+    r'setuid|setgid|seteuid|setegid|chroot|chmod|chown|'  # privilege
+    r'open|creat|openat|'  # file open
+    r'dlopen|dlsym|'  # dynamic loading
+    r'mmap|munmap|mprotect|'  # memory mapping
+    r'ioctl|'  # device control
+    r'kill|raise|signal|'  # signals
+    r'__builtin_\w+|'  # compiler builtins (__builtin_trap, __builtin_abort, etc.)
+    r'abort|exit|_exit|atexit|assert|'  # termination
+    r'error|panic|BUG|WARN'  # error/panic
+    r')(?:_r|_s|_l|_unlocked)?(?:@.*)?$'
+)
+
 
 def extract_return_expressions(body_text: str) -> List[Dict]:
     """Extract return expressions from a function body.
@@ -412,10 +438,20 @@ def forward_taint_trace(G, source_id: str, taint_pattern: str,
                             "depth": depth + 1,
                             "path": path + [invoked_id],
                         }
-                        # Is this a sink? (no further propagation, or marked)
+                        # Is this a sink? A leaf function (no
+                        # callee_args) is either a true security sink
+                        # (matches known sink patterns) or a terminal
+                        # (taint flow ends but not inherently dangerous).
                         callee_nd = G.nodes[invoked_id]
-                        # Heuristic: if callee has no callee_args or is a known sink
                         if not callee_nd.get("callee_args"):
+                            if _SINK_NAME_RE.match(callee_name):
+                                sink_entry["kind"] = "sink"
+                            else:
+                                sink_entry["kind"] = "terminal"
+                                sink_entry["note"] = (
+                                    "leaf function — taint flow ends "
+                                    "here but not a known security sink"
+                                )
                             sinks.append(sink_entry)
                         else:
                             queue.append((invoked_id, arg_val, depth + 1, path + [invoked_id]))

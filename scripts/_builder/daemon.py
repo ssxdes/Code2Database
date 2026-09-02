@@ -1511,11 +1511,19 @@ class Daemon:
         self.state.write(self.graph_dir)
 
     def _log(self, msg: str):
-        """Log to daemon log file."""
+        """Log to daemon log file (with simple size-based rotation)."""
         log_path = Path.home() / ".callgraph" / f"daemon-{Path(self.graph_dir).name}.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
+        # Rotate: if log exceeds 10MB, truncate to prevent unbounded growth
         try:
-            with open(log_path, "a", encoding="utf-8") as f:
+            if log_path.exists() and log_path.stat().st_size > 10 * 1024 * 1024:
+                _mode = "w"
+            else:
+                _mode = "a"
+        except OSError:
+            _mode = "a"
+        try:
+            with open(log_path, _mode, encoding="utf-8") as f:
                 f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
         except Exception:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)

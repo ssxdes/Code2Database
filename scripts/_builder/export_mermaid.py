@@ -258,9 +258,16 @@ def _export_function_detail(
 
 
 def _bfs_longest_path(start: str, adj: Dict, max_depth: int) -> List[str]:
-    """Find the longest path from start (BFS, limited depth)."""
+    """Find the longest path from start (BFS, limited depth).
+
+    Bounds memory: the path-copying BFS is O(B^max_depth) in the
+    branching factor — a kernel-scale call graph (B=50, depth=5) would
+    enqueue 300M paths. Cap the queue and break early (best-effort
+    longest path, which is all the mermaid export needs).
+    """
     best_path = [start]
     queue = [(start, [start])]
+    _MAX_QUEUE = 5000
     while queue:
         cur, path = queue.pop(0)
         if len(path) > len(best_path):
@@ -270,6 +277,10 @@ def _bfs_longest_path(start: str, adj: Dict, max_depth: int) -> List[str]:
         for nxt in adj.get(cur, []):
             if nxt not in path:
                 queue.append((nxt, path + [nxt]))
+                if len(queue) >= _MAX_QUEUE:
+                    break
+        if len(queue) >= _MAX_QUEUE:
+            break
     return best_path
 
 

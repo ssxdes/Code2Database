@@ -469,12 +469,19 @@ class GraphCache:
 # HTTP handler
 # ---------------------------------------------------------------------------
 
+# Single highlight-path per server (module-level; see WebUIHandler note).
+_HIGHLIGHT_PATH: List[str] = []
+
+
 class WebUIHandler(BaseHTTPRequestHandler):
     """HTTP request handler serving the API + the HTML UI."""
 
     # Set by the factory function before serve_forever()
     cache: GraphCache = None
-    highlight_path: List[str] = []  # path highlighted via POST /api/highlight-path
+    # Path highlighted via POST /api/highlight-path. Module-level (not a
+    # class attr with a shared [] default) so a second handler class
+    # (e.g., in tests) doesn't silently share state; documented single
+    # highlight-path per server.
 
     def log_message(self, fmt, *args):
         # Suppress default access log (too noisy); route through stderr only
@@ -553,7 +560,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, self.cache.shortest_path(from_id, to_id))
                 return
             if path == "/api/highlight-path":
-                self._send_json(200, {"path": self.highlight_path})
+                self._send_json(200, {"path": _HIGHLIGHT_PATH})
                 return
             if path == "/api/communities":
                 self._send_json(200, {"communities": self.cache.list_communities()})
@@ -646,8 +653,8 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 body = self.rfile.read(length).decode("utf-8")
                 data = json.loads(body) if body else {}
                 # Set on the CLASS (not the instance) so all handlers see it
-                type(self).highlight_path = data.get("path", [])
-                self._send_json(200, {"ok": True, "path": type(self).highlight_path})
+                _HIGHLIGHT_PATH[:] = data.get("path", [])
+                self._send_json(200, {"ok": True, "path": list(_HIGHLIGHT_PATH)})
                 return
             if path == "/api/reload":
                 self.cache.reload()

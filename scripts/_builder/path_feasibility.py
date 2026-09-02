@@ -939,81 +939,86 @@ def cmd_path_feasible(args):
             pass
         paths = []
         _PATH_CAP = 50
-        def _walk(nid, path, conds, cfg_preds, depth):
-            if depth >= max_depth:
-                return
-            if len(paths) >= _PATH_CAP:
-                return
-            for succ in G.successors(nid):
+
+        try:
+            # Everything from _walk to holder_analysis may raise; the
+            # finally below closes cgdb_store on ALL paths (the previous
+            # code only closed it on success — leaked on exception).
+            def _walk(nid, path, conds, cfg_preds, depth):
+                if depth >= max_depth:
+                    return
                 if len(paths) >= _PATH_CAP:
                     return
-                ed = G.get_edge_data(nid, succ) or {}
-                if ed.get("relation") in ("CONTAINS", "IMPORTS"):
-                    continue
-                cond = ed.get("call_condition", "")
-                new_conds = conds + ([cond] if cond else [])
-                # Accumulate config predicates from the edge
-                new_cfg_preds = list(cfg_preds)
-                cp_id = ed.get("config_predicate_id")
-                if cp_id and cp_map and cp_id in cp_map:
-                    tf = cp_map[cp_id].get("text_form", "")
-                    if tf and tf not in new_cfg_preds:
-                        new_cfg_preds.append(tf)
-                new_path = path + [succ]
-                if not list(G.successors(succ)):
-                    paths.append((new_path, new_conds, new_cfg_preds))
-                else:
-                    _walk(succ, new_path, new_conds, new_cfg_preds, depth + 1)
-        _walk(node_id, [node_id], [], [], 0)
-        # runtime guard analysis (bd_prepare_to_claim / sb_is_blkdev_sb /
-        # bd_holder != / mutex_is_locked) — complements compile-time #ifdef analysis.
-        # use check_runtime_guards_with_profile so profile-declared
-        # guard_functions augment the hardcoded regex patterns.
-        try:
-            from _builder.runtime_guards import check_runtime_guards_with_profile
-            _runtime_guards_available = True
-        except ImportError:
-            _runtime_guards_available = False
-        results = []
-        for path, conds, cfg_preds in paths[:50]:  # cap
-            feasible = solve_path_feasibility(conds)
-            entry = {
-                "path": [G.nodes[n].get("name", n) for n in path],
-                "conditions": conds,
-                "feasibility": feasible,
-            }
-            if cfg_preds:
-                entry["config_predicates"] = cfg_preds
-                if macro_bindings:
-                    entry["config_feasibility"] = check_config_feasible(
-                        cfg_preds, macro_bindings)
-                else:
-                    entry["config_feasibility"] = {
-                        "feasible": None,
-                        "reason": "no --with-configs bindings provided",
-                        "per_predicate": [],
-                    }
-            # attach runtime guard analysis
-            if _runtime_guards_available and conds:
-                entry["runtime_guards"] = check_runtime_guards_with_profile(
-                    conds, guard_functions=guard_functions)
-            results.append(entry)
-
-        # HOLDER edge analysis: check if any node on each path holds
-        # an exclusive lock on a resource, making concurrent paths to
-        # the same resource unreachable.
-        holder_analysis = _analyze_holder_edges(G, paths[:50])
-        if holder_analysis:
-            for i, entry in enumerate(results):
-                if i < len(holder_analysis) and holder_analysis[i]:
-                    entry["exclusive_holds"] = holder_analysis[i]
-
-        if cgdb_store is not None:
+                for succ in G.successors(nid):
+                    if len(paths) >= _PATH_CAP:
+                        return
+                    ed = G.get_edge_data(nid, succ) or {}
+                    if ed.get("relation") in ("CONTAINS", "IMPORTS"):
+                        continue
+                    cond = ed.get("call_condition", "")
+                    new_conds = conds + ([cond] if cond else [])
+                    # Accumulate config predicates from the edge
+                    new_cfg_preds = list(cfg_preds)
+                    cp_id = ed.get("config_predicate_id")
+                    if cp_id and cp_map and cp_id in cp_map:
+                        tf = cp_map[cp_id].get("text_form", "")
+                        if tf and tf not in new_cfg_preds:
+                            new_cfg_preds.append(tf)
+                    new_path = path + [succ]
+                    if not list(G.successors(succ)):
+                        paths.append((new_path, new_conds, new_cfg_preds))
+                    else:
+                        _walk(succ, new_path, new_conds, new_cfg_preds, depth + 1)
+            _walk(node_id, [node_id], [], [], 0)
+            # runtime guard analysis (bd_prepare_to_claim / sb_is_blkdev_sb /
+            # bd_holder != / mutex_is_locked) — complements compile-time #ifdef analysis.
+            # use check_runtime_guards_with_profile so profile-declared
+            # guard_functions augment the hardcoded regex patterns.
             try:
-                cgdb_store.close()
-            except Exception:
-                logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                pass
+                from _builder.runtime_guards import check_runtime_guards_with_profile
+                _runtime_guards_available = True
+            except ImportError:
+                _runtime_guards_available = False
+            results = []
+            for path, conds, cfg_preds in paths[:50]:  # cap
+                feasible = solve_path_feasibility(conds)
+                entry = {
+                    "path": [G.nodes[n].get("name", n) for n in path],
+                    "conditions": conds,
+                    "feasibility": feasible,
+                }
+                if cfg_preds:
+                    entry["config_predicates"] = cfg_preds
+                    if macro_bindings:
+                        entry["config_feasibility"] = check_config_feasible(
+                            cfg_preds, macro_bindings)
+                    else:
+                        entry["config_feasibility"] = {
+                            "feasible": None,
+                            "reason": "no --with-configs bindings provided",
+                            "per_predicate": [],
+                        }
+                # attach runtime guard analysis
+                if _runtime_guards_available and conds:
+                    entry["runtime_guards"] = check_runtime_guards_with_profile(
+                        conds, guard_functions=guard_functions)
+                results.append(entry)
+
+            # HOLDER edge analysis: check if any node on each path holds
+            # an exclusive lock on a resource, making concurrent paths to
+            # the same resource unreachable.
+            holder_analysis = _analyze_holder_edges(G, paths[:50])
+            if holder_analysis:
+                for i, entry in enumerate(results):
+                    if i < len(holder_analysis) and holder_analysis[i]:
+                        entry["exclusive_holds"] = holder_analysis[i]
+        finally:
+            if cgdb_store is not None:
+                try:
+                    cgdb_store.close()
+                except Exception:
+                    logging.getLogger(__name__).warning(
+                        "path_feasible: cgdb_store close failed", exc_info=True)
         print(json.dumps({
             "start": G.nodes[node_id].get("name", node_id),
             "paths": results,

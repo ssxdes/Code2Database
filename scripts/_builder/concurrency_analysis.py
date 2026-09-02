@@ -47,8 +47,12 @@ def _compile_lock_patterns(profile):
     cp = profile.get("concurrency_patterns", {}) if isinstance(profile, dict) else {}
     acquire_strs = cp.get("lock_acquire_patterns", []) or []
     release_strs = cp.get("lock_release_patterns", []) or []
-    # Cache key by id() — profiles are typically loaded once per command
-    cache_key = id(profile)
+    # Cache key by CONTENT (the pattern lists), not id(profile): id() of a
+    # freed dict can be handed to the next profile object, silently
+    # returning the previous project's compiled lock patterns (wrong lock
+    # sets -> wrong race/TOCTOU results) in any process analyzing more
+    # than one project. Content keys also self-bound the cache size.
+    cache_key = (tuple(acquire_strs), tuple(release_strs))
     if cache_key in _LOCK_PATTERN_CACHE:
         return _LOCK_PATTERN_CACHE[cache_key]
     acquire = []

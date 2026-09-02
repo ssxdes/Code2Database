@@ -320,8 +320,11 @@ def _write_html_file(G: nx.DiGraph, output_path: str, title: str, full_graph: bo
             "width": edge_width,
         })
 
-    nodes_json = json.dumps(vis_nodes, ensure_ascii=False)
-    edges_json = json.dumps(vis_edges, ensure_ascii=False)
+    # Escape < > to prevent JSON-in-<script> XSS: if a node name contains
+    # </script>, the HTML parser closes the script tag and the payload
+    # executes. json.dumps(ensure_ascii=False) does NOT escape < > &.
+    nodes_json = json.dumps(vis_nodes, ensure_ascii=False).replace("<", "\\u003c")
+    edges_json = json.dumps(vis_edges, ensure_ascii=False).replace("<", "\\u003c")
 
     # Community grouping info for collapse/expand
     comm_groups = defaultdict(list)
@@ -332,7 +335,7 @@ def _write_html_file(G: nx.DiGraph, output_path: str, title: str, full_graph: bo
 
     communities_json = json.dumps(
         [{"id": cid, "nodes": nids} for cid, nids in comm_groups.items()],
-        ensure_ascii=False)
+        ensure_ascii=False).replace("<", "\\u003c")
 
     html = f"""<!DOCTYPE html>
 <html>

@@ -916,14 +916,6 @@ def _build_context_pack(G: nx.DiGraph, outdir: str, source_root: str = "",
         if "project_summary" in pack:
             pack["project_summary"]["api_entries"] = [a["name"] for a in pack["api_catalog"]]
     # Use streaming write for the full pack to avoid double-serialization OOM
-    pack_path = os.path.join(outdir, ".code2database_context_pack.json")
-    with open(pack_path, "w", encoding="utf-8") as _pf:
-        json.dump(pack, _pf, ensure_ascii=False, separators=(',', ':'))
-        _pf.write("\n")
-    # Estimate tokens from file size instead of re-serializing
-    _pack_file_size = os.path.getsize(pack_path)
-    pack["_token_count"] = _pack_file_size // 4  # rough: ~4 chars/token
-
     # Generate human-readable Markdown lite pack
     _write_context_pack_lite_md(outdir, lite_pack)
 
@@ -936,6 +928,10 @@ def _build_context_pack(G: nx.DiGraph, outdir: str, source_root: str = "",
     # .knowledge_pack_lite.json files that the agent had to fetch
     # independently. Now they're embedded as `memory_summary` and
     # `knowledge_summary` keys in the main context_pack.
+    # NOTE: this MUST run before the pack is serialized below — the old
+    # order wrote the file first, so the merged summaries only ever
+    # existed in the in-memory dict and the on-disk context_pack never
+    # contained them (the feature was dead on every build).
     try:
         mem_pack_path = os.path.join(outdir, ".memory_pack_lite.json")
         if os.path.exists(mem_pack_path):
@@ -960,6 +956,15 @@ def _build_context_pack(G: nx.DiGraph, outdir: str, source_root: str = "",
     except Exception:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
+
+    pack_path = os.path.join(outdir, ".code2database_context_pack.json")
+    with open(pack_path, "w", encoding="utf-8") as _pf:
+        json.dump(pack, _pf, ensure_ascii=False, separators=(',', ':'))
+        _pf.write("\n")
+    # Estimate tokens from file size instead of re-serializing
+    _pack_file_size = os.path.getsize(pack_path)
+    pack["_token_count"] = _pack_file_size // 4  # rough: ~4 chars/token
+
     _write_review_checklist(outdir, G)
 
     return pack_path

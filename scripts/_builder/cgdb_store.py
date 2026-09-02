@@ -8,6 +8,7 @@ the legacy SQLiteStore (side-by-side coexistence).
 """
 import logging
 import sqlite3
+import threading
 import json
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
@@ -1743,6 +1744,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
 # ============================================================================
 
 _GLOBAL_STORE: Optional[SQLiteCGDBStore] = None
+_GLOBAL_STORE_LOCK = threading.Lock()
 
 
 def get_cgdb_store(db_path: str,
@@ -1750,9 +1752,24 @@ def get_cgdb_store(db_path: str,
                    create_schema: bool = True) -> SQLiteCGDBStore:
     """Get a SQLiteCGDBStore. If a shared connection is provided (e.g., from
     SQLiteStore), uses it; otherwise opens its own connection to db_path.
+
+    Thread-safe singleton: uses a lock to prevent two threads from both
+    creating stores. If conn is provided for a cached store with a
+    different conn, the old store is closed and a new one is created.
     """
     global _GLOBAL_STORE
-    if _GLOBAL_STORE is None or _GLOBAL_STORE._db_path != db_path:
+    with _GLOBAL_STORE_LOCK:
+        if _GLOBAL_STORE is not None and _GLOBAL_STORE._db_path == db_path:
+            if conn is not None and _GLOBAL_STORE._conn is not conn:
+                # Caller provided a different connection — replace the store
+                try:
+                    _GLOBAL_STORE.close()
+                except Exception:
+                    pass
+                _GLOBAL_STORE = SQLiteCGDBStore(db_path, conn=conn)
+                if create_schema:
+                    _GLOBAL_STORE.create_schema()
+            return _GLOBAL_STORE
         _GLOBAL_STORE = SQLiteCGDBStore(db_path, conn=conn)
         if create_schema:
             _GLOBAL_STORE.create_schema()

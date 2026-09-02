@@ -119,7 +119,6 @@ def _detect_locks_held(ndata, profile=None, G=None, nid=None):
         return set()  # No patterns → no lock detection (safe default)
 
     locks_acquired = set()
-    locks_released = set()
 
     # Use _get_body_text when G is provided — on StreamingGraph /
     # LazySQLiteGraph, body_text is empty in cached attrs (compressed in
@@ -136,13 +135,6 @@ def _detect_locks_held(ndata, profile=None, G=None, nid=None):
                 locks_acquired.add(groups[0].lstrip("&"))
             else:
                 locks_acquired.add("__rcu_read_lock__")
-    for pat in release_patterns:
-        for m in pat.finditer(body):
-            groups = m.groups()
-            if groups:
-                locks_released.add(groups[0].lstrip("&"))
-            else:
-                locks_released.add("__rcu_read_lock__")
 
     # Also check callee_args for lock API calls. Use a substring pre-filter
     # to skip the regex search() for (callee, pattern) pairs where the callee
@@ -169,17 +161,6 @@ def _detect_locks_held(ndata, profile=None, G=None, nid=None):
                     locks_acquired.add(groups[0].lstrip("&"))
                 else:
                     locks_acquired.add("__rcu_read_lock__")
-        for pat in release_patterns:
-            _src = pat.pattern
-            if callee_name not in _src and '|' not in _src and '(?i' not in _src:
-                continue
-            m = pat.search(callee_search_target)
-            if m:
-                groups = m.groups()
-                if groups:
-                    locks_released.add(groups[0].lstrip("&"))
-                else:
-                    locks_released.add("__rcu_read_lock__")
 
     # If a lock is acquired and released within the same function, the
     # critical section is internal and does not protect against races
@@ -296,9 +277,13 @@ def _detect_toctou_patterns(G, target_func=None, profile=None):
             for _re in _acquire_res:
                 for m in _re.finditer(body):
                     locks.add(m.group(1).strip())
-            for _re in _release_res:
-                for m in _re.finditer(body):
-                    locks.discard(m.group(1).strip())
+            # Do NOT subtract released locks at function granularity —
+            # we can't know which accesses are inside the critical
+            # section without access-level analysis. A function that
+            # acquires AND releases a lock ends up with locks={} here,
+            # making 'reader_locks and ...' falsy → TOCTOU never
+            # reported (false negative). Keep all acquired locks
+            # (conservative, matching _detect_locks_held semantics).
         # Writer role: collect fields_written
         for fw in (nd.get("fields_written") or []):
             fname = fw.get("field_name", "")

@@ -328,7 +328,7 @@ def _split_operand(expr: str, op: str) -> tuple:
         if c == '(':
             depth += 1
         elif c == ')':
-            depth -= 1
+            depth = max(0, depth - 1)  # clamp to prevent negative on unbalanced
         elif depth == 0 and expr[i:i + len(op)] == op:
             return expr[:i].strip(), expr[i + len(op):].strip()
         i += 1

@@ -650,20 +650,25 @@ def ingest_l1(
 
         # Batch INSERT string_literals
         if _strlit_rows:
+            _strlit_batch = []
             for _si, _srow in enumerate(_strlit_rows):
                 _lidx = _strlit_literal_indices[_si]
                 _lid = _literal_ids.get(_lidx)
                 if _lid is not None:
                     # _srow is (raw_bytes, decoded, encoding, is_wide,
                     #           security_flags, token_id_placeholder)
-                    conn.execute(
-                        "INSERT INTO string_literals "
-                        "(literal_id, raw_bytes, decoded, encoding, is_wide, "
-                        "security_flags, token_id) "
-                        "VALUES (?, ?, ?, ?, ?, ?, NULL)",
+                    _strlit_batch.append(
                         (_lid, _srow[0], _srow[1], _srow[2],
                          _srow[3], _srow[4])
                     )
+            if _strlit_batch:
+                conn.executemany(
+                    "INSERT INTO string_literals "
+                    "(literal_id, raw_bytes, decoded, encoding, is_wide, "
+                    "security_flags, token_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, NULL)",
+                    _strlit_batch
+                )
 
     # Resolve literal_id back-references in tokens
     if _literal_backrefs:
@@ -674,27 +679,35 @@ def ingest_l1(
         ):
             _seq_to_token_id[_trow[1]] = _trow[0]
 
+        # Batch all back-reference UPDATEs by type
+        _token_update_batch = []
+        _literal_update_batch = []
+        _strlit_update_batch = []
         for _tseq, _lkind, _lidx in _literal_backrefs:
             _lid = _literal_ids.get(_lidx)
             if _lid is not None:
                 _tok_id = _seq_to_token_id.get(_tseq)
-                conn.execute(
-                    "UPDATE tokens SET literal_id=? WHERE file_id=? AND seq=?",
-                    (_lid, file_id, _tseq)
-                )
-                # Set literals.token_id back-reference
+                _token_update_batch.append((_lid, file_id, _tseq))
                 if _tok_id is not None:
-                    conn.execute(
-                        "UPDATE literals SET token_id=? WHERE id=?",
-                        (_tok_id, _lid)
-                    )
-                # Set string_literals.token_id back-reference
-                if _lkind == "string" and _tok_id is not None:
-                    conn.execute(
-                        "UPDATE string_literals SET token_id=? "
-                        "WHERE literal_id=?",
-                        (_tok_id, _lid)
-                    )
+                    _literal_update_batch.append((_tok_id, _lid))
+                    if _lkind == "string":
+                        _strlit_update_batch.append((_tok_id, _lid))
+        if _token_update_batch:
+            conn.executemany(
+                "UPDATE tokens SET literal_id=? WHERE file_id=? AND seq=?",
+                _token_update_batch
+            )
+        if _literal_update_batch:
+            conn.executemany(
+                "UPDATE literals SET token_id=? WHERE id=?",
+                _literal_update_batch
+            )
+        if _strlit_update_batch:
+            conn.executemany(
+                "UPDATE string_literals SET token_id=? "
+                "WHERE literal_id=?",
+                _strlit_update_batch
+            )
 
     # Batch INSERT comments
     if _comment_rows:

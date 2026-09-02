@@ -1550,7 +1550,7 @@ class SQLiteStore:
                 JOIN edges e ON e.invoker_id = p.node_id
                 WHERE p.depth < ?
                   AND e.relation = 'INVOKES'
-                  AND instr(p.path, e.invoked_id) = 0
+                  AND instr(',' || p.path || ',', ',' || e.invoked_id || ',') = 0
             )
             SELECT depth, path FROM path_search WHERE node_id = ?
             ORDER BY depth LIMIT 50

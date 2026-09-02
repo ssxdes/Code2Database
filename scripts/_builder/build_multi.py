@@ -511,7 +511,7 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                     continue
                 project_data = result["data"]
                 # Force project-name domain prefix
-                n_updated = _prefix_domain_with_project(project_data, _pn)
+                _prefix_domain_with_project(project_data, _pn)
                 # Merge into joint extraction
                 joint_extraction["functions"].extend(project_data.get("functions", []))
                 joint_extraction["edges"].extend(project_data.get("edges", []))
@@ -541,7 +541,7 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                     print(result["traceback"], file=sys.stderr)
                 continue
             project_data = result["data"]
-            n_updated = _prefix_domain_with_project(project_data, _pn)
+            _prefix_domain_with_project(project_data, _pn)
             joint_extraction["functions"].extend(project_data.get("functions", []))
             joint_extraction["edges"].extend(project_data.get("edges", []))
             for k, v in (project_data.get("globals") or {}).items():

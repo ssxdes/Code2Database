@@ -79,11 +79,18 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
     # missing but type_spelling is present.
     type_by_spelling: dict = {}
     # Pre-populate from cgdb_types so the node loop can look up existing
-    # types without waiting for section 2.
+    # types without waiting for section 2. Track seen ids so section 2
+    # doesn't re-append (and re-INSERT OR REPLACE) the same types.
+    _seen_type_ids = set()
     for _t in scan_result.get('cgdb_types', []):
+        try:
+            _tid = int(_t['id'])
+        except (KeyError, ValueError, TypeError):
+            continue
+        _seen_type_ids.add(_tid)
         _canon = _t.get('canonical_spelling') or _t.get('spelling') or ''
         if _canon:
-            type_by_spelling[_canon] = int(_t['id'])
+            type_by_spelling[_canon] = _tid
 
     # 1. Convert cgdb_nodes → NodeRecord
     # Map legacy/invalid kind values to the cgdb_nodes.kind CHECK constraint
@@ -215,8 +222,20 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
     # Populate the type_by_spelling map so we can backfill type_id on nodes
     # that have type_spelling but no type_id (e.g. function nodes whose
     # type_spelling is the full signature).
+    # Skip types already registered in the pre-pass above (dedup by id —
+    # INSERT OR REPLACE in _write_types would silently redo them).
     for t in scan_result.get('cgdb_types', []):
-        type_id = int(t['id'])
+        try:
+            type_id = int(t['id'])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if type_id in _seen_type_ids:
+            # Already registered in the pre-pass; only fill explicit fields
+            canon = t.get('canonical_spelling') or t.get('spelling') or ''
+            if canon:
+                type_by_spelling.setdefault(canon, type_id)
+            continue
+        _seen_type_ids.add(type_id)
         canon = t.get('canonical_spelling') or t.get('spelling') or ''
         if canon:
             type_by_spelling[canon] = type_id

@@ -399,7 +399,6 @@ class FileWatcher:
 
     def _run_inotify(self):
         """Read inotify events and dispatch to callback."""
-        import ctypes
         while not self._stop:
             try:
                 import select as _select
@@ -412,71 +411,171 @@ class FileWatcher:
                     data = os.read(self._inotify_fd, 65536)
                     if not data:
                         continue
-                    offset = 0
-                    while offset + 16 <= len(data):
-                        wd = int.from_bytes(data[offset:offset+4], "little", signed=True)
-                        mask = int.from_bytes(data[offset+4:offset+8], "little")
-                        name_len = int.from_bytes(data[offset+12:offset+16], "little")
-                        if mask & _IN_Q_OVERFLOW:
-                            # Kernel dropped events (burst exceeded
-                            # max_queued_events, default 16384). The wd is
-                            # -1 and no path is recoverable — the daemon
-                            # must bulk-resync or it silently stays stale
-                            # forever. Throttle to one signal per 5s so a
-                            # sustained overflow burst queues one bulk job,
-                            # not hundreds.
-                            _now = time.time()
-                            if _now - self._last_overflow_ts >= 5.0:
-                                self._last_overflow_ts = _now
-                                logging.getLogger(__name__).warning(
-                                    "daemon: inotify queue overflow — events were "
-                                    "dropped; requesting bulk resync")
-                                if self._on_overflow:
-                                    try:
-                                        self._on_overflow()
-                                    except Exception:
-                                        logging.getLogger(__name__).debug(
-                                            "silent exception", exc_info=True)
-                            offset += 16 + name_len
-                            continue
-                        name = data[offset+16:offset+16+name_len].rstrip(b"\0").decode("utf-8", errors="replace")
-                        base_path = self._wd_to_path.get(wd, "")
-                        if base_path:
-                            full_path = os.path.join(base_path, name) if name else base_path
-                            if not self._is_excluded(full_path):
-                                if mask & 0x8000:  # IN_IGNORED — watch removed (dir deleted/moved): drop the wd mapping
-                                    self._wd_to_path.pop(wd, None)
-                                elif mask & _IN_CREATE and mask & _IN_ISDIR:
-                                    if not self._inotify_exhausted:
-                                        _watch_mask = (_DEFAULT_WATCH_MASK
-                                                       )
-                                        import ctypes as _ct
-                                        _wd_new = self._libc.inotify_add_watch(
-                                            self._inotify_fd, full_path.encode("utf-8"), _watch_mask)
-                                        if _wd_new >= 0:
-                                            self._watch_descriptors.append(_wd_new)
-                                            self._wd_to_path[_wd_new] = full_path
-                                        else:
-                                            _err = _ct.get_errno()
-                                            if _err == 28:
-                                                self._inotify_exhausted = True
-                                ext = Path(full_path).suffix.lower()
-                                if ext in MONITORED_EXTS or not ext:
-                                    if self._callback:
-                                        # Guard EACH callback: an exception
-                                        # here used to bubble to the outer
-                                        # 'except Exception', abandoning the
-                                        # rest of the already-read event
-                                        # buffer — inotify never re-delivers
-                                        # dropped events.
-                                        try:
-                                            self._callback(full_path)
-                                        except Exception:
-                                            logging.getLogger(__name__).debug(
-                                                "silent exception", exc_info=True)
-                        offset += 16 + name_len
+                    self._process_inotify_buffer(data)
             except Exception:
                 time.sleep(0.1)
+
+    def _fire_callback(self, path: str):
+        if self._callback:
+            # Guard EACH callback: an exception here used to bubble to the
+            # outer 'except Exception', abandoning the rest of the
+            # already-read event buffer — inotify never re-delivers
+            # dropped events.
+            try:
+                self._callback(path)
+            except Exception:
+                logging.getLogger(__name__).debug(
+                    "silent exception", exc_info=True)
+
+    def _add_dir_watch(self, dir_path: str) -> bool:
+        """Add an inotify watch on dir_path; returns True on success.
+
+        Sets _inotify_exhausted on ENOSPC; logs other failures instead of
+        silently leaving the subtree unwatched.
+        """
+        import ctypes as _ct
+        if self._inotify_exhausted:
+            return False
+        _wd = self._libc.inotify_add_watch(
+            self._inotify_fd, dir_path.encode("utf-8"), _DEFAULT_WATCH_MASK)
+        if _wd >= 0:
+            self._wd_to_path[_wd] = dir_path
+            return True
+        _err = _ct.get_errno()
+        if _err == 28:  # ENOSPC — watch limit reached
+            self._inotify_exhausted = True
+        else:
+            # EACCES / ENOENT race / ENOMEM etc: previously swallowed —
+            # the subtree stayed permanently unwatched with no trace.
+            logging.getLogger(__name__).warning(
+                "daemon: inotify_add_watch(%s) failed (errno=%s)",
+                dir_path, _err)
+        return False
+
+    def _rescan_new_dir(self, dir_path: str, _depth: int = 0):
+        """Watch subdirs and callback existing files of a newly-watched dir.
+
+        Files created inside a brand-new directory BEFORE the watch took
+        effect generate no events (the dir wasn't watched yet) — without
+        this rescan, 'mkdir d && write d/foo.c' lost foo.c forever.
+        """
+        if _depth > 8 or self._inotify_exhausted:
+            return
+        try:
+            entries = sorted(os.listdir(dir_path))
+        except OSError:
+            return
+        for e in entries:
+            p = os.path.join(dir_path, e)
+            if self._is_excluded(p):
+                continue
+            if os.path.isdir(p):
+                if self._add_dir_watch(p):
+                    self._rescan_new_dir(p, _depth + 1)
+            else:
+                ext = Path(p).suffix.lower()
+                if ext in MONITORED_EXTS or not ext:
+                    self._fire_callback(p)
+
+    def _repoint_dir_watches(self, old_path: str, new_path: str):
+        """Re-point all wd→path mappings under a renamed directory.
+
+        inotify watches the inode, so after 'git mv src/old src/new' the
+        wds stay valid but _wd_to_path kept the OLD paths: subsequent
+        events inside were attributed to nonexistent paths while the real
+        new paths got nothing.
+        """
+        old_pfx = old_path.rstrip(os.sep) + os.sep
+        for wd, p in list(self._wd_to_path.items()):
+            if p == old_path:
+                self._wd_to_path[wd] = new_path
+            elif p.startswith(old_pfx):
+                self._wd_to_path[wd] = new_path + p[len(old_path):]
+
+    def _process_inotify_buffer(self, data: bytes):
+        """Parse one inotify read buffer and dispatch events."""
+        _pending_dir_moves = {}  # cookie -> old full path (MOVED_FROM|ISDIR)
+        offset = 0
+        while offset + 16 <= len(data):
+            wd = int.from_bytes(data[offset:offset+4], "little", signed=True)
+            mask = int.from_bytes(data[offset+4:offset+8], "little")
+            cookie = int.from_bytes(data[offset+8:offset+12], "little")
+            name_len = int.from_bytes(data[offset+12:offset+16], "little")
+            if mask & _IN_Q_OVERFLOW:
+                # Kernel dropped events (burst exceeded max_queued_events,
+                # default 16384). The wd is -1 and no path is recoverable —
+                # the daemon must bulk-resync or it silently stays stale
+                # forever. Throttle to one signal per 5s so a sustained
+                # overflow burst queues one bulk job, not hundreds.
+                _now = time.time()
+                if _now - self._last_overflow_ts >= 5.0:
+                    self._last_overflow_ts = _now
+                    logging.getLogger(__name__).warning(
+                        "daemon: inotify queue overflow — events were "
+                        "dropped; requesting bulk resync")
+                    if self._on_overflow:
+                        try:
+                            self._on_overflow()
+                        except Exception:
+                            logging.getLogger(__name__).debug(
+                                "silent exception", exc_info=True)
+                offset += 16 + name_len
+                continue
+            name = data[offset+16:offset+16+name_len].rstrip(b"\0").decode("utf-8", errors="replace")
+            base_path = self._wd_to_path.get(wd, "")
+            if base_path:
+                full_path = os.path.join(base_path, name) if name else base_path
+                if not self._is_excluded(full_path):
+                    if mask & 0x8000:  # IN_IGNORED — watch removed (dir deleted/moved): drop the wd mapping
+                        self._wd_to_path.pop(wd, None)
+                    elif mask & _IN_MOVE_SELF:
+                        # The watched dir ITSELF was moved somewhere we
+                        # can't see (parent unwatched / cross-tree). The wd
+                        # follows the inode but we no longer know the path:
+                        # drop the mapping and stale-mark the old subtree.
+                        self._wd_to_path.pop(wd, None)
+                        logging.getLogger(__name__).warning(
+                            "daemon: watched dir moved: %s (stale-marking; "
+                            "run daemon-force-refresh if needed)", base_path)
+                    elif mask & _IN_MOVED_FROM and mask & _IN_ISDIR:
+                        # Directory renamed away — pair with the MOVED_TO
+                        # via the inotify cookie (same read buffer). Fire
+                        # on the old path so the sync stale-marks it.
+                        _pending_dir_moves[cookie] = full_path
+                    elif mask & _IN_MOVED_TO and mask & _IN_ISDIR:
+                        _old = _pending_dir_moves.pop(cookie, None)
+                        if _old:
+                            # Rename within the watched tree: re-point all
+                            # subtree mappings old -> new.
+                            self._repoint_dir_watches(_old, full_path)
+                        # else: dir moved IN from outside the watched tree —
+                        # its contents were never watched; watch + rescan.
+                        if self._add_dir_watch(full_path):
+                            self._rescan_new_dir(full_path)
+                    elif mask & _IN_CREATE and mask & _IN_ISDIR:
+                        if self._add_dir_watch(full_path):
+                            # Rescan for files created between mkdir and
+                            # the watch taking effect (no events exist for
+                            # them).
+                            self._rescan_new_dir(full_path)
+                    ext = Path(full_path).suffix.lower()
+                    if ext in MONITORED_EXTS or not ext:
+                        self._fire_callback(full_path)
+            offset += 16 + name_len
+        # MOVED_FROM|ISDIR entries with no matching MOVED_TO in this buffer
+        # were moved OUT of the watched tree: drop their subtree mappings
+        # (events from the moved subtree no longer belong to us) and
+        # stale-mark the old paths.
+        for _old in _pending_dir_moves.values():
+            self._repoint_drop_subtree(_old)
+            self._fire_callback(_old)
+
+    def _repoint_drop_subtree(self, old_path: str):
+        """Remove wd→path mappings for a directory moved out of the tree."""
+        old_pfx = old_path.rstrip(os.sep) + os.sep
+        for wd, p in list(self._wd_to_path.items()):
+            if p == old_path or p.startswith(old_pfx):
+                self._wd_to_path.pop(wd, None)
 
     # ---- macOS FSEvents backend ----
     def _start_fsevents(self) -> bool:

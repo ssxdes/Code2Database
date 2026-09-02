@@ -140,11 +140,26 @@ class WritebackPipeline:
             (f"writeback_tx:{tx_id}", f"file_id={file_id},started={int(time.time())}")
         )
         # Record the snapshot of cgdb_files / source_files_meta for rollback
-        # (The legacy transactions.py already handles full-DB snapshot via
-        # create_snapshot; we just track which file_id this tx touches.)
         self.conn.execute(
             "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
             (f"writeback_tx_file:{tx_id}", str(file_id))
+        )
+        # Create a snapshot so _rollback() can actually restore DB state.
+        # Store the snapshot ID in meta so _rollback knows which snapshot
+        # to restore (not just "the latest" — which might belong to a
+        # different transaction).
+        snap_id = ""
+        try:
+            from _builder.transactions import create_snapshot
+            snap = create_snapshot(self.graph_dir,
+                                   description=f"writeback tx {tx_id[:8]}")
+            snap_id = snap.id
+        except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
+        self.conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+            (f"writeback_tx_snap:{tx_id}", snap_id)
         )
         self.conn.commit()
         return tx_id
@@ -516,8 +531,17 @@ class WritebackPipeline:
         """Roll back a write-back transaction.
 
         - Deletes any .tmp files created during the pipeline.
-        - Restores DB state from snapshot (delegates to transactions.py).
+        - Restores DB state from the snapshot captured in begin().
+          Uses the SQLite backup API (not file replacement) so the
+          live connection stays valid for the subsequent meta cleanup.
+          Falls back to the most recent snapshot if the tx's snapshot
+          ID is missing (e.g., tx began before this fix was deployed).
         - Clears tx state from meta.
+
+        Returns True only if the snapshot restore succeeded (or there
+        was nothing to restore). Returns False if restore failed — the
+        caller should surface this so the user knows the DB may be in
+        an inconsistent state.
         """
         # Look up file_id and clear .tmp files
         row = self.conn.execute(
@@ -538,20 +562,57 @@ class WritebackPipeline:
                     except OSError:
                         logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
+        # Restore the snapshot captured at begin() time.
+        snap_row = self.conn.execute(
+            "SELECT value FROM meta WHERE key = ?",
+            (f"writeback_tx_snap:{tx_id}",)
+        ).fetchone()
+        snap_id = snap_row[0] if snap_row else ""
+        restore_ok = True
         try:
-            from _builder.transactions import restore_latest_snapshot
-            restore_latest_snapshot(self.graph_dir)
+            from _builder.transactions import _snapshots_dir, list_snapshots
+            if not snap_id:
+                snaps = list_snapshots(self.graph_dir, limit=1)
+                if snaps:
+                    snap_id = snaps[0].id
+            if snap_id:
+                snap_db_path = os.path.join(
+                    _snapshots_dir(self.graph_dir), snap_id,
+                    "code2database.db"
+                )
+                if os.path.exists(snap_db_path):
+                    # Use the SQLite backup API to restore without
+                    # file replacement. This keeps the live connection
+                    # valid (unlike restore_snapshot's os.replace).
+                    snap_conn = sqlite3.connect(snap_db_path)
+                    try:
+                        try:
+                            self.conn.rollback()
+                        except Exception:
+                            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                            pass
+                        snap_conn.backup(self.conn)
+                        self.conn.commit()
+                    finally:
+                        snap_conn.close()
+                else:
+                    restore_ok = False
         except Exception:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
-            pass
+            logging.getLogger(__name__).warning(
+                "writeback rollback: snapshot restore failed for tx=%s",
+                tx_id, exc_info=True,
+            )
+            restore_ok = False
 
-        # Clear tx state
+        # Clear tx state (the connection is still valid because we
+        # used the backup API, not file replacement).
         self.conn.execute(
-            "DELETE FROM meta WHERE key IN (?, ?)",
-            (f"writeback_tx:{tx_id}", f"writeback_tx_file:{tx_id}")
+            "DELETE FROM meta WHERE key IN (?, ?, ?)",
+            (f"writeback_tx:{tx_id}", f"writeback_tx_file:{tx_id}",
+             f"writeback_tx_snap:{tx_id}")
         )
         self.conn.commit()
-        return True
+        return restore_ok
 
 
 # ---------------------------------------------------------------------------

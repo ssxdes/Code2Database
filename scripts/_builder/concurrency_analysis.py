@@ -239,18 +239,18 @@ def _detect_toctou_patterns(G, target_func=None, profile=None):
     toctou = []
     cp = (profile or {}).get("concurrency_patterns", {}) if profile else {}
     acquire_patterns = cp.get("lock_acquire_patterns", [])
-    release_patterns = cp.get("lock_release_patterns", [])
     if not acquire_patterns:
         return toctou
 
-    # Pre-compile lock patterns with capture group ONCE per profile.
-    # Without this, re.finditer(re.escape(pat) + ...) recompiles the
-    # regex on every (node, pattern) pair — 1.5M nodes × ~20 patterns
-    # = ~30M re.compile calls (~50 minutes on kernel).
-    _acquire_res = [re.compile(re.escape(p) + r'\s*\(\s*&?\s*([^,)]+)')
-                    for p in acquire_patterns]
-    _release_res = [re.compile(re.escape(p) + r'\s*\(\s*&?\s*([^,)]+)')
-                    for p in release_patterns]
+    # Compile lock patterns ONCE per profile (the _compile_lock_patterns
+    # cache inside _detect_locks_held is keyed by the profile object, so
+    # this warms it for the whole loop below). The previous
+    # re.escape(pat) + suffix compilation searched for the LITERAL text
+    # of the pattern — but profiles store raw regex with their own
+    # capture group (e.g. "\bmutex_lock\s*\(\s*(&?\w+)" in
+    # linux_kernel.json), so nothing ever matched and TOCTOU detection
+    # returned [] for every reference/auto-generated profile.
+    _compile_lock_patterns(profile)
 
     field_writers = defaultdict(list)
     # Single-pass traversal: collect both field_writers AND reader
@@ -264,26 +264,17 @@ def _detect_toctou_patterns(G, target_func=None, profile=None):
         if nd.get("is_empty", False):
             continue
         body = nd.get("body_text", "") or ""
-        # Compute lock set once per node (shared by writer + reader roles).
-        # Lock detection requires body_text for regex matching. In low-memory
-        # mode, body_text is stripped after state_access extraction, so nodes
-        # can have fields_written/fields_read but no body_text. We still process
-        # them (with empty lock sets) so writers/readers are indexed — TOCTOU
-        # races involving an unlocked writer and a locked reader are still
-        # detectable. This is a conservative heuristic: a writer with no
-        # detectable lock might actually have had one (false positive risk).
-        locks = set()
-        if body:
-            for _re in _acquire_res:
-                for m in _re.finditer(body):
-                    locks.add(m.group(1).strip())
-            # Do NOT subtract released locks at function granularity —
-            # we can't know which accesses are inside the critical
-            # section without access-level analysis. A function that
-            # acquires AND releases a lock ends up with locks={} here,
-            # making 'reader_locks and ...' falsy → TOCTOU never
-            # reported (false negative). Keep all acquired locks
-            # (conservative, matching _detect_locks_held semantics).
+        # Compute lock set once per node (shared by writer + reader roles)
+        # via the same _detect_locks_held used everywhere else:
+        # raw-compiled profile patterns (group → lock name, groupless →
+        # sentinel), the callee_args fallback, and the lazy body fetch
+        # for LazySQLiteGraph/StreamingGraph backends. In low-memory mode,
+        # body_text is stripped after state_access extraction, so nodes
+        # can have fields_written/fields_read but no body_text; callee_args
+        # may still carry their lock calls. This is a conservative
+        # heuristic: a writer with no detectable lock might actually
+        # have had one (false positive risk).
+        locks = _detect_locks_held(nd, profile=profile, G=G, nid=nid)
         # Writer role: collect fields_written
         for fw in (nd.get("fields_written") or []):
             fname = fw.get("field_name", "")

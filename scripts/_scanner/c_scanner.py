@@ -135,7 +135,13 @@ class CTreeSitterScanner(BaseScanner):
 
     # Regex to strip __attribute__((...)) that confuses tree-sitter-c
     # Handles nested parentheses: __attribute__((packed)), __attribute__((naked)), etc.
-    _ATTR_STRIP_RE = re.compile(r'__attribute__\s*\(\([^)]*\)\)')
+    # Nested-paren-safe: handles one nesting level, which covers all
+    # real attributes (aligned(8), format(printf,1,2), section("...")).
+    # The old [^)]* stopped at the FIRST ')' — __attribute__((aligned(8)))
+    # left a stray ')' in the text fed to tree-sitter (ERROR nodes, lost
+    # functions).
+    _ATTR_STRIP_RE = re.compile(
+        r'__attribute__\s*\(\((?:[^()]|\([^()]*\))*\)\)')
     # Regex to find MSVC __asm { body } blocks — store for post-processing
     _MSVC_ASM_RE = re.compile(r'__asm\s*\{([^}]*)\}', re.MULTILINE)
     # Linux 5.11+ uses asm_inline as a keyword equivalent to asm

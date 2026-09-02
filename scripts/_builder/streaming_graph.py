@@ -1150,14 +1150,14 @@ class LazySQLiteGraph:
         try:
             self._conn.close()
         except Exception:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
-            pass
+            logging.getLogger(__name__).warning(
+                "streaming_graph: close() failed", exc_info=True)
 
     def __del__(self):
         try:
             self.close()
         except Exception:
-            pass
+            pass  # __del__ must not raise
 
     def __enter__(self):
         return self

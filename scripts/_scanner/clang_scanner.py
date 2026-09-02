@@ -991,7 +991,9 @@ class ClangScanner(BaseScanner):
                         line = col = 0
                     cgdb_doc_comments.append({
                         'node_id': node_id,
-                        'file_id': fid,
+                        'file_id': 0,  # placeholder — fid is a leaked loop
+                                        # variable (unbound in function-less
+                                        # headers, else the LAST function's id)
                         'line': line,
                         'col': col,
                         'comment_kind': comment_kind,
@@ -1008,7 +1010,7 @@ class ClangScanner(BaseScanner):
             scanner_version = self._scanner_version()
             file_node_id = 0  # file metadata uses 0 as a placeholder target_id
             cgdb_metadata.append({
-                'target_id': fid,
+                'target_id': file_node_id,  # placeholder (fid is a leaked loop var)
                 'target_kind': 'file',
                 'key': 'scanner_version',
                 'value': scanner_version,
@@ -1016,7 +1018,7 @@ class ClangScanner(BaseScanner):
                 'source': 'scanner',
             })
             cgdb_metadata.append({
-                'target_id': fid,
+                'target_id': file_node_id,  # placeholder
                 'target_kind': 'file',
                 'key': 'language',
                 'value': 'c' if filepath.endswith('.c') else 'cpp',
@@ -1278,6 +1280,14 @@ class ClangScanner(BaseScanner):
             'cgdb_data_flow': result.get('cgdb_data_flow', []),
             'cgdb_sync_primitives': result.get('cgdb_sync_primitives', []),
             'cgdb_happens_before': result.get('cgdb_happens_before', []),
+            # These four were computed by _extract_from_tu but dropped
+            # here — dual_scanner and cgdb_ingest read exactly these keys,
+            # so doc comments, conditions, alias sets and metadata were
+            # silently discarded on the clang path.
+            'cgdb_alias_sets': result.get('cgdb_alias_sets', []),
+            'cgdb_doc_comments': result.get('cgdb_doc_comments', []),
+            'cgdb_metadata': result.get('cgdb_metadata', []),
+            'conditions': result.get('conditions', []),
         }
 
     def _empty_result(self, filepath: str, source_root: str,

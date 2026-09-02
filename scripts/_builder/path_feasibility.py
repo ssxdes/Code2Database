@@ -889,10 +889,15 @@ def cmd_path_feasible(args):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         paths = []
+        _PATH_CAP = 50
         def _walk(nid, path, conds, cfg_preds, depth):
             if depth >= max_depth:
                 return
+            if len(paths) >= _PATH_CAP:
+                return
             for succ in G.successors(nid):
+                if len(paths) >= _PATH_CAP:
+                    return
                 ed = G.get_edge_data(nid, succ) or {}
                 if ed.get("relation") in ("CONTAINS", "IMPORTS"):
                     continue
@@ -1027,7 +1032,10 @@ def cmd_path_guards(args):
     paths = []
     queue = deque([(from_id, [from_id], [])])  # (nid, path, edge_conds)
     seen_paths = set()
+    _QUEUE_CAP = 5000  # 100x path cap — bounds memory on dense graphs
     while queue and len(paths) < 50:
+        if len(queue) > _QUEUE_CAP:
+            break
         nid, path, conds = queue.popleft()
         if nid == to_id:
             key = tuple(path)

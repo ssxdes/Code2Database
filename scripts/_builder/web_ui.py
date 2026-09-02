@@ -419,39 +419,48 @@ class GraphCache:
 
     def detect_cycles(self, limit: int = 50) -> List[Dict]:
         """Find cyclic call edges (A→B where B can reach A)."""
+        # Snapshot the call-edge adjacency ONCE under the lock, then run
+        # the per-edge depth-5 BFS outside it. The old code held self._lock
+        # for the entire scan: on a large acyclic graph it walks every edge
+        # with a branching^5 BFS each, blocking every other endpoint
+        # (including /api/graph/summary needed at page load) for minutes.
         with self._lock:
-            cycles = []
-            # Simple approach: for each edge A→B, check if B can reach A via BFS (depth-limited)
-            count = 0
+            succ = {}
+            edges = []
             for u, v, ed in self.G.edges(data=True):
                 if ed.get("relation") in ("CONTAINS", "IMPORTS"):
                     continue
-                if count >= limit:
-                    break
-                # Quick check: does v have a path back to u?
-                if u == v:
-                    cycles.append({"source": u, "target": v, "type": "self_loop"})
-                    count += 1
+                edges.append((u, v))
+                succ.setdefault(u, []).append(v)
+        cycles = []
+        count = 0
+        for u, v in edges:
+            if count >= limit:
+                break
+            # Quick check: does v have a path back to u?
+            if u == v:
+                cycles.append({"source": u, "target": v, "type": "self_loop"})
+                count += 1
+                continue
+            # BFS from v to find u (depth-limited to 5)
+            visited = {v}
+            queue = deque([(v, 0)])
+            found = False
+            while queue and not found:
+                cur, d = queue.popleft()
+                if d >= 5:
                     continue
-                # BFS from v to find u (depth-limited to 5)
-                visited = {v}
-                queue = deque([(v, 0)])
-                found = False
-                while queue and not found:
-                    cur, d = queue.popleft()
-                    if d >= 5:
-                        continue
-                    for s in self.G.successors(cur):
-                        if s == u:
-                            found = True
-                            break
-                        if s not in visited:
-                            visited.add(s)
-                            queue.append((s, d + 1))
-                if found:
-                    cycles.append({"source": u, "target": v, "type": "cycle"})
-                    count += 1
-            return cycles
+                for s in succ.get(cur, ()):
+                    if s == u:
+                        found = True
+                        break
+                    if s not in visited:
+                        visited.add(s)
+                        queue.append((s, d + 1))
+            if found:
+                cycles.append({"source": u, "target": v, "type": "cycle"})
+                count += 1
+        return cycles
 
     def get_all_degrees(self) -> Dict[str, int]:
         """Compute degree for all nodes (for node sizing)."""
@@ -1171,8 +1180,13 @@ async function focusNode(nodeId, depth) {
     if (!allNodes[nodeId]) {
       allNodes[nodeId] = { id: nodeId, name: nodeId, is_focused: true };
     }
+    // Fetch the degree map ONCE (the old per-node loop issued one
+    // /api/degrees request per neighbor — up to 200 identical requests,
+    // each recomputing every node's degree under the global lock).
+    let degreeMap = {};
+    try { degreeMap = (await api('/api/degrees')).degrees || {}; } catch (e) { console.warn(e); }
     for (const n of (data.nodes || [])) {
-      const deg = await api('/api/degrees').then(d => d.degrees?.[n.id] || 0).catch(() => 0);
+      const deg = degreeMap[n.id] || 0;
       allNodes[n.id] = { ...n, degree: deg, community: n.domain || '' };
     }
     for (const e of (data.edges || [])) {

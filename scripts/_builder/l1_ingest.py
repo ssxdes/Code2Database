@@ -518,8 +518,8 @@ def ingest_l1(
                     _strlit_rows.append(
                         (spelling.encode("utf-8"),
                          _decode_string_literal(spelling),
-                         "utf-8" if not spelling.startswith("L") else "wide",
-                         1 if spelling.startswith("L") else 0,
+                         "wide" if spelling.startswith(("L", "U")) else "utf-8",
+                         1 if spelling.startswith(("L", "U")) else 0,
                          sec_flags,
                          None)  # token_id filled later
                     )
@@ -956,7 +956,7 @@ def _collect_pp_info(cursor, file_path, file_id, source_bytes,
                 col = c.location.column
                 _macro_rows.append(
                     (name, file_id, line, col, int(is_function_like),
-                     int(name.endswith("...")),
+                     int("..." in params),  # variadic: '...' appears in the param list
                      str(params) if params else "[]",
                      body_text or "", 0, _lang)
                 )

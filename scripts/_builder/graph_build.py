@@ -2055,17 +2055,20 @@ def _detect_thread_models(G: nx.DiGraph, builder_profile: dict = None,
     return thread_models
 
 
-def _propagate_thread_models(G: nx.DiGraph, thread_models: dict) -> None:
+def _propagate_thread_models(G: nx.DiGraph, thread_models: dict) -> int:
     """Propagate thread model information along call chains.
 
     BFS from each thread entry point (function that directly uses threading APIs).
     Called functions inherit the model via thread_model_inherited attribute.
     Propagation stops at function boundaries where new threads are created
-    (i.e., functions that already have their own thread_model).
+    (i.e., functions that already have their own thread_model.
 
     Args:
         G: The invocation graph.
         thread_models: Dict of {node_id: thread_model} from _detect_thread_models.
+
+    Returns:
+        Count of unique nodes that received thread_model_inherited.
     """
     from collections import deque
 
@@ -2076,6 +2079,7 @@ def _propagate_thread_models(G: nx.DiGraph, thread_models: dict) -> None:
             G.nodes[nid]["thread_entry"] = True
 
     # BFS propagation from each thread entry point
+    _inherited_set = set()
     for entry_id, model in thread_models.items():
         if entry_id not in G:
             continue
@@ -2104,6 +2108,7 @@ def _propagate_thread_models(G: nx.DiGraph, thread_models: dict) -> None:
 
             # Mark with inherited model
             current_ndata["thread_model_inherited"] = model
+            _inherited_set.add(current)
 
             # Continue propagation to callees
             for succ in G.successors(current):
@@ -2113,6 +2118,8 @@ def _propagate_thread_models(G: nx.DiGraph, thread_models: dict) -> None:
                 if succ not in visited:
                     visited.add(succ)
                     queue.append(succ)
+
+    return len(_inherited_set)
 
 
 def _validate_stats_consistency(G: nx.DiGraph, pipeline_node_count: int) -> dict:
@@ -6937,9 +6944,7 @@ def cmd_build(args):
                                             max_workers=getattr(args, 'max_workers', 0),
                                             parallel_mode=getattr(args, 'parallel_mode', 'thread'))
     if thread_models:
-        _propagate_thread_models(G, thread_models)
-        inherited_count = sum(1 for _, nd in G.nodes(data=True)
-                              if nd.get("thread_model_inherited") is not None)
+        inherited_count = _propagate_thread_models(G, thread_models)
         model_counts = {}
         for model in thread_models.values():
             model_counts[model] = model_counts.get(model, 0) + 1

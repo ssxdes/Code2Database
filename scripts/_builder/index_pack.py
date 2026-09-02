@@ -2416,13 +2416,20 @@ def _classify_endpoint(name: str, domain: str, profile: dict = None,
     return 'other_internal', ''
 
 
-def _mark_endpoint_nodes(G: nx.DiGraph, outdir: str, profile: dict = None) -> int:
+def _mark_endpoint_nodes(G: nx.DiGraph, outdir: str, profile: dict = None,
+                         vtable_regs: list = None) -> int:
     """Mark external/unresolved nodes as endpoints with automatic classification.
 
     Args:
         G: The invocation graph.
         outdir: Output directory for endpoint JSON.
         profile: Builder config dict from ProfileSchema.to_builder_config().
+        vtable_regs: In-memory vtable_registrations list from the CURRENT
+            build (preferred). When None, falls back to reading
+            .code2database_vtables.json from outdir — which on the BUILD
+            path is the PREVIOUS build's file (the current build writes it
+            ~270 lines later), so first builds into a clean dir marked no
+            vtable callback endpoints at all.
 
     Nodes with domain='external' or no successors and no source_file
     are classified as endpoints. Returns the count of marked endpoints.
@@ -2570,12 +2577,38 @@ def _mark_endpoint_nodes(G: nx.DiGraph, outdir: str, profile: dict = None) -> in
 
     # Vtable callback endpoints: functions registered in vtables are callback
     # entry points — they are called indirectly through function pointer dispatch.
-    # Load vtable registrations and mark the registered functions.
-    # The vtables.json format is: {"struct_types": {struct_type: {field: [{func_name, var_name, source_file, condition}]}}}
-    vtable_path = os.path.join(outdir, ".code2database_vtables.json")
-    if os.path.exists(vtable_path):
+    # Prefer the in-memory registrations from the CURRENT build; the file at
+    # .code2database_vtables.json is written LATER in the build pipeline, so
+    # on a first build it doesn't exist and on a rebuild it's the previous
+    # build's data.
+    if vtable_regs is not None:
+        # Same index shape the file writer produces:
+        # {struct_type: {field: [{func_name, var_name, source_file, condition}]}}
+        _vt_index = {}
+        for vtable in vtable_regs:
+            struct_type = vtable.get("struct_type", "")
+            if not struct_type:
+                continue
+            for reg in vtable.get("registrations", []):
+                _vt_index.setdefault(struct_type, {}).setdefault(
+                    reg.get("field", ""), []).append({
+                        "func_name": reg.get("func_name", ""),
+                        "var_name": vtable.get("var_name", ""),
+                        "source_file": vtable.get("source_file", ""),
+                        "condition": reg.get("condition", ""),
+                    })
+        vtable_data = {"struct_types": _vt_index}
+    else:
+        vtable_path = os.path.join(outdir, ".code2database_vtables.json")
+        vtable_data = None
+        if os.path.exists(vtable_path):
+            try:
+                vtable_data = json.loads(Path(vtable_path).read_text(encoding="utf-8"))
+            except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                vtable_data = None
+    if vtable_data:
         try:
-            vtable_data = json.loads(Path(vtable_path).read_text(encoding="utf-8"))
             # Support both old format (vtable_registrations list) and new format (struct_types dict)
             vtable_list = vtable_data.get("vtable_registrations", [])
             struct_types = vtable_data.get("struct_types", {})

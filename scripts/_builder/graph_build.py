@@ -7016,7 +7016,13 @@ def cmd_build(args):
 
     # Endpoint marking
     tracker.begin("mark_endpoints")
-    ep_count = _mark_endpoint_nodes(G, outdir, profile=builder_profile)
+    # Pass the CURRENT build's vtable registrations: the file at
+    # .code2database_vtables.json is only written ~270 lines below, so on a
+    # first build _mark_endpoint_nodes previously found no file (all vtable
+    # callback endpoints skipped) and on rebuilds it read the PREVIOUS
+    # build's stale file.
+    ep_count = _mark_endpoint_nodes(G, outdir, profile=builder_profile,
+                                    vtable_regs=vtable_regs_data)
     tracker.end_with_files([os.path.join(outdir, ".code2database_endpoints.json")],
                            extra={"endpoints": ep_count})
 

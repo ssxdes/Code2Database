@@ -1346,6 +1346,11 @@ class CTreeSitterScanner(BaseScanner):
         # We also skip substitution inside string and char literals
         # (basic heuristic: split on "..." and '...' and only substitute
         # in odd-indexed segments — the non-literal parts).
+        # Missing/empty call args (e.g. F() for #define F(a) do_a(a), or
+        # token-paste trickery in #if 0 regions tree-sitter still parses)
+        # must NOT raise KeyError — that propagated up scan_file and made
+        # the ENTIRE file vanish from the graph (0 functions, 0 edges).
+        # Leave unbound params as their own name instead.
         mapping = dict(zip(params, call_args))
         param_pat = re.compile(
             r'\b(' + '|'.join(re.escape(p) for p in params) + r')\b')
@@ -1358,7 +1363,7 @@ class CTreeSitterScanner(BaseScanner):
             # Even indices = non-literal code; odd = string/char literals
             if i % 2 == 0:
                 segments[i] = param_pat.sub(
-                    lambda m: mapping[m.group(1)], seg)
+                    lambda m: mapping.get(m.group(1), m.group(1)), seg)
         return ''.join(segments)
 
     def _extract_macro_calls_from_body(self, expanded_text: str) -> list:

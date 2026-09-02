@@ -313,7 +313,7 @@ def who_allocates(G, resource: str = "") -> List[Dict]:
         if G.has_node(v):
             target_name = G.nodes[v].get("name", v)
         elif "::" in v:
-            target_name = v.split("::", 1)[-1]
+            target_name = v.split("::")[-1]
         else:
             target_name = v
         if resource and target_name != resource:
@@ -338,7 +338,7 @@ def who_frees(G, resource: str = "") -> List[Dict]:
         if G.has_node(v):
             target_name = G.nodes[v].get("name", v)
         elif "::" in v:
-            target_name = v.split("::", 1)[-1]
+            target_name = v.split("::")[-1]
         else:
             target_name = v
         if resource and target_name != resource:
@@ -367,7 +367,7 @@ def unbalanced_alloc_free(G) -> Dict:
         if G.has_node(v):
             return G.nodes[v].get("name", v)
         if "::" in v:
-            return v.split("::", 1)[-1]
+            return v.split("::")[-1]
         return v
 
     allocators: Dict[str, List[str]] = {}
@@ -429,7 +429,7 @@ def who_locks(G, lock_name: str = "") -> List[Dict]:
         if G.has_node(v):
             target_name = G.nodes[v].get("name", v)
         elif "::" in v:
-            target_name = v.split("::", 1)[-1]
+            target_name = v.split("::")[-1]
         else:
             target_name = v
         if lock_name and target_name != lock_name:

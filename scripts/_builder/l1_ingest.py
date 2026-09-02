@@ -176,7 +176,8 @@ def run_l1_ingest(tasks, db_path, source_root, commit_hash,
                     chunksize=max(1, len(tasks) // (workers * 4)),
                 ))
             return results
-        except (ImportError, OSError, BrokenPipeError):
+        except (ImportError, OSError, BrokenPipeError, ValueError):
+            # ValueError: fork context unavailable on Windows
             pass
         finally:
             _L1_DB_PATH = ""

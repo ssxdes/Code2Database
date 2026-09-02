@@ -7670,7 +7670,9 @@ def cmd_build(args):
                             # (if they explicitly chose 'thread', respect it;
                             # but the default is thread and most users don't
                             # realize they need process for CPU-bound libclang)
+                            _user_set_pm = "--parallel-mode" in sys.argv
                             if (_l1_parallel_mode == "thread"
+                                    and not _user_set_pm
                                     and len(_l1_tasks) > 1000
                                     and _l1_workers > 1
                                     and (os.cpu_count() or 1) >= 4):

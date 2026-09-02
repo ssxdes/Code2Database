@@ -7322,90 +7322,96 @@ def cmd_build(args):
     del fn_ptr_calls_data, passthrough_data, field_assignments_data
     gc.collect()
 
-    # Pre-compute indexes
-    tracker.begin("build_indexes")
-    print(f"[build] Building indexes... ({G.number_of_nodes()} nodes)",
-          file=sys.stderr)
-    _indexes_start = time.time()
-    _build_indexes(G, outdir)
-    index_files = glob.glob(os.path.join(outdir, ".code2database_*.json"))
-    tracker.end_with_files(index_files)
-    print(f"[build] Indexes built in {time.time() - _indexes_start:.0f}s",
-          file=sys.stderr)
-
-    # Generate human-readable summary
-    tracker.begin("generate_docs")
-    print(f"[build] Generating docs...", file=sys.stderr)
-    _docs_start = time.time()
-    summary_path = _build_callgraph_summary_md(G, outdir, source_root, build_info=build_info)
-    _build_domain_readmes(G, outdir)
-
-    # Generate detailed execution scenarios file
-    _build_scenarios_file(G, outdir, build_info=build_info)
-
-    # Generate LLM context pack
-    pack_path = _build_context_pack(G, outdir, source_root, build_info=build_info)
-    doc_files = [os.path.join(outdir, "CODE2DATABASE_SUMMARY.md")]
-    doc_files += glob.glob(os.path.join(outdir, "domains/*/README.md"), recursive=True)
-    tracker.end_with_files(doc_files)
-    print(f"[build] Docs generated in {time.time() - _docs_start:.0f}s",
-          file=sys.stderr)
-
-    # Write build config file for future reference
-    if build_info:
-        bc_path = os.path.join(outdir, ".code2database_build_config.json")
-        Path(bc_path).write_text(
-            json.dumps(build_info, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8")
-
-    print(f"Built invocation graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
-    print(f"Domain files written to {outdir}/")
-    print(f"Master: {master_path}")
-    print(f"Summary: {summary_path}")
-    print(f"Context pack: {pack_path}")
-    if ep_count > 0:
-        print(f"Endpoints: {ep_count} external endpoint(s) marked as out_end")
-        print(f"Endpoint list exported to: {outdir}/.code2database_endpoints.json")
-        print("Run 'classify-endpoints' after LLM analysis to finalize labels.")
-    if build_info:
-        dead_count = sum(1 for _, nd in G.nodes(data=True)
-                        if "dead_code" in nd.get("labels", []))
-        if dead_count:
-            print(f"Dead code (excluded by macros): {dead_count} function(s)")
-
-    # Auto-consolidate memory after build
-    try:
-        from _builder.memory_manager import MemoryManager
-        mgr = MemoryManager(outdir)
-        mgr.consolidate()
-    except Exception as e:
-        print(f"Warning: memory consolidation failed ({e})", file=sys.stderr)
-
-    # Post-build validation: check all output files for correctness
-    tracker.begin("validate")
-    val_result = None
-    try:
-        from _builder.validate import validate_all
-        val_result = validate_all(outdir, profile=builder_profile)
-        print(val_result.summary())
-        if not val_result.ok:
-            print("WARNING: Post-build validation found errors — see above", file=sys.stderr)
-    except Exception as e:
-        print(f"Warning: post-build validation failed ({e})", file=sys.stderr)
-    tracker.end()
-    # Release validation caches before SQLite export to reduce peak memory
-    if val_result is not None:
-        del val_result
-    gc.collect()
-
-    # Export to SQLite if requested
-    # MOVED: SQLite export now happens BEFORE index building so we can free
-    # the NetworkX graph and build indexes from SQLite queries instead.
+    # Determine storage type EARLY: the G-based index/doc generation
+    # below is skipped entirely for the sqlite path (the SQLite branch
+    # rebuilds them from the database after freeing G).
     storage_type = getattr(args, 'storage', 'json')
     if storage_type == 'auto':
         # Auto-select sqlite for large graphs (>100K nodes), json for smaller
         storage_type = 'sqlite' if G.number_of_nodes() > 100000 else 'json'
         print(f"[build] Auto-selected storage: {storage_type} (nodes={G.number_of_nodes()})", file=sys.stderr)
+
+    # storage=sqlite skips this entire G-based pass: the SQLite
+    # branch below rebuilds indexes/summary/scenarios/pack from the
+    # database after freeing G — running both made the first pass
+    # pure wasted wall-clock (hours on kernel-sized graphs).
+    if storage_type != 'sqlite':
+        # Pre-compute indexes
+        tracker.begin("build_indexes")
+        print(f"[build] Building indexes... ({G.number_of_nodes()} nodes)",
+              file=sys.stderr)
+        _indexes_start = time.time()
+        _build_indexes(G, outdir)
+        index_files = glob.glob(os.path.join(outdir, ".code2database_*.json"))
+        tracker.end_with_files(index_files)
+        print(f"[build] Indexes built in {time.time() - _indexes_start:.0f}s",
+              file=sys.stderr)
+
+        # Generate human-readable summary
+        tracker.begin("generate_docs")
+        print(f"[build] Generating docs...", file=sys.stderr)
+        _docs_start = time.time()
+        summary_path = _build_callgraph_summary_md(G, outdir, source_root, build_info=build_info)
+        _build_domain_readmes(G, outdir)
+
+        # Generate detailed execution scenarios file
+        _build_scenarios_file(G, outdir, build_info=build_info)
+
+        # Generate LLM context pack
+        pack_path = _build_context_pack(G, outdir, source_root, build_info=build_info)
+        doc_files = [os.path.join(outdir, "CODE2DATABASE_SUMMARY.md")]
+        doc_files += glob.glob(os.path.join(outdir, "domains/*/README.md"), recursive=True)
+        tracker.end_with_files(doc_files)
+        print(f"[build] Docs generated in {time.time() - _docs_start:.0f}s",
+              file=sys.stderr)
+
+        # Write build config file for future reference
+        if build_info:
+            bc_path = os.path.join(outdir, ".code2database_build_config.json")
+            Path(bc_path).write_text(
+                json.dumps(build_info, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8")
+
+        print(f"Built invocation graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
+        print(f"Domain files written to {outdir}/")
+        print(f"Master: {master_path}")
+        print(f"Summary: {summary_path}")
+        print(f"Context pack: {pack_path}")
+        if ep_count > 0:
+            print(f"Endpoints: {ep_count} external endpoint(s) marked as out_end")
+            print(f"Endpoint list exported to: {outdir}/.code2database_endpoints.json")
+            print("Run 'classify-endpoints' after LLM analysis to finalize labels.")
+        if build_info:
+            dead_count = sum(1 for _, nd in G.nodes(data=True)
+                            if "dead_code" in nd.get("labels", []))
+            if dead_count:
+                print(f"Dead code (excluded by macros): {dead_count} function(s)")
+
+        # Auto-consolidate memory after build
+        try:
+            from _builder.memory_manager import MemoryManager
+            mgr = MemoryManager(outdir)
+            mgr.consolidate()
+        except Exception as e:
+            print(f"Warning: memory consolidation failed ({e})", file=sys.stderr)
+
+        # Post-build validation: check all output files for correctness
+        tracker.begin("validate")
+        val_result = None
+        try:
+            from _builder.validate import validate_all
+            val_result = validate_all(outdir, profile=builder_profile)
+            print(val_result.summary())
+            if not val_result.ok:
+                print("WARNING: Post-build validation found errors — see above", file=sys.stderr)
+        except Exception as e:
+            print(f"Warning: post-build validation failed ({e})", file=sys.stderr)
+        tracker.end()
+        # Release validation caches before SQLite export to reduce peak memory
+        if val_result is not None:
+            del val_result
+        gc.collect()
+
     if storage_type == 'sqlite':
         from _builder.sqlite_store import SQLiteStore
         db_path = os.path.join(outdir, "code2database.db")

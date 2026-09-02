@@ -1194,11 +1194,9 @@ class _LazyNodeView:
             # file containers).
             cur = self._graph._conn.execute(
                 "SELECT id, name, source_file, line_number, domain, labels, "
-                "signature, extra_json FROM functions WHERE extra_json IS NULL "
-                "OR (extra_json NOT LIKE '%\"is_empty\":true%' "
-                "AND extra_json NOT LIKE '%\"is_empty\": true%' "
-                "AND extra_json NOT LIKE '%\"node_type\":\"file\"%' "
-                "AND extra_json NOT LIKE '%\"node_type\": \"file\"%')")
+                "signature, extra_json FROM functions "
+                "WHERE is_empty = 0 AND "
+                "(node_type IS NULL OR node_type = '' OR node_type != 'file')")
             for row in cur:
                 row_dict = dict(row)
                 nid = row_dict.get("id", "")

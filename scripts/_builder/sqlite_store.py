@@ -751,6 +751,8 @@ class SQLiteStore:
             ("is_callback_func", "INTEGER DEFAULT 0"),
             ("is_out_end", "INTEGER DEFAULT 0"),
             ("is_unknown_end", "INTEGER DEFAULT 0"),
+            ("is_empty", "INTEGER DEFAULT 0"),
+            ("node_type", "TEXT DEFAULT ''"),
         ]:
             self._add_column_if_missing("functions", _col, _decl)
         # Backfill boolean columns from existing labels JSON for migrated DBs.
@@ -808,10 +810,51 @@ class SQLiteStore:
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_functions_unknown_end "
                 "ON functions(is_unknown_end)")
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_functions_is_empty "
+                "ON functions(is_empty)")
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_functions_node_type "
+                "ON functions(node_type)")
             self._conn.commit()
         except Exception:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
+        # Backfill is_empty and node_type from extra_json for migrated DBs.
+        # Guard with a meta flag so the LIKE scans only run once.
+        _attr_backfill_done = False
+        try:
+            _row = self._conn.execute(
+                "SELECT value FROM meta WHERE key = 'attr_backfill_done'"
+            ).fetchone()
+            _attr_backfill_done = bool(_row and _row[0] == "1")
+        except Exception:
+            pass
+        if not _attr_backfill_done:
+            try:
+                self._conn.execute(
+                    "UPDATE functions SET is_empty = 1 "
+                    "WHERE extra_json LIKE '%\"is_empty\":true%' "
+                    "AND is_empty = 0")
+                self._conn.execute(
+                    "UPDATE functions SET is_empty = 1 "
+                    "WHERE extra_json LIKE '%\"is_empty\": true%' "
+                    "AND is_empty = 0")
+                self._conn.execute(
+                    "UPDATE functions SET node_type = 'file' "
+                    "WHERE extra_json LIKE '%\"node_type\":\"file\"%' "
+                    "AND node_type = ''")
+                self._conn.execute(
+                    "UPDATE functions SET node_type = 'file' "
+                    "WHERE extra_json LIKE '%\"node_type\": \"file\"%' "
+                    "AND node_type = ''")
+                self._conn.execute(
+                    "INSERT OR REPLACE INTO meta (key, value) "
+                    "VALUES ('attr_backfill_done', '1')")
+                self._conn.commit()
+            except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                pass
     def close(self):
         """Close database connection."""
         if self._conn:
@@ -864,14 +907,19 @@ class SQLiteStore:
             is_callback = 1 if "callback_func" in _label_set else 0
             is_out = 1 if "out_end" in _label_set else 0
             is_unknown = 1 if "unknown_end" in _label_set else 0
+            # Pre-computed is_empty and node_type for indexed lookups
+            # (replaces LIKE on extra_json in nodes(data=True) filter)
+            is_empty_val = 1 if func.get("is_empty", False) else 0
+            node_type_val = func.get("node_type", "") or ""
 
             rows.append((fid, name, domain, source, line, sig, labels,
                          body_compressed, extra_json,
-                         is_api, is_thread, is_callback, is_out, is_unknown))
+                         is_api, is_thread, is_callback, is_out, is_unknown,
+                         is_empty_val, node_type_val))
 
             if len(rows) >= batch_size:
                 self._conn.executemany(
-                    "INSERT OR REPLACE INTO functions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows
+                    "INSERT OR REPLACE INTO functions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows
                 )
                 if autocommit:
                     self._conn.commit()
@@ -879,7 +927,7 @@ class SQLiteStore:
 
         if rows:
             self._conn.executemany(
-                "INSERT OR REPLACE INTO functions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows
+                "INSERT OR REPLACE INTO functions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows
             )
             if autocommit:
                 self._conn.commit()

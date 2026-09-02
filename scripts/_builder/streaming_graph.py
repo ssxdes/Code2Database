@@ -200,6 +200,10 @@ class StreamingGraph:
         # Flush counters for progress reporting
         self._funcs_flushed = 0
         self._edges_flushed = 0
+        # True once deferred-mode edge batches have been flushed to SQLite.
+        # set_deferred(False) uses this to know it must reload edges from
+        # SQLite (the batch alone no longer holds them).
+        self._deferred_flushed = False
 
         # Views
         self._node_view = _StreamingNodeView(self.id_registry)
@@ -227,9 +231,41 @@ class StreamingGraph:
                   f"{len(self._edge_batch)} in batch)",
                   file=sys.stderr)
         elif not enabled and self._deferred:
-            # Leaving deferred mode: rebuild _edge_data from _edge_batch
+            # Leaving deferred mode: rebuild _edge_data.
             self._deferred = False
             _rebuild_start = time.time()
+            if getattr(self, "_deferred_flushed", False):
+                # Edge batches were flushed to SQLite during the deferred
+                # phase — the residual _edge_batch alone holds only the
+                # last <batch_size edges. Reload ALL streamed edges from
+                # SQLite so _edge_data is complete; otherwise has_edge()
+                # returns False for flushed edges (downstream phases
+                # re-add existing edges → duplicates) and close()'s
+                # DELETE+rewrite from _edge_data would LOSE every
+                # flushed edge (>5000-edge builds kept only the tail).
+                try:
+                    for row in self._store._conn.execute(
+                        "SELECT invoker_id, invoked_id, call_order, "
+                        "call_condition, concurrency, confidence, "
+                        "confidence_score, source, evidence, relation "
+                        "FROM edges").fetchall():
+                        u, v = row[0], row[1]
+                        if not u or not v:
+                            continue
+                        self._edge_data[(u, v)] = {
+                            "call_order": row[2],
+                            "call_condition": row[3] or "",
+                            "concurrency": row[4] or "",
+                            "confidence": row[5] or "",
+                            "confidence_score": row[6] if row[6] is not None else 1.0,
+                            "source": row[7] or "",
+                            "evidence": row[8],
+                            "relation": row[9] or "INVOKES",
+                        }
+                except Exception:
+                    logging.getLogger(__name__).warning(
+                        "StreamingGraph: reload of flushed edges failed",
+                        exc_info=True)
             for edge_dict in self._edge_batch:
                 u = edge_dict.get("caller", "")
                 v = edge_dict.get("callee", "")
@@ -488,6 +524,7 @@ class StreamingGraph:
             self._store.store_edges(self._edge_batch, autocommit=False)
             self._edges_flushed += len(self._edge_batch)
             self._edge_batch = []
+            self._deferred_flushed = True
             self._flush_count += 1
             if self._flush_count % self._FLUSH_COMMIT_INTERVAL == 0:
                 self._store._conn.commit()

@@ -1801,6 +1801,14 @@ class CTreeSitterScanner(BaseScanner):
                 if _fn and _fn.type == 'field_expression':
                     is_fn_ptr_call = True
                     fn_ptr_expr = self._node_text(_fn, source_bytes)  # e.g. "ops->read"
+                elif _fn and _fn.type == 'subscript_expression':
+                    # handlers[i](x) — call through a function-pointer ARRAY
+                    # element. Without this branch the subscript callee fell
+                    # to the first-identifier fallback and was recorded as an
+                    # EXTRACTED direct call to the ARRAY NAME with no
+                    # fn_ptr_calls record, so dispatch resolution never saw it.
+                    is_fn_ptr_call = True
+                    fn_ptr_expr = self._node_text(_fn, source_bytes)  # e.g. "handlers[i]"
                 elif _fn and _fn.type == 'pointer_expression':
                     is_fn_ptr_call = True
                     # For (*ops->read), show the full expression including the inner field
@@ -1961,19 +1969,27 @@ class CTreeSitterScanner(BaseScanner):
                         # e.g. "file->f_op->write" → struct_chain="file->f_op", field_name="write"
                         # e.g. "ops->read" → struct_chain="ops", field_name="read"
                         # e.g. "obj.method" → struct_chain="obj", field_name="method"
+                        # e.g. "obj.a.b" → struct_chain="obj.a", field_name="b" (LAST segment)
+                        # e.g. "sp->op.handler" → struct_chain="sp->op", field_name="handler"
+                        # e.g. "handlers[i]" → struct_chain="", field_name="handlers"
                         # e.g. "*func_ptr" → struct_chain="", field_name="func_ptr"
-                        # IMPORTANT: Must match multi-level arrow chains like a->b->c
-                        # where field_name is the LAST segment (the actual method name)
+                        # Split at the LAST '->' or '.' separator: field_name is
+                        # always the last segment (the actual method/field). The
+                        # old dot-regex was start-anchored and single-level, so
+                        # "obj.a.b" yielded field "a" and mixed arrow+dot chains
+                        # ("sp->op.handler") matched NEITHER regex, losing all
+                        # struct context for vtable dispatch.
                         _struct_chain = ""
                         _field_name = callee_name.lower()
-                        _arrow_m = re.match(r'(.+?)\s*->\s*(\w+)$', fn_ptr_expr)
-                        _dot_m = re.match(r'(\w+)\.(\w+)', fn_ptr_expr)
-                        if _arrow_m:
-                            _struct_chain = _arrow_m.group(1)
-                            _field_name = _arrow_m.group(2)
-                        elif _dot_m:
-                            _struct_chain = _dot_m.group(1)
-                            _field_name = _dot_m.group(2)
+                        _last_sep = None
+                        for _sm in re.finditer(r'->|\.', fn_ptr_expr):
+                            _last_sep = _sm
+                        if _last_sep is not None:
+                            _fld = fn_ptr_expr[_last_sep.end():].strip()
+                            _chn = fn_ptr_expr[:_last_sep.start()].strip().lstrip('*').strip()
+                            if _fld and _chn:
+                                _field_name = _fld
+                                _struct_chain = _chn
                         fn_ptr_calls_global.append({
                             "caller": invoker_id,
                             "callee_name": callee_name.lower(),

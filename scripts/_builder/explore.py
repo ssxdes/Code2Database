@@ -91,7 +91,7 @@ def _tokenize_query(query: str) -> list:
 _BUG_KEYWORDS = {
     # NULL/UAF class
     "null", "nullptr", "nil", "ptr", "pointer", "deref", "dereference",
-    "nullptr", "use", "after", "free", "uaf", "dangling", "wild",
+    "use", "after", "free", "uaf", "dangling", "wild",
     # Race class
     "race", "racy", "concurrency", "concurrent", "atomicity", "toctou",
     "lockless", "unsynchronized", "data", "thread",

@@ -6395,7 +6395,7 @@ def cmd_build(args):
     # (child processes inherit _cached_globals_sa without pickling).
     # Otherwise, fall back to ThreadPoolExecutor (re.finditer releases GIL
     # during matching, giving modest speedup) or sequential.
-    _sa_parallel_mode = getattr(args, 'parallel_mode', 'thread')
+    _sa_parallel_mode = getattr(args, 'parallel_mode', None) or 'thread'
     try:
         from _builder.parallel import resolve_jobs
         _sa_workers = resolve_jobs(getattr(args, 'jobs', 0),
@@ -6944,7 +6944,7 @@ def cmd_build(args):
     thread_models = _detect_thread_models(G, builder_profile=builder_profile,
                                             jobs=getattr(args, 'jobs', 0),
                                             max_workers=getattr(args, 'max_workers', 0),
-                                            parallel_mode=getattr(args, 'parallel_mode', 'thread'),
+                                            parallel_mode=getattr(args, 'parallel_mode', None) or 'thread',
                                             explicit_parallel_mode=getattr(args, 'parallel_mode', None) is not None)
     if thread_models:
         inherited_count = _propagate_thread_models(G, thread_models)
@@ -6960,7 +6960,7 @@ def cmd_build(args):
     tracker.begin("extract_state_access")
     _extract_state_access_all(G, data, jobs=getattr(args, 'jobs', 0) or 0,
                               max_workers=getattr(args, 'max_workers', 0) or 0,
-                              parallel_mode=getattr(args, 'parallel_mode', 'thread'),
+                              parallel_mode=getattr(args, 'parallel_mode', None) or 'thread',
                               explicit_parallel_mode=getattr(args, 'parallel_mode', None) is not None)
     state_count = sum(1 for _, nd in G.nodes(data=True)
                       if nd.get("globals_read") or nd.get("globals_written")
@@ -7708,13 +7708,13 @@ def cmd_build(args):
                             from _builder.l1_ingest import run_l1_ingest
                             try:
                                 from _builder.parallel import resolve_jobs
-                                _l1_parallel_mode = getattr(args, 'parallel_mode', 'thread')
+                                _l1_parallel_mode = getattr(args, 'parallel_mode', None) or 'thread'
                                 _l1_workers = resolve_jobs(
                                     getattr(args, 'jobs', 0),
                                     max_workers_cap=getattr(args, 'max_workers', 0))
                             except ImportError:
                                 _l1_workers = 1
-                                _l1_parallel_mode = getattr(args, 'parallel_mode', 'thread')
+                                _l1_parallel_mode = getattr(args, 'parallel_mode', None) or 'thread'
                             # When the user runs the default 'thread' mode on a
                             # large project, L1 ingest takes ~7s/file × 60K = 77h
                             # serially. Auto-promote to 'process' mode when:
@@ -7724,7 +7724,7 @@ def cmd_build(args):
                             # (if they explicitly chose 'thread', respect it;
                             # but the default is thread and most users don't
                             # realize they need process for CPU-bound libclang)
-                            _user_set_pm = "--parallel-mode" in sys.argv
+                            _user_set_pm = getattr(args, 'parallel_mode', None) is not None
                             if (_l1_parallel_mode == "thread"
                                     and not _user_set_pm
                                     and len(_l1_tasks) > 1000

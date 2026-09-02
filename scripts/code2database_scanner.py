@@ -2658,7 +2658,7 @@ def cmd_scan(args):
                                 compile_commands_path=getattr(args, 'compile_commands', '') or None,
                                 clang_args=_parse_clang_args(getattr(args, 'clang_args', '')),
                                 scan_subsystems=_scan_subsystems_list,
-                                parallel_mode=getattr(args, 'parallel_mode', 'thread'))
+                                parallel_mode=getattr(args, 'parallel_mode', None) or 'thread')
     _streamed = result.get("_streamed_to") is not None
     _split_dir = result.get("_split_dir")
 

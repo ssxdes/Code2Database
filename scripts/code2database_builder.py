@@ -717,7 +717,7 @@ def main():
                               "set this to your core count for maximum "
                               "throughput. Only large graphs (>200K nodes) "
                               "are further capped to 4/6 to bound memory.")
-    p_build.add_argument("--parallel-mode", choices=["thread", "process"], default="thread",
+    p_build.add_argument("--parallel-mode", choices=["thread", "process"], default=None,
                          help="Parallelism model: 'thread' (default, GIL-limited but "
                               "zero overhead) or 'process' (true multi-core via fork, "
                               "bypasses GIL for Python-heavy work like state_access "
@@ -871,7 +871,7 @@ def main():
                          choices=["auto", "clang", "tree-sitter"],
                          help="C/C++ extraction backend for re-scan. "
                               "Forwarded to the scanner subprocess.")
-    p_update.add_argument("--parallel-mode", choices=["thread", "process"], default="thread",
+    p_update.add_argument("--parallel-mode", choices=["thread", "process"], default=None,
                          help="Parallelism model for re-scan: 'thread' (default) or 'process' "
                               "(true multi-core via fork). Forwarded to the scanner subprocess.")
 

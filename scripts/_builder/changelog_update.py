@@ -264,9 +264,9 @@ def export_change_graph(source_root: str, graph_dir: str,
                         "source": source_id, "target": target_name,
                     })
 
-        except ImportError:
-            # Fallback: just mark as modified, no scan
-            pass
+        except ImportError as _ie:
+            print(f"[export-changes] scanner for {lang} unavailable — "
+                  f"skipping AST scan of {fpath}: {_ie}", file=sys.stderr)
 
     # Write output
     if not output_path:

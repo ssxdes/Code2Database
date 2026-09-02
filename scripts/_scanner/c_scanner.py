@@ -1773,7 +1773,16 @@ class CTreeSitterScanner(BaseScanner):
             _last_cond = None
             if _active_stack:
                 _d, _c = _active_stack[-1]
-                _last_cond = _c.strip() if _c else _d
+                # Carry the negation: the else-conversion above swaps
+                # ifdef<->ifndef, but the old read took only the condition
+                # TEXT — a call in the #else body of '#ifdef CONFIG_X'
+                # reported preproc_condition 'CONFIG_X', identical to the
+                # #if branch, and every downstream liveness/dead-branch
+                # consumer keyed on it misclassified the branch.
+                if _c:
+                    _last_cond = f"!{_c.strip()}" if _d == 'ifndef' else _c.strip()
+                else:
+                    _last_cond = _d
             _pp_cond_positions.append(_pos)
             _pp_cond_snapshots.append((_pos, _last_cond))
 

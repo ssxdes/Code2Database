@@ -570,11 +570,20 @@ class WritebackPipeline:
         snap_id = snap_row[0] if snap_row else ""
         restore_ok = True
         try:
-            from _builder.transactions import _snapshots_dir, list_snapshots
+            from _builder.transactions import _snapshots_dir
             if not snap_id:
-                snaps = list_snapshots(self.graph_dir, limit=1)
-                if snaps:
-                    snap_id = snaps[0].id
+                # No snapshot was captured at begin() time. Do NOT fall
+                # back to list_snapshots(limit=1) — that may return a
+                # snapshot from an unrelated transaction or manual
+                # tx-snapshot, and restoring it would silently lose
+                # every committed change made between that snapshot and
+                # now. Instead, log loudly and skip the restore.
+                logging.getLogger(__name__).error(
+                    "writeback rollback: no snapshot captured for tx=%s — "
+                    "cannot restore; DB state may be partially modified",
+                    tx_id,
+                )
+                restore_ok = False
             if snap_id:
                 snap_db_path = os.path.join(
                     _snapshots_dir(self.graph_dir), snap_id,

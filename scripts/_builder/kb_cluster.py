@@ -104,7 +104,7 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
             token_sets[iid] = _tokenize_for_jaccard(title + " " + body)
         # For each item, find similar items via FTS5 (candidates only),
         # then verify with Jaccard
-        for i, (iid, title, body, tags, weight, conf, kind) in enumerate(items):
+        for iid, title, body, tags, weight, conf, kind in items:
             ts = token_sets.get(iid, set())
             if not ts:
                 continue

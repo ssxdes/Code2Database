@@ -50,6 +50,7 @@ class SQLiteStore:
         self._conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
         self._conn.execute("PRAGMA temp_store=MEMORY")   # Keep temp tables in RAM
         self._conn.execute("PRAGMA mmap_size=268435456")  # 256MB memory-mapped I/O
+        self._migration_ok = True
         self._migrate_schema()
         self._create_tables()
 
@@ -356,8 +357,14 @@ class SQLiteStore:
                         pass
                 self._conn.commit()
         except sqlite3.OperationalError:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
-            pass
+            # Migration failed partway — do NOT let _create_tables bump
+            # schema_version (which would make the next connect think the
+            # schema is up-to-date even though e.g. a column is missing).
+            self._migration_ok = False
+            logging.getLogger(__name__).warning(
+                "sqlite_store: schema migration failed — schema_version "
+                "will NOT be bumped; run with a fresh db or fix manually",
+                exc_info=True)
 
     def _add_column_if_missing(self, table: str, column: str,
                                 decl: str) -> None:
@@ -727,10 +734,14 @@ class SQLiteStore:
                 sync_status TEXT NOT NULL DEFAULT 'unknown'
             );
         """)
-        self._conn.execute(
-            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-            ("schema_version", str(self.SCHEMA_VERSION))
-        )
+        # Only bump schema_version if migration succeeded — otherwise the
+        # next connect would think the schema is up-to-date with missing
+        # columns/tables.
+        if self._migration_ok:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                ("schema_version", str(self.SCHEMA_VERSION))
+            )
         self._conn.commit()
         # Apply cgdb (code graph database) 13-layer schema — additive, idempotent.
         # Tables coexist with legacy functions/edges for backward compatibility.
@@ -771,6 +782,11 @@ class SQLiteStore:
             pass
         if not _backfill_done:
             try:
+                # Disable the FTS5 sync trigger during backfill — each
+                # UPDATE would otherwise fire functions_au (delete+insert
+                # into functions_fts per row). For 700K rows × 5 UPDATEs
+                # that's 7M FTS5 ops; we rebuild the index once instead.
+                self._conn.execute("DROP TRIGGER IF EXISTS functions_au")
                 self._conn.execute(
                     "UPDATE functions SET is_api_entry = 1 "
                     "WHERE labels LIKE '%API_entry%' AND is_api_entry = 0")
@@ -786,13 +802,22 @@ class SQLiteStore:
                 self._conn.execute(
                     "UPDATE functions SET is_unknown_end = 1 "
                     "WHERE labels LIKE '%unknown_end%' AND is_unknown_end = 0")
+                # Recreate the trigger (same definition as _create_tables)
+                self._conn.executescript("""
+                    CREATE TRIGGER IF NOT EXISTS functions_au AFTER UPDATE ON functions BEGIN
+                      INSERT INTO functions_fts(functions_fts, rowid, name, signature)
+                      VALUES ('delete', old.rowid, old.name, old.signature);
+                      INSERT INTO functions_fts(rowid, name, signature)
+                      VALUES (new.rowid, new.name, new.signature);
+                    END;
+                """)
                 self._conn.execute(
                     "INSERT OR REPLACE INTO meta (key, value) "
                     "VALUES ('label_backfill_done', '1')")
                 self._conn.commit()
             except Exception:
-                logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                pass
+                logging.getLogger(__name__).warning(
+                    "sqlite_store: label backfill failed", exc_info=True)
         # Create indexes on the boolean columns (after migration backfill)
         try:
             self._conn.execute(

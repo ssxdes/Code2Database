@@ -1162,5 +1162,12 @@ def cmd_tx_list_snapshots(args):
 def cmd_tx_replay_wal(args):
     """Replay or rollback an unfinished WAL (crash recovery)."""
     graph_dir = args.graph
-    result = recover_unfinished_wal(graph_dir)
+    # Acquire write lock — recover_unfinished_wal modifies the WAL file
+    # and tx_state.json. Without the lock, running concurrently with
+    # another tx command races on these files.
+    try:
+        with write_lock(graph_dir, timeout=60.0):
+            result = recover_unfinished_wal(graph_dir)
+    except TimeoutError:
+        result = {"error": "could not acquire write lock — another transaction may be active"}
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))

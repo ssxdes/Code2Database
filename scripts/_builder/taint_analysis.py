@@ -117,11 +117,21 @@ def taint_analysis(graph_dir: str, sources: List[str], sinks: List[str],
 
 
 def fnmatch(name: str, pattern: str) -> bool:
-    """Simple wildcard matching."""
-    try:
-        return bool(re.fullmatch(pattern.replace("*", ".*").replace("?", "."), name))
-    except re.error:
-        return name == pattern
+    """Glob-style wildcard matching (fnmatch.translate semantics).
+
+    Properly escapes regex metacharacters in the pattern — the previous
+    naive replace('*','.*') let '(' ')' '+' '|' in patterns act as regex,
+    so --sink-pattern "strcpy(dest, src)" never matched anything.
+    Falls back to regex if the pattern contains '|' (documented escape
+    hatch for alternation like "memcpy|strcpy").
+    """
+    if "|" in pattern:
+        try:
+            return bool(re.fullmatch(pattern, name))
+        except re.error:
+            return name == pattern
+    import fnmatch as _std_fnmatch
+    return _std_fnmatch.fnmatchcase(name, pattern)
 
 
 def cmd_taint_analysis(args):

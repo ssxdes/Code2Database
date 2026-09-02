@@ -172,9 +172,21 @@ class OpsBindingRecord:
 
 @dataclass
 class SyncPrimitiveRecord:
-    """L8: a synchronization primitive operation."""
+    """L8: a synchronization primitive operation.
+
+    Field semantics depend on `kind`:
+      - lock_acquire:   acquire_stmt_id = the CALL_EXPR that acquires
+      - lock_release:   release_stmt_id = the CALL_EXPR that releases
+      - write_once / atomic_store: acquire_stmt_id is REPURPOSED as the
+        write-event id (no schema column for it — documented convention)
+      - read_once / atomic_load: release_stmt_id is REPURPOSED as the
+        read-event id
+      - barrier: acquire_stmt_id = the barrier call stmt
+
+    Consumers MUST check `kind` before interpreting acquire/release_stmt_id.
+    """
     function_id: int
-    kind: str                            # 'lock_acquire'|'lock_release'|...
+    kind: str                            # 'lock_acquire'|'lock_release'|'write_once'|'read_once'|'barrier'|...
     sync_var_id: Optional[int] = None
     acquire_stmt_id: Optional[int] = None
     release_stmt_id: Optional[int] = None

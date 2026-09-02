@@ -90,6 +90,10 @@ def _match_sync_pattern(name: str) -> Optional[Tuple[str, str]]:
 class SyncPrimitiveWriter:
     """L8: walk AST, emit SyncPrimitiveRecord for sync primitive calls.
 
+    NOT thread-safe: _lock_stack (per-function state) is a plain dict
+    mutated without locking. Use one writer instance per thread, or
+    serialize extract_from_function calls externally.
+
     Usage:
         writer = SyncPrimitiveWriter()
         records, happens_before = writer.extract_from_function(
@@ -251,8 +255,11 @@ class SyncPrimitiveWriter:
                     continue
                 kind, role = match
                 sync_var_id = self._resolve_sync_var(child, add_node_fn)
-                # The CALL_EXPR node itself becomes the acquire/release stmt id
-                call_stmt_id = add_node_fn(child, 'decl_ref')
+                # The CALL_EXPR node itself becomes the acquire/release stmt id.
+                # Use kind 'expr' (not 'decl_ref') — CALL_EXPR is an expression,
+                # and downstream consumers filtering kind='decl_ref' shouldn't
+                # see call-expression nodes mixed in.
+                call_stmt_id = add_node_fn(child, 'expr')
 
                 rec = SyncPrimitiveRecord(
                     function_id=func_node_id,

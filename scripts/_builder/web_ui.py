@@ -609,7 +609,8 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     suggestions = analyze_and_suggest(self.cache.graph_dir)
                     self._send_json(200, {"suggestions": suggestions})
                 except Exception as exc:
-                    self._send_json(200, {"suggestions": [], "error": str(exc)})
+                    logging.getLogger(__name__).warning("suggestions failed", exc_info=True)
+                    self._send_json(500, {"suggestions": [], "error": "internal error"})
                 return
             if path == "/api/tour":
                 try:
@@ -622,11 +623,12 @@ class WebUIHandler(BaseHTTPRequestHandler):
                         tour_content = f.read()
                     self._send_json(200, {"tour": tour_content})
                 except Exception as exc:
-                    self._send_json(200, {"tour": "", "error": str(exc)})
+                    logging.getLogger(__name__).warning("tour generation failed", exc_info=True)
+                    self._send_json(500, {"tour": "", "error": "internal error"})
                 return
             self._send_json(404, {"error": f"unknown path {path}"})
         except Exception as exc:
-            self._send_json(500, {"error": str(exc)})
+            logging.getLogger(__name__).warning("web_ui handler error", exc_info=True); self._send_json(500, {"error": "internal error"})
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -653,7 +655,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 return
             self._send_json(404, {"error": f"unknown path {path}"})
         except Exception as exc:
-            self._send_json(500, {"error": str(exc)})
+            logging.getLogger(__name__).warning("web_ui handler error", exc_info=True); self._send_json(500, {"error": "internal error"})
 
     def do_OPTIONS(self):
         # CORS preflight

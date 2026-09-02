@@ -161,12 +161,10 @@ def _detect_bug_query(tokens: list) -> bool:
         if t in _BUG_KEYWORDS:
             return True
     # Long snake_case function names are a strong bug-report signal
-    joined = "_".join(tokens)
-    if len(tokens) >= 3 and any(len(t) >= 3 for t in tokens):
-        # e.g., "__find_get_block_slow" tokenizes to find, get, block, slow
-        # — 4 parts, all >= 3 chars. Treat as bug query.
-        if len([t for t in tokens if len(t) >= 3]) >= 3:
-            return True
+    # e.g., "__find_get_block_slow" tokenizes to find, get, block, slow
+    # — 4 parts, all >= 3 chars. Treat as bug query.
+    if len([t for t in tokens if len(t) >= 3]) >= 3:
+        return True
     return False
 
 

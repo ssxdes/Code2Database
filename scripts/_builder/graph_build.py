@@ -87,18 +87,19 @@ def _wipe_cgdb_data(conn) -> None:
     try:
         conn.commit()
     except Exception:
-        logging.getLogger(__name__).debug("silent exception", exc_info=True)
-        pass
+        logging.getLogger(__name__).warning(
+            "_wipe_cgdb_data: pre-wipe commit failed", exc_info=True)
     for tbl in _CGDB_WIPE_TABLES:
         try:
             conn.execute(f"DELETE FROM {tbl}")
         except Exception:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
-            pass
+            logging.getLogger(__name__).warning(
+                "_wipe_cgdb_data: DELETE FROM %s failed", tbl, exc_info=True)
     try:
         conn.commit()
     except Exception:
-        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        logging.getLogger(__name__).warning(
+            "_wipe_cgdb_data: post-wipe commit failed", exc_info=True)
         pass
 def _detect_commit_hash(source_root: str) -> str:
     """Detect the current commit hash of a source root.

@@ -626,6 +626,12 @@ class Daemon:
         self.source_root = os.path.abspath(source_root)
         self.profile_path = profile_path
         self.config = {**DEFAULT_CONFIG, **(config or {})}
+        # Deep-copy list/dict values so mutations don't corrupt the
+        # module-level DEFAULT_CONFIG for the next Daemon instance.
+        import copy as _copy
+        for _k, _v in self.config.items():
+            if isinstance(_v, (list, dict)):
+                self.config[_k] = _copy.deepcopy(_v)
         self.state = DaemonState(
             pid=os.getpid(),
             status=STATUS_RUNNING,

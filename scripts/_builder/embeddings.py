@@ -238,19 +238,24 @@ class NGramEmbeddings:
 def build_embeddings_for_graph(graph_dir: str) -> Optional[NGramEmbeddings]:
     """Build TF-IDF embeddings from the invocation graph's nodes.
 
-    Reads nodes from the master JSON and builds a corpus keyed by node ID
+    Reads nodes from the built graph and builds a corpus keyed by node ID
     with text = name + signature + semantic_desc.
     """
-    master_path = os.path.join(graph_dir, "code2database_master.json")
-    if not os.path.exists(master_path):
-        return None
+    # NOTE: master.json has no "nodes" key (it only has domains/file
+    # references) — the previous master.get("nodes", {}) read made the
+    # corpus always empty, so embeddings-build always failed with
+    # 'no master graph'. Load the actual graph instead.
+    from _builder.graph_build import _load_full_graph
     try:
-        with open(master_path, "r", encoding="utf-8") as f:
-            master = json.load(f)
-    except (json.JSONDecodeError, OSError):
+        G = _load_full_graph(graph_dir)
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "embeddings: graph load failed", exc_info=True)
         return None
     corpus = {}
-    for node_id, nd in master.get("nodes", {}).items():
+    for node_id, nd in G.nodes(data=True):
+        if nd.get("is_empty", False):
+            continue
         parts = [
             nd.get("name", ""),
             nd.get("signature", ""),

@@ -7351,11 +7351,14 @@ def cmd_build(args):
         tracker.begin("generate_docs")
         print(f"[build] Generating docs...", file=sys.stderr)
         _docs_start = time.time()
+        # Scenarios file FIRST: the summary generator reads
+        # .code2database_scenarios.json for SCENARIOS_SUMMARY.md — with the
+        # old order (summary, then scenarios) the first build into a clean
+        # dir never produced SCENARIOS_SUMMARY.md, and rebuilds summarized
+        # the PREVIOUS build's scenarios.
+        _build_scenarios_file(G, outdir, build_info=build_info)
         summary_path = _build_callgraph_summary_md(G, outdir, source_root, build_info=build_info)
         _build_domain_readmes(G, outdir)
-
-        # Generate detailed execution scenarios file
-        _build_scenarios_file(G, outdir, build_info=build_info)
 
         # Generate LLM context pack
         pack_path = _build_context_pack(G, outdir, source_root, build_info=build_info)

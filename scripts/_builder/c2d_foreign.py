@@ -181,12 +181,19 @@ def _get_db_signature(db_path: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def _resolve_by_exact_id(foreign_conn: sqlite3.Connection,
-                          node_id: str) -> Optional[sqlite3.Row]:
-    """Strategy 1: look up by exact node id in foreign db."""
+                          node_id: str,
+                          table_prefix: str = "") -> Optional[sqlite3.Row]:
+    """Strategy 1: look up by exact node id in foreign db.
+
+    table_prefix: if querying an ATTACHed db, pass e.g. 'foreign_db.'
+    so the FROM clause becomes 'foreign_db.functions'. Without it, the
+    query hits the LOCAL functions table — wrong project entirely.
+    """
+    tbl = f"{table_prefix}functions" if table_prefix else "functions"
     try:
         return foreign_conn.execute(
-            "SELECT id, name, domain, source_file, line_number, signature "
-            "FROM functions WHERE id = ? LIMIT 1",
+            f"SELECT id, name, domain, source_file, line_number, signature "
+            f"FROM {tbl} WHERE id = ? LIMIT 1",
             (node_id,)
         ).fetchone()
     except sqlite3.Error:
@@ -252,16 +259,23 @@ def _resolve_by_exact_name(foreign_conn: sqlite3.Connection,
 
 def _resolve_by_suffix(foreign_conn: sqlite3.Connection,
                         invoked_name: str,
-                        limit: int = 5) -> List[sqlite3.Row]:
-    """Strategy 3: invoked_name is a suffix of foreign function id."""
+                        limit: int = 5,
+                        table_prefix: str = "") -> List[sqlite3.Row]:
+    """Strategy 3: invoked_name is a suffix of foreign function id.
+
+    table_prefix: query an ATTACHed db ('foreign_db.') — without it the
+    query matches the LOCAL functions table, resolving foreign refs to
+    the wrong project's own functions.
+    """
     if not invoked_name:
         return []
+    tbl = f"{table_prefix}functions" if table_prefix else "functions"
     # Match functions whose id ends with _<invoked_name> (lowercased)
     pattern = f"%_{invoked_name.lower()}"
     try:
         return foreign_conn.execute(
-            "SELECT id, name, domain, source_file, line_number, signature "
-            "FROM functions WHERE LOWER(id) LIKE ? LIMIT ?",
+            f"SELECT id, name, domain, source_file, line_number, signature "
+            f"FROM {tbl} WHERE LOWER(id) LIKE ? LIMIT ?",
             (pattern, limit)
         ).fetchall()
     except sqlite3.Error:
@@ -362,7 +376,8 @@ def add_foreign(graph_dir: str, foreign_c2d_path: str,
                 strategy = "exact_name"
             else:
                 # Strategy 3: suffix
-                candidates = _resolve_by_suffix(conn, invoked_name_guess)
+                candidates = _resolve_by_suffix(
+                    conn, invoked_name_guess, table_prefix="foreign_db.")
                 if len(candidates) == 1:
                     resolved_row = candidates[0]
                     strategy = "suffix"
@@ -507,7 +522,8 @@ def sync_foreign(graph_dir: str, foreign_c2d_path: str = "",
                     if r["foreign_node_id"]:
                         # Try exact_id strategy
                         new_row = _resolve_by_exact_id(
-                            conn, r["foreign_node_id"])
+                            conn, r["foreign_node_id"],
+                            table_prefix="foreign_db.")
                         if new_row:
                             # Still exists — queue metadata update
                             _batch_exact_id.append((

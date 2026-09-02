@@ -730,16 +730,18 @@ def cmd_export_obsidian(args):
         source = ndata.get("source_file", "")
         line = ndata.get("line", 0)
 
-        # YAML frontmatter
+        # YAML frontmatter. json.dumps produces a double-quoted, escaped
+        # scalar (valid YAML): raw f-strings let a " in an id/domain/source
+        # path terminate the scalar and inject arbitrary frontmatter keys.
         frontmatter = "---\n"
-        frontmatter += f"id: \"{nid}\"\n"
-        frontmatter += f"domain: \"{domain}\"\n"
+        frontmatter += f"id: {json.dumps(nid)}\n"
+        frontmatter += f"domain: {json.dumps(domain)}\n"
         if labels:
             frontmatter += f"labels: {json.dumps(labels)}\n"
         if sig:
             sig_safe = json.dumps(sig)  # Proper JSON escaping handles \n, \t, :, #, etc.
             frontmatter += f'signature: {sig_safe}\n'
-        frontmatter += f"source: \"{source}:{line}\"\n"
+        frontmatter += f"source: {json.dumps(f'{source}:{line}')}\n"
         if ndata.get("entry_score"):
             frontmatter += f"entry_score: {ndata['entry_score']}\n"
         frontmatter += "---\n\n"

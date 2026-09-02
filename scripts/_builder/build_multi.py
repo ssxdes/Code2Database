@@ -616,20 +616,19 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
     # Step 7: Write manifest metadata to joint db
     if os.path.exists(joint_db_path):
         try:
-            conn = sqlite3.connect(joint_db_path)
-            conn.execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-                ("multi_project_manifest", json.dumps(manifest, ensure_ascii=False))
-            )
-            conn.execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-                ("multi_project_built_at", datetime.now().isoformat())
-            )
-            conn.commit()
-            conn.close()
+            with sqlite3.connect(joint_db_path) as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                    ("multi_project_manifest", json.dumps(manifest, ensure_ascii=False))
+                )
+                conn.execute(
+                    "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                    ("multi_project_built_at", datetime.now().isoformat())
+                )
+                conn.commit()
         except sqlite3.Error:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
-            pass
+            logging.getLogger(__name__).warning(
+                "build_multi: failed to write manifest metadata", exc_info=True)
     summary["finished_at"] = datetime.now().isoformat()
     summary["total_functions"] = sum(p.get("functions", 0) + p.get("functions_imported", 0)
                                        for p in summary["projects"])

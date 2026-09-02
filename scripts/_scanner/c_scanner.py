@@ -3158,10 +3158,12 @@ class CTreeSitterScanner(BaseScanner):
                 if child.type == 'identifier':
                     return self._node_text(child, source_bytes)
         if func_node.type == 'parenthesized_expression':
-            # (*func_ptr)() or (*ops->read)()
+            # (*func_ptr)() / (fp)(x) / (*ops->read)() / (ops->read)(x)
             # Unwrap parentheses to find the actual callee expression
             inner = func_node.children[1] if len(func_node.children) >= 3 else func_node.children[0] if func_node.children else None
-            if inner and inner.type == 'pointer_expression':
+            if inner is None:
+                pass
+            elif inner.type == 'pointer_expression':
                 ptr_val = inner.child_by_field_name('value') or (inner.children[1] if len(inner.children) > 1 else None)
                 if ptr_val and ptr_val.type == 'field_expression':
                     # (*ops->read)() → extract field name "read"
@@ -3171,9 +3173,23 @@ class CTreeSitterScanner(BaseScanner):
                 elif ptr_val and ptr_val.type == 'identifier':
                     # (*func_ptr)() → return identifier name
                     return self._node_text(ptr_val, source_bytes)
+            elif inner.type == 'identifier':
+                # (fp)(x) — parenthesized function-pointer variable.
+                # The old code had no identifier branch here and the
+                # '*' -anchored fallback regex missed it, so the callee
+                # name came out as the raw text "(fp)".
+                return self._node_text(inner, source_bytes)
+            elif inner.type == 'field_expression':
+                # (ops->read)(x) — parenthesized field call. The unwrap
+                # loop in _process_node already flags this as a fn-ptr
+                # call with fn_ptr_expr "ops->read"; only the name was
+                # wrong (raw text "(ops->read)").
+                for child in inner.children:
+                    if child.type == 'field_identifier':
+                        return self._node_text(child, source_bytes)
             # Fallback: try regex
             inner_text = self._node_text(func_node, source_bytes).strip('()')
-            m = re.match(r'\*\s*(\w+(?:->\w+|::\w+|\.\w+)*)', inner_text)
+            m = re.match(r'\*?\s*(\w+(?:->\w+|::\w+|\.\w+)*)', inner_text)
             if m:
                 # Return the last part after -> or :: or .
                 parts = m.group(1).replace('->', '.').replace('::', '.').split('.')

@@ -513,6 +513,22 @@ class ClangScanner(BaseScanner):
         legacy_edges = []
         # De-dup node IDs across this TU.
         seen_node_ids = set()
+        # Register the file itself as a kind='file' node — the target for
+        # file-level metadata (scanner_version, language) and doc-comment
+        # file_id. Previously these used 'fid' (leaked loop variable) or
+        # placeholder 0, both of which violate node_metadata's FK or are
+        # plain wrong.
+        _file_nid = cgdb_node_id(f"file:{filepath}")
+        cgdb_nodes.append({
+            'id': _file_nid,
+            'kind': 'file',
+            'name': os.path.basename(filepath),
+            'fqn': filepath,
+            'file_path': filepath,
+            'line': 0, 'col': 0, 'byte_start': 0, 'byte_end': 0,
+            'type_spelling': '', 'signature': '',
+        })
+        seen_node_ids.add(_file_nid)
 
         # Read source bytes once for snippet extraction (avoids re-reading
         # the file per node). Falls back to empty bytes on I/O error.
@@ -991,9 +1007,7 @@ class ClangScanner(BaseScanner):
                         line = col = 0
                     cgdb_doc_comments.append({
                         'node_id': node_id,
-                        'file_id': 0,  # placeholder — fid is a leaked loop
-                                        # variable (unbound in function-less
-                                        # headers, else the LAST function's id)
+                        'file_id': _file_nid,
                         'line': line,
                         'col': col,
                         'comment_kind': comment_kind,
@@ -1008,9 +1022,8 @@ class ClangScanner(BaseScanner):
                     pass
             # can identify which scanner version produced a given batch.
             scanner_version = self._scanner_version()
-            file_node_id = 0  # file metadata uses 0 as a placeholder target_id
             cgdb_metadata.append({
-                'target_id': file_node_id,  # placeholder (fid is a leaked loop var)
+                'target_id': _file_nid,
                 'target_kind': 'file',
                 'key': 'scanner_version',
                 'value': scanner_version,
@@ -1018,7 +1031,7 @@ class ClangScanner(BaseScanner):
                 'source': 'scanner',
             })
             cgdb_metadata.append({
-                'target_id': file_node_id,  # placeholder
+                'target_id': _file_nid,
                 'target_kind': 'file',
                 'key': 'language',
                 'value': 'c' if filepath.endswith('.c') else 'cpp',

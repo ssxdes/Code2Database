@@ -96,6 +96,7 @@ class IncrementalSync:
         # resolved_header_index: header_name → set of full file paths matching
         self._header_index: Dict[str, Set[str]] = {}
         self._graph_built = False
+        self._header_graph_built = False
 
     def _ensure_graph(self) -> None:
         """Lazily build the include graph by scanning source_root."""
@@ -103,6 +104,26 @@ class IncrementalSync:
             return
         self._build_include_graph()
         self._graph_built = True
+
+    def _ensure_header_graph(self) -> None:
+        """Lazily build the header→header reverse-graph edges.
+
+        Previously this ran inside compute_affected_tus on every call,
+        re-parsing every header file each time. Build once and cache.
+        """
+        if self._header_graph_built:
+            return
+        header_include_graph: Dict[str, List[str]] = {}
+        for hdr_paths in self._header_index.values():
+            for hdr_path in hdr_paths:
+                if hdr_path not in header_include_graph:
+                    header_include_graph[hdr_path] = parse_includes(hdr_path)
+        for hdr_path, includes in header_include_graph.items():
+            for inc in includes:
+                resolved_set = self._resolve_include(inc)
+                for resolved in resolved_set:
+                    self._reverse_graph.setdefault(resolved, set()).add(hdr_path)
+        self._header_graph_built = True
 
     def _build_include_graph(self) -> None:
         """Walk source_root and build the #include dependency graph.
@@ -219,24 +240,8 @@ class IncrementalSync:
             own affected TU).
         """
         self._ensure_graph()
+        self._ensure_header_graph()
         affected: Set[str] = set()
-        # Build a header-to-header reverse graph on the fly: for each header,
-        # find which files include it (TUs AND other headers).
-        # The _reverse_graph already includes all dependents (TUs + headers),
-        # because we index headers too in _build_include_graph... but actually
-        # we only parsed includes from src_exts files. Let's also parse
-        # includes from header files for the reverse graph.
-        header_include_graph: Dict[str, List[str]] = {}
-        for hdr_paths in self._header_index.values():
-            for hdr_path in hdr_paths:
-                if hdr_path not in header_include_graph:
-                    header_include_graph[hdr_path] = parse_includes(hdr_path)
-        # Update reverse graph with header→header edges
-        for hdr_path, includes in header_include_graph.items():
-            for inc in includes:
-                resolved_set = self._resolve_include(inc)
-                for resolved in resolved_set:
-                    self._reverse_graph.setdefault(resolved, set()).add(hdr_path)
 
         # BFS through reverse_graph
         queue = list(changed_files)

@@ -10,7 +10,7 @@ import json
 import os
 import sqlite3
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from _builder.kb_index import _kb_connect, query_kb
 import logging
@@ -102,9 +102,12 @@ def audit_kb(graph_dir: str, topic: str = "") -> Dict[str, Any]:
 
 
 def write_audit_log_entry(graph_dir: str, action: str,
-                           target_id: int = None, target_kind: str = None,
-                           attribute: str = None, before_value: Any = None,
-                           after_value: Any = None, reason: str = "") -> None:
+                           target_id: Optional[int] = None,
+                           target_kind: Optional[str] = None,
+                           attribute: Optional[str] = None,
+                           before_value: Any = None,
+                           after_value: Any = None,
+                           reason: str = "") -> None:
     """Record a kb operation in the project's audit_log table.
 
     Reuses the existing audit_log table (Phase 10 integration).

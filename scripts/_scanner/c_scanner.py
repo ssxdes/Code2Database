@@ -1493,13 +1493,20 @@ class CTreeSitterScanner(BaseScanner):
                      'sizeof', 'typeof', 'offsetof', 'container_of'}
         callees = []
         seen = set()
-        for m in _IDENT_CALL_RE.finditer(expanded_text):
-            name = m.group(1)
-            if name in _KEYWORDS:
-                continue
-            if name not in seen:
-                seen.add(name)
-                callees.append(name)
+        # Skip string/char literals (same split as _expand_macro): a macro
+        # body like log_error("open(%s) failed", f) produced a spurious
+        # MACRO_EXPANDS_TO edge to 'open' from the text inside the literal.
+        segments = re.split(r'("(?:\\.|[^"\\])*"|\'(?:\\.|[^\'])*\')', expanded_text)
+        for i, seg in enumerate(segments):
+            if i % 2 != 0:
+                continue  # literal segment
+            for m in _IDENT_CALL_RE.finditer(seg):
+                name = m.group(1)
+                if name in _KEYWORDS:
+                    continue
+                if name not in seen:
+                    seen.add(name)
+                    callees.append(name)
         return callees
 
     def _detect_labels(self, func_name: str, func_node, source_bytes: bytes) -> list:
@@ -2332,6 +2339,13 @@ class CTreeSitterScanner(BaseScanner):
                                     "source_tag": self._source_tag(),
                                     "confidence_score": 1.0,
                                 })
+                        else:
+                            # Statement directly in the switch body, outside
+                            # any case/default label (Duff's-device style or
+                            # code before the first label). The old loop only
+                            # processed case_statement children and silently
+                            # skipped everything else.
+                            _process_node(child)
                 return
 
             if node.type in ('preproc_ifdef', 'preproc_if'):

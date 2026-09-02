@@ -11,7 +11,7 @@ import sqlite3
 import threading
 import json
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 from _builder.cgdb_records import (
     IngestBatch, NodeRecord, EdgeRecord, TypeRecord,
@@ -1254,12 +1254,26 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         ).fetchall()
         # Pair acquires with releases by sync_var_id
         races: List[Dict[str, Any]] = []
-        pending_locks: Dict[int, int] = {}  # sync_var_id → acquire_stmt_id
+        # Build per-var lock intervals [acq, rel] from the sync rows.
+        # The previous code computed a single pending_locks set AFTER
+        # consuming ALL sync rows — it held only never-released locks,
+        # so a balanced lock();x=1;unlock() pattern left pending_locks
+        # empty → the PROTECTED access was flagged as an unprotected
+        # race, while functions that never release their locks got no
+        # warnings at all (exactly backwards).
+        lock_intervals: Dict[int, List[Tuple[int, int]]] = {}
+        open_acqs: Dict[int, int] = {}
         for kind, sync_var_id, acq, rel in syncs:
-            if kind == 'lock_acquire' and sync_var_id is not None and acq is not None:
-                pending_locks[sync_var_id] = acq
-            elif kind == 'lock_release' and sync_var_id is not None:
-                pending_locks.pop(sync_var_id, None)
+            if sync_var_id is None:
+                continue
+            if kind == 'lock_acquire' and acq is not None:
+                open_acqs[sync_var_id] = acq
+            elif kind == 'lock_release' and sync_var_id in open_acqs:
+                lock_intervals.setdefault(sync_var_id, []).append(
+                    (open_acqs.pop(sync_var_id), rel if rel is not None else acq))
+        for sv, a in list(open_acqs.items()):
+            # Never released — treat as held to end (use a large sentinel)
+            lock_intervals.setdefault(sv, []).append((a, 1 << 62))
         # For each unprotected var (var_id matches a sync_var_id but no lock held),
         # emit a race warning. This is heuristic — production would use
         # clang's Thread Safety Analysis (C++ plugin).
@@ -1270,11 +1284,18 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         ).fetchall()
         for var_id, def_stmt, use_stmt, kind in var_accesses:
             # If this var is also a sync_var (lock), it's not a race target
-            if var_id in pending_locks:
+            if var_id in lock_intervals or var_id in open_acqs:
                 continue
-            # Check if any lock is held at this point — heuristic: if there
-            # are any pending locks at all, consider this access protected
-            if not pending_locks:
+            access_stmt = def_stmt if def_stmt is not None else use_stmt
+            # Access is protected if it lies inside ANY lock interval
+            # (any var — we can't attribute which lock guards which var
+            # from sync rows alone; conservative).
+            protected = any(
+                a is not None and access_stmt is not None and a <= access_stmt <= r
+                for intervals in lock_intervals.values()
+                for (a, r) in intervals
+            )
+            if not protected:
                 races.append({
                     "var_id": var_id, "def_stmt_id": def_stmt,
                     "use_stmt_id": use_stmt, "kind": kind,

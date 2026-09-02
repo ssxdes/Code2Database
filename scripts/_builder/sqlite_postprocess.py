@@ -572,7 +572,7 @@ def _build_callgraph_summary_md_from_sqlite(db_path, outdir, source_root="", bui
         domains = {}
         for row in conn.execute(
             "SELECT domain, COUNT(*) FROM functions "
-            "WHERE NOT (labels LIKE '%is_empty%') "
+            "WHERE is_empty = 0 "
             "AND domain IS NOT NULL AND domain != '' "
             "GROUP BY domain ORDER BY COUNT(*) DESC"
         ).fetchall():
@@ -769,7 +769,7 @@ def _build_domain_readmes_from_sqlite(db_path, outdir):
         domain_dir_nodes = defaultdict(list)
         for row in conn.execute(
             "SELECT id, name, domain, labels, signature, source_file "
-            "FROM functions WHERE NOT (labels LIKE '%is_empty%')"
+            "FROM functions WHERE is_empty = 0"
         ).fetchall():
             nid, name, domain, labels_json, sig, src = row
             labels = json.loads(labels_json) if labels_json else []
@@ -1224,7 +1224,7 @@ def _build_architecture_flows_from_sqlite(db_path, outdir, source_root="", build
             "FROM functions f "
             "LEFT JOIN (SELECT invoked_id, COUNT(*) as in_deg FROM edges WHERE relation = 'INVOKES' GROUP BY invoked_id) in_agg ON f.id = in_agg.invoked_id "
             "LEFT JOIN (SELECT invoker_id, COUNT(*) as out_deg FROM edges WHERE relation = 'INVOKES' GROUP BY invoker_id) out_agg ON f.id = out_agg.invoker_id "
-            f"WHERE f.labels NOT LIKE '%is_empty%' AND {builtin_name_filter} "
+            f"WHERE f.is_empty = 0 AND {builtin_name_filter} "
             "ORDER BY (COALESCE(in_agg.in_deg, 0) + COALESCE(out_agg.out_deg, 0)) DESC LIMIT 20"
         ).fetchall()
 

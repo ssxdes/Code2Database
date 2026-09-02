@@ -123,6 +123,27 @@ def _char_offsets_to_bytes(source_text: str, offsets):
     return [byte_map[o] for o in offsets]
 
 
+def _collect_call_expressions(expr_node, out):
+    """Collect call_expression nodes at any depth of an expression subtree.
+
+    Pre-order traversal in child order (= source order of call sites).
+    Does NOT descend into found call_expressions — the caller dispatches
+    each to _process_node, which handles that call's own arguments
+    recursively — nor into lambda bodies (calls there belong to the
+    lambda's own function, not the enclosing one).
+    """
+    if expr_node is None:
+        return
+    _t = expr_node.type
+    if _t == 'call_expression':
+        out.append(expr_node)
+        return
+    if _t == 'lambda_expression':
+        return
+    for ch in expr_node.children:
+        _collect_call_expressions(ch, out)
+
+
 class CTreeSitterScanner(BaseScanner):
     """Scanner for C and C++ using tree-sitter."""
 
@@ -2074,18 +2095,38 @@ class CTreeSitterScanner(BaseScanner):
                                 }],
                             })
 
-                # Recurse into argument_list to find nested call expressions
-                # e.g., printf("...", my_strlen(argv[1])) → also create edge for my_strlen
-                arg_list = node.child_by_field_name('arguments')
-                if arg_list:
-                    for arg_child in arg_list.children:
-                        if arg_child.type == 'call_expression':
-                            _process_node(arg_child)
-                        elif arg_child.type == 'cast_expression':
-                            # Cast may wrap a call: (int)my_strlen(...)
-                            for cast_child in arg_child.children:
-                                if cast_child.type == 'call_expression':
-                                    _process_node(cast_child)
+                # Recurse into the callee chain and the FULL argument list
+                # to find nested call expressions at ANY depth. The old
+                # depth-1 (plus one cast level) scan lost calls wrapped in
+                # intermediate expressions — foo(a + bar(x)),
+                # foo((bar(x))), foo(c ? bar(x) : baz(x)), foo(v = bar(x)),
+                # foo(-bar(x)), foo(arr[bar(x)]), foo(sizeof(bar(x))) — and
+                # always lost calls inside the callee chain
+                # (get_ops()->handler(x) never produced a get_ops edge).
+                # Each found call is dispatched to _process_node, which
+                # recurses into ITS arguments the same way, so arbitrarily
+                # deep nesting is covered.
+                _nested_calls = []
+                _callee_node = node.child_by_field_name('function')
+                if _callee_node is not None:
+                    if _callee_node.type == 'call_expression':
+                        # bar(x)(y) / bar(baz(x))(y): the outer call's
+                        # fallback already resolved the callee name from
+                        # the call text — collect from the callee-call's
+                        # own callee/args instead of the callee itself to
+                        # avoid a duplicate edge for the same name.
+                        _collect_call_expressions(
+                            _callee_node.child_by_field_name('function'),
+                            _nested_calls)
+                        _collect_call_expressions(
+                            _callee_node.child_by_field_name('arguments'),
+                            _nested_calls)
+                    else:
+                        _collect_call_expressions(_callee_node, _nested_calls)
+                _collect_call_expressions(
+                    node.child_by_field_name('arguments'), _nested_calls)
+                for _nc in _nested_calls:
+                    _process_node(_nc)
                 return  # Don't recurse further into call_expression structure
 
             # === gnu_asm_expression: extract call instructions from inline asm ===

@@ -233,6 +233,7 @@ try:
     _LIBCLANG_AVAILABLE = True
 except ImportError:
     _LIBCLANG_AVAILABLE = False
+_LIBCLANG_USABLE_CACHE: Optional[bool] = None
 
 
 # Mapping from libclang TokenKind to our DB token kind
@@ -310,10 +311,6 @@ def is_libclang_available() -> bool:
             "libclang-18-dev or dnf install clang-libs) to enable L1.",
             file=_sys.stderr)
     return _LIBCLANG_USABLE_CACHE
-
-
-# Cache for is_libclang_available() — None = not yet probed.
-_LIBCLANG_USABLE_CACHE: Optional[bool] = None
 
 
 def _refine_literal_kind(spelling: str) -> str:

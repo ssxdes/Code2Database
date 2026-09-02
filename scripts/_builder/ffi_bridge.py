@@ -614,16 +614,22 @@ def detect_rust_ffi(file_text: str, file_path: str) -> List[Dict]:
     edges = []
     rel = file_path
     _line_starts = build_line_starts(file_text)
-    _block_line_starts_cache: Dict[int, List[int]] = {}
+    # Key by the block TEXT, not id(block): the block string is not
+    # referenced anywhere else, so CPython frees it on the next loop
+    # iteration and commonly REUSES the address for the next m.group(1)
+    # — a hit then returned a different block's line starts and
+    # silently corrupted line numbers for files with >=2 extern "C"
+    # blocks.
+    _block_line_starts_cache: Dict[str, List[int]] = {}
 
     # extern "C" { ... } blocks — Rust calling INTO C
     for m in _EXTERN_C_BLOCK.finditer(file_text):
         block = m.group(1)
         block_line = line_for_offset(_line_starts, m.start())
-        block_starts = _block_line_starts_cache.get(id(block))
+        block_starts = _block_line_starts_cache.get(block)
         if block_starts is None:
             block_starts = build_line_starts(block)
-            _block_line_starts_cache[id(block)] = block_starts
+            _block_line_starts_cache[block] = block_starts
         for fm in _EXTERN_FN.finditer(block):
             func, args, ret = fm.group(1), fm.group(2), fm.group(3)
             line_no = block_line + line_for_offset(block_starts, fm.start()) - 1

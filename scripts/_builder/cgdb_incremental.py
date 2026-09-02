@@ -257,19 +257,28 @@ class IncrementalSync:
         conn = sqlite3.connect(db_path)
         rows = 0
         try:
+            # Split into delete and update batches, computing hashes in
+            # a single pass. This replaces per-row conn.execute() calls
+            # with two executemany() calls.
+            delete_paths = []
+            update_rows = []
             for fpath in file_paths:
                 if not os.path.exists(fpath):
-                    # File was deleted — remove its row
-                    cur = conn.execute(
-                        "DELETE FROM cgdb_files WHERE path = ?", (fpath,)
-                    )
-                    rows += cur.rowcount
-                    continue
-                h = compute_content_hash(fpath)
-                cur = conn.execute(
+                    delete_paths.append((fpath,))
+                else:
+                    h = compute_content_hash(fpath)
+                    update_rows.append((h, h, fpath))
+            if delete_paths:
+                cur = conn.executemany(
+                    "DELETE FROM cgdb_files WHERE path = ?",
+                    delete_paths
+                )
+                rows += cur.rowcount
+            if update_rows:
+                cur = conn.executemany(
                     "UPDATE cgdb_files SET content_hash = ?, sha256 = ? "
                     "WHERE path = ?",
-                    (h, h, fpath)
+                    update_rows
                 )
                 rows += cur.rowcount
             conn.commit()

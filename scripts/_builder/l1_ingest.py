@@ -800,7 +800,7 @@ def ingest_l1(
         node_rows = conn.execute(
             "SELECT id, byte_start, byte_end FROM cgdb_nodes "
             "WHERE file_id = ? AND kind IN "
-            "('function','var','parameter','decl','enum_constant') "
+            "('function','var','parm','decl_ref','enum_constant') "
             "AND byte_end > byte_start",
             (file_id,)
         ).fetchall()

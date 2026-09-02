@@ -223,7 +223,6 @@ def cached_query(command: str, ttl: int = 600,
                 cached = cache.get(key)
                 if cached is not None:
                     if capture_stdout:
-                        import sys
                         sys.stdout.write(cached)
                     return cached
 

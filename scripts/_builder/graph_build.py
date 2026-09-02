@@ -6308,15 +6308,15 @@ def cmd_build(args):
         print(f"[build] Loading split extraction from {_split_dir}"
               f"{' (stripping body_text)' if _strip_body_on_load else ''}", file=sys.stderr)
         data = _load_split_extraction(_split_dir, strip_body_text=_strip_body_on_load)
-        source_root = data.get("source_root", "")
+        source_root = data.get("source_root", "") or getattr(args, "source", "") or ""
         extraction_tokens = 0  # Skip token estimation for large files
     elif os.path.isdir(extraction_path):
         data = _load_split_extraction(extraction_path, strip_body_text=_strip_body_on_load)
-        source_root = data.get("source_root", "")
+        source_root = data.get("source_root", "") or getattr(args, "source", "") or ""
         extraction_tokens = 0
     else:
         data, extraction_tokens = _load_extraction_chunked(extraction_path, memory_guard)
-        source_root = data.get("source_root", "")
+        source_root = data.get("source_root", "") or getattr(args, "source", "") or ""
     tracker.end(output_tokens=extraction_tokens,
                 extra={"functions": len(data.get("functions", [])),
                        "edges": len(data.get("edges", []))})

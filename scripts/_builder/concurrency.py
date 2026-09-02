@@ -116,9 +116,12 @@ def cmd_concurrency_risks(args):
                 })
 
     risks.sort(key=lambda r: {"HIGH": 0, "MEDIUM": 1, "LOW": 2}[r["risk_level"]])
-    result = {"total_spawn_points": len(risks), "high_risk": sum(1 for r in risks if r["risk_level"] == "HIGH"),
-              "medium_risk": sum(1 for r in risks if r["risk_level"] == "MEDIUM"),
-              "low_risk": sum(1 for r in risks if r["risk_level"] == "LOW"),
+    from collections import Counter
+    _counts = Counter(r["risk_level"] for r in risks)
+    result = {"total_spawn_points": len(risks),
+              "high_risk": _counts.get("HIGH", 0),
+              "medium_risk": _counts.get("MEDIUM", 0),
+              "low_risk": _counts.get("LOW", 0),
               "risks": risks}
     _output_result(result, getattr(args, 'json', False))
 

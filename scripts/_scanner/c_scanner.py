@@ -599,6 +599,15 @@ class CTreeSitterScanner(BaseScanner):
                                 "preproc_alive": True,
                                 "evidence": f"callback_arg: {callee_name}() arg#{_cb_arg_idx}={_cb_target} (toplevel)",
                             })
+        # Names of functions DEFINED in this file — used as negative evidence
+        # by the fn-ptr name heuristic in _walk_body: a call to a function we
+        # can see defined here is a direct call even if its name happens to
+        # end in a callback-ish suffix (e.g. a real function named real_fn).
+        self._file_defined_funcs = set()
+        for _fnode, _ in func_nodes:
+            _fname = self._extract_func_name(_fnode, source_bytes)
+            if _fname:
+                self._file_defined_funcs.add(_fname)
         for func_node, ifdef_conds in func_nodes:
             self._process_function(func_node, source_bytes, source_root,
                                     filepath, domain, edges, functions,
@@ -1816,7 +1825,20 @@ class CTreeSitterScanner(BaseScanner):
                 return " && ".join(parts)
             return None
 
+        # Locally-declared function-pointer variables (e.g. from
+        # 'void (*cb)(int) = get_cb();'). Bare calls to these (cb(42)) are
+        # indirect calls, but before this set existed they fell through to
+        # the EXTRACTED direct-call path with confidence 1.0 and no
+        # fn_ptr_calls record — dispatch/vtable resolution never saw them.
+        _local_fn_ptr_vars = set()
+
         def _process_node(node):
+            if node.type == 'declaration':
+                # Collect function-pointer declarators: 'void (*cb)(int)',
+                # 'int (*arr[8])(void)', 'ret_t (*fn)(args) = impl;'
+                for _m in re.finditer(r'\(\s*\*\s*(\w+)[^)]*\)',
+                                      self._node_text(node, source_bytes)):
+                    _local_fn_ptr_vars.add(_m.group(1))
             if node.type == 'call_expression':
                 callee_name = self._extract_callee_name(node, source_bytes)
                 # Detect indirect calls through function pointers (field_expression or pointer_expression)
@@ -1851,18 +1873,28 @@ class CTreeSitterScanner(BaseScanner):
                     else:
                         fn_ptr_expr = self._node_text(_fn, source_bytes)  # e.g. "(*callback)"
                 elif _fn and _fn.type == 'identifier':
-                    # Heuristic: detect function pointer calls where the identifier
-                    # name suggests it's a callback/function pointer variable.
-                    # This catches patterns like: callback(args), handler(args),
-                    # fn(args), cb(args), notify(args), etc.
+                    # 1) Precise: the identifier is a locally-declared
+                    #    function-pointer variable — always an indirect call.
+                    # 2) Heuristic: the identifier NAME suggests a
+                    #    callback/function pointer (callback(args),
+                    #    handler(args), fn(args), cb(args), ...).
                     # O8: when profile.dispatch_tuning.fn_ptr_call_require_evidence
-                    # is True, skip this name-based heuristic — it produces false
+                    # is True, skip the NAME-based heuristic (it produces false
                     # positives on projects where regular functions happen to
-                    # match a callback-ish name (e.g., a function named "notify").
-                    # Only explicit field_expression/pointer_expression indirect
-                    # calls count as fn_ptr evidence in that mode.
-                    if not self._fn_ptr_call_require_evidence:
-                        _id_name = self._node_text(_fn, source_bytes)
+                    # match a callback-ish name, e.g., a function named
+                    # "notify"). Local-declaration evidence and explicit
+                    # field_expression/pointer_expression indirect calls
+                    # always count as fn_ptr evidence in that mode.
+                    _id_name = self._node_text(_fn, source_bytes)
+                    if _id_name in _local_fn_ptr_vars:
+                        is_fn_ptr_call = True
+                        fn_ptr_expr = _id_name
+                    elif _id_name in getattr(self, '_file_defined_funcs', ()):
+                        # Negative evidence: a function DEFINED in this file —
+                        # a direct call, even if the name looks callback-ish
+                        # (e.g. a real function named real_fn / notify).
+                        pass
+                    elif not self._fn_ptr_call_require_evidence:
                         _cb_suffixes = ('_cb', '_callback', '_handler', '_func', '_fn',
                                          '_notify', '_hook', '_dispatch', '_listener',
                                          'callback', 'handler', 'cb_fn', 'cb_func')

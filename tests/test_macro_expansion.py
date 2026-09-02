@@ -132,11 +132,11 @@ class TestExtractMacroCallsFromBody(unittest.TestCase):
         self.assertEqual(result, ["foo"])
         self.assertNotIn("if", result)
 
-    def test_returns_lowercased(self):
-        """Callee names are lowercased."""
+    def test_preserves_case(self):
+        """Callee names preserve case (C is case-sensitive)."""
         s = self._make_scanner()
         result = s._extract_macro_calls_from_body("Bar(42);")
-        self.assertEqual(result, ["bar"])
+        self.assertEqual(result, ["Bar"])
 
     def test_empty_body(self):
         """Empty body returns empty list."""

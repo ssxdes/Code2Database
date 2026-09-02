@@ -1346,8 +1346,10 @@ class CTreeSitterScanner(BaseScanner):
     def _extract_macro_calls_from_body(self, expanded_text: str) -> list:
         """Extract function call names from an expanded macro body.
 
-        Returns a list of callee names (lowercased) that look like
-        direct function calls — used to create MACRO_EXPANDS_TO edges.
+        Returns a list of callee names that look like direct function
+        calls — used to create MACRO_EXPANDS_TO edges. Case is preserved
+        (C is case-sensitive; lowercasing breaks cross-reference
+        resolution against graph nodes whose names use the original case).
         """
         # Match identifier( patterns, excluding control keywords
         _KEYWORDS = {'if', 'while', 'for', 'switch', 'do', 'return',
@@ -1360,7 +1362,7 @@ class CTreeSitterScanner(BaseScanner):
                 continue
             if name not in seen:
                 seen.add(name)
-                callees.append(name.lower())
+                callees.append(name)
         return callees
 
     def _detect_labels(self, func_name: str, func_node, source_bytes: bytes) -> list:

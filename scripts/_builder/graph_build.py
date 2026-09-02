@@ -7936,8 +7936,13 @@ def cmd_build(args):
                                     continue
                                 invoker_to_arg_calls.setdefault(
                                     (invoker_nid, callee_nid), []).append(ca)
-                        # Walk invoke_sites and populate arg_bindings
+                        # Walk invoke_sites and populate arg_bindings.
+                        # Batch all updates into a list and issue a single
+                        # executemany — the per-row conn.execute("UPDATE")
+                        # inside the SELECT loop was the same class of
+                        # bottleneck as the old per-file COMMIT bug.
                         updated_args = 0
+                        _arg_update_batch = []
                         for row in conn.execute(
                             "SELECT id, invoker_id, invoked_id FROM invoke_sites"
                         ):
@@ -7957,12 +7962,16 @@ def cmd_build(args):
                                 arg_bindings = arg_calls[0].get('args', []) or []
                             if not arg_bindings:
                                 continue
-                            conn.execute(
-                                "UPDATE invoke_sites SET arg_bindings=? "
-                                "WHERE id=?",
+                            _arg_update_batch.append(
                                 (_json.dumps(arg_bindings), isite_id)
                             )
-                            updated_args += 1
+                        if _arg_update_batch:
+                            conn.executemany(
+                                "UPDATE invoke_sites SET arg_bindings=? "
+                                "WHERE id=?",
+                                _arg_update_batch
+                            )
+                            updated_args = len(_arg_update_batch)
                         conn.commit()
                         if updated_args:
                             print(f"[cgdb] Populated arg_bindings for "

@@ -2420,28 +2420,42 @@ class CTreeSitterScanner(BaseScanner):
                 empty_id = self._make_empty_id(invoker_id, len(cond_stack))
                 cond_stack.append({"condition": cond_label, "empty_id": empty_id, "has_calls": False})
 
-                # Process condition subtree (e.g., while(check()) — extract check())
-                if cond_node:
-                    cond_cond_label = f"while_cond({loop_cond})" if loop_cond else "while_cond"
-                    cond_cond_entry = {"condition": cond_cond_label, "empty_id": empty_id + "_cond", "has_calls": False}
-                    cond_stack.append(cond_cond_entry)
-                    _process_node(cond_node)
-                    cond_scope = cond_stack.pop()
-                    if cond_scope["has_calls"]:
-                        edges.append({
-                            "source": invoker_id,
-                            "target": cond_scope["empty_id"],
-                            "call_order": None,
-                            "call_condition": cond_scope["condition"],
-                            "confidence": self._confidence_tag(),
-                            "source_tag": self._source_tag(),
-                            "confidence_score": 1.0,
-                        })
+                # do-while executes the BODY before the condition; while
+                # checks first. The old code always processed the condition
+                # first, so 'do { body(i); } while (check(i));' assigned
+                # check order 1 and body order 2 — neither source nor
+                # execution order.
+                _is_do = node.type == 'do_statement'
 
-                # Process body
-                body = node.child_by_field_name('body')
-                if body:
-                    _process_node(body)
+                def _process_loop_cond():
+                    if cond_node:
+                        cond_cond_label = f"while_cond({loop_cond})" if loop_cond else "while_cond"
+                        cond_cond_entry = {"condition": cond_cond_label, "empty_id": empty_id + "_cond", "has_calls": False}
+                        cond_stack.append(cond_cond_entry)
+                        _process_node(cond_node)
+                        cond_scope = cond_stack.pop()
+                        if cond_scope["has_calls"]:
+                            edges.append({
+                                "source": invoker_id,
+                                "target": cond_scope["empty_id"],
+                                "call_order": None,
+                                "call_condition": cond_scope["condition"],
+                                "confidence": self._confidence_tag(),
+                                "source_tag": self._source_tag(),
+                                "confidence_score": 1.0,
+                            })
+
+                def _process_loop_body():
+                    body = node.child_by_field_name('body')
+                    if body:
+                        _process_node(body)
+
+                if _is_do:
+                    _process_loop_body()
+                    _process_loop_cond()
+                else:
+                    _process_loop_cond()
+                    _process_loop_body()
 
                 scope = cond_stack.pop()
                 if scope["has_calls"]:
@@ -2471,7 +2485,12 @@ class CTreeSitterScanner(BaseScanner):
                 empty_id = self._make_empty_id(invoker_id, len(cond_stack))
                 cond_stack.append({"condition": cond_label, "empty_id": empty_id, "has_calls": False})
 
-                # Process condition subtree
+                # Process in EXECUTION order: init -> cond -> body -> update.
+                # The old order (cond, init, update, body) matched neither
+                # source nor execution order: for (init(); check(); adv())
+                # { body(); } assigned check=1, init=2, adv=3, body=4.
+                if init_node:
+                    _process_node(init_node)
                 if cond_node:
                     cond_cond_label = f"for_cond({loop_cond})" if loop_cond else "for_cond"
                     cond_cond_entry = {"condition": cond_cond_label, "empty_id": empty_id + "_cond", "has_calls": False}
@@ -2489,14 +2508,12 @@ class CTreeSitterScanner(BaseScanner):
                             "confidence_score": 1.0,
                         })
 
-                # Process init, update, and body
-                if init_node:
-                    _process_node(init_node)
-                if update_node:
-                    _process_node(update_node)
+                # body, then update (execution order)
                 body_node = node.child_by_field_name('body')
                 if body_node:
                     _process_node(body_node)
+                if update_node:
+                    _process_node(update_node)
 
                 scope = cond_stack.pop()
                 if scope["has_calls"]:

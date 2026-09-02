@@ -395,7 +395,7 @@ class FileWatcher:
                         if base_path:
                             full_path = os.path.join(base_path, name) if name else base_path
                             if not self._is_excluded(full_path):
-                                if mask & 0x1:
+                                if mask & 0x8000:  # IN_IGNORED — watch removed (dir deleted/moved): drop the wd mapping
                                     self._wd_to_path.pop(wd, None)
                                 elif mask & _IN_CREATE and mask & _IN_ISDIR:
                                     if not self._inotify_exhausted:

@@ -53,7 +53,14 @@ def check_freshness(graph_dir: str, source_root: str = "") -> Dict:
             with open(manifest_path, "r", encoding="utf-8") as f:
                 manifest_data = json.load(f)
                 manifest = manifest_data.get("files", {})
-                result["last_scan_commit"] = manifest_data.get("source_commit", "unknown")
+                # manifest["source_commit"] is a VCS dict {"type","head",...}
+                # (commit_meta.write_manifest), not a bare string —
+                # comparing it directly to the hash string was always
+                # unequal → git_head_changed always True.
+                _sc = manifest_data.get("source_commit", "unknown")
+                if isinstance(_sc, dict):
+                    _sc = _sc.get("head", "")[:12] or "unknown"
+                result["last_scan_commit"] = _sc
         except (OSError, json.JSONDecodeError):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass

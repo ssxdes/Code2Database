@@ -3029,13 +3029,6 @@ def build_graph(extraction: dict, profile: dict = None,
                     source_domain = "root"
                     if source_id in id_registry:
                         source_domain = id_registry[source_id].get("domain", "root")
-                    # Get struct_chain from fn_ptr_calls lookup
-                    # Try to find the parent function that contains this conditional
-                    _parent_func = ""
-                    for pf, psc in _fn_ptr_struct_lookup.items():
-                        # Check if this conditional node is called from a function
-                        # that has a fn_ptr_call with matching field_name
-                        pass
                     # Use domain-scoped dispatch
                     _cond_targets = set()
                     if _cond_field in _field_dispatch_by_domain and source_domain in _field_dispatch_by_domain[_cond_field]:
@@ -5892,6 +5885,10 @@ def _load_split_extraction(extraction_dir: str, strip_body_text: bool = False) -
     #   process after deserialization, because they depend on _globals_data
     #   and _field_assignments which are too large to pickle efficiently.
     functions_dir = os.path.join(extraction_dir, "functions")
+    # Initialize up front — the edges/ and cgdb/ blocks below read
+    # _use_parallel even when functions/ is absent (which would otherwise
+    # leave it unbound → NameError).
+    _use_parallel = False
     if os.path.isdir(functions_dir):
         data["functions"] = []
         _func_files = sorted(_glob.glob(os.path.join(functions_dir, "*.json")))
@@ -7154,7 +7151,8 @@ def cmd_build(args):
                     # System headers (<...>) get 'external' domain
                     if tgt.startswith('<') or tgt in ('stdio.h', 'stdlib.h',
                             'string.h', 'stdint.h', 'stdbool.h', 'errno.h',
-                            'unistd.h', 'fcntl.h', 'sys/', 'arpa/'):
+                            'unistd.h', 'fcntl.h') \
+               or tgt.startswith(('sys/', 'arpa/')):
                         tgt_domain = "external"
                     G.add_node(tgt_id, name=os.path.basename(tgt), domain=tgt_domain,
                                node_type="file", source_file=tgt, labels=["file"],

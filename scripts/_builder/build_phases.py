@@ -198,6 +198,13 @@ def _filter_noise_nodes(G, id_registry: dict, keep_prefixes: tuple) -> None:
     if not nodes_to_remove:
         return
 
+    # Capture names BEFORE popping registry entries — the previous diag
+    # loop read id_registry AFTER the pop, so name was always the nid and
+    # every removed node (param-only ones included) was misreported as a
+    # "C++ artifact".
+    _removed_names = {nid: id_registry.get(nid, {}).get("name", nid)
+                      if isinstance(id_registry.get(nid), dict) else nid
+                      for nid in nodes_to_remove}
     for nid in nodes_to_remove:
         G.remove_node(nid)
         id_registry.pop(nid, None)
@@ -208,8 +215,7 @@ def _filter_noise_nodes(G, id_registry: dict, keep_prefixes: tuple) -> None:
           file=sys.stderr)
     # Diag: list removed C++ artifacts for verification
     for nid in nodes_to_remove:
-        nd = id_registry.get(nid, {})
-        name = nd.get("name", nid) if isinstance(nd, dict) else nid
+        name = _removed_names[nid]
         if name not in _PARAM_ONLY_NAMES:
             print(f"  C++ artifact removed: {nid}", file=sys.stderr)
 

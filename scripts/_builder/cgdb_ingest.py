@@ -79,15 +79,12 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
     # missing but type_spelling is present.
     type_by_spelling: dict = {}
     # Pre-populate from cgdb_types so the node loop can look up existing
-    # types without waiting for section 2. Track seen ids so section 2
-    # doesn't re-append (and re-INSERT OR REPLACE) the same types.
-    _seen_type_ids = set()
+    # types without waiting for section 2.
     for _t in scan_result.get('cgdb_types', []):
         try:
             _tid = int(_t['id'])
         except (KeyError, ValueError, TypeError):
             continue
-        _seen_type_ids.add(_tid)
         _canon = _t.get('canonical_spelling') or _t.get('spelling') or ''
         if _canon:
             type_by_spelling[_canon] = _tid
@@ -320,8 +317,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
         except (KeyError, ValueError, TypeError):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
-        if invoker_id is None or invoked_id is None:
-            continue
+
         # Read dispatch_candidates and arg_bindings if present (set by
         # _emit_cgdb_records when fn_ptr_calls + vtable_registrations match).
         dispatch_candidates = cs.get('dispatch_candidates') or []

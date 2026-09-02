@@ -532,7 +532,11 @@ def detect_go_cgo_ffi(file_text: str, file_path: str) -> List[Dict]:
     # Find C function calls
     for m in _CGO_CALL.finditer(file_text):
         func = m.group(1)
-        if func in ("C.int", "C.char"):  # type cast, not call
+        # group(1) is the bare word after "C." — compare against the bare
+        # type-conversion names (the old ("C.int","C.char") membership
+        # never matched, so every C.int(x)/C.long(y) cast was recorded as
+        # an FFI edge to a "function" named int/long).
+        if f"C.{func}" in _GO_CGO_TO_C:  # type conversion, not call
             continue
         line_no = line_for_offset(_line_starts, m.start())
         # Look for type info in surrounding text

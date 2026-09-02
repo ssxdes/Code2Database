@@ -75,11 +75,25 @@ class WatchService:
                 with open(extraction_path, "r", encoding="utf-8") as f:
                     existing = json.load(f)
 
-                # Remove old entries for changed files
-                changed_set = set(source_changes)
+                # Remove old entries for changed files.
+                # source_changes holds ABSOLUTE paths (watchdog events /
+                # detect_changes), but extraction entries store source_file
+                # as relpath — normalize both to absolute before comparing
+                # (rel-vs-abs never matched, so stale entries accumulated).
+                changed_set = {os.path.abspath(p) for p in source_changes}
+                def _abs_src(rel_or_abs):
+                    if not rel_or_abs:
+                        return ""
+                    p = rel_or_abs if os.path.isabs(rel_or_abs) else os.path.join(self.source_root, rel_or_abs)
+                    return os.path.abspath(p)
+                _removed_fn_ids = {
+                    x.get("id", "") for x in existing.get("functions", [])
+                    if _abs_src(x.get("source_file", "")) in changed_set
+                }
                 for key in ("functions", "edges", "import_edges"):
                     existing[key] = [x for x in existing.get(key, [])
-                                     if x.get("source_file", x.get("_source_file", "")) not in changed_set]
+                                     if _abs_src(x.get("source_file", x.get("_source_file", ""))) not in changed_set
+                                     and x.get("source", "") not in _removed_fn_ids]
 
                 # Append new data
                 for key in ("functions", "edges", "import_edges"):

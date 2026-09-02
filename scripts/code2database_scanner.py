@@ -2536,27 +2536,46 @@ def cmd_scan(args):
                     else:
                         with open(existing_path, "r", encoding="utf-8") as f:
                             existing = json.load(f)
-                    # Remove entries from deleted/changed files
-                    del_set = set(deleted_files + changed_files)
+                    # Remove entries from deleted/changed files.
+                    # detect_changes returns ABSOLUTE paths, but scanners
+                    # store source_file as os.path.relpath(...) — normalize
+                    # both sides to absolute before comparing (previously
+                    # rel-vs-abs never matched, so stale entries were never
+                    # removed and every incremental scan re-appended the
+                    # full new set → duplicates + zombie functions).
+                    del_set = {os.path.abspath(p) for p in deleted_files + changed_files}
+                    def _abs_src(rel_or_abs: str) -> str:
+                        if not rel_or_abs:
+                            return ""
+                        p = rel_or_abs if os.path.isabs(rel_or_abs) else os.path.join(source, rel_or_abs)
+                        return os.path.abspath(p)
+                    # Capture ids of functions about to be removed so the
+                    # edge filter can drop their edges too (edges carry no
+                    # source_file key).
+                    _removed_fn_ids = {
+                        fn.get("id", "") for fn in existing.get("functions", [])
+                        if _abs_src(fn.get("source_file", "")) in del_set
+                    }
                     existing["functions"] = [
                         fn for fn in existing.get("functions", [])
-                        if fn.get("source_file", "") not in del_set
+                        if _abs_src(fn.get("source_file", "")) not in del_set
                     ]
                     existing["edges"] = [
                         e for e in existing.get("edges", [])
-                        if e.get("_source_file", "") not in del_set
+                        if _abs_src(e.get("_source_file", e.get("source_file", ""))) not in del_set
+                        and e.get("source", "") not in _removed_fn_ids
                     ]
                     existing["import_edges"] = [
                         e for e in existing.get("import_edges", [])
-                        if e.get("_source_file", e.get("source_file", "")) not in del_set
+                        if _abs_src(e.get("_source_file", e.get("source_file", ""))) not in del_set
                     ]
                     existing["vtable_registrations"] = [
                         v for v in existing.get("vtable_registrations", [])
-                        if v.get("source_file", "") not in del_set
+                        if _abs_src(v.get("source_file", "")) not in del_set
                     ]
                     existing["field_assignments"] = [
                         fa for fa in existing.get("field_assignments", [])
-                        if fa.get("source_file", "") not in del_set
+                        if _abs_src(fa.get("source_file", "")) not in del_set
                     ]
                     # Append new data
                     for key in ("functions", "edges", "import_edges",

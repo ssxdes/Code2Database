@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import re
-from collections import deque
 from typing import Any, Dict, List
 
 
@@ -56,43 +55,40 @@ def taint_analysis(graph_dir: str, sources: List[str], sinks: List[str],
 
     # BFS from each source through DATA_FLOW + INVOKES edges
     flows = []
+    _MAX_FLOWS_PER_SOURCE = 100
     for source_id in source_nodes:
-        # Track visited nodes to avoid infinite loops. We do NOT use a
-        # single global visited set across all flows from this source —
-        # that would incorrectly block legitimate alternative paths to
-        # the same sink (e.g., source→sanitize→sink AND source→bypass→sink
-        # where the second path is unsanitized but blocked because sink
-        # was already visited via the first path).
-        # Instead, we track visited per-path (passed as a frozen copy
-        # in the queue) so each path can independently reach sinks.
-        # To bound the search, we still cap at max_depth hops.
-        queue = deque([(source_id, [source_id], False, {source_id})])
+        # DFS with backtracking — uses a single shared visited set
+        # (modified in-place via add/discard) instead of copying the
+        # set per hop. This reduces memory from O(B^D * D) (per-path
+        # copies) to O(D) (one set + call stack).
+        #
+        # The per-path visited set is still needed to prevent cycles
+        # WITHIN a single path. But unlike the previous BFS approach
+        # (which created a new set copy per successor per hop), the
+        # backtracking approach adds succ before recursing and removes
+        # it after, so only one set exists at any time.
+        visited = {source_id}
+        path = [source_id]
+        source_name = G.nodes[source_id].get("name", source_id)
 
-        while queue:
-            node, path, is_sanitized, visited = queue.popleft()
-            # Depth check: depth = len(path) - 1 = number of hops from
-            # source. Block when depth EXCEEDS max_depth (not >=), so
-            # max_depth=5 allows up to 5 hops (path length 6). Previous
-            # check used len(path) > max_depth which was off-by-one
-            # (blocked paths of length max_depth+1 instead of max_depth+2).
-            depth = len(path) - 1
+        def _dfs(node, is_sanitized, depth):
+            if len(flows) >= _MAX_FLOWS_PER_SOURCE:
+                return
             if depth > max_depth:
-                continue
-
+                return
             if node in sink_nodes and node != source_id:
                 flows.append({
-                    "source": G.nodes[source_id].get("name", source_id),
+                    "source": source_name,
                     "source_id": source_id,
                     "sink": G.nodes[node].get("name", node),
                     "sink_id": node,
                     "path": [G.nodes[n].get("name", n) for n in path],
-                    "path_ids": path,
+                    "path_ids": list(path),
                     "sanitized": is_sanitized,
                     "depth": depth,
                 })
-                continue
+                return
 
-            # Follow DATA_FLOW edges (forward = value flows out)
             for succ in G.successors(node):
                 ed = G.get_edge_data(node, succ) or {}
                 rel = ed.get("relation", "")
@@ -100,12 +96,14 @@ def taint_analysis(graph_dir: str, sources: List[str], sinks: List[str],
                     continue
                 if succ in visited:
                     continue
-                # Per-path visited set — copy so each branch has its own.
-                # This allows two paths to converge at the same sink
-                # without one blocking the other.
-                new_visited = visited | {succ}
                 new_sanitized = is_sanitized or (succ in sanitizer_nodes)
-                queue.append((succ, path + [succ], new_sanitized, new_visited))
+                visited.add(succ)
+                path.append(succ)
+                _dfs(succ, new_sanitized, depth + 1)
+                path.pop()
+                visited.discard(succ)
+
+        _dfs(source_id, False, 0)
 
     return {
         "sources": [G.nodes[s].get("name", s) for s in source_nodes],

@@ -964,9 +964,21 @@ class AsmRegexScanner(BaseScanner):
         # and all call targets for cross-reference-based label classification
         for line in lines:
             stripped = line.strip()
-            # Skip comments (NASM: ; ...  GAS: # ... or /* */)
+            # Skip full-line comments (NASM: ; ...  GAS: # ... or /* */)
             if stripped.startswith(';') or stripped.startswith('#'):
                 continue
+            # Strip inline comments to prevent false-positive matches
+            # in comment text (e.g., 'mov rax, 5 ; call bar' would
+            # match _CALL_RE on 'call bar' in the comment).
+            if is_gas:
+                # GAS: # is inline comment (; is statement separator in GAS)
+                # Line-start # already skipped above; strip inline # comments
+                if '#' in stripped:
+                    stripped = stripped.split('#', 1)[0].rstrip()
+            else:
+                # NASM: ; is always a comment (# is preprocessor directive)
+                if ';' in stripped:
+                    stripped = stripped.split(';', 1)[0].rstrip()
 
             # --- .macro/.endm tracking ---
             if in_macro_def:

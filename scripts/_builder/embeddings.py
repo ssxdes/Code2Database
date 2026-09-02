@@ -17,6 +17,7 @@ CLI commands:
     embeddings-search --graph <dir> --query <text>  # cosine similarity search
 """
 import json
+import logging
 import math
 import os
 import re

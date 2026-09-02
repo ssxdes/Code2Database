@@ -935,13 +935,27 @@ def scan_directory(source_root: str, lang: str = "auto",
                 return
             if memory_guard and memory_guard.is_memory_low():
                 from _builder.graph_build import _extract_state_access
-                _cur_gv_count = len(all_globals.get("global_vars", []))
+                # Use the same cumulative-name approach as the split path
+                # (line 779+). The previous count-based cache (_cur_gv_count >
+                # _cached_globals_count) was broken: if globals are added and
+                # removed with the same total count, the cache stays stale
+                # and new globals are missed during state_access extraction.
+                if not hasattr(_flush_accumulated, '_cumulative_gv_names'):
+                    _flush_accumulated._cumulative_gv_names = {}
+                _cur_gv_names = {}
+                for _gv in all_globals.get("global_vars", []):
+                    _gn = _gv.get("name", "")
+                    if _gn:
+                        _cur_gv_names[_gn] = _gv
+                _new_names = (set(_cur_gv_names.keys())
+                              - set(_flush_accumulated._cumulative_gv_names.keys()))
                 if (not hasattr(_flush_accumulated, '_cached_globals')
-                        or _cur_gv_count > getattr(_flush_accumulated,
-                                                   '_cached_globals_count', 0)):
-                    _cached_g = _build_globals_cache(all_globals)
+                        or _new_names):
+                    _flush_accumulated._cumulative_gv_names.update(_cur_gv_names)
+                    _cached_g = _build_globals_cache(
+                        {"global_vars": list(
+                            _flush_accumulated._cumulative_gv_names.values())})
                     _flush_accumulated._cached_globals = _cached_g
-                    _flush_accumulated._cached_globals_count = _cur_gv_count
                 else:
                     _cached_g = _flush_accumulated._cached_globals
                 _fa_list = all_field_assignments if isinstance(all_field_assignments, list) else []

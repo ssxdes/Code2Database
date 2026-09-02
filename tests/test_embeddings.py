@@ -225,9 +225,31 @@ class TestBuildEmbeddingsForGraph(unittest.TestCase):
     """Test build_embeddings_for_graph with a fake graph directory."""
 
     def _write_master(self, graph_dir, nodes):
+        """Write a minimal JSON-backend graph (master + one domain file).
+
+        build_embeddings_for_graph loads nodes via _load_full_graph —
+        master.json has never carried a 'nodes' key (the old fixture
+        asserted a contract the implementation never had).
+        """
         master_path = os.path.join(graph_dir, "code2database_master.json")
+        dom_dir = os.path.join(graph_dir, "domains", "grp")
+        os.makedirs(dom_dir, exist_ok=True)
+        dom_file = os.path.join(dom_dir, "code2database_domain_root.json")
+        node_list = [
+            {"id": nid, "name": attrs.get("name", nid),
+             "signature": attrs.get("signature", ""),
+             "semantic_desc": attrs.get("semantic_desc", ""),
+             "domain": "root", "labels": [], "line": 1}
+            for nid, attrs in nodes.items()
+        ]
+        with open(dom_file, "w", encoding="utf-8") as f:
+            json.dump({"nodes": node_list, "edges": []}, f)
         with open(master_path, "w", encoding="utf-8") as f:
-            json.dump({"nodes": nodes}, f)
+            json.dump({
+                "type": "code2database_master",
+                "domains": {"root": "domains/grp/code2database_domain_root.json"},
+                "total_nodes": len(node_list),
+            }, f)
 
     def test_builds_from_master(self):
         """Build embeddings from code2database_master.json."""
@@ -251,7 +273,7 @@ class TestBuildEmbeddingsForGraph(unittest.TestCase):
             self.assertIsNone(build_embeddings_for_graph(tmp))
 
     def test_returns_none_for_empty_nodes(self):
-        """Returns None when master has no nodes."""
+        """Returns None when the graph has no embeddable nodes."""
         with tempfile.TemporaryDirectory() as tmp:
             self._write_master(tmp, {})
             self.assertIsNone(build_embeddings_for_graph(tmp))
@@ -263,10 +285,20 @@ class TestGetOrBuildEmbeddings(unittest.TestCase):
     def test_loads_existing_embeddings(self):
         """Loads embeddings.json if it exists."""
         with tempfile.TemporaryDirectory() as tmp:
-            # First build
+            # First build — minimal JSON-backend graph
+            _dom_dir = os.path.join(tmp, "domains", "grp")
+            os.makedirs(_dom_dir, exist_ok=True)
+            _dom_file = os.path.join(_dom_dir, "code2database_domain_root.json")
+            with open(_dom_file, "w") as f:
+                json.dump({"nodes": [
+                    {"id": "f1", "name": "func_one", "signature": "",
+                     "semantic_desc": "", "domain": "root", "labels": [], "line": 1}
+                ], "edges": []}, f)
             master_path = os.path.join(tmp, "code2database_master.json")
             with open(master_path, "w") as f:
-                json.dump({"nodes": {"f1": {"name": "func_one"}}}, f)
+                json.dump({"type": "code2database_master",
+                           "domains": {"root": "domains/grp/code2database_domain_root.json"},
+                           "total_nodes": 1}, f)
             emb1 = get_or_build_embeddings(tmp)
             self.assertIsNotNone(emb1)
             # Second call should load from disk (no rebuild)

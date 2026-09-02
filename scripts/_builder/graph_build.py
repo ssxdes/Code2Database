@@ -7577,7 +7577,6 @@ def cmd_build(args):
                     _global_alias = _alias_by_file.pop("", [])
                     _global_invoke_sites = _invoke_sites_by_file.pop("", [])
                     _global_conditions = _conditions_by_file.pop("", [])
-                    _files_written = set()
                     _cgdb_node_count = 0
                     _cgdb_edge_count = 0
                     _global_emitted = False
@@ -7667,11 +7666,18 @@ def cmd_build(args):
                                 commit_hash=_build_commit_hash,
                                 version_id=1,
                             )
-                            # Only write types from the first file to avoid duplicates.
-                            if _files_written:
-                                batch.types = []
+                            # NOTE: do NOT wipe batch.types here for files
+                            # after the first. sub_result['cgdb_types'] is
+                            # already gated to the first file (is_first) —
+                            # for every later file batch.types contains ONLY
+                            # the per-file lazy TypeRecords that backfill
+                            # cgdb_nodes.type_id for nodes whose type came
+                            # from a signature fallback. The old
+                            # `if _files_written: batch.types = []` wiped
+                            # exactly those rows, leaving dangling type_id
+                            # FKs on every file but the first (silently —
+                            # FK enforcement is off on this connection).
                             cgdb_store.write_batch(batch)
-                            _files_written.add(fp)
                             _global_emitted = True
                             _cgdb_node_count += len(nodes)
                             _cgdb_edge_count += len(_edges_by_file.get(fp, []))

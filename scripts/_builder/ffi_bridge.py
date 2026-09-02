@@ -886,8 +886,15 @@ def _resolve_or_create_symbol(conn, symbol_id: str, default_kind: str = "functio
         if row:
             return row[0]
 
-    # Case 3: function_name only (no file_path) — look up by name across all files
-    if func_name and not func_name.startswith("load_") and func_name != "unknown":
+    # Case 3: function_name only (no file_path) — look up by name across all files.
+    # The 'not file_path' guard matters: FFI callee ids like c:libparse.so:read
+    # carry a .so name as file_path that never matches a cgdb_files.path, so
+    # Cases 1/2 miss and the unguarded fallback used to bind the symbol to
+    # ANY node with that name in ANY file (e.g. an unrelated user function
+    # named 'read'), persisting a wrong cross_lang_bindings row. With a
+    # file_path present, an unmatched symbol belongs to an external library
+    # and gets a placeholder (Case 4).
+    if func_name and not file_path and not func_name.startswith("load_") and func_name != "unknown":
         row = conn.execute(
             "SELECT id FROM cgdb_nodes "
             "WHERE name = ? AND kind IN ('function','method','var','field') "

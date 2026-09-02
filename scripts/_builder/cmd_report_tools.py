@@ -58,8 +58,13 @@ def _print_json(obj: Any) -> None:
 
 
 def _graph_or_cwd(args) -> str:
-    """Return graph_dir; default to cwd if --graph not given."""
-    return getattr(args, "graph", None) or os.getcwd()
+    """Return graph_dir; warn if --graph not given."""
+    _g = getattr(args, "graph", None)
+    if not _g:
+        print("[warning] --graph not specified; using current directory",
+              file=sys.stderr)
+        return os.getcwd()
+    return _g
 
 
 # ---------------------------------------------------------------------------

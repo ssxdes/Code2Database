@@ -487,11 +487,16 @@ def append_wal_entry(graph_dir: str, operation: str, target_id: str,
         "seq": next_seq, "operation": operation, "target_id": target_id,
         "payload": payload, "timestamp": time.time(), "applied": False,
     }
+    # Write the seq counter BEFORE appending to the WAL. If the process
+    # crashes between the counter write and the WAL append, the counter
+    # is ahead (skips a seq number) — safe. The previous order (WAL append
+    # first, counter second) risked reusing seq=N on crash between fsync
+    # and counter write, creating duplicate-seq entries.
+    _write_wal_seq_counter(graph_dir, next_seq + 1)
     with open(wal_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
         f.flush()
         os.fsync(f.fileno())
-    _write_wal_seq_counter(graph_dir, next_seq + 1)
     return next_seq
 
 

@@ -370,6 +370,105 @@ class TestSQLiteCGDBStoreBulkLoad(unittest.TestCase):
         self.assertEqual(node['name'], 'foo')
         store2.close()
 
+    def test_bulk_load_checkpoint_persists_intermediate(self):
+        """commit_bulk_checkpoint commits + checkpoints, then finalize
+        commits the rest. All records survive across a reopen."""
+        self.store.begin_bulk_load()
+        self.store.write_batch(_make_batch())
+        # Checkpoint mid-transaction (simulates periodic flush at 1000 files)
+        self.store.commit_bulk_checkpoint()
+        # Finalize commits the (empty) post-checkpoint transaction
+        self.store.finalize()
+        # Reopen and verify the batch persisted through the checkpoint
+        self.store.close()
+        store2 = SQLiteCGDBStore(self.db_path)
+        node = store2.get_node(1001)
+        self.assertIsNotNone(node)
+        self.assertEqual(node['name'], 'foo')
+        store2.close()
+
+    def test_commit_bulk_checkpoint_noop_without_bulk_load(self):
+        """commit_bulk_checkpoint is a no-op when bulk load is not active.
+        Calling it on a fresh store must not raise."""
+        # No begin_bulk_load() — should be a safe no-op
+        self.store.commit_bulk_checkpoint()
+        # Store still usable for normal writes
+        self.store.write_batch(_make_batch())
+        node = self.store.get_node(1001)
+        self.assertIsNotNone(node)
+
+    def test_abort_bulk_load_rolls_back(self):
+        """abort_bulk_load rolls back uncommitted writes and resets state."""
+        self.store.begin_bulk_load()
+        self.store.write_batch(_make_batch())
+        # Abort — all writes should be rolled back
+        self.store.abort_bulk_load()
+        self.assertFalse(self.store._bulk_load_active)
+        # Reopen and verify nothing persisted
+        self.store.close()
+        store2 = SQLiteCGDBStore(self.db_path)
+        node = store2.get_node(1001)
+        self.assertIsNone(node)
+        store2.close()
+
+    def test_abort_bulk_load_safe_without_begin(self):
+        """abort_bulk_load is safe to call when bulk load was never started."""
+        # No begin_bulk_load() — should be a safe no-op
+        self.store.abort_bulk_load()
+        self.assertFalse(self.store._bulk_load_active)
+        # Store still usable
+        self.store.write_batch(_make_batch())
+        node = self.store.get_node(1001)
+        self.assertIsNotNone(node)
+
+    def test_abort_after_checkpoint_rolls_back_post_checkpoint(self):
+        """commit_bulk_checkpoint commits batch1, then abort rolls back
+        only the post-checkpoint writes (batch2 with a unique node)."""
+        self.store.begin_bulk_load()
+        # Batch 1: committed by checkpoint
+        self.store.write_batch(_make_batch())
+        self.store.commit_bulk_checkpoint()
+        # Batch 2: a single new node with a unique ID — no FK conflict
+        # with batch 1's rows (pure INSERT, no REPLACE needed).
+        batch2 = IngestBatch(
+            file=FileRecord(id=2, path='test2.c', language='c',
+                            sha256='def456', content_hash='def456'),
+            nodes=[
+                NodeRecord(id=9999, kind='function', name='should_vanish',
+                           fqn='should_vanish', file_id=2, line=99, col=1,
+                           byte_start=0, byte_end=1),
+            ],
+        )
+        self.store.write_batch(batch2)
+        self.store.abort_bulk_load()
+        # Reopen: batch1 node 1001 (pre-checkpoint) should survive,
+        # batch2 node 9999 (post-checkpoint) should be rolled back
+        self.store.close()
+        store2 = SQLiteCGDBStore(self.db_path)
+        self.assertIsNotNone(store2.get_node(1001))
+        self.assertIsNone(store2.get_node(9999))
+        store2.close()
+
+    def test_synchronous_reset_after_finalize(self):
+        """finalize() resets synchronous to NORMAL after bulk load."""
+        self.store.begin_bulk_load()
+        # During bulk load, synchronous should be OFF
+        sync = self.store._conn.execute("PRAGMA synchronous").fetchone()
+        self.assertEqual(sync[0], 0)  # OFF
+        self.store.finalize()
+        # After finalize, synchronous should be NORMAL (1)
+        sync = self.store._conn.execute("PRAGMA synchronous").fetchone()
+        self.assertEqual(sync[0], 1)  # NORMAL
+
+    def test_synchronous_reset_after_abort(self):
+        """abort_bulk_load() resets synchronous to NORMAL after rollback."""
+        self.store.begin_bulk_load()
+        sync = self.store._conn.execute("PRAGMA synchronous").fetchone()
+        self.assertEqual(sync[0], 0)  # OFF
+        self.store.abort_bulk_load()
+        sync = self.store._conn.execute("PRAGMA synchronous").fetchone()
+        self.assertEqual(sync[0], 1)  # NORMAL
+
 
 if __name__ == "__main__":
     unittest.main()

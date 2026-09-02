@@ -242,6 +242,50 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         conn.execute("BEGIN")
         self._bulk_load_active = True
 
+    def commit_bulk_checkpoint(self) -> None:
+        """During bulk load, commit the current transaction, checkpoint the
+        WAL to bound its growth, and start a new transaction.
+
+        Without periodic checkpoints, a single multi-hour bulk-load
+        transaction (e.g. 40K files for the Linux kernel) lets the WAL
+        grow to several GB, which degrades index-lookup performance for
+        every subsequent INSERT OR REPLACE inside the same transaction.
+
+        No-op when bulk load is not active.
+        """
+        conn = self._ensure_conn()
+        if not self._bulk_load_active:
+            return
+        conn.execute("COMMIT")
+        # PASSIVE checkpoint merges committed WAL frames into the main DB
+        # without blocking concurrent readers. TRUNCATE would require
+        # exclusive access which we cannot guarantee if external readers
+        # (e.g. L1 ingest workers) hold the WAL.
+        try:
+            conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        except sqlite3.OperationalError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
+        conn.execute("BEGIN")
+
+    def abort_bulk_load(self) -> None:
+        """Rollback a bulk-load transaction and reset PRAGMAs.
+
+        Safe to call even if bulk load was never started or if the
+        transaction was already committed/rolled back. Used in a
+        ``finally`` block to guarantee cleanup on partial-failure paths.
+        """
+        conn = self._ensure_conn()
+        if self._bulk_load_active:
+            try:
+                conn.execute("ROLLBACK")
+            except sqlite3.OperationalError:
+                # No active transaction (e.g. already committed by
+                # commit_bulk_checkpoint) — nothing to roll back.
+                pass
+            self._bulk_load_active = False
+        conn.execute("PRAGMA synchronous = NORMAL")
+
     def write_batch(self, batch: IngestBatch) -> None:
         conn = self._ensure_conn()
         in_explicit_tx = self._bulk_load_active

@@ -7557,89 +7557,117 @@ def cmd_build(args):
                     #     each with its own WAL connection. The libclang parse is
                     #     CPU-bound and stateless across files.
                     _l1_tasks = []
-                    for fp, nodes in _nodes_by_file.items():
-                        if not fp:
-                            continue
-                        # Records without file_path are emitted only on the
-                        # first batch to avoid N× duplication.
-                        is_first = not _global_emitted
-                        sub_result = {
-                            "file": fp,
-                            "cgdb_nodes": nodes,
-                            "cgdb_types": (
-                                cgdb_types_data if is_first else []
-                            ),  # written once globally; deduped by id
-                            "cgdb_edges": _edges_by_file.get(fp, []),
-                            "cgdb_invoke_sites": (
-                                _invoke_sites_by_file.get(fp, []) +
-                                (_global_invoke_sites if is_first else [])
-                            ),
-                            "cgdb_predicates": (
-                                cgdb_predicates_data if is_first else []
-                            ),  # written once globally; deduped by id
-                            "cgdb_ops_bindings": (
-                                cgdb_ops_bindings_data if is_first else []
-                            ),  # written once globally; deduped by edge_id
-                            "cgdb_basic_blocks": (
-                                cgdb_basic_blocks_data if is_first else []
-                            ),  # written once globally; deduped by id
-                            "cgdb_cfg_edges": (
-                                cgdb_cfg_edges_data if is_first else []
-                            ),  # written once globally; deduped by (src,dst,kind)
-                            "cgdb_data_flow": (
-                                _dataflow_by_file.get(fp, []) +
-                                (_global_dataflow if is_first else [])
-                            ),
-                            "cgdb_sync_primitives": (
-                                _sync_by_file.get(fp, []) +
-                                (_global_sync if is_first else [])
-                            ),
-                            "cgdb_happens_before": (
-                                cgdb_happens_before_data if is_first else []
-                            ),  # written once globally; deduped by (w,r,reason)
-                            "cgdb_alias_sets": (
-                                _alias_by_file.get(fp, []) +
-                                (_global_alias if is_first else [])
-                            ),
-                            "cgdb_doc_comments": (
-                                _docs_by_file.get(fp, []) +
-                                (_global_docs if is_first else [])
-                            ),
-                            "cgdb_metadata": (
-                                cgdb_metadata_data if is_first else []
-                            ),  # written once globally; deduped by (target_id,target_kind,key)
-                            "cgdb_includes": (
-                                _includes_by_file.get(fp, []) +
-                                (_global_includes if is_first else [])
-                            ),
-                            "conditions": (
-                                _conditions_by_file.get(fp, []) +
-                                (_global_conditions if is_first else [])
-                            ),
-                        }
-                        batch = extract_cgdb_batch(
-                            sub_result,
-                            commit_hash=_build_commit_hash,
-                            version_id=1,
-                        )
-                        # Only write types from the first file to avoid duplicates.
-                        if _files_written:
-                            batch.types = []
-                        cgdb_store.write_batch(batch)
-                        _files_written.add(fp)
-                        _global_emitted = True
-                        _cgdb_node_count += len(nodes)
-                        _cgdb_edge_count += len(_edges_by_file.get(fp, []))
+                    # Begin a single bulk-load transaction for the entire
+                    # per-file write loop. Without this, each write_batch()
+                    # issues its own BEGIN+COMMIT, causing 40K+ fdatasync
+                    # calls (one per file) on large projects like the Linux
+                    # kernel — the dominant bottleneck observed in
+                    # production (12h+ stall at this point).
+                    # See cgdb_store.begin_bulk_load() for PRAGMA tuning.
+                    _BULK_CHECKPOINT_INTERVAL = 1000
+                    _bulk_file_count = 0
+                    cgdb_store.begin_bulk_load()
+                    _bulk_ok = False
+                    try:
+                        for fp, nodes in _nodes_by_file.items():
+                            if not fp:
+                                continue
+                            # Records without file_path are emitted only on the
+                            # first batch to avoid N× duplication.
+                            is_first = not _global_emitted
+                            sub_result = {
+                                "file": fp,
+                                "cgdb_nodes": nodes,
+                                "cgdb_types": (
+                                    cgdb_types_data if is_first else []
+                                ),  # written once globally; deduped by id
+                                "cgdb_edges": _edges_by_file.get(fp, []),
+                                "cgdb_invoke_sites": (
+                                    _invoke_sites_by_file.get(fp, []) +
+                                    (_global_invoke_sites if is_first else [])
+                                ),
+                                "cgdb_predicates": (
+                                    cgdb_predicates_data if is_first else []
+                                ),  # written once globally; deduped by id
+                                "cgdb_ops_bindings": (
+                                    cgdb_ops_bindings_data if is_first else []
+                                ),  # written once globally; deduped by edge_id
+                                "cgdb_basic_blocks": (
+                                    cgdb_basic_blocks_data if is_first else []
+                                ),  # written once globally; deduped by id
+                                "cgdb_cfg_edges": (
+                                    cgdb_cfg_edges_data if is_first else []
+                                ),  # written once globally; deduped by (src,dst,kind)
+                                "cgdb_data_flow": (
+                                    _dataflow_by_file.get(fp, []) +
+                                    (_global_dataflow if is_first else [])
+                                ),
+                                "cgdb_sync_primitives": (
+                                    _sync_by_file.get(fp, []) +
+                                    (_global_sync if is_first else [])
+                                ),
+                                "cgdb_happens_before": (
+                                    cgdb_happens_before_data if is_first else []
+                                ),  # written once globally; deduped by (w,r,reason)
+                                "cgdb_alias_sets": (
+                                    _alias_by_file.get(fp, []) +
+                                    (_global_alias if is_first else [])
+                                ),
+                                "cgdb_doc_comments": (
+                                    _docs_by_file.get(fp, []) +
+                                    (_global_docs if is_first else [])
+                                ),
+                                "cgdb_metadata": (
+                                    cgdb_metadata_data if is_first else []
+                                ),  # written once globally; deduped by (target_id,target_kind,key)
+                                "cgdb_includes": (
+                                    _includes_by_file.get(fp, []) +
+                                    (_global_includes if is_first else [])
+                                ),
+                                "conditions": (
+                                    _conditions_by_file.get(fp, []) +
+                                    (_global_conditions if is_first else [])
+                                ),
+                            }
+                            batch = extract_cgdb_batch(
+                                sub_result,
+                                commit_hash=_build_commit_hash,
+                                version_id=1,
+                            )
+                            # Only write types from the first file to avoid duplicates.
+                            if _files_written:
+                                batch.types = []
+                            cgdb_store.write_batch(batch)
+                            _files_written.add(fp)
+                            _global_emitted = True
+                            _cgdb_node_count += len(nodes)
+                            _cgdb_edge_count += len(_edges_by_file.get(fp, []))
 
-                        # Collect L1 ingest tasks for Phase 2 (parallel).
-                        # l1_ingest gracefully falls back to a sha256-only
-                        # record when libclang is unavailable.
-                        if fp.endswith(('.c', '.cc', '.cpp', '.cxx',
-                                        '.h', '.hh', '.hpp', '.hxx',
-                                        '.m', '.mm')):
-                            from _builder.cgdb_ingest import file_id_for
-                            _l1_fid = file_id_for(fp)
-                            _l1_tasks.append((fp, _l1_fid))
+                            # Collect L1 ingest tasks for Phase 2 (parallel).
+                            # l1_ingest gracefully falls back to a sha256-only
+                            # record when libclang is unavailable.
+                            if fp.endswith(('.c', '.cc', '.cpp', '.cxx',
+                                            '.h', '.hh', '.hpp', '.hxx',
+                                            '.m', '.mm')):
+                                from _builder.cgdb_ingest import file_id_for
+                                _l1_fid = file_id_for(fp)
+                                _l1_tasks.append((fp, _l1_fid))
+
+                            # Periodic WAL checkpoint to bound WAL growth.
+                            # Without this, a single multi-GB transaction
+                            # lets the WAL grow unbounded, degrading index
+                            # lookups for every INSERT OR REPLACE inside
+                            # the same transaction.
+                            _bulk_file_count += 1
+                            if (_bulk_file_count %
+                                    _BULK_CHECKPOINT_INTERVAL == 0):
+                                cgdb_store.commit_bulk_checkpoint()
+                        _bulk_ok = True
+                    finally:
+                        if _bulk_ok:
+                            cgdb_store.finalize()
+                        else:
+                            cgdb_store.abort_bulk_load()
                     # Flush any pending write on the shared conn before L1
                     # workers start (they need to read cgdb_nodes via their
                     # own connections in WAL mode).

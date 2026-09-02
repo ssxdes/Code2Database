@@ -40,6 +40,7 @@ import os
 import re
 import sqlite3
 import hashlib
+import json
 from typing import Optional
 import logging
 
@@ -1181,5 +1182,4 @@ def _compute_security_flags(spelling: str) -> str:
         flags.append("shell_injection_risk")
     if "../" in spelling or "..\\" in spelling:
         flags.append("path_traversal_risk")
-    import json
     return json.dumps(flags)

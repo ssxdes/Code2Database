@@ -686,6 +686,14 @@ class LazySQLiteGraph:
         self._db_path = db_path
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        # PRAGMA tuning for read-heavy workloads. Without these, SQLite
+        # defaults to 2MB cache (vs 64MB) and no memory-mapped I/O,
+        # causing page-cache thrashing on 700K-node / 3.7M-edge graphs.
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA cache_size=-65536")  # 64MB
+        self._conn.execute("PRAGMA temp_store=MEMORY")
+        self._conn.execute("PRAGMA mmap_size=268435456")  # 256MB mmap
         self._node_cache = OrderedDict()
         self._node_cache_max = 10000
         self._edge_cache = OrderedDict()

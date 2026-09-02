@@ -115,6 +115,24 @@ def _ensure_foreign_tables(conn: sqlite3.Connection) -> None:
             CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp
                 ON audit_log(timestamp);
         """)
+        # INSERT OR REPLACE into foreign_refs needs a UNIQUE conflict
+        # target — without one it degenerates to a plain INSERT and every
+        # repeated c2d-add-foreign duplicated all rows. Deduplicate legacy
+        # data first (keep the lowest id per natural key), then create the
+        # unique index. Best effort: if a legacy db has rows that cannot be
+        # deduped, leave it as-is (OR REPLACE then behaves as before).
+        try:
+            conn.execute(
+                "DELETE FROM foreign_refs WHERE id NOT IN ("
+                "  SELECT MIN(id) FROM foreign_refs"
+                "  GROUP BY local_node_id, invoked_name, foreign_c2d_path)")
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_foreign_refs_natural"
+                " ON foreign_refs(local_node_id, invoked_name, foreign_c2d_path)")
+            conn.commit()
+        except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            conn.rollback()
     except sqlite3.OperationalError:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
@@ -469,19 +487,20 @@ def sync_foreign(graph_dir: str, foreign_c2d_path: str = "",
             current_sig = _get_db_signature(fdb_path)
             if current_sig.get("missing"):
                 # Foreign db is gone — mark all refs as orphaned
-                conn.execute(
+                _cur = conn.execute(
                     "UPDATE foreign_refs SET status = 'deleted' "
                     "WHERE foreign_c2d_path = ? AND status = 'resolved'",
                     (c2d_path,)
                 )
+                # Count THIS update's rowcount — 'SELECT changes()' after the
+                # next statement would report the watched_c2ds update (always 1).
+                _deleted_refs = _cur.rowcount if _cur.rowcount >= 0 else 0
                 conn.execute(
                     "UPDATE watched_c2ds SET sync_status = 'missing' "
                     "WHERE c2d_path = ?",
                     (c2d_path,)
                 )
-                summary["deleted_marked"] += conn.execute(
-                    "SELECT changes()"
-                ).fetchone()[0]
+                summary["deleted_marked"] += _deleted_refs
                 summary["synced_c2ds"].append({
                     "c2d_path": c2d_path,
                     "status": "missing",
@@ -584,6 +603,10 @@ def sync_foreign(graph_dir: str, foreign_c2d_path: str = "",
                 for r in unresolved:
                     new_row = _resolve_by_exact_name(
                         conn, r["invoked_name"], project_name,
+                        # Pass the recorded signature so the C2 overload
+                        # disambiguation applies on re-resolve too (the
+                        # manual c2d-resolve-foreign path already did).
+                        invoked_signature=r["invoked_signature"] or "",
                         table_prefix="foreign_db.")
                     if new_row:
                         _batch_re_resolve.append((

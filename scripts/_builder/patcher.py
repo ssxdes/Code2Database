@@ -153,6 +153,10 @@ def patch_from_diff(graph_dir: str, diff_text: str, source_root: str = ""):
     added_nodes = 0
     stale_nodes = 0
     removed_nodes = 0
+    # Track all modified node IDs for cache invalidation and audit log.
+    # Previously this was read (G._patched_nodes) but never written —
+    # the loops below were dead code (always iterated an empty set).
+    patched_nodes = set()
 
     # Process deleted files: remove all nodes from that file
     for filepath in changes["deleted_files"]:
@@ -161,6 +165,7 @@ def patch_from_diff(graph_dir: str, diff_text: str, source_root: str = ""):
                      if nd.get("source_file", "") == rel or
                      nd.get("source_file", "") == filepath]
         for nid in to_remove:
+            patched_nodes.add(nid)
             G.remove_node(nid)
             removed_nodes += 1
 
@@ -193,6 +198,7 @@ def patch_from_diff(graph_dir: str, diff_text: str, source_root: str = ""):
                        callee_args=[],
                        condition_vars=[],
                        preproc_alive=True)
+            patched_nodes.add(fid)
             added_nodes += 1
 
     # Process hunks: mark affected nodes as stale
@@ -217,6 +223,7 @@ def patch_from_diff(graph_dir: str, diff_text: str, source_root: str = ""):
                 if abs(node_line - rm_line) <= 5:  # within 5 lines = likely affected
                     nd["stale"] = True
                     nd["semantic_desc"] = ""
+                    patched_nodes.add(nid)
                     stale_nodes += 1
                     break
 
@@ -224,6 +231,7 @@ def patch_from_diff(graph_dir: str, diff_text: str, source_root: str = ""):
             for add_line in hunk["added_lines"]:
                 if abs(node_line - add_line) <= 2:
                     nd["stale"] = True
+                    patched_nodes.add(nid)
                     stale_nodes += 1
                     break
 
@@ -232,9 +240,10 @@ def patch_from_diff(graph_dir: str, diff_text: str, source_root: str = ""):
         split_by_domain(G, graph_dir, source_root)
         print(f"Patched: +{added_nodes} added, ~{stale_nodes} stale, -{removed_nodes} removed")
         # Invalidate query cache for changed nodes
+        G._patched_nodes = patched_nodes
         try:
             from _builder.query_cache import invalidate_node, invalidate_all
-            for nid in list(getattr(G, "_patched_nodes", set()) or []):
+            for nid in patched_nodes:
                 invalidate_node(graph_dir, nid)
             # If any nodes were removed or added, clear the whole cache
             # (the touched-set tracking only covers modified nodes)
@@ -246,7 +255,7 @@ def patch_from_diff(graph_dir: str, diff_text: str, source_root: str = ""):
         try:
             from _builder.audit_log import log_audit, new_tx_id
             tx_id = new_tx_id()
-            for nid in list(getattr(G, "_patched_nodes", set()) or []):
+            for nid in patched_nodes:
                 log_audit(graph_dir,
                           command="patch-from-diff",
                           target_kind="node",

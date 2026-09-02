@@ -298,7 +298,7 @@ class GraphCache:
                 end = min(len(lines), line + context_lines)
                 snippet = "".join(lines[start:end])
                 return snippet[:4000]  # Cap for API response
-            except (OSError, IOError):
+            except OSError:
                 return nd.get("body_text", "")[:2000]
 
     def list_domains(self) -> List[Dict]:

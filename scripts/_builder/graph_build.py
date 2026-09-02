@@ -654,6 +654,12 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
         else:
             global_var_names = global_var_names_full
     else:
+        # No pre-built cache: build the name map from scratch.
+        # _ASSIGN_OPS must be initialized here too — the branch above sets
+        # it from the cache; without this, line ~671 raises
+        # UnboundLocalError on the uncached path (all split-extraction
+        # / --low-memory callers pass _cached_globals=None).
+        _ASSIGN_OPS = None
         global_vars_list = globals_data.get("global_vars", [])
         global_var_names = {}  # name → info dict
         for gv in global_vars_list:

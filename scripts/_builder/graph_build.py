@@ -3951,7 +3951,7 @@ def build_graph(extraction: dict, profile: dict = None,
             for st, fields in vtable_index.items():
                 for fname in fields:
                     _field_to_structs[fname].append(st)
-        for nid, ndata in list(G.nodes(data=True)):
+        for nid, ndata in G.nodes(data=True):
             node_name = ndata.get("name", "")
             if not node_name:
                 continue
@@ -7218,10 +7218,11 @@ def cmd_build(args):
     # Prune isolated file nodes created by import resolution or scanner imports.
     # These are file container nodes with no edges (no CONTAINS, no IMPORTS).
     _pruned_files = 0
-    for nid in list(G.nodes()):
-        ndata = G.nodes[nid]
-        if ndata.get("node_type") != "file":
-            continue
+    # Collect only file-type node IDs — a small subset of the full graph.
+    # list(G.nodes()) would materialize all 700K IDs unnecessarily.
+    _file_node_ids = [nid for nid in G.nodes()
+                      if G.nodes[nid].get("node_type") == "file"]
+    for nid in _file_node_ids:
         if G.degree(nid) == 0:
             G.remove_node(nid)
             _pruned_files += 1

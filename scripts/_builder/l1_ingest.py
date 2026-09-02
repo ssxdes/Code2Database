@@ -1151,10 +1151,12 @@ def _decode_string_literal(spelling: str) -> str:
             break
     if s.startswith('"') and s.endswith('"') and len(s) >= 2:
         s = s[1:-1]
-    # Decode escape sequences
+    # Decode escape sequences. The unicode_escape codec treats input
+    # as Latin-1 then applies escapes — for non-ASCII UTF-8 bytes this
+    # produces mojibake. Encode to Latin-1 first (only works for pure
+    # ASCII source), falling back to the raw string on failure.
     try:
-        # Use codec to decode escape sequences
-        decoded = s.encode("utf-8").decode("unicode_escape")
+        decoded = s.encode("latin-1").decode("unicode_escape")
         return decoded
     except (UnicodeDecodeError, UnicodeEncodeError):
         return s

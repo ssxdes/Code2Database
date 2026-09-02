@@ -682,7 +682,13 @@ def _build_callgraph_summary_md_from_sqlite(db_path, outdir, source_root="", bui
             lines.append("| Layer | Table | Rows |")
             lines.append("|-------|-------|------|")
             for layer, label, cnt in cgdb_rows:
-                lines.append(f"| {layer} | `{label}` | {cnt:,} |")
+                # cnt is int, or the "-" sentinel for a missing table —
+                # f"{cnt:,}" on a str raises ValueError and aborts the
+                # entire summary generation.
+                if isinstance(cnt, int):
+                    lines.append(f"| {layer} | `{label}` | {cnt:,} |")
+                else:
+                    lines.append(f"| {layer} | `{label}` | {cnt} |")
             # Coverage metrics for cgdb_nodes
             try:
                 total_nodes = conn.execute("SELECT COUNT(*) FROM cgdb_nodes").fetchone()[0]

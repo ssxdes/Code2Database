@@ -829,7 +829,6 @@ def _build_scenarios_file_from_sqlite(db_path, outdir, build_info=None,
     macros like logging wrappers or foreach iterators) are read from
     ``builder_profile['scenario_noise_names']`` instead of being hardcoded.
     """
-    import re
     with _open_db(db_path) as conn:
 
         # Macro-like name pattern: ALL_UPPERCASE with optional digits/underscores

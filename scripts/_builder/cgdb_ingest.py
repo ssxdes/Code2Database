@@ -222,20 +222,15 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
     # Populate the type_by_spelling map so we can backfill type_id on nodes
     # that have type_spelling but no type_id (e.g. function nodes whose
     # type_spelling is the full signature).
-    # Skip types already registered in the pre-pass above (dedup by id —
-    # INSERT OR REPLACE in _write_types would silently redo them).
+    # NOTE: the pre-pass above only populated the in-memory
+    # type_by_spelling dict — this loop is the ONLY source of
+    # batch.types rows (cgdb_nodes.type_id has an FK to cgdb_types.id),
+    # so every type MUST be appended here.
     for t in scan_result.get('cgdb_types', []):
         try:
             type_id = int(t['id'])
         except (KeyError, ValueError, TypeError):
             continue
-        if type_id in _seen_type_ids:
-            # Already registered in the pre-pass; only fill explicit fields
-            canon = t.get('canonical_spelling') or t.get('spelling') or ''
-            if canon:
-                type_by_spelling.setdefault(canon, type_id)
-            continue
-        _seen_type_ids.add(type_id)
         canon = t.get('canonical_spelling') or t.get('spelling') or ''
         if canon:
             type_by_spelling[canon] = type_id

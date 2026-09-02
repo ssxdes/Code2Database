@@ -25,11 +25,6 @@ import sqlite3
 from typing import Dict, List, Set
 import logging
 
-try:
-    from _builder.import_resolve import _get_file_includes
-except ImportError:
-    _get_file_includes = None
-
 
 def _open_tuned_conn(db_path: str) -> sqlite3.Connection:
     """Open a connection with read/write PRAGMA tuning.

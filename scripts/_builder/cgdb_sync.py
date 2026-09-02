@@ -205,24 +205,6 @@ class SyncPrimitiveWriter:
             return None
         return None
 
-    def _walk_for_call_expr(self, cursor, callback):
-        """Walk the AST, invoking callback(call_expr, parent) for each CALL_EXPR.
-
-        Tracks parent cursor so the callback can disambiguate context.
-        """
-        k = cursor.kind.name if cursor.kind else ''
-        if k == 'CALL_EXPR':
-            try:
-                callback(cursor, None)  # parent unknown in walk_preorder
-            except Exception:
-                logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                pass
-        try:
-            for child in cursor.get_children():
-                self._walk_for_call_expr(child, callback)
-        except Exception:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
-            pass
     def extract_from_function(self, func_cursor, func_node_id: int,
                               add_node_fn) -> Tuple[List[SyncPrimitiveRecord],
                                                     List[HappensBeforeRecord]]:

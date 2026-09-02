@@ -68,7 +68,7 @@ _NULL_PATTERNS = [
 _SINK_NAME_RE = re.compile(
     r'^(?:'
     r'memcpy|memmove|memset|memchr|memcmp|strcpy|strncpy|strcat|strncat|'  # memory
-    r'strcpy|strlen|strchr|strstr|strtok|sprintf|snprintf|vsprintf|vsnprintf|'  # string
+    r'strlen|strchr|strstr|strtok|sprintf|snprintf|vsprintf|vsnprintf|'  # string
     r'gets|fgets|fread|recv|read|readlink|fscanf|sscanf|'  # input
     r'system|popen|exec|execl|execv|execve|execvp|fork|'  # exec
     r'free|realloc|'  # memory mgmt

@@ -1196,9 +1196,14 @@ class _LazyNodeView:
         G.nodes.get(nid) instead of G.nodes[nid]. Without this method,
         large graphs (>50K nodes, using LazySQLiteGraph) crash with
         AttributeError on extract-signals and other commands.
+
+        _get_node_attrs returns {} for missing nodes (never raises
+        KeyError), so we check for emptiness to determine if the node
+        exists. _build_attrs_from_row always returns a non-empty dict
+        (at minimum with 'id' and 'name' keys) for existing nodes.
         """
-        try:
-            return self._graph._get_node_attrs(nid)
-        except KeyError:
+        attrs = self._graph._get_node_attrs(nid)
+        if not attrs:
             return default
+        return attrs
 

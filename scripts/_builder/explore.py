@@ -904,18 +904,15 @@ def cmd_explore_flow(args):
                 (query_lower,)).fetchone()
             if row:
                 exact_match = row[0]
-        else:
+        if not exact_match:
+            # Fallback for non-ASCII names: SQLite's lower() is ASCII-only,
+            # so non-ASCII uppercase names won't match. Fall through to
+            # Python iteration which uses Unicode-aware .lower().
             for nid, nd in G.nodes(data=True):
                 name = (nd.get("name") or "").lower()
                 if name == query_lower:
                     exact_match = nid
                     break
-    else:
-        for nid, nd in G.nodes(data=True):
-            name = (nd.get("name") or "").lower()
-            if name == query_lower:
-                exact_match = nid
-                break
     if exact_match:
         # Return the exact match + its 2-hop neighborhood
         from collections import deque

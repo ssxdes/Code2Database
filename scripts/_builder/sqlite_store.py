@@ -1374,11 +1374,19 @@ class SQLiteStore:
             return [self._row_to_function(r) for r in rows]
         except sqlite3.OperationalError:
             # Older SQLite without json1 — fall back to indexed boolean column
-            rows = self._conn.execute(
-                "SELECT * FROM functions WHERE is_thread_processor = 1 LIMIT ?",
-                (limit,)
-            ).fetchall()
-            return [self._row_to_function(r) for r in rows]
+            try:
+                rows = self._conn.execute(
+                    "SELECT * FROM functions WHERE is_thread_processor = 1 LIMIT ?",
+                    (limit,)
+                ).fetchall()
+                return [self._row_to_function(r) for r in rows]
+            except sqlite3.OperationalError:
+                # Column missing (migration failed) — LIKE scan always works
+                rows = self._conn.execute(
+                    "SELECT * FROM functions WHERE labels LIKE '%thread_processor%' LIMIT ?",
+                    (limit,)
+                ).fetchall()
+                return [self._row_to_function(r) for r in rows]
 
     def query_change_log_by_node(self, node_id: str, limit: int = 50) -> List[Dict]:
         """get commit history for a node."""

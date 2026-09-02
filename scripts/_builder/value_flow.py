@@ -368,15 +368,21 @@ def forward_taint_trace(G, source_id: str, taint_pattern: str,
     # Cache the name → id index on the graph object itself so repeated calls
     # to forward_taint_trace don't rebuild it from scratch. Use
     # G.graph['_name_index_v1'] as a stable cache key (bump the version
-    # suffix if the index format ever changes).
+    # suffix if the index format ever changes). Invalidate when node count
+    # changes (handles add/remove; rename without count change is a known
+    # limitation — acceptable for a query-time cache on typically read-only
+    # graphs).
     _name_index = G.graph.get('_name_index_v1')
-    if _name_index is None:
+    _cached_count = G.graph.get('_name_index_count')
+    _cur_count = G.number_of_nodes()
+    if _name_index is None or _cached_count != _cur_count:
         _name_index = {}
         for _n, _nd in G.nodes(data=True):
             _nm = _nd.get("name")
             if _nm:
                 _name_index.setdefault(_nm, _n)
         G.graph['_name_index_v1'] = _name_index
+        G.graph['_name_index_count'] = _cur_count
 
     while queue:
         cur_id, cur_taint, depth, path = queue.popleft()

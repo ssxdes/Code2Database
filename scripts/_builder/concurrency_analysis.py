@@ -283,16 +283,22 @@ def _detect_toctou_patterns(G, target_func=None, profile=None):
         if nd.get("is_empty", False):
             continue
         body = nd.get("body_text", "") or ""
-        if not body:
-            continue
-        # Compute lock set once per node (shared by writer + reader roles)
+        # Compute lock set once per node (shared by writer + reader roles).
+        # Lock detection requires body_text for regex matching. In low-memory
+        # mode, body_text is stripped after state_access extraction, so nodes
+        # can have fields_written/fields_read but no body_text. We still process
+        # them (with empty lock sets) so writers/readers are indexed — TOCTOU
+        # races involving an unlocked writer and a locked reader are still
+        # detectable. This is a conservative heuristic: a writer with no
+        # detectable lock might actually have had one (false positive risk).
         locks = set()
-        for _re in _acquire_res:
-            for m in _re.finditer(body):
-                locks.add(m.group(1).strip())
-        for _re in _release_res:
-            for m in _re.finditer(body):
-                locks.discard(m.group(1).strip())
+        if body:
+            for _re in _acquire_res:
+                for m in _re.finditer(body):
+                    locks.add(m.group(1).strip())
+            for _re in _release_res:
+                for m in _re.finditer(body):
+                    locks.discard(m.group(1).strip())
         # Writer role: collect fields_written
         for fw in (nd.get("fields_written") or []):
             fname = fw.get("field_name", "")

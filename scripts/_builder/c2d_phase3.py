@@ -154,6 +154,12 @@ def add_foreign_stub(graph_dir: str, stub_c2d_path: str,
                 resolved += 1
         conn.commit()
         conn.execute("DETACH DATABASE stub_db")
+        # Restore WAL mode (was switched to DELETE for ATTACH compatibility)
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.commit()
+        except sqlite3.Error:
+            pass
         summary["resolved_count"] = resolved
     except sqlite3.Error as e:
         summary["error"] = str(e)

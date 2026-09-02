@@ -17,6 +17,7 @@ with bit-range prefix to keep AST nodes < 0x8000_0000_0000_0000.
 import bisect
 import hashlib
 import os
+import threading
 
 from _scanner.base import BaseScanner
 import logging
@@ -84,10 +85,15 @@ _clang_index = None
 # Set to False in the parent before fork; children check this flag
 # and create their own Index instead of reusing the inherited one.
 _clang_index_forked = False
+# Lock: _get_clang_index's check-then-set isn't atomic — two threads
+# could both see _clang_index is None and both call Index.create(),
+# with the second overwriting the first (orphaned Index may crash
+# libclang if the first thread is mid-use).
+_clang_index_lock = threading.Lock()
 
 
 def _get_clang_index():
-    """Get or create the libclang Index singleton.
+    """Get or create the libclang Index singleton (thread-safe).
 
     After fork(), the inherited _clang_index points to the parent's
     C-level libclang state. Reusing it in a child process is undefined
@@ -96,14 +102,15 @@ def _get_clang_index():
     the scanner's ProcessPool initializer to force re-creation.
     """
     global _clang_index, _clang_index_forked
-    if _clang_index is not None and not _clang_index_forked:
+    with _clang_index_lock:
+        if _clang_index is not None and not _clang_index_forked:
+            return _clang_index
+        if _clang_index is not None and _clang_index_forked:
+            # Forked child — discard inherited Index, create fresh one
+            _clang_index = None
+            _clang_index_forked = False
+        _clang_index = _ci.Index.create()
         return _clang_index
-    if _clang_index is not None and _clang_index_forked:
-        # Forked child — discard inherited Index, create fresh one
-        _clang_index = None
-        _clang_index_forked = False
-    _clang_index = _ci.Index.create()
-    return _clang_index
 
 
 def cgdb_node_id(usr: str, fallback: str = "") -> int:

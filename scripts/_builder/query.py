@@ -67,8 +67,7 @@ def _describe_node_touched(args) -> frozenset:
         node_id = getattr(args, "node", "") or ""
         if node_id:
             return frozenset({node_id})
-    except Exception:
-        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+    except (TypeError, AttributeError):
         pass
     return frozenset()
 

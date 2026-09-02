@@ -30,6 +30,8 @@ Usage:
     invalidate_node(graph_dir, node_id)
 """
 import os
+import io
+import sys
 import time
 import json
 import hashlib
@@ -107,7 +109,6 @@ class _GraphCache:
             return result
 
     def put(self, key: str, result: Any,
-            node_versions_snapshot: Dict[str, int],
             touched_nodes: frozenset) -> None:
         with self._lock:
             # Evict oldest if at capacity
@@ -116,9 +117,11 @@ class _GraphCache:
                 self._key_nodes.pop(evicted_key, None)
             self._entries[key] = (time.time(), result, self._graph_mtime())
             self._key_nodes[key] = touched_nodes
-            # Record the versions we cached against
+            # Record the versions we cached against (current versions —
+            # invalidate_node bumps versions and eagerly evicts, so
+            # storing the version at put time is sufficient)
             for nid in touched_nodes:
-                self._node_versions[nid] = node_versions_snapshot.get(nid, 0)
+                self._node_versions.setdefault(nid, 0)
 
     def invalidate_node(self, node_id: str) -> None:
         """Bump a node's version and evict all entries that touched it."""
@@ -225,19 +228,17 @@ def cached_query(command: str, ttl: int = 600,
                     return cached
 
             if capture_stdout:
-                import io
-                import sys as _sys
                 buf = io.StringIO()
-                old_stdout = _sys.stdout
-                _sys.stdout = buf
+                old_stdout = sys.stdout
+                sys.stdout = buf
                 try:
                     fn(args)
                 finally:
-                    _sys.stdout = old_stdout
+                    sys.stdout = old_stdout
                 captured = buf.getvalue()
                 if not no_cache:
                     try:
-                        cache.put(key, captured, snapshot, touched)
+                        cache.put(key, captured, touched)
                     except Exception:
                         logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
@@ -246,7 +247,7 @@ def cached_query(command: str, ttl: int = 600,
                 result = fn(args)
                 if not no_cache:
                     try:
-                        cache.put(key, result, snapshot, touched)
+                        cache.put(key, result, touched)
                     except Exception:
                         logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass

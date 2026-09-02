@@ -32,7 +32,7 @@ import os
 import sqlite3
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import logging
 
 
@@ -99,7 +99,11 @@ def log_audit(graph_dir: str,
         # JSON backend: append to audit_log.jsonl
         return _log_audit_json(graph_dir, record)
     except Exception:
-        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        # Audit logging is a compliance requirement — failures (disk full,
+        # schema drift) must be visible, not silent. DEBUG made them invisible
+        # at default levels.
+        logging.getLogger(__name__).warning(
+            "audit_log: write failed (compliance risk)", exc_info=True)
         return False
 
 
@@ -298,13 +302,31 @@ def _query_audit_log_json(graph_dir: str,
 
 
 def _try_parse_json(value: Optional[str]) -> Any:
-    """Try to parse a JSON string back to a value. Returns the raw string on failure."""
+    """Try to parse a JSON string back to a value. Returns the raw string on failure.
+
+    NOTE: return type is mixed (parsed object OR raw string). Callers that
+    need to distinguish should use try_parse_json() below.
+    """
     if value is None:
         return None
     try:
         return json.loads(value)
     except (json.JSONDecodeError, TypeError):
         return value
+
+
+def try_parse_json(value: Optional[str]) -> Tuple[bool, Any]:
+    """Unambiguous variant: returns (parsed_ok, value).
+
+    parsed_ok=True → value is the parsed object (dict/list/int/...).
+    parsed_ok=False → value is the raw string (or None).
+    """
+    if value is None:
+        return False, None
+    try:
+        return True, json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return False, value
 
 
 def annotate_fact_source(node_data: Dict, source: str, command: str = "",

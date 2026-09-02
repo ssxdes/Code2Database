@@ -29,7 +29,8 @@ def cmd_concurrency_risks(args):
             ci = ca.get("concurrency_info", {})
             if ci.get("is_spawn") or ci.get("concurrency_type") in ("thread_spawn", "goroutine"):
                 spawn_target = ci.get("spawn_target", "")
-                spawn_order = ca.get("call_order") or 0
+                spawn_order = ca.get("call_order")
+                if spawn_order is None: spawn_order = 0
                 # Dedup key
                 dedup = (ndata.get("name", ""), spawn_target)
                 if dedup in seen_spawn_pairs:
@@ -88,7 +89,8 @@ def cmd_concurrency_risks(args):
                 if dedup in seen_spawn_pairs:
                     continue
                 seen_spawn_pairs.add(dedup)
-                spawn_order = ed.get("call_order") or 0
+                spawn_order = ed.get("call_order")
+                if spawn_order is None: spawn_order = 0
                 main_calls = []
                 for s2 in G.successors(nid):
                     ed2 = G.get_edge_data(nid, s2) or {}

@@ -309,9 +309,15 @@ def _sqlite_update_node(graph_dir: str, node_id: str, attrs: Dict,
             extra[stored_key] = val
         extra["_supplement_meta"] = meta
 
+        # Keep indexed columns in sync with extra_json to prevent
+        # WHERE is_empty=0 returning rows whose JSON says is_empty=true.
+        _is_empty_val = 1 if extra.get("is_empty", False) else 0
+        _node_type_val = extra.get("node_type", "") or ""
+
         conn.execute(
-            "UPDATE functions SET extra_json=? WHERE id=?",
-            (json.dumps(extra, ensure_ascii=False, separators=(',', ':')), node_id))
+            "UPDATE functions SET extra_json=?, is_empty=?, node_type=? WHERE id=?",
+            (json.dumps(extra, ensure_ascii=False, separators=(',', ':')),
+             _is_empty_val, _node_type_val, node_id))
 
         # Propagate to cgdb_nodes so cgdb-layer queries see enriched data.
         # Map supplement field names to cgdb_nodes columns where applicable.

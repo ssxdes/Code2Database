@@ -32,7 +32,9 @@ import re
 # Cache for per-callee-name assignment regexes. Avoids re.compile on
 # every hop during value-flow traversal (query-time, but depth-bounded
 # at ~10 hops — cache helps when same callee appears in multiple flows).
+# Bounded to prevent unbounded growth in long-running MCP server mode.
 _ASGN_RE_CACHE = {}
+_ASGN_RE_CACHE_MAX = 2048
 import sys
 from collections import deque
 from typing import Optional, List, Dict, Any, Set, Tuple
@@ -641,11 +643,14 @@ def interprocedural_value_flow(G, start_id: str, value_pattern: str,
                         # Find assignment from callee. Cache compiled regex
                         # per callee_name to avoid re.compile on every hop.
                         callee_name = cur_nd.get("name", "")
-                        if callee_name not in _ASGN_RE_CACHE:
-                            _ASGN_RE_CACHE[callee_name] = re.compile(
+                        asgn_re = _ASGN_RE_CACHE.get(callee_name)
+                        if asgn_re is None:
+                            if len(_ASGN_RE_CACHE) >= _ASGN_RE_CACHE_MAX:
+                                _ASGN_RE_CACHE.clear()
+                            asgn_re = re.compile(
                                 r'([A-Za-z_]\w*)\s*=\s*' + re.escape(callee_name) + r'\s*\('
                             )
-                        asgn_re = _ASGN_RE_CACHE[callee_name]
+                            _ASGN_RE_CACHE[callee_name] = asgn_re
                         for m in asgn_re.finditer(caller_body):
                             alias = m.group(1)
                             next_hops.append((src, f"assigned to {alias}", alias))

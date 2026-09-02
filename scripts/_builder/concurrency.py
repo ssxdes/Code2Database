@@ -167,8 +167,20 @@ def cmd_data_lifecycle(args):
     # Single BFS per alloc node; reuse the parent map for all release_ids.
     # Avoids O(alloc_count * release_count * (V+E)) shortest_path queries
     # which would hang on kernel-sized graphs.
-    release_lookup = set(list(release_ids)[:10])
-    for aid in list(alloc_ids)[:10]:
+    # NOTE: capped at 10 alloc/release nodes to bound runtime — surface
+    # the truncation so users know paths may be incomplete.
+    _alloc_list = sorted(alloc_ids)
+    _release_list = sorted(release_ids)
+    if len(_alloc_list) > 10 or len(_release_list) > 10:
+        result["truncated"] = True
+        result["truncation_note"] = (
+            f"path search capped at 10 alloc ({len(_alloc_list)} found) and "
+            f"10 release ({len(_release_list)} found) nodes; some paths "
+            f"may be missing")
+        print(f"[data-lifecycle] warning: {result['truncation_note']}",
+              file=sys.stderr)
+    release_lookup = set(_release_list[:10])
+    for aid in _alloc_list[:10]:
         try:
             pred_map = nx.predecessor(_lifecycle_call_G, aid, cutoff=15)
         except (nx.NetworkXNoPath, nx.NodeNotFound):

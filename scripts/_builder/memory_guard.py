@@ -749,17 +749,20 @@ class BatchedListCollector:
 
     def __del__(self):
         """Clean up any remaining temp files."""
-        if self._temp_dir and os.path.exists(self._temp_dir):
-            for batch_path in self._disk_batches:
+        # Use getattr — if __init__ raised before setting these attrs,
+        # accessing them directly would raise AttributeError in __del__
+        # (which Python only prints to stderr, masking the real error).
+        _temp_dir = getattr(self, '_temp_dir', None)
+        _disk_batches = getattr(self, '_disk_batches', [])
+        if _temp_dir and os.path.exists(_temp_dir):
+            for batch_path in _disk_batches:
                 try:
                     os.remove(batch_path)
                 except OSError:
-                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
             try:
-                os.rmdir(self._temp_dir)
+                os.rmdir(_temp_dir)
             except OSError:
-                logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
 def adaptive_batch_size(base_size: int, guard: MemoryGuard) -> int:
     """Calculate adaptive batch size based on memory pressure.

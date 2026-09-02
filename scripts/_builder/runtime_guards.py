@@ -481,6 +481,10 @@ def _detect_profile_guards(
         cache_key = f"{kind}:{name}"
         pat = _GUARD_PAT_CACHE.get(cache_key)
         if pat is None:
+            # Bound the cache to prevent unbounded growth in long-running
+            # MCP server mode (evict all when full — regexes are cheap).
+            if len(_GUARD_PAT_CACHE) >= 2048:
+                _GUARD_PAT_CACHE.clear()
             esc = re.escape(name)
             if kind == "type_predicate":
                 pat = re.compile(rf'(!?)\b{esc}\s*\(([^)]*)\)')

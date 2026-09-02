@@ -325,13 +325,19 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         alias_sets, sync_primitives, happens_before, cgdb_includes.
         """
         conn = self._ensure_conn()
-        conn.execute("BEGIN")
+        # If a bulk load transaction is active, we're already inside a
+        # BEGIN — nested BEGIN raises 'cannot start a transaction within
+        # a transaction'. Skip the explicit transaction in that case.
+        _own_tx = not self._bulk_load_active
+        if _own_tx:
+            conn.execute("BEGIN")
         try:
             file_row = conn.execute(
                 "SELECT id FROM cgdb_files WHERE path = ?", (file_path,)
             ).fetchone()
             if not file_row:
-                conn.execute("ROLLBACK")
+                if _own_tx:
+                    conn.execute("ROLLBACK")
                 return (0, 0)
             file_id = file_row[0]
             # Find node IDs to delete
@@ -344,7 +350,8 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             ).fetchall()]
             if not node_ids and not edge_ids:
                 conn.execute("DELETE FROM cgdb_files WHERE id = ?", (file_id,))
-                conn.execute("COMMIT")
+                if _own_tx:
+                    conn.execute("COMMIT")
                 return (0, 0)
 
             if node_ids:
@@ -448,10 +455,15 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
 
             # Delete file
             conn.execute("DELETE FROM cgdb_files WHERE id = ?", (file_id,))
-            conn.execute("COMMIT")
+            if _own_tx:
+                conn.execute("COMMIT")
             return (nodes_deleted, edges_deleted)
         except Exception:
-            conn.execute("ROLLBACK")
+            if _own_tx:
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:
+                    pass
             raise
 
     def finalize(self) -> None:

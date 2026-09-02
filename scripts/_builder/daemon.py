@@ -65,6 +65,7 @@ _IN_MOVE_SELF = 0x00000800  # Watched file/directory itself moved
 _IN_MOVED_FROM = 0x00000040  # File moved from watched dir
 _IN_MOVED_TO  = 0x00000080  # File moved to watched dir
 _IN_ISDIR     = 0x40000000  # Event subject is a directory (flag, not event)
+_IN_Q_OVERFLOW = 0x00004000  # Kernel event queue overflowed — events were DROPPED
 _DEFAULT_WATCH_MASK = (_IN_MODIFY | _IN_ATTRIB | _IN_CLOSE_WRITE |
                          _IN_CREATE | _IN_DELETE | _IN_DELETE_SELF |
                          _IN_MOVE_SELF | _IN_MOVED_FROM | _IN_MOVED_TO)
@@ -241,13 +242,26 @@ class FileWatcher:
         self._graph_dir = graph_dir
         self._stop = False
         self._callback: Optional[Callable[[str], None]] = None
+        # Called (throttled) when the kernel inotify queue overflows and
+        # events were dropped — the daemon reacts by queueing a bulk
+        # resync, otherwise it would silently stay stale.
+        self._on_overflow: Optional[Callable[[], None]] = None
+        self._last_overflow_ts = 0.0
         self._thread: Optional[threading.Thread] = None
         self._inotify_fd = -1
         self._polling_state: Dict[str, str] = {}  # path → content hash (or mtime+size sig)
 
-    def start(self, callback: Callable[[str], None]):
-        """Start watching; call callback(path) on each file change."""
+    def start(self, callback: Callable[[str], None],
+              on_overflow: Optional[Callable[[], None]] = None):
+        """Start watching; call callback(path) on each file change.
+
+        on_overflow (optional) is called — throttled — when the kernel
+        event queue overflows (IN_Q_OVERFLOW), meaning events were
+        permanently dropped and change tracking can no longer be trusted.
+        """
         self._callback = callback
+        if on_overflow is not None:
+            self._on_overflow = on_overflow
         self._stop = False
         # Try platform-native watchers first, fall back to polling.
         # Order: inotify (Linux) → FSEvents (macOS) → ReadDirectoryChangesW
@@ -390,6 +404,28 @@ class FileWatcher:
                         wd = int.from_bytes(data[offset:offset+4], "little", signed=True)
                         mask = int.from_bytes(data[offset+4:offset+8], "little")
                         name_len = int.from_bytes(data[offset+12:offset+16], "little")
+                        if mask & _IN_Q_OVERFLOW:
+                            # Kernel dropped events (burst exceeded
+                            # max_queued_events, default 16384). The wd is
+                            # -1 and no path is recoverable — the daemon
+                            # must bulk-resync or it silently stays stale
+                            # forever. Throttle to one signal per 5s so a
+                            # sustained overflow burst queues one bulk job,
+                            # not hundreds.
+                            _now = time.time()
+                            if _now - self._last_overflow_ts >= 5.0:
+                                self._last_overflow_ts = _now
+                                logging.getLogger(__name__).warning(
+                                    "daemon: inotify queue overflow — events were "
+                                    "dropped; requesting bulk resync")
+                                if self._on_overflow:
+                                    try:
+                                        self._on_overflow()
+                                    except Exception:
+                                        logging.getLogger(__name__).debug(
+                                            "silent exception", exc_info=True)
+                            offset += 16 + name_len
+                            continue
                         name = data[offset+16:offset+16+name_len].rstrip(b"\0").decode("utf-8", errors="replace")
                         base_path = self._wd_to_path.get(wd, "")
                         if base_path:
@@ -725,7 +761,10 @@ class Daemon:
                 use_content_hash=use_content_hash,
                 graph_dir=self.graph_dir,
             )
-            self._watcher.start(self._on_file_change)
+            self._watcher.start(
+                self._on_file_change,
+                on_overflow=self._on_watch_overflow,
+            )
         except Exception:
             self._cleanup()
             raise
@@ -1048,6 +1087,16 @@ class Daemon:
         except (ValueError, OSError):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
+    def _on_watch_overflow(self):
+        """Called by the watcher when the kernel event queue overflowed.
+
+        Events were permanently dropped, so incremental pending state is
+        incomplete — queue a bulk resync (same recovery path as daemon
+        restart with pending events) to re-derive freshness from disk.
+        """
+        self._log("inotify queue overflow: events dropped, queueing bulk resync")
+        self._enqueue_sync_job("bulk", [])
+
     def _on_file_change(self, path: str):
         """Called by watcher on each file change."""
         now = time.time()

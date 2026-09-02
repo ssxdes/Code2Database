@@ -621,7 +621,9 @@ class StreamingGraph:
             try:
                 self._store._conn.execute("ROLLBACK")
             except Exception:
-                pass
+                logging.getLogger(__name__).warning(
+                    "StreamingGraph finalize: ROLLBACK failed — "
+                    "connection may hold a pending transaction", exc_info=True)
             raise
         finally:
             # wal_checkpoint is best-effort — don't fail close() if it errors.

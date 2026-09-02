@@ -152,12 +152,25 @@ class MemoryOrderingInfo:
 
     def in_rcu_critical_section(self, line: int) -> bool:
         """True if `line` is between a rcu_read_lock and matching unlock."""
+        # For each lock, find the FIRST unlock at or after the lock line,
+        # then check if line is within [lock, unlock]. This correctly
+        # excludes lines between an unlock and the next lock.
+        # The previous implementation checked ANY unlock >= lock and
+        # line <= unlock, which returned True for lines outside any
+        # RCU section (e.g., between unlock@20 and lock@30 with
+        # unlocks=[20,40], line 25 was True because 25 <= 40).
+        sorted_unlocks = sorted(self.rcu_read_unlocks)
         for lock_line in self.rcu_read_locks:
-            if lock_line <= line:
-                # Find the next unlock after this lock
-                for unlock_line in self.rcu_read_unlocks:
-                    if unlock_line >= lock_line and line <= unlock_line:
-                        return True
+            if lock_line > line:
+                continue
+            # Find the first unlock at or after this lock
+            matching_unlock = None
+            for u in sorted_unlocks:
+                if u >= lock_line:
+                    matching_unlock = u
+                    break
+            if matching_unlock is not None and lock_line <= line <= matching_unlock:
+                return True
         return False
 
 

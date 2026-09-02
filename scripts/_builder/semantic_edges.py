@@ -59,15 +59,18 @@ DEFAULT_ALLOC_PATTERNS = [
     r'\bnew\s+[A-Z][A-Za-z_0-9]*\s*[\(\{]',  # C++ new
     r'\bg_new\s*\(', r'\bg_malloc\s*\(',
     r'\balloc_pages\s*\(', r'\b__get_free_pages\s*\(',
-    r'\bcreate_.*\s*\(',  # create_X() constructors
-    r'\bmake_.*\s*\(',
+    # \w* (not greedy .*): '.*' ran to the LAST '(' on the line, so
+    # 'if (create_dev(d) < 0 || create_node(n) < 0)' recorded the garbage
+    # name 'create_dev(d) < 0 || create_node' and never saw create_node.
+    r'\bcreate_\w*\s*\(',  # create_X() constructors
+    r'\bmake_\w*\s*\(',
 ]
 
 DEFAULT_FREE_PATTERNS = [
     r'\bkfree\s*\(', r'\bvfree\s*\(', r'\bfree\s*\(',
     r'\bdelete\s+',  # C++ delete
     r'\bg_free\s*\(', r'\bg_clear_pointer\s*\(',
-    r'\bdestroy_.*\s*\(', r'\bcleanup_.*\s*\(',
+    r'\bdestroy_\w*\s*\(', r'\bcleanup_\w*\s*\(',
     r'\bfree_pages\s*\(', r'\b__free_pages\s*\(',
     r'\bput_pages\s*\(',
 ]

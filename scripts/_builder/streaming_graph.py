@@ -761,7 +761,9 @@ class LazySQLiteGraph:
     def _fetch_node(self, nid: str) -> dict:
         import json as _json
         row = self._conn.execute(
-            "SELECT * FROM functions WHERE id=?", (nid,)).fetchone()
+            "SELECT id, name, source_file, line_number, domain, labels, "
+            "signature, extra_json FROM functions WHERE id=?",
+            (nid,)).fetchone()
         if not row:
             return {}
         return self._build_attrs_from_row(dict(row))
@@ -1191,7 +1193,8 @@ class _LazyNodeView:
             # kernel-scale graphs where many nodes are empty conditions or
             # file containers).
             cur = self._graph._conn.execute(
-                "SELECT * FROM functions WHERE extra_json IS NULL "
+                "SELECT id, name, source_file, line_number, domain, labels, "
+                "signature, extra_json FROM functions WHERE extra_json IS NULL "
                 "OR (extra_json NOT LIKE '%\"is_empty\":true%' "
                 "AND extra_json NOT LIKE '%\"is_empty\": true%' "
                 "AND extra_json NOT LIKE '%\"node_type\":\"file\"%' "

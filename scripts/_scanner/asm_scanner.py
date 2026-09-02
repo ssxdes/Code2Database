@@ -2773,10 +2773,10 @@ class LLVMMCASMScanner(AsmRegexScanner):
         for i, inst in enumerate(instructions):
             mnem = inst['mnemonic'].lower()
             operands = inst['operands']
-            if mnem in ('call', 'callq', 'jmp', 'jl', 'jne', 'je', 'jg', 'jl',
+            if mnem in ('call', 'callq', 'jmp', 'jl', 'jne', 'je', 'jg',
                          'jle', 'jge', 'ja', 'jb', 'jae', 'jbe', 'jz', 'jnz',
-                         'jb', 'jc', 'jnc', 'jo', 'jno', 'js', 'jns', 'jp',
-                         'jnp', 'jecxz', 'jrcxz'):
+                         'jc', 'jnc', 'jo', 'jno', 'js', 'jns', 'jp',
+                         'jnp', 'jecxz', 'jrcrz'):
                 # Direct call/jmp to a label
                 target = operands.strip()
                 # Strip trailing comments and qualifiers

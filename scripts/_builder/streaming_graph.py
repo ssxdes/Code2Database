@@ -171,6 +171,14 @@ class StreamingGraph:
         self._func_batch_size = batch_size_functions
         self._edge_batch_size = batch_size_edges
 
+        # Periodic commit counter — bounds WAL growth during long builds.
+        # Without this, store_edges(autocommit=False) keeps one giant
+        # transaction open for the entire build, letting WAL grow to
+        # several GB. Committing every 10 flushes (≈50K rows) keeps
+        # WAL bounded while still eliminating ~5100 per-batch commits.
+        self._flush_count = 0
+        self._FLUSH_COMMIT_INTERVAL = 10
+
         # Lightweight in-memory structures
         self.id_registry: Dict[str, Dict] = {}
         self._edge_data: Dict[Tuple[str, str], Dict] = {}
@@ -457,16 +465,22 @@ class StreamingGraph:
     def _flush_functions(self):
         """Flush queued function nodes to SQLite."""
         if self._func_batch:
-            self._store.store_functions(self._func_batch)
+            self._store.store_functions(self._func_batch, autocommit=False)
             self._funcs_flushed += len(self._func_batch)
             self._func_batch = []
+            self._flush_count += 1
+            if self._flush_count % self._FLUSH_COMMIT_INTERVAL == 0:
+                self._store._conn.commit()
 
     def _flush_edges(self):
         """Flush queued edges to SQLite."""
         if self._edge_batch:
-            self._store.store_edges(self._edge_batch)
+            self._store.store_edges(self._edge_batch, autocommit=False)
             self._edges_flushed += len(self._edge_batch)
             self._edge_batch = []
+            self._flush_count += 1
+            if self._flush_count % self._FLUSH_COMMIT_INTERVAL == 0:
+                self._store._conn.commit()
 
     def flush_all(self):
         """Flush all pending batches to SQLite."""
@@ -501,6 +515,13 @@ class StreamingGraph:
             return
 
         try:
+            # Commit any pending transaction from intermediate flushes
+            # (store_edges/store_functions with autocommit=False may
+            # have left an auto-transaction open).
+            try:
+                self._store._conn.commit()
+            except Exception:
+                pass
             # Start a single transaction for the entire write
             self._store._conn.execute("BEGIN TRANSACTION")
 

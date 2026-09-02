@@ -1229,7 +1229,9 @@ def _load_full_graph(graph_dir: str) -> nx.DiGraph:
             return LazySQLiteGraph(db_path)
         print(f"Error: {master_path} not found and no code2database.db fallback",
               file=sys.stderr)
-        sys.exit(1)
+        raise FileNotFoundError(
+            f"{master_path} not found and no code2database.db fallback"
+        )
 
     master = json.loads(Path(master_path).read_text(encoding="utf-8"))
     G = nx.DiGraph()

@@ -77,19 +77,14 @@ class _GraphCache:
                     return 0
         return 0
 
-    def get(self, key: str, node_versions_snapshot: Dict[str, int]) -> Optional[Any]:
+    def get(self, key: str) -> Optional[Any]:
         """Return cached result if still valid, else None.
 
         Invalidation is two-fold:
         1. Eager: ``invalidate_node()`` evicts all entries touching a node
            immediately when that node is mutated.
         2. Lazy (TTL + graph mtime): entries expire after ``ttl_seconds``
-           or when the graph file mtime changes (catches mutations made
-           outside the cache's invalidate_node path).
-
-        The ``node_versions_snapshot`` parameter is retained for API
-        compatibility but is not consulted here — eager eviction makes
-        per-get version comparison redundant.
+           or when the graph file mtime changes.
         """
         with self._lock:
             entry = self._entries.get(key)
@@ -221,11 +216,8 @@ def cached_query(command: str, ttl: int = 600,
                 except Exception:
                     touched = frozenset()
 
-            with cache._lock:
-                snapshot = {nid: cache._node_versions.get(nid, 0) for nid in touched}
-
             if not no_cache:
-                cached = cache.get(key, snapshot)
+                cached = cache.get(key)
                 if cached is not None:
                     if capture_stdout:
                         import sys

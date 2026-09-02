@@ -34,6 +34,7 @@ import io
 import sys
 import time
 import json
+import copy
 import hashlib
 import threading
 from collections import OrderedDict
@@ -45,6 +46,11 @@ import logging
 _CACHES: Dict[str, "_GraphCache"] = {}
 _LOCK = threading.Lock()
 
+# Serializes the global sys.stdout swap in capture_stdout mode: two
+# threads capturing at once interleaved their buffers and permanently
+# cached one thread's output under the other's key.
+_STDOUT_LOCK = threading.Lock()
+
 
 class _GraphCache:
     """LRU cache for one graph directory, with node-version invalidation."""
@@ -53,14 +59,20 @@ class _GraphCache:
         self.graph_dir = graph_dir
         self.max_entries = max_entries
         self.ttl_seconds = ttl_seconds
-        # key -> (timestamp, result, graph_mtime_at_cache_time)
+        # key -> (timestamp, result, graph_mtime_at_cache_time, epoch)
         # graph_mtime lets us invalidate entries when the
         # SQLite file is touched by any write path (daemon tx, manual sqlite3,
         # patcher) — even if invalidate_node wasn't called.
-        self._entries: OrderedDict[str, Tuple[float, Any, float]] = OrderedDict()
-        # node_id -> version (monotonic int)
-        self._node_versions: Dict[str, int] = {}
-        # key -> set of node_ids touched (for invalidation)
+        self._entries: OrderedDict[str, Tuple[float, Any, float, int]] = OrderedDict()
+        # Monotonic epoch, bumped by every invalidate_node/invalidate_all.
+        # Entries record the epoch at put time; get() evicts on mismatch.
+        # This is the safety net for entries cached WITHOUT touched-node
+        # tracking (touched_nodes_fn=None, e.g. explore-flow): the old
+        # per-node version map was write-only dead state, so those entries
+        # survived node updates for the full TTL (and the mtime check is
+        # inert on JSON-backend graphs where no db file exists).
+        self._epoch = 0
+        # key -> set of node_ids touched (for eager invalidation)
         self._key_nodes: Dict[str, frozenset] = {}
         self._lock = threading.Lock()
 
@@ -82,17 +94,20 @@ class _GraphCache:
     def get(self, key: str) -> Optional[Any]:
         """Return cached result if still valid, else None.
 
-        Invalidation is two-fold:
+        Invalidation is three-fold:
         1. Eager: ``invalidate_node()`` evicts all entries touching a node
            immediately when that node is mutated.
-        2. Lazy (TTL + graph mtime): entries expire after ``ttl_seconds``
+        2. Epoch: any invalidation bumps a global epoch; entries cached
+           before the bump are evicted on next read. Covers entries with
+           no touched-node tracking.
+        3. Lazy (TTL + graph mtime): entries expire after ``ttl_seconds``
            or when the graph file mtime changes.
         """
         with self._lock:
             entry = self._entries.get(key)
             if entry is None:
                 return None
-            timestamp, result, cached_mtime = entry
+            timestamp, result, cached_mtime, cached_epoch = entry
             # TTL check
             if time.time() - timestamp > self.ttl_seconds:
                 self._entries.pop(key, None)
@@ -104,9 +119,21 @@ class _GraphCache:
                 self._entries.pop(key, None)
                 self._key_nodes.pop(key, None)
                 return None
+            # Epoch check — some invalidation happened since this entry
+            # was cached.
+            if cached_epoch != self._epoch:
+                self._entries.pop(key, None)
+                self._key_nodes.pop(key, None)
+                return None
             # LRU touch
             self._entries.move_to_end(key)
-            return result
+            # Return a copy: callers mutating a returned dict/list would
+            # otherwise poison the cached object for every other reader.
+            try:
+                return copy.deepcopy(result)
+            except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                return result
 
     def put(self, key: str, result: Any,
             touched_nodes: frozenset) -> None:
@@ -115,18 +142,14 @@ class _GraphCache:
             while len(self._entries) >= self.max_entries:
                 evicted_key, _ev = self._entries.popitem(last=False)
                 self._key_nodes.pop(evicted_key, None)
-            self._entries[key] = (time.time(), result, self._graph_mtime())
+            self._entries[key] = (time.time(), result, self._graph_mtime(),
+                                  self._epoch)
             self._key_nodes[key] = touched_nodes
-            # Record the versions we cached against (current versions —
-            # invalidate_node bumps versions and eagerly evicts, so
-            # storing the version at put time is sufficient)
-            for nid in touched_nodes:
-                self._node_versions.setdefault(nid, 0)
 
     def invalidate_node(self, node_id: str) -> None:
-        """Bump a node's version and evict all entries that touched it."""
+        """Bump the epoch and evict all entries that touched this node."""
         with self._lock:
-            self._node_versions[node_id] = self._node_versions.get(node_id, 0) + 1
+            self._epoch += 1
             # Eager eviction: drop entries that touched this node
             keys_to_drop = [
                 k for k, touched in self._key_nodes.items()
@@ -138,15 +161,15 @@ class _GraphCache:
 
     def invalidate_all(self) -> None:
         with self._lock:
+            self._epoch += 1
             self._entries.clear()
             self._key_nodes.clear()
-            self._node_versions.clear()
 
     def stats(self) -> Dict[str, int]:
         with self._lock:
             return {
                 "entries": len(self._entries),
-                "tracked_nodes": len(self._node_versions),
+                "epoch": self._epoch,
                 "max_entries": self.max_entries,
                 "ttl_seconds": self.ttl_seconds,
             }
@@ -227,14 +250,18 @@ def cached_query(command: str, ttl: int = 600,
                     return cached
 
             if capture_stdout:
-                buf = io.StringIO()
-                old_stdout = sys.stdout
-                sys.stdout = buf
-                try:
-                    fn(args)
-                finally:
-                    sys.stdout = old_stdout
-                captured = buf.getvalue()
+                # Serialize the global sys.stdout swap: concurrent captures
+                # interleaved buffers and cached one thread's output under
+                # the other's key.
+                with _STDOUT_LOCK:
+                    buf = io.StringIO()
+                    old_stdout = sys.stdout
+                    sys.stdout = buf
+                    try:
+                        fn(args)
+                    finally:
+                        sys.stdout = old_stdout
+                    captured = buf.getvalue()
                 if not no_cache:
                     try:
                         cache.put(key, captured, touched)

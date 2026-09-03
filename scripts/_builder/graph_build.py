@@ -863,11 +863,14 @@ def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
                               explicit_parallel_mode: bool = False) -> None:
     """Extract shared state access info for all non-empty nodes in the graph.
 
-    When parallel_mode='process', uses ProcessPoolExecutor with fork()
-    to bypass the GIL. On Linux (default fork start method), child
-    processes inherit the parent's memory via copy-on-write — the graph,
-    globals_data, and field_assignments are available without pickling.
-    Only the small result dict per node is sent back via pipe.
+    When parallel_mode='process', uses ProcessPoolExecutor to bypass the
+    GIL. The pool uses the spawn start method: this runs AFTER the graph
+    is constructed, so the parent process holds the full in-memory graph
+    (tens of GB on large builds) — fork() would hand every worker a
+    copy-on-write mapping of all of it and OOM the box. All worker inputs
+    (node data, field_assignments, the cached globals regex) are passed
+    explicitly per item, so spawn needs no COW inheritance. Only the
+    small result dict per node is sent back via pipe.
     This gives TRUE multi-core parallelism for the regex + dict
     construction work that dominates _extract_state_access.
 
@@ -952,18 +955,15 @@ def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
         return
 
     # When parallel_mode='process', use ProcessPoolExecutor to bypass
-    # the GIL. On Linux, fork() gives copy-on-write — child processes
-    # share the parent's graph/globals/field_assignments without
-    # pickling. Only the small result dict per node is sent back.
+    # the GIL. spawn (not fork): the parent holds the full graph here —
+    # fork COW would map all of it into every worker (see the 2026-09-02
+    # OOM: 86GB parent x N workers). Every worker input is passed
+    # explicitly in the args tuple, so nothing relies on inheritance.
     if parallel_mode == "process" and len(candidates) > 100:
         try:
             from concurrent.futures import ProcessPoolExecutor
             import multiprocessing as _mp
-            # Use fork (default on Linux) for COW — child processes
-            # inherit the parent's memory (graph, globals) without
-            # pickling. Only the per-node args tuple + result dict
-            # cross the process boundary via pickle.
-            ctx = _mp.get_context("fork")
+            ctx = _mp.get_context("spawn")
             # Pack all dependencies into the args tuple so the
             # module-level _proc_state_access can work without closures.
             _cached = _cached_globals
@@ -1015,11 +1015,25 @@ def _proc_state_access(args):
 
 
 # Module-level globals for the pre-strip ProcessPoolExecutor path.
-# Set by cmd_build before fork(); read by _proc_pre_strip_state_access
-# in child processes via copy-on-write inheritance.
+# Set per-worker in each spawned child by _pre_strip_worker_init (the
+# pool initializer) — with the spawn start method nothing is inherited
+# from the parent process.
 _PRE_STRIP_GLOBALS = None
 _PRE_STRIP_FIELD_ASSIGNMENTS = None
 _PRE_STRIP_CACHED = None
+
+
+def _pre_strip_worker_init(globals_data, field_assignments, cached_globals):
+    """ProcessPoolExecutor initializer for the pre-strip state_access
+    pool: set the _PRE_STRIP_* module globals in each spawned child.
+    With the spawn start method nothing is inherited from the parent,
+    so the worker context crosses the process boundary exactly once
+    per worker via initargs.
+    """
+    global _PRE_STRIP_GLOBALS, _PRE_STRIP_FIELD_ASSIGNMENTS, _PRE_STRIP_CACHED
+    _PRE_STRIP_GLOBALS = globals_data
+    _PRE_STRIP_FIELD_ASSIGNMENTS = field_assignments
+    _PRE_STRIP_CACHED = cached_globals
 
 
 def _proc_pre_strip_state_access(item):
@@ -1028,10 +1042,11 @@ def _proc_pre_strip_state_access(item):
     Receives: (index, function_dict) tuple from the pre-strip candidate list.
     Returns: (index, access_info_dict) — caller merges results back.
 
-    Reads module-level _PRE_STRIP_* globals (set by cmd_build before fork).
-    On Linux (default fork start method), child processes inherit these
-    via copy-on-write — the 30K-branch pre-compiled regex is available
-    without being pickled across the process boundary.
+    Reads module-level _PRE_STRIP_* globals (set per-worker by
+    _pre_strip_worker_init, the pool initializer — NOT inherited from
+    the parent: the pool uses spawn because the parent process holds
+    the extraction payload in memory and fork COW would map all of it
+    into every worker).
     """
     _idx, _func = item
     _body = _func.get("body_text", "")
@@ -6397,10 +6412,11 @@ def cmd_build(args):
     # Decide sequential vs parallel for pre-strip state_access extraction.
     # This loop runs on ALL functions (1.5M on kernel) BEFORE graph
     # construction. It's a serial for-loop bottleneck when --jobs > 1.
-    # When parallel_mode='process', use ProcessPoolExecutor with fork COW
-    # (child processes inherit _cached_globals_sa without pickling).
-    # Otherwise, fall back to ThreadPoolExecutor (re.finditer releases GIL
-    # during matching, giving modest speedup) or sequential.
+    # When parallel_mode='process', use ProcessPoolExecutor with spawn +
+    # initializer-passed context (fork would COW-map the whole extraction
+    # payload into every worker). Otherwise, fall back to ThreadPoolExecutor
+    # (re.finditer releases GIL during matching, giving modest speedup) or
+    # sequential.
     _sa_parallel_mode = getattr(args, 'parallel_mode', None) or 'thread'
     try:
         from _builder.parallel import resolve_jobs
@@ -6414,20 +6430,23 @@ def cmd_build(args):
 
     if _use_sa_process:
         # ProcessPoolExecutor path: module-level _proc_pre_strip_state_access
-        # worker (defined below _extract_state_access_all). Children inherit
-        # _cached_globals_sa via fork COW — no pickling needed for the
-        # 30K-branch regex.
+        # worker + _pre_strip_worker_init initializer. The pool uses the
+        # spawn start method: the parent process holds the extraction
+        # payload (data["functions"] etc. — tens of GB on kernel-scale
+        # projects) and fork() would map all of it copy-on-write into
+        # every worker; the first write in each worker then triggers page
+        # copies multiplied by N workers (OOM). Spawn children receive
+        # the globals/field_assignments/cached-regex context once each
+        # via initargs instead.
         try:
             from concurrent.futures import ProcessPoolExecutor
             import multiprocessing as _mp
-            # Set module-level globals for the fork COW worker.
-            # These are read by _proc_pre_strip_state_access.
-            global _PRE_STRIP_GLOBALS, _PRE_STRIP_FIELD_ASSIGNMENTS, _PRE_STRIP_CACHED
-            _PRE_STRIP_GLOBALS = _globals_data_sa
-            _PRE_STRIP_FIELD_ASSIGNMENTS = _field_assignments_sa
-            _PRE_STRIP_CACHED = _cached_globals_sa
-            _ctx = _mp.get_context("fork")
-            with ProcessPoolExecutor(max_workers=_sa_workers, mp_context=_ctx) as _pool:
+            _ctx = _mp.get_context("spawn")
+            with ProcessPoolExecutor(
+                    max_workers=_sa_workers, mp_context=_ctx,
+                    initializer=_pre_strip_worker_init,
+                    initargs=(_globals_data_sa, _field_assignments_sa,
+                              _cached_globals_sa)) as _pool:
                 _sa_results = list(_pool.map(
                     _proc_pre_strip_state_access,
                     _sa_candidates,
@@ -6450,15 +6469,6 @@ def cmd_build(args):
             _sa_candidate_count = len(_sa_candidates)
         except (ImportError, OSError, BrokenPipeError):
             _use_sa_process = False  # fall through to sequential
-        finally:
-            # Clean up module-level globals (in finally so cleanup
-            # runs even if the try block raised before reaching the
-            # explicit cleanup — prevents transient memory leak of
-            # the 30K-branch regex between calls in long-running
-            # processes).
-            _PRE_STRIP_GLOBALS = None
-            _PRE_STRIP_FIELD_ASSIGNMENTS = None
-            _PRE_STRIP_CACHED = None
 
     if not _use_sa_process:
         # Sequential path (or ThreadPool fallback)

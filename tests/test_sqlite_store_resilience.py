@@ -164,5 +164,49 @@ class TestWipeCgdbDataOnMissingTables(unittest.TestCase):
         store.close()
 
 
+class TestDeleteFileRecordsWithL1(unittest.TestCase):
+    def test_delete_cleans_l1_rows_without_fk_violation(self):
+        # delete_file_records used to roll back with 'FOREIGN KEY
+        # constraint failed' for any L1-ingested file: with
+        # foreign_keys=ON, deleting cgdb_files cascaded tokens, which
+        # tripped literals' NO ACTION FK. It also never cleaned the L1
+        # tables at all.
+        from _builder.cgdb_schema import apply_cgdb_schema
+        from _builder.cgdb_store import SQLiteCGDBStore
+        d, db = _tmp_db()
+        conn = sqlite3.connect(db)
+        apply_cgdb_schema(conn)
+        conn.execute(
+            "INSERT INTO cgdb_files (id, path, language, sha256) "
+            "VALUES (1, '/a.c', 'c', 'x')")
+        conn.execute(
+            "INSERT INTO tokens (id, file_id, seq, kind, spelling, "
+            "line, col) VALUES (10, 1, 1, 'identifier', 'foo', 1, 1)")
+        conn.execute(
+            "INSERT INTO literals (id, kind, raw_text, token_id) "
+            "VALUES (20, 'int', '0', 10)")
+        conn.execute(
+            "INSERT INTO string_literals (id, literal_id, decoded) "
+            "VALUES (30, 20, 's')")
+        conn.execute(
+            "INSERT INTO macros (id, name, file_id, line) "
+            "VALUES (40, 'M', 1, 1)")
+        conn.commit()
+        conn.close()
+
+        store = SQLiteCGDBStore(db)  # conn with foreign_keys=ON
+        try:
+            nodes, edges = store.delete_file_records("/a.c")
+            self.assertEqual(nodes, 0)
+            conn = store._ensure_conn()
+            for tbl in ("cgdb_files", "tokens", "literals",
+                        "string_literals", "macros"):
+                n = conn.execute(
+                    f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
+                self.assertEqual(n, 0, f"{tbl} not cleaned")
+        finally:
+            store.close()
+
+
 if __name__ == "__main__":
     unittest.main()

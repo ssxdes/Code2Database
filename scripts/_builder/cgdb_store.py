@@ -443,6 +443,39 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                 (file_id,)
             )
 
+            # Delete L1 rows for this file BEFORE the cgdb_files delete.
+            # With foreign_keys=ON, deleting cgdb_files cascades tokens
+            # (tokens.file_id ... ON DELETE CASCADE) but then trips
+            # literals' NO ACTION FK (literals.token_id -> tokens.id) —
+            # the whole transaction rolled back with
+            # 'FOREIGN KEY constraint failed' for any L1-ingested file.
+            # literals / string_literals / attributes have no file_id and
+            # chain through tokens, so resolve them via token ids first.
+            conn.execute(
+                "DELETE FROM string_literals WHERE literal_id IN "
+                "(SELECT id FROM literals WHERE token_id IN "
+                "(SELECT id FROM tokens WHERE file_id = ?))",
+                (file_id,)
+            )
+            conn.execute(
+                "DELETE FROM literals WHERE token_id IN "
+                "(SELECT id FROM tokens WHERE file_id = ?)",
+                (file_id,)
+            )
+            conn.execute(
+                "DELETE FROM attributes WHERE at_token_id IN "
+                "(SELECT id FROM tokens WHERE file_id = ?)",
+                (file_id,)
+            )
+            for _tbl in ("tokens", "comments_freeform", "macros",
+                         "macro_invocations", "pp_directives", "pragmas",
+                         "pp_branches", "source_files_meta"):
+                try:
+                    conn.execute(
+                        f"DELETE FROM {_tbl} WHERE file_id = ?", (file_id,))
+                except sqlite3.OperationalError:
+                    pass  # table missing on a partially-applied schema
+
             # Delete nodes
             if node_ids:
                 placeholder = ",".join("?" * len(node_ids))

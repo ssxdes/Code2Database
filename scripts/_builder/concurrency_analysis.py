@@ -124,6 +124,21 @@ def _detect_locks_held(ndata, profile=None, G=None, nid=None):
 
     locks_acquired = set()
 
+    def _groupless_sentinel(pattern) -> str:
+        """Stable per-pattern lock name for groupless acquire patterns.
+
+        All groupless patterns used to share the single sentinel
+        '__rcu_read_lock__': two DIFFERENT primitives (rcu_read_lock vs
+        preempt_disable, both groupless) became 'the same lock', so
+        common_locks was non-empty and real races between them were
+        wrongly suppressed. The sentinel is now derived from the
+        pattern text (md5 prefix — stable across processes, unlike
+        hash()), so the SAME pattern still maps to the same lock name
+        across functions while different patterns stay distinct.
+        """
+        import hashlib
+        return f"__groupless_{hashlib.md5(pattern.pattern.encode('utf-8')).hexdigest()[:8]}__"
+
     # Use _get_body_text when G is provided — on StreamingGraph /
     # LazySQLiteGraph, body_text is empty in cached attrs (compressed in
     # body_text_compressed to avoid per-fetch zlib cost). Without this,
@@ -138,7 +153,7 @@ def _detect_locks_held(ndata, profile=None, G=None, nid=None):
             if groups:
                 locks_acquired.add(groups[0].lstrip("&"))
             else:
-                locks_acquired.add("__rcu_read_lock__")
+                locks_acquired.add(_groupless_sentinel(pat))
 
     # Also check callee_args for lock API calls. Use a substring pre-filter
     # to skip the regex search() for (callee, pattern) pairs where the callee
@@ -164,7 +179,7 @@ def _detect_locks_held(ndata, profile=None, G=None, nid=None):
                 if groups:
                     locks_acquired.add(groups[0].lstrip("&"))
                 else:
-                    locks_acquired.add("__rcu_read_lock__")
+                    locks_acquired.add(_groupless_sentinel(pat))
 
     # If a lock is acquired and released within the same function, the
     # critical section is internal and does not protect against races
@@ -183,15 +198,33 @@ def _get_thread_context(ndata):
     """Return a tuple (thread_model, thread_entry) for a node.
 
     thread_model: the model this function runs in (direct or inherited).
-    thread_entry: the entry-point function name for this thread context,
-                  or None if the function is a thread entry itself.
+    thread_entry: the entry-point reference for this thread context —
+                  the entry function's NODE ID (thread_entry_id /
+                  thread_entry_inherited, set by build-time propagation)
+                  when available, falling back to its name for legacy
+                  graphs, or None if the function is a thread entry
+                  itself without either, or a non-entry with no
+                  inherited reference.
 
-    Returns (model, entry_name) where model may be None.
+    Node-identity keys matter twice: (a) two same-named static thread
+    routines in different files are different threads (name keys judged
+    them the same context); (b) callees of DIFFERENT entries with the
+    same model previously all landed in (model, None) — one bucket —
+    so races between two thread families were missed entirely.
     """
     model = ndata.get("thread_model") or ndata.get("thread_model_inherited")
     entry = ndata.get("thread_entry", False)
-    entry_name = ndata.get("name", "") if entry else None
-    return model, entry_name
+    if entry:
+        # Prefer the node id (unique) recorded by _propagate_thread_models;
+        # fall back to graph "id" attr, then name (legacy graphs).
+        entry_ref = (ndata.get("thread_entry_id")
+                     or ndata.get("id")
+                     or ndata.get("name", "")
+                     or None)
+        return model, entry_ref
+    # Non-entry: the propagated entry id distinguishes thread families.
+    entry_ref = ndata.get("thread_entry_inherited") or None
+    return model, entry_ref
 
 
 def _same_thread_context(ndata_a, ndata_b):
@@ -354,6 +387,9 @@ def detect_data_races(G, target_func=None, profile=None):
     A data race exists when two functions in different thread contexts
     access the same shared resource (global variable or struct field)
     and at least one access is a write, with no common mutex protection.
+    Read/read pairs across contexts are also reported, at severity
+    "low" — not a data race, but a concurrent-access advisory (possible
+    atomicity violation if the reads feed a later check-then-act).
 
     Args:
         G: networkx DiGraph (the full invocation graph with E2/E4 attributes).
@@ -1010,18 +1046,9 @@ def concurrency_analyze(G, chain1_nodes, chain2_nodes=None, func_name=None,
         # resources protected by the other chain's locks
         if locks1 and locks2 and not (locks1 & locks2):
             # Each chain holds at least one lock that the other doesn't hold.
-            # This is a potential deadlock if there's a lock ordering issue.
-            # We check if chain1 accesses a resource protected by a lock held
-            # only in chain2, and vice versa.
-            chain1_protected_resources = set()
-            for rkey, access in resources1.items():
-                if rkey in shared_keys:
-                    # Check if any chain2 lock protects this resource
-                    # in another function
-                    pass  # Already checked above
-
-            # Simpler heuristic: if both chains hold different locks and
-            # access shared state, flag a potential deadlock risk
+            # Heuristic: if both chains hold different locks and access
+            # shared state, flag a potential deadlock risk (a real
+            # lock-order-graph analysis is future work).
             risks.append({
                 "type": "deadlock_risk",
                 "description": (
@@ -1182,8 +1209,9 @@ def _print_concurrency_result(result):
     print("  - Lock protection is function-level (not access-site-level).")
     print("    A function may access a field both inside and outside a lock hold,")
     print("    but this analysis cannot distinguish the two cases.")
-    print("  - TOCTOU (time-of-check time-of-use) races are NOT detected.")
-    print("    Check-then-act patterns within a single function are not analyzed.")
+    print("  - TOCTOU (time-of-check time-of-use) races ARE detected")
+    print("    (cross-thread reader/writer pairs on struct fields);")
+    print("    check-then-act patterns WITHIN a single function are not.")
     print("  - Lock detection uses regex on body_text (not CFG-aware).")
     print("    False positives (lock released before access) and false negatives")
     print("    (different variable name for same lock) may occur.")

@@ -2175,11 +2175,15 @@ def _propagate_thread_models(G: nx.DiGraph, thread_models: dict) -> int:
     """
     from collections import deque
 
-    # Set thread_model on direct users
+    # Set thread_model on direct users. thread_entry_id records the
+    # entry's own node id so downstream analysis can key thread contexts
+    # by node identity instead of function NAME (same-named static
+    # thread routines in different files are DIFFERENT threads).
     for nid, model in thread_models.items():
         if nid in G:
             G.nodes[nid]["thread_model"] = model
             G.nodes[nid]["thread_entry"] = True
+            G.nodes[nid]["thread_entry_id"] = nid
 
     # BFS propagation from each thread entry point
     _inherited_set = set()
@@ -2209,8 +2213,13 @@ def _propagate_thread_models(G: nx.DiGraph, thread_models: dict) -> int:
             if current_ndata.get("thread_model") is not None:
                 continue
 
-            # Mark with inherited model
+            # Mark with inherited model + the entry point's node id.
+            # Without thread_entry_inherited, every callee of ANY entry
+            # with the same model landed in the same (model, None)
+            # context bucket — callees of two different pthread routines
+            # were judged 'same thread' and their races were missed.
             current_ndata["thread_model_inherited"] = model
+            current_ndata["thread_entry_inherited"] = entry_id
             _inherited_set.add(current)
 
             # Continue propagation to callees

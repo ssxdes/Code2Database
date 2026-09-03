@@ -135,9 +135,14 @@ def _proc_map_nodes_wrapper(args):
     Returns: work_fn(node_id, node_data)
 
     work_fn must be picklable (top-level module function). Lambdas and
-    closures are NOT picklable — callers needing process mode with
-    closures should follow the _proc_state_access pattern (module-level
-    worker + fork COW for shared state).
+    closures are NOT picklable — the pool submit raises and map_nodes
+    falls back to the ThreadPoolExecutor path. The pool uses the spawn
+    start method: callers of map_nodes typically hold large in-memory
+    state (the graph, the extraction payload), and fork would map all
+    of it copy-on-write into every worker (OOM on large builds). Any
+    state work_fn needs must therefore be passed explicitly in
+    node_data or via a pool initializer — module globals set by the
+    caller at runtime are NOT visible to spawned children.
     """
     work_fn, nid, nd = args
     return work_fn(nid, nd)
@@ -226,14 +231,18 @@ def map_nodes(
     dict, since merging happens sequentially on the main thread. Best for
     I/O-bound or GIL-releasing workloads (tree-sitter parse, re.finditer).
 
-    When ``parallel_mode='process'``, uses ProcessPoolExecutor with fork COW.
-    Best for pure-Python CPU-bound workloads (regex matching, dict
-    construction, AST walking) where the GIL serializes ThreadPool workers.
-    Requirements: ``work_fn`` must be a top-level module function (picklable),
-    and each (node_id, node_data) tuple must be picklable. On Linux (default
-    fork start method), child processes inherit the parent's memory via
-    copy-on-write — large shared state (graph, globals) is available without
-    pickling.
+    When ``parallel_mode='process'``, uses ProcessPoolExecutor with the
+    spawn start method. Best for pure-Python CPU-bound workloads (regex
+    matching, dict construction, AST walking) where the GIL serializes
+    ThreadPool workers. Requirements: ``work_fn`` must be a top-level
+    module function (picklable — closures/lambdas make the submit fail
+    and map_nodes falls back to threads), each (node_id, node_data)
+    tuple must be picklable, and work_fn must take everything it needs
+    from its arguments (spawned children do NOT inherit module globals
+    set by the caller at runtime). spawn is used instead of fork
+    because callers typically hold the full graph/extraction payload
+    in memory — fork would map all of it copy-on-write into every
+    worker and OOM large builds.
 
     Args:
         items: List of ``(node_id, node_data)`` tuples.
@@ -243,7 +252,6 @@ def map_nodes(
         max_workers_cap: Override the hard cap (0=use env/default).
         desc: Human-readable label printed once at start.
         batch_size: Submit futures in batches of this size.
-        parallel_mode: 'thread' (default) or 'process'.
 
     Returns:
         List of results, in the same order as ``items``.
@@ -272,27 +280,39 @@ def map_nodes(
     if (parallel_mode == "process" or _auto_promote) and n > 100:
         try:
             from concurrent.futures import ProcessPoolExecutor
+            from concurrent.futures import BrokenExecutor
             import multiprocessing as _mp
-            ctx = _mp.get_context("fork")
+            # spawn (not fork): callers typically hold the full graph /
+            # extraction payload in memory; fork would copy-on-write map
+            # all of it into every worker (OOM on large builds). work_fn
+            # and the item tuples are pickled for the pool either way,
+            # so spawn costs nothing extra here.
+            ctx = _mp.get_context("spawn")
             chunk_size = max(1, n // (workers * 4))
             with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as pool:
                 # NOTE: work_fn must be a top-level module function (picklable).
                 # Lambdas/closures are NOT picklable and will raise
-                # AttributeError, caught below → falls back to ThreadPool.
-                # Callers needing process mode with closures should use
-                # _proc_state_access / _proc_pre_strip_state_access patterns
-                # (module-level workers + fork COW for shared state).
+                # AttributeError at submit -> caught below -> falls back
+                # to ThreadPool. Callers needing process mode with shared
+                # state should pass it explicitly per item or use a
+                # dedicated module-level worker + pool initializer (see
+                # graph_build._proc_state_access / _pre_strip_worker_init).
                 results = list(pool.map(
                     _proc_map_nodes_wrapper,
                     [(work_fn, nid, nd) for nid, nd in items],
                     chunksize=chunk_size,
                 ))
             return results
-        except (ImportError, OSError, BrokenPipeError, AttributeError):
+        except (ImportError, OSError, BrokenPipeError, AttributeError,
+                BrokenExecutor):
+            # AttributeError: work_fn is a closure/lambda — retry on
+            # threads. BrokenExecutor: spawn bootstrap/pool breakage
+            # (e.g. unguarded __main__ script) — retry on threads
+            # instead of crashing the caller.
             if _auto_promote:
                 logging.getLogger(__name__).warning(
-                    "map_nodes: auto-promotion to process mode failed "
-                    "(work_fn may not be picklable); falling back to "
+                    "map_nodes: process mode failed (work_fn may not be "
+                    "picklable, or the pool broke); falling back to "
                     "thread mode (GIL-serialized). desc=%s, n=%d", desc, n)
             pass  # fall back to ThreadPoolExecutor
 

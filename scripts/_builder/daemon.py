@@ -253,6 +253,10 @@ class FileWatcher:
         # second) and matches the cgdb incremental-sync baseline.
         self.use_content_hash = use_content_hash
         self._graph_dir = graph_dir
+        # Precomputed absolute graph_dir (empty when unset). _is_excluded
+        # uses it to drop events for the daemon's OWN output directory —
+        # see the comment there for why this must never be watched.
+        self._graph_dir_abs = os.path.abspath(graph_dir) if graph_dir else ""
         self._stop = False
         self._callback: Optional[Callable[[str], None]] = None
         # Called (throttled) when the kernel inotify queue overflows and
@@ -379,6 +383,20 @@ class FileWatcher:
     def _is_excluded(self, path: str) -> bool:
         """Check if path matches any exclude pattern."""
         import fnmatch
+        # NEVER react to events inside the graph output directory. The
+        # daemon (and the build) write .daemon_status.json (a .json — a
+        # MONITORED extension!), .code2database_*.json outputs and the
+        # freshness marker there on every event/sync. When graph_dir
+        # lives inside source_root, watching it creates a perpetual
+        # feedback loop: event → sync → state/output write → event → …
+        # (observed as an endless sync storm right after daemon start).
+        # graph_dir contains no source files, so nothing of value is lost.
+        # The equality guard skips the exclusion only for the degenerate
+        # config graph_dir == source_root.
+        gda = self._graph_dir_abs
+        if gda and gda != self.source_root:
+            if path == gda or path.startswith(gda + os.sep):
+                return True
         norm_path = path.replace("\\", "/")
         parts = norm_path.split("/")
         for pat in self.exclude_patterns:

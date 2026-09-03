@@ -9,6 +9,7 @@ adapter behavior. Since the test runs on Linux, we can only verify:
 import os
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -185,6 +186,80 @@ class TestWatchdogHandler(unittest.TestCase):
 
         handler.on_any_event(FakeEvent())
         self.assertEqual(events, [])
+
+
+class TestGraphDirExclusion(unittest.TestCase):
+    """The watcher must never react to its own graph output directory.
+
+    graph_dir holds .daemon_status.json (a .json — a MONITORED extension)
+    plus the .code2database_*.json outputs that the daemon/build rewrite on
+    every event/sync. When graph_dir lives inside source_root, watching it
+    creates a perpetual event→sync→write→event feedback loop (observed as
+    an endless sync storm right after daemon start).
+    """
+
+    def test_graph_dir_events_are_excluded(self):
+        """Events inside graph_dir fire no callback; real edits still do."""
+        if not sys.platform.startswith("linux"):
+            self.skipTest("requires inotify")
+        import threading
+        with tempfile.TemporaryDirectory() as root:
+            src = os.path.join(root, "project")
+            graph = os.path.join(src, "graph_out")
+            os.makedirs(graph)
+            events = []
+            got = threading.Event()
+            w = FileWatcher(src, exclude_patterns=[], backend="inotify",
+                            graph_dir=graph)
+            w.start(lambda p: (events.append(p), got.set()))
+            try:
+                time.sleep(0.3)
+                # Daemon's own state write (atomic rename pattern used by
+                # DaemonState.write).
+                state = os.path.join(graph, ".daemon_status.json")
+                tmp = state + ".tmp.1.2"
+                with open(tmp, "w") as f:
+                    f.write("{}")
+                os.replace(tmp, state)
+                self.assertFalse(
+                    got.wait(timeout=2.0),
+                    f"daemon reacted to its own graph_dir write: {events}")
+                self.assertEqual([e for e in events if e.startswith(graph)], [])
+                # A real source edit must still be detected.
+                with open(os.path.join(src, "main.c"), "w") as f:
+                    f.write("int main(void){return 0;}\n")
+                self.assertTrue(got.wait(timeout=3.0))
+            finally:
+                w.stop()
+
+    def test_is_excluded_drops_graph_dir_subtree(self):
+        """_is_excluded returns True for any path under graph_dir."""
+        with tempfile.TemporaryDirectory() as root:
+            graph = os.path.join(root, "graph_out")
+            os.makedirs(graph)
+            w = FileWatcher(root, exclude_patterns=[], backend="polling",
+                            graph_dir=graph)
+            self.assertTrue(w._is_excluded(graph))
+            self.assertTrue(w._is_excluded(
+                os.path.join(graph, ".daemon_status.json")))
+            self.assertTrue(w._is_excluded(
+                os.path.join(graph, "sub", "code2database.db")))
+            # Outside graph_dir is not excluded (no matching pattern).
+            self.assertFalse(w._is_excluded(os.path.join(root, "main.c")))
+
+    def test_no_graph_dir_means_no_exclusion(self):
+        """Without graph_dir, _is_excluded keeps prior behavior."""
+        with tempfile.TemporaryDirectory() as root:
+            w = FileWatcher(root, exclude_patterns=[".git"], backend="polling")
+            self.assertTrue(w._is_excluded(os.path.join(root, ".git", "x")))
+            self.assertFalse(w._is_excluded(os.path.join(root, "a.json")))
+
+    def test_graph_dir_equal_source_root_not_excluded(self):
+        """Degenerate config graph_dir == source_root must not exclude all."""
+        with tempfile.TemporaryDirectory() as root:
+            w = FileWatcher(root, exclude_patterns=[], backend="polling",
+                            graph_dir=root)
+            self.assertFalse(w._is_excluded(os.path.join(root, "a.json")))
 
 
 class TestStartWithPlatformFallback(unittest.TestCase):

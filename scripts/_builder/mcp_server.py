@@ -308,8 +308,13 @@ def _tool_search(args: dict, graph_dir: str) -> list:
                 })
             results.sort(key=lambda x: -x["score"])
             return results[:top]
-        except sqlite3.Error:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        except sqlite3.Error as exc:
+            # WARNING, not debug: a persistent SQL error (corrupt db,
+            # schema drift) silently rerouted every search through the
+            # full networkx graph load — slow and unexplained.
+            logging.getLogger(__name__).warning(
+                "_tool_search SQL path failed, falling back to networkx: %s",
+                exc)
         finally:
             if conn is not None:
                 conn.close()

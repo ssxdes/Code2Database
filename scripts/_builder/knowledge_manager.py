@@ -461,7 +461,26 @@ class KnowledgeManager:
         this via a ``_file_sources`` dict mapping filename -> source.
         Files recorded as manual/llm_generated are never overwritten by an
         auto_extracted batch (see _write_knowledge_file).
+
+        Concurrency: the multi-file write + _meta.json update runs under
+        the graph-dir write lock (shared with daemon sync / transactions),
+        so an apply-knowledge racing a daemon auto-refresh can't
+        interleave half-written batches. On lock timeout the write
+        proceeds unsynchronized with a warning (advisory content beats
+        a hard failure).
         """
+        from _builder.transactions import write_lock, GraphLock
+        try:
+            with write_lock(self.graph_dir, timeout=10.0):
+                self._write_knowledge_files_locked(knowledge)
+        except TimeoutError:
+            print(f"[knowledge] WARNING: could not acquire graph write "
+                  f"lock for {self.graph_dir} (held >10s) — writing "
+                  f"knowledge files WITHOUT synchronization",
+                  file=sys.stderr)
+            self._write_knowledge_files_locked(knowledge)
+
+    def _write_knowledge_files_locked(self, knowledge: dict):
         batch_source = knowledge.get("_source", "")
         file_source_overrides = knowledge.get("_file_sources", {})
         # Recorded sources are needed UP FRONT now (guard decisions),

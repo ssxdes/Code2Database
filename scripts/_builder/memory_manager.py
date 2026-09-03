@@ -568,6 +568,32 @@ class MemoryManager:
                     index["roots"] = [r for r in index.get("roots", [])
                                       if r["id"] != eid]
 
+                    if is_root:
+                        # The archived node was a ROOT: its leaves still
+                        # reference it via root_id, but the root file is
+                        # gone — queries and merges would silently skip
+                        # them. Promote each leaf to its own root
+                        # (self-referencing root_id, the add() convention)
+                        # and register it in the roots list.
+                        for em in index["entries"]:
+                            if (em.get("root_id") == eid
+                                    and em["id"] != eid
+                                    and em.get("status") != "experience"):
+                                leaf = self._load_entry(em["id"], is_root=False)
+                                if not leaf:
+                                    continue
+                                leaf["root_id"] = em["id"]
+                                # persist both forms so _load_entry
+                                # resolves it as root OR leaf
+                                self._save_entry(leaf, is_root=False)
+                                self._save_entry(leaf, is_root=True)
+                                em["root_id"] = em["id"]
+                                if not any(r["id"] == em["id"]
+                                           for r in index.get("roots", [])):
+                                    index.setdefault("roots", []).append(
+                                        {"id": em["id"],
+                                         "question": em.get("question", "")})
+
             if archived > 0:
                 # Update experience index
                 exp_index = self._load_exp_index()
@@ -982,8 +1008,8 @@ class MemoryManager:
             return self._pack_standard(index)
 
     def _pack_lite(self, index: dict) -> dict:
-        """~200 tokens: top questions + hot memory list."""
-        top_q = []
+        """~200 tokens: top questions (BY WEIGHT) + hot memory list."""
+        scored = []
         hot = []
         for entry_meta in index["entries"][:20]:
             if entry_meta.get("status") == "experience":
@@ -998,11 +1024,16 @@ class MemoryManager:
             q = entry_meta.get("question", "")
             if w > 0.7:
                 hot.append({"id": eid, "q": q[:60], "w": round(w, 2)})
-            if w > 0.5 or len(top_q) < 5:
-                top_q.append(q[:80])
+            scored.append((w, q[:80]))
+        # top_questions was "the first 5 entries" (insertion order),
+        # not the top-weighted ones — a high-value late-added memory
+        # never made it into the lite pack. _pack_standard already
+        # sorted by weight; do the same here.
+        scored.sort(key=lambda x: -x[0])
+        top_q = [q for _, q in scored[:5]]
 
         pack = {
-            "top_questions": top_q[:5],
+            "top_questions": top_q,
             "hot_memories": sorted(hot, key=lambda x: -x["w"])[:10],
         }
 

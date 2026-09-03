@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-09-03
 
+### Deep Audit Rounds 17–18 — transaction integrity, memory/knowledge correctness, concurrency false negatives, latent L3 tools
+
+**Round 18 — remaining backlog:**
+- Fix thread-context partitioning: callees of DIFFERENT thread entries with the same model all shared one (model, None) bucket — races between two thread families were never compared. Contexts now keyed by the entry's node id (thread_entry_id / thread_entry_inherited propagated at build time); same-named static thread routines in different files are distinct threads. Legacy graphs keep old behavior.
+- Fix groupless lock patterns all mapping to one sentinel ('__rcu_read_lock__') — rcu_read_lock vs preempt_disable were 'the same lock', wrongly suppressing/annotating races. Per-pattern stable sentinels now.
+- Fix GraphLock same-thread re-entrancy deadlock: nested write_lock inside transaction() blocked against itself for the full 60s timeout. Re-entrant acquisition served from an in-process registry; cross-thread/process contention unchanged.
+- Fix remove_node during StreamingGraph's deferred window: flushed edge rows stayed in SQLite and residual batch entries re-introduced them at close(). Now deletes flushed rows (fatal on failure) and purges batch entries.
+- Fix StreamingGraph.close() masking commit failures as 'cannot start a transaction within a transaction' — the original error (disk full/IO) now propagates.
+- Fix trace_data_flow's recursive CTE (never walked multi-hop paths — result was from's direct deps ∪ target's deps); indirect_targets now filters by file via the call-edge join; path_sensitive_states resolves fn through ir_functions (was feeding a cgdb_nodes.id into an ir_functions-keyed table); find_macros N+1 batched into one query; cgdb schema v5 adds idx_tokens_ast_node (find_symbol/delete_node were full-scanning tokens).
+- Fix writeback begin() swallowing snapshot failures (tx registered with no rollback path — rollback silently 'succeeded' at nothing). Snapshot creation now fatal, failing cleanly before any edit applies.
+- Fix query silent degradations: field-flow's partial reader list presented as complete (false negative on the race analysis itself); CTE→networkx fallback invisible at debug level; unbounded '*1..' silently clamped to depth 5 (now a stderr NOTE); reverse-trace enumerated exponentially many paths before keeping 20 (capped at 10000 with a result flag).
+- Fix memory: _pack_lite's top_questions was insertion order, not weight; decay archiving a root orphaned its leaves (now promoted to self-referencing roots).
+- Fix knowledge writes racing daemon sync (whole batch under the graph write lock; degrades with warning on timeout).
+- mcp _tool_search SQL fallback now logs at WARNING; transactions state writes fsynced (crash durability); deadlock-heuristic dead code removed; ANALYSIS LIMITATIONS text updated (TOCTOU is detected).
+
+**Round 17 — transaction/memory/knowledge/concurrency/streaming integrity:**
+- Fix snapshots missing WAL-resident commits (checkpoint first, -wal sidecar fallback; restore returns the exact snapshot state); restore surfaced sidecar-deletion failures instead of swallowing them.
+- Fix tx-begin silently orphaning an active transaction (now rolls it back first, mirroring the context manager).
+- Fix failed rollbacks reported as rolled_back (all three paths now keep the tx ACTIVE + retryable, preserve the WAL as evidence, exit nonzero).
+- Fix memory_manager: corrupt JSON crashed every memory op (tolerated with defaults); 'stronger wins' merge condition was dead code; promote boosts erased by decay (now a persistent formula term); RMW cycles raced (flock across load→mutate→save, verified with threads and processes).
+- Fix knowledge extract-knowledge silently overwriting hand-curated files (provenance-guarded writes; source precedence override > intentional batch > record > batch > inference).
+- Fix TOCTOU pairing across structs (keyed by struct_chain+field) and missing thread-context check.
+- Fix daemon perpetual sync storm when graph_dir == source_root (daemon's own .daemon_status.json writes re-entering the event stream); Round-15 grace test was a 1-in-10 lottery (fake violated the drain contract).
+- Fix StreamingGraph failed edge reload wiping every streamed edge (deferred flag now stays set on failure); cross-flush edge attributes merge on reload; reload streams instead of fetchall.
+- Fix describe-commit/node-history reporting a corrupt change_log as 'never tracked'; mcp_server _CGDB_STORE_CACHE leaked SQLite connections; stats reconciliation mismatch was invisible (now a stderr WARNING); transactions module docstring no longer promises unimplemented WAL replay/two-phase commit.
+
+## [Unreleased] - 2026-09-03
+
 ### Deep Audit Round 16 — MCP design-report write path, query engine robustness, build-flow DB resilience
 
 **P0 Critical Bug Fixes:**

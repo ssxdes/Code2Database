@@ -233,5 +233,37 @@ class TestLimitSemantics(unittest.TestCase):
         self.assertEqual(len(rows), 2)
 
 
+class TestWhereRobustness(unittest.TestCase):
+    """Deep nesting and type-mismatch inputs must degrade gracefully,
+    not crash the CLI with RecursionError/TypeError tracebacks."""
+
+    def test_deeply_nested_parens_is_syntax_error(self):
+        deep = ("MATCH (n) WHERE " + "(" * 3000 + "n.line=1" + ")" * 3000
+                + " RETURN n")
+        with self.assertRaises(SyntaxError):
+            parse_query(deep)
+
+    def test_moderate_nesting_still_parses(self):
+        q = "MATCH (n) WHERE ((n.line=1) AND (n.name='x')) RETURN n"
+        parse_query(q)  # must not raise
+
+    def test_type_mismatch_comparison_returns_false(self):
+        G = _build_test_graph()
+        # n.line is an int; comparing against a string must exclude the
+        # row (SQL NULL semantics), not raise TypeError.
+        rows = execute_query(
+            parse_query("MATCH (n) WHERE n.line < 'abc' RETURN n"), G)
+        self.assertEqual(rows, [])
+        rows = execute_query(
+            parse_query("MATCH (n) WHERE n.name > 5 RETURN n"), G)
+        self.assertEqual(rows, [])
+
+    def test_same_type_comparisons_still_work(self):
+        G = _build_test_graph()
+        rows = execute_query(
+            parse_query("MATCH (n) WHERE n.line < 25 RETURN n"), G)
+        self.assertEqual(len(rows), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

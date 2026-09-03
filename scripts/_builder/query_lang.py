@@ -160,9 +160,16 @@ def _tokenize(s: str) -> List[Tuple[str, str]]:
 # ---------------------------------------------------------------------------
 
 class _Parser:
+    # Nested-parenthesis cap: 'WHERE ((((...))))' recurses through
+    # _parse_where -> _parse_atom per level; a few thousand levels blows
+    # the Python stack with a bare RecursionError (the CLI only catches
+    # SyntaxError). 100 is far beyond any sane hand-written query.
+    MAX_PAREN_DEPTH = 100
+
     def __init__(self, tokens: List[Tuple[str, str]]):
         self.tokens = tokens
         self.pos = 0
+        self._paren_depth = 0
 
     def _peek(self) -> Optional[Tuple[str, str]]:
         if self.pos < len(self.tokens):
@@ -402,9 +409,17 @@ class _Parser:
     def _parse_atom(self) -> Any:
         tok = self._peek()
         if tok and tok[0] == "PUNCT" and tok[1] == "(":
-            self._next()
-            inner = self._parse_where()
-            self._expect("PUNCT", ")")
+            self._paren_depth += 1
+            if self._paren_depth > self.MAX_PAREN_DEPTH:
+                raise SyntaxError(
+                    f"WHERE expression nested more than "
+                    f"{self.MAX_PAREN_DEPTH} parentheses deep")
+            try:
+                self._next()
+                inner = self._parse_where()
+                self._expect("PUNCT", ")")
+            finally:
+                self._paren_depth -= 1
             return inner
         if tok and tok[0] == "STRING":
             return ("lit", self._next()[1])
@@ -505,14 +520,20 @@ def _eval_where(where: Optional[WhereClause], binding: Dict[str, Any]) -> bool:
         return left_val == right_val
     if where.op == "!=":
         return left_val != right_val
-    if where.op == "<":
-        return left_val < right_val
-    if where.op == ">":
-        return left_val > right_val
-    if where.op == "<=":
-        return left_val <= right_val
-    if where.op == ">=":
-        return left_val >= right_val
+    # Ordering comparisons on mismatched types (e.g. n.line < 'abc'
+    # where line is an int) raise TypeError in Python; SQL/Cypher
+    # semantics treat them as non-matching (NULL) — never a crash.
+    try:
+        if where.op == "<":
+            return left_val < right_val
+        if where.op == ">":
+            return left_val > right_val
+        if where.op == "<=":
+            return left_val <= right_val
+        if where.op == ">=":
+            return left_val >= right_val
+    except TypeError:
+        return False
     if where.op == "LIKE":
         # Convert SQL LIKE pattern to regex
         if not isinstance(left_val, str) or not isinstance(right_val, str):

@@ -1478,7 +1478,10 @@ def _get_code_snippet(G: nx.DiGraph, node_id: str, source_root: str = "",
         "line": line_num,
         "signature": nd.get("signature", ""),
         "context_lines": context_lines,
-        "snippet": "\n".join(f"{i+1:4d} | {line}" for i, line in zip(range(start + 1, end + 1), snippet_lines)),
+        # i is the 1-indexed file line number (range starts at start+1);
+        # do NOT add another +1 here — the old f"{i+1:4d}" labeled every
+        # line one higher than its real file line.
+        "snippet": "\n".join(f"{i:4d} | {line}" for i, line in zip(range(start + 1, end + 1), snippet_lines)),
     }
     return result
 

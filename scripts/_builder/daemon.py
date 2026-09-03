@@ -95,6 +95,14 @@ DEFAULT_CONFIG = {
     "adaptive_batch_min_ms": 200,        # floor for adaptive batch_window
     "adaptive_batch_max_ms": 5000,       # ceiling for adaptive batch_window
     "format_only_filter": True,          # distinguish formatting vs real changes
+    # Startup grace period: after daemon start (typically right after a
+    # build or a crash restart), hold sync dispatch for this many seconds.
+    # Events still accumulate in _pending — nothing is lost — but no
+    # heavy sync is forked until the window ends. Covers build-tail
+    # writes still flushing and the crash-restart loop where immediately
+    # re-running the sync that OOM'd the previous daemon just OOMs again.
+    # 0 disables. wait-sync / force-refresh socket commands end it early.
+    "startup_grace_sec": 60.0,
 }
 
 # File extensions to monitor
@@ -853,11 +861,35 @@ class Daemon:
         if _old_state and _old_state.status == STATUS_SYNCING:
             self._log("recovering from crash: last sync was in-progress")
         self._recovered_pending_count = _old_state.pending_events if _old_state else 0
+        # Startup grace window (see DEFAULT_CONFIG["startup_grace_sec"]).
+        # _grace_until is an absolute timestamp; 0/val < now means the
+        # grace is over. Explicit wait-sync / force-refresh commands set
+        # it to 0 to end the grace early.
+        try:
+            _grace_sec = max(0.0, float(self.config.get("startup_grace_sec", 60.0)))
+        except (TypeError, ValueError):
+            _grace_sec = 60.0
+        self._grace_until = time.time() + _grace_sec
+        # Set by start() when the previous daemon left pending events:
+        # the recovery bulk sync is deferred until the grace ends instead
+        # of being forked immediately on restart (crash-loop guard).
+        self._recovered_bulk_pending = False
 
     def start(self):
         """Start the daemon (foreground; blocks until stop())."""
         self._write_state()
         self._setup_signal_handlers()
+        # Apply env-var overrides (D32) — CALLGRAPH_DAEMON_* overrides
+        # config — BEFORE setup, then re-freeze the grace window so the
+        # CALLGRAPH_DAEMON_STARTUP_GRACE_SEC override actually applies
+        # (it was previously read after __init__ had already computed
+        # _grace_until from the config-only value).
+        self._apply_env_overrides()
+        try:
+            _grace_sec = max(0.0, float(self.config.get("startup_grace_sec", 60.0)))
+        except (TypeError, ValueError):
+            _grace_sec = 60.0
+        self._grace_until = time.time() + _grace_sec
         # Wrap setup in try/except so that if any step fails (socket
         # bind, sync worker thread start, watcher start), _cleanup()
         # runs and releases all resources acquired so far (socket fd,
@@ -869,8 +901,17 @@ class Daemon:
             self._start_socket_server()
             self._start_sync_worker()
             if self._recovered_pending_count > 0:
-                self._log(f"recovering {self._recovered_pending_count} pending events via bulk sync")
-                self._enqueue_sync_job("bulk", [])
+                # Defer the recovery bulk sync until the startup grace
+                # ends instead of forking it immediately on restart.
+                # The previous daemon typically died mid-sync (OOM/kill)
+                # with pending state persisted — re-running the same
+                # heavy sync at once repeats the crash in a loop. The
+                # grace window lets memory pressure drain first.
+                self._log(
+                    f"deferring recovery of {self._recovered_pending_count} "
+                    f"pending events until startup grace ends "
+                    f"({self.config.get('startup_grace_sec', 60.0):.0f}s)")
+                self._recovered_bulk_pending = True
                 self._recovered_pending_count = 0
             # Start file watcher. Enable content-hash polling when cgdb is in use
             # so the daemon's change detection matches the cgdb incremental-sync
@@ -909,8 +950,6 @@ class Daemon:
             self._cleanup()
             raise
         # Main loop: batch + dispatch sync jobs to the worker thread
-        # Apply env-var overrides (D32) — CALLGRAPH_DAEMON_* overrides config
-        self._apply_env_overrides()
         batch_window_ms = self.config.get("batch_window_ms", 1000)
         debounce = self.config.get("debounce_ms", 500) / 1000.0
         idle_sleep = self.config.get("idle_sleep_minutes", 30) * 60
@@ -931,7 +970,14 @@ class Daemon:
                 self._check_watched_foreign_c2ds()
             with self._pending_lock:
                 pending_count = len(self._pending)
-            if pending_count == 0:
+            _in_grace = now < self._grace_until
+            if not _in_grace and self._recovered_bulk_pending:
+                # Grace just ended (or was disabled): dispatch the
+                # deferred recovery bulk sync from the previous daemon.
+                self._recovered_bulk_pending = False
+                self._log("startup grace ended; running deferred recovery bulk sync")
+                self._enqueue_sync_job("bulk", [])
+            if pending_count == 0 and not _in_grace:
                 # Idle — check if we should sleep
                 if now - last_activity > idle_sleep:
                     self.state.status = STATUS_IDLE
@@ -943,6 +989,14 @@ class Daemon:
                     self._write_state()
                     self._state_dirty = False
                     self._last_state_write = now
+                time.sleep(1.0)
+                continue
+            if _in_grace:
+                # Startup grace: keep accumulating events in _pending
+                # (nothing is lost) but hold sync dispatch until the
+                # window ends. Prevents the daemon from immediately
+                # forking a heavy sync for build-tail writes or replayed
+                # pending state right after (re)start.
                 time.sleep(1.0)
                 continue
             # Wait for debounce + batch window
@@ -1001,6 +1055,7 @@ class Daemon:
             "CALLGRAPH_DAEMON_FORMAT_ONLY_FILTER": ("format_only_filter",
                                                       lambda x: x.lower() == "true"),
             "CALLGRAPH_DAEMON_BACKEND": ("backend", str),
+            "CALLGRAPH_DAEMON_STARTUP_GRACE_SEC": ("startup_grace_sec", float),
         }
         for env_key, (config_key, caster) in env_map.items():
             val = os.environ.get(env_key)
@@ -1198,11 +1253,24 @@ class Daemon:
             queued = len(self._sync_jobs)
         with self._sync_busy_lock:
             busy = self._sync_busy
+        _now = time.time()
         return {
             "busy": busy,
             "queued_jobs": queued,
             "last_result": self._last_sync_result,
+            # Startup-grace visibility: a client seeing pending events
+            # with no sync activity should be able to tell that the
+            # daemon is intentionally holding dispatch.
+            "startup_grace_active": _now < self._grace_until,
+            "startup_grace_remaining_sec": round(
+                max(0.0, self._grace_until - _now), 1),
         }
+
+    def _end_startup_grace(self):
+        """End the startup grace window early (explicit user request)."""
+        if self._grace_until > time.time():
+            self._log("startup grace ended early by explicit request")
+        self._grace_until = 0.0
 
     def stop(self):
         """Signal the daemon to stop."""
@@ -1682,6 +1750,10 @@ class Daemon:
         elif cmd == "force-refresh":
             path = request.get("path", "")
             if path:
+                # Explicit user request — end the startup grace so the
+                # refresh dispatches immediately instead of waiting out
+                # the window.
+                self._end_startup_grace()
                 with self._pending_lock:
                     self._pending.add(os.path.abspath(path))
                 return {"ok": True, "message": f"queued {path} for refresh"}
@@ -1697,6 +1769,10 @@ class Daemon:
             self._write_state()
             return {"ok": True, "message": "daemon resumed"}
         elif cmd == "wait-sync":
+            # An explicit wait-sync ends the startup grace: the client
+            # wants the graph fresh NOW, so holding queued events for
+            # the grace window would just burn the client's timeout.
+            self._end_startup_grace()
             # Block until pending_events == 0 AND sync worker is idle
             timeout = float(request.get("timeout", 30.0))
             start = time.time()
@@ -1849,6 +1925,9 @@ def cmd_daemon_start(args):
     print(f"[daemon] socket: {_sock}", file=sys.stderr)
     print(f"[daemon] status file: {graph_dir}/.daemon_status.json", file=sys.stderr)
     print(f"[daemon] log file: ~/.code2database/daemon-{Path(graph_dir).name}.log",
+          file=sys.stderr)
+    print(f"[daemon] startup grace: {daemon.config.get('startup_grace_sec', 60.0):.0f}s "
+          f"(sync dispatch held after start; wait-sync/force-refresh end it early)",
           file=sys.stderr)
     print("[daemon] press Ctrl+C to stop", file=sys.stderr)
     daemon.start()

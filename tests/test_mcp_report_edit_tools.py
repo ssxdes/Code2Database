@@ -168,5 +168,55 @@ class TestAliasSet(unittest.TestCase):
         self.assertEqual(res, [])
 
 
+class TestAddFunction(unittest.TestCase):
+    def test_body_tokens_without_file_id_is_rejected(self):
+        d, db, fid = _make_graph_dir()
+        res = m._tool_add_function(
+            {"signature": "int newfn(void)",
+             "body_tokens": [{"kind": "identifier", "spelling": "x"}]},
+            d)
+        self.assertIn("error", res)
+        self.assertIn("file_id", res["error"])
+
+    def test_body_tokens_with_file_id_append_to_stream(self):
+        d, db, fid = _make_graph_dir()
+        res = m._tool_add_function(
+            {"signature": "int newfn(void)", "file_id": fid,
+             "body_tokens": [{"kind": "identifier", "spelling": "x"},
+                             {"kind": "punct", "spelling": ";"}]},
+            d)
+        self.assertNotIn("error", res, res)
+        self.assertEqual(len(res["token_ids"]), 2)
+        conn = sqlite3.connect(db)
+        node = conn.execute(
+            "SELECT file_id FROM cgdb_nodes WHERE id = ?",
+            (res["symbol_id"],)).fetchone()
+        self.assertEqual(node[0], fid)
+        seqs = [r[0] for r in conn.execute(
+            "SELECT seq FROM tokens WHERE spelling IN ('x',';') "
+            "ORDER BY seq").fetchall()]
+        self.assertEqual(seqs, [5, 6])  # appended after existing t1..t4
+        # uniqueness intact
+        n = conn.execute(
+            "SELECT COUNT(*) = COUNT(DISTINCT seq) FROM tokens "
+            "WHERE file_id = ?", (fid,)).fetchone()[0]
+        self.assertEqual(n, 1)
+        conn.close()
+
+    def test_unknown_file_id_is_rejected(self):
+        d, db, fid = _make_graph_dir()
+        res = m._tool_add_function(
+            {"signature": "int newfn(void)", "file_id": 999,
+             "body_tokens": [{"kind": "identifier", "spelling": "x"}]},
+            d)
+        self.assertIn("error", res)
+
+    def test_signature_only_still_works(self):
+        d, db, fid = _make_graph_dir()
+        res = m._tool_add_function({"signature": "int newfn(void)"}, d)
+        self.assertNotIn("error", res, res)
+        self.assertEqual(res["token_ids"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1251,14 +1251,26 @@ def _tool_delete_node(args: dict, graph_dir: str) -> dict:
 
 
 def _tool_add_function(args: dict, graph_dir: str) -> dict:
-    """add_function(signature, body_tokens) -> {symbol_id, token_ids, transaction_id}"""
+    """add_function(signature, body_tokens?, file_id?) -> {symbol_id, token_ids, transaction_id}"""
     signature = args.get("signature", "")
     body_tokens = args.get("body_tokens", [])
+    file_id = int(args.get("file_id", 0) or 0)
     if not signature:
         return {"error": "signature is required"}
+    # tokens.file_id is NOT NULL — body tokens can only be attached to a
+    # real cgdb_files row.
+    if body_tokens and not file_id:
+        return {"error": "file_id is required when body_tokens is given "
+                         "(tokens must belong to a file)"}
     conn = None
     try:
         conn = _get_conn(graph_dir)
+        if file_id:
+            row = conn.execute(
+                "SELECT 1 FROM cgdb_files WHERE id = ?", (file_id,)
+            ).fetchone()
+            if row is None:
+                return {"error": f"file_id {file_id} not found"}
         # Parse function name from signature (very naive — just first identifier)
         sig_words = signature.replace("(", " ").replace("*", " ").split()
         fn_name = sig_words[1] if len(sig_words) > 1 else sig_words[-1]
@@ -1267,23 +1279,29 @@ def _tool_add_function(args: dict, graph_dir: str) -> dict:
             "INSERT INTO cgdb_nodes (kind, name, fqn, file_id, line, col, "
             "byte_start, byte_end, signature, body_text, attrs, source_layer, "
             "confidence) "
-            "VALUES ('function', ?, ?, NULL, 0, 0, 0, 0, ?, '', "
+            "VALUES ('function', ?, ?, ?, 0, 0, 0, 0, ?, '', "
             "'{\"inserted\":true}', 'llm', 0.7)",
-            (fn_name, fn_name, signature)
+            (fn_name, fn_name, file_id if file_id else None, signature)
         )
         symbol_id = cur.lastrowid
         # Insert body tokens (placeholder — real tokens would come from
         # tokenizing the body; we just store a placeholder for now)
         token_ids = []
-        for i, tok in enumerate(body_tokens[:200]):  # cap at 200 tokens
-            cur = conn.execute(
-                "INSERT INTO tokens (file_id, seq, kind, spelling, line, col, "
-                "byte_offset, byte_length, preceding_whitespace, ast_node_id) "
-                "VALUES (NULL, ?, ?, ?, 0, 0, 0, 0, '', ?)",
-                (i, tok.get("kind", "identifier"),
-                 tok.get("spelling", ""), symbol_id)
-            )
-            token_ids.append(cur.lastrowid)
+        if body_tokens:
+            base_seq = conn.execute(
+                "SELECT COALESCE(MAX(seq), -1) FROM tokens WHERE file_id = ?",
+                (file_id,)
+            ).fetchone()[0]
+            for i, tok in enumerate(body_tokens[:200]):  # cap at 200 tokens
+                cur = conn.execute(
+                    "INSERT INTO tokens (file_id, seq, kind, spelling, line, "
+                    "col, byte_offset, byte_length, preceding_whitespace, "
+                    "ast_node_id) "
+                    "VALUES (?, ?, ?, ?, 0, 0, 0, 0, '', ?)",
+                    (file_id, base_seq + 1 + i, tok.get("kind", "identifier"),
+                     tok.get("spelling", ""), symbol_id)
+                )
+                token_ids.append(cur.lastrowid)
         conn.commit()
         return {
             "symbol_id": symbol_id,
@@ -1645,7 +1663,7 @@ TOOLS_REPORT = {
         "handler": _tool_delete_node,
     },
     "add_function": {
-        "description": "Add a new function to the graph. Inserts a function node + body tokens. Use commit_db_transaction to render and write to disk. (design-report B.5)",
+        "description": "Add a new function to the graph. Inserts a function node; body_tokens (max 200) require a file_id and are appended to that file's token stream. Use commit_db_transaction to render and write to disk. (design-report B.5)",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1656,7 +1674,8 @@ TOOLS_REPORT = {
                                               "kind": {"type": "string"},
                                               "spelling": {"type": "string"},
                                           }},
-                                "description": "Body tokens (max 200)"},
+                                "description": "Body tokens (max 200; requires file_id)"},
+                "file_id": {"type": "integer", "description": "File to attach the function and its body tokens to (required when body_tokens is given)"},
             },
             "required": ["signature"],
         },

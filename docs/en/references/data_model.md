@@ -331,7 +331,7 @@ Each predicate carries a `status` field:
 
 `SQLiteStore.SCHEMA_VERSION` (currently **12**, on the legacy tables side of the same db) tracks the non-cgdb schema. v9-v12 added:
 
-- **kb_paragraphs** (Phase 1) — unified FTS5+BM25 index across `memory/*.json` + `knowledge/*.md`; replaces per-store Jaccard / substring search. Rebuildable via `kb-rebuild-index`.
+- **kb_paragraphs** (Phase 1) — unified FTS5+BM25 index across `memory.db` + `knowledge/brief.json`; replaces per-store Jaccard / substring search. Rebuildable via `kb-rebuild-index`.
 - **kb_paragraphs_fts** — FTS5 virtual table (porter + unicode61 tokenizer) over title/body/tags with AI/AD/AU triggers.
 - **scope_id / canonical_id / principle_ref** columns (Phase 4) — clustering + cross-kind linking.
 - **embedding BLOB** column (Phase 5) — optional 384-dim float32 for semantic search; NULL when sentence-transformers unavailable.

@@ -101,7 +101,6 @@ These commands are listed by **name only**. They are experimental, niche, or rar
 - `explain-label` — explain why a node got a particular label
 - `why-ambiguous` — explain why an edge is marked AMBIGUOUS
 - `extract-semantics` / `apply-semantics` — extract and apply semantic descriptions from docs
-- `extract-knowledge` / `apply-knowledge` / `knowledge-query` / `knowledge-validate` — knowledge management
 - `audit-log` — view audit log of past writes
 
 ## Activation Hand-off
@@ -124,7 +123,7 @@ When you detect a question about **simple browsing, scanning, building, or gener
 - **FFI tracing**: requires BOTH source and target language scanners to detect a binding site
 - **Invariants confidence**: never apply AMBIGUOUS invariants; INFERRED require user confirmation before `apply-invariants`
 - **Commit provenance**: every node/edge carries `commit_meta.source_commit` (git/svn hash). Verify with `git show <hash>`, not timestamps
-- **Database write constraint**: any DB-modifying command (`apply-invariants`, `add-semantic-edges`, `apply-semantics`, `apply-knowledge`) **requires user confirmation first**. See `references/analysis_commands.md` for the full protocol.
+- **Database write constraint**: any DB-modifying command (`apply-invariants`, `add-semantic-edges`, `apply-semantics`) **requires user confirmation first**. See `references/analysis_commands.md` for the full protocol.
 - **Do not pre-load** `references/analysis_commands.md` — read on demand only when you need detailed syntax for a specific command
 - **cgdb clang backend is recommended, not required** — tree-sitter-only mode remains fully functional; cgdb_* MCP tools return empty results in that mode
 

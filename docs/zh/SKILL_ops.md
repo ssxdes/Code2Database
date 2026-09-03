@@ -41,7 +41,7 @@ LLM 执行任何修改 code graph database的命令时，**必须先获得用户
 - `classify-endpoints` — 应用 LLM 端点分类结果
 - `manage-memory --action add/correct/reshape/promote/refine` — 写入持久记忆
 - `save-memory` — 保存 Q&A 记忆
-- `kb-rebuild-index` — 从 memory/*.json + knowledge/*.md 重建统一 FTS5 索引（每次 build/update 或手动修改后运行）
+- `kb-rebuild-index` — 从 memory.db + brief.json 重建统一 FTS5 索引（每次 build/update 或修改后运行）
 - `kb-cluster` — 聚类相似 kb 条目 + 链接 memory_qa → knowledge_principle
 - `kb-migrate` — 把 kb_paragraphs 迁移到 kb_items（fact 级 + versions + provenance）
 - `kb-forget --id N` — 立即删除某条 kb_paragraph（不靠 decay，写 audit_log）
@@ -92,7 +92,7 @@ LLM 执行任何修改 code graph database的命令时，**必须先获得用户
 | `update-node` | LLM 增量补充节点属性（**需用户确认**，非破坏性） |
 | `update-edge` | LLM 增量补充边属性（**需用户确认**，非破坏性） |
 | `serve` | MCP 服务器模式（stdio，81 个工具 (53 base + 28 design-report)：34 code2database_* + 19 cgdb_*） |
-| `kb-rebuild-index` | 从 memory/ + knowledge/ 重建统一 FTS5 索引（build/update 后运行） |
+| `kb-rebuild-index` | 从 memory.db + brief.json 重建统一 FTS5 索引（build/update 后运行） |
 | `kb-cluster` | 聚类相似 kb 条目 + 链接 principle |
 | `kb-audit` | KB 审计：counts by kind / stale / low-confidence / citations |
 | `kb-known-unknowns` | 列出未命中的查询（feedback loop） |
@@ -109,7 +109,7 @@ LLM 执行任何修改 code graph database的命令时，**必须先获得用户
 | **保持图谱新鲜** | `daemon-start` → `daemon-status` → `daemon-pause` / `daemon-resume` / `daemon-force-refresh` / `daemon-wait-sync` / `daemon-logs` / `daemon-reload` / `daemon-list-projects` → `daemon-stop`；或 `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes` |
 | **profile 与文档-代码** | `profile-health` → `profile-evolve` → `profile-bind-version`；`doc-code-check` → `doc-alignment-report` → `doc-signature-diff` → `doc-mark-stale` |
 | **图谱版本** | `graph-record-version` → `graph-history` → `graph-diff` |
-| **记忆管理** | `save-memory` → `search-memory` → `manage-memory` → `memory-health` → `validate-memory` |
+| **记忆管理** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory` |
 | **导出 / 插件 / 基准** | `export-html` / `export-obsidian` / `web-ui`；`plugins` / `validate-plugin`；`bug-benchmark` |
 | **Embeddings（实验性）** | `embeddings-build` → `embeddings-search` |
 
@@ -140,7 +140,7 @@ LLM 执行任何修改 code graph database的命令时，**必须先获得用户
 - **守护进程新鲜度**：重要查询前调用 `daemon-status`；若 `syncing` 或 `pending_events > 0`，调用 `daemon-wait-sync` 阻塞至同步完成。断路器在事件率超过 1000/分钟时触发整体重建
 - **文档-代码对齐**：`describe-node`（父技能）暴露 `doc_code_mismatches`——若非空，`semantic_desc` 可能不可靠；查阅 `body_text` 并考虑 `doc-mark-stale` 直到文档重新提取
 - **profile 演化**：`profile-evolve --apply` 只应用 EXTRACTED 置信度建议；INFERRED **需用户确认**。演化后运行 `profile-bind-version` 绑定 git/svn HEAD
-- **记忆管理**：`manage-memory --action add/correct/reshape/promote/refine` 需用户确认；`save-memory` 需用户确认
+- **记忆管理**：`manage-memory` 写操作（add/correct/reshape/promote/refine/split/merge/move）与 `save-memory` 需用户确认；`brief-update` 修改必载知识简报
 - **MCP 服务器**：`serve` 暴露 81 个工具 (53 base + 28 design-report)（34 个 `code2database_*` + 19 个 `cgdb_*`）；无论子技能是否激活，全部可访问
 - **禁止预加载** `references/ops_commands.md`——仅在需要某命令的详细语法时按需读取
 - **守护进程日志**位于 `~/.code2database/daemon-<project>.log`；守护进程状态位于 `<graph_dir>/.daemon_status.json`

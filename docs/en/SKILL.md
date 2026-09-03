@@ -32,11 +32,15 @@ top kb hits as a `_hints` field alongside graph rows.
 ## Quick Start
 
 ```bash
+# 0. Session start (MANDATORY): load the project brief into your prompt
+python3 scripts/code2database_builder.py knowledge-brief --graph code2db-out/
+#   → if missing: brief-extract to bootstrap, then curate with brief-update
+
 # 1. Scan + build (one-time)
 python3 scripts/code2database_scanner.py scan --source /path --output ext.json
 python3 scripts/code2database_builder.py build --extraction ext.json --outdir code2db-out/
 
-# 2. Build unified KB index (after first build, or after memory/knowledge changes)
+# 2. Build unified KB index (after first build, or after memory/brief changes)
 python3 scripts/code2database_builder.py kb-rebuild-index --graph code2db-out/
 
 # 3. Query (repeatable)
@@ -61,10 +65,10 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP serve
 | `context` | Get context around a location | Graph |
 | `build` | Scan + build graph | — |
 | `update` | Incremental re-scan | — |
-| `save-memory` | Save Q&A to memory (alias: `save`) | Memory |
-| `search-memory` | Search memory for past answers (alias: `recall`) | Memory |
-| `knowledge-query` | Query knowledge base (alias: `know`) | Knowledge |
-| `kb-rebuild-index` | Rebuild FTS5 index from filesystem | Memory+Knowledge |
+| `save-memory` | Save Q&A to memory, `--category bdev/nvme/pcie` `--author` (alias: `save`) | Memory |
+| `search-memory` | Search memory: FTS5 + `--category/--tags/--author` filters (alias: `recall`) | Memory |
+| `knowledge-brief` | Render project brief — load at session start (alias: `brief`) | Knowledge |
+| `kb-rebuild-index` | Rebuild FTS5 index from memory.db + brief.json | Memory+Knowledge |
 | `kb-cluster` | Cluster similar items + link principles | Memory+Knowledge |
 | `kb-known-unknowns` | List unanswered queries (feedback loop) | Memory+Knowledge |
 | `kb-audit` | Knowledge audit (citations, staleness, confidence) | Memory+Knowledge |
@@ -97,7 +101,10 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 
 ## Constraints
 
-- Run `kb-rebuild-index` after `build`/`update` or after manual memory/knowledge edits
+- **Session start**: run `knowledge-brief` (alias `brief`) FIRST — the brief holds this project's mandatory rules (forced macros/branches), usage modes, and pitfalls
+- Run `kb-rebuild-index` after `build`/`update` or after memory/brief edits
+- Memory is a shared accumulating store (memory.db): save with `--category path/to/topic` + `--author`; govern with `manage-memory --action split/merge/move/categories`
+- Knowledge (brief.json) must stay lean: `brief-validate` warns above 3000 chars; move overflow into memory instead
 - Start with `context_pack_micro` → `context_pack_lite` → `describe`/`trace`
 - Only 7 labels: API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end
 - Edge confidence: EXTRACTED / INFERRED / AMBIGUOUS

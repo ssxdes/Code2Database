@@ -101,7 +101,6 @@ parent_skill: Code2Database
 - `explain-label` — 解释某节点为何得到某标签
 - `why-ambiguous` — 解释某边为何标记为 AMBIGUOUS
 - `extract-semantics` / `apply-semantics` — 从文档提取并应用语义描述
-- `extract-knowledge` / `apply-knowledge` / `knowledge-query` / `knowledge-validate` — 知识管理
 - `audit-log` — 查看历史写入审计日志
 
 ## 激活移交
@@ -124,7 +123,7 @@ parent_skill: Code2Database
 - **FFI 追踪**：需要源语言和目标语言扫描器同时检测到绑定位置
 - **不变量置信度**：禁止应用 AMBIGUOUS 不变量；INFERRED 在 `apply-invariants` 前需用户确认
 - **提交来源**：每个节点/边带 `commit_meta.source_commit`（git/svn 哈希）。用 `git show <hash>` 校验，而非时间戳
-- **数据库写入约束**：任何修改数据库的命令（`apply-invariants`、`add-semantic-edges`、`apply-semantics`、`apply-knowledge`）**必须先获得用户确认**。完整协议见 `references/analysis_commands.md`
+- **数据库写入约束**：任何修改数据库的命令（`apply-invariants`、`add-semantic-edges`、`apply-semantics`）**必须先获得用户确认**。完整协议见 `references/analysis_commands.md`
 - **禁止预加载** `references/analysis_commands.md`——仅在需要某命令的详细语法时按需读取
 - **cgdb clang 后端是推荐项，非必装**——tree-sitter-only 模式仍然完全可用；该模式下 cgdb_* MCP 工具返回空结果
 

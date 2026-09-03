@@ -26,6 +26,7 @@ Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/
 - MSVC `__asm {}` block support and ERROR node fallback
 - Static fn-ptr dispatch array resolution (dispatch_op)
 - LLM context packs (micro/lite/standard/full tiers)
+- Dual knowledge/memory stores — knowledge = lean per-project brief (`knowledge/brief.json`, mandatory session-start load via `knowledge-brief`, size-budgeted); memory = shared SQLite accumulating store (`memory/memory.db`, hierarchical categories `bdev/nvme/pcie`, FTS5 BM25 retrieval, split/merge/move governance)
 - MCP server mode for real-time agent queries (81 tools: 34 `code2database_*` + 19 `cgdb_*` + 28 design-report)
 
 Capabilities:
@@ -123,7 +124,7 @@ Capability modules have dedicated unit tests in `tests/` covering:
 - Update command (confirmation gate, attribute parsing, backend detection)
 - Profile generation (auto-profile, project-type detection, struct_op_types)
 
-**Test suite**: 1990 tests across 110 files (1250 at v1.3.0 + 740 added since). Run with `python3 -m pytest tests/ -v`. 1989 passed, 1 skipped (libclang fallback path).
+**Test suite**: 2067 tests across 110 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails.)
 
 ## Language Support
 

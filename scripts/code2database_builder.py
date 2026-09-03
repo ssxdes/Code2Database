@@ -1042,6 +1042,8 @@ def main():
     p_bu.add_argument("--index", default=None, type=int, help="Item index to remove")
     p_bu.add_argument("--value", default=None,
                       help="Value (plain text) or JSON object/array for --set/--add")
+    p_bu.add_argument("--json", dest="value", default=None,
+                      help="Alias for --value (JSON item for --add)")
     p_bu.add_argument("--refresh-stats", dest="refresh_stats", action="store_true",
                       help="Refresh auto graph_stats section")
 

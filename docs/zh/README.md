@@ -216,7 +216,7 @@ bash scripts/setup.sh --languages c,go
 | **一键探索** | `explore-flow` — 单次查询获取相关节点、路径和条件 |
 | **增量更新** | `quick-update` 无需 LLM；`light-scan`/`patch-from-git` 零 token 更新 |
 | **MCP 服务器** | `serve` — 通过 stdio 暴露 81 个查询工具（34 code2database_* + 19 cgdb_*）供 LLM 代理使用 |
-| **知识管理** | `extract-knowledge`/`knowledge-query` — 原则性不变知识存储 |
+| **知识（简报）** | `knowledge-brief`/`brief-update` — 精简必载的项目简报 |
 | **记忆系统** | `save-memory`/`search-memory`/`manage-memory` — 持久 Q&A 记忆 + 衰减 |
 | **影响半径** | `blast-radius` — 变更影响的函数/API/测试 |
 | **数据竞争检测** | `detect-races`/`concurrency-analyze` — 跨线程竞争和死锁检测 |
@@ -388,9 +388,9 @@ bash scripts/setup.sh --languages c,go
 
 | 命令 | 说明 |
 |------|------|
-| `extract-knowledge` | 从代码推断提取原则性知识 |
-| `knowledge-query` | 按主题查询知识 |
-| `knowledge-validate` | 对照图谱验证知识（含文档-代码对齐检查） |
+| `knowledge-brief` | 渲染项目简报（会话启动必载） |
+| `brief-extract` / `brief-update` | 自举 / 精炼项目简报 |
+| `brief-validate` | 校验简报（schema、体积预算、图漂移） |
 | `save-memory` | 保存 Q&A 记忆 |
 | `search-memory` | 搜索记忆（带衰减） |
 | `manage-memory` | 记忆 CRUD 与衰减（**需用户确认**） |

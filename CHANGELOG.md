@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-09-03
 
+### Memory → SQLite, Knowledge → project brief (Round 20)
+
+Redesigned the two long-lived stores around their real shapes: memory is BIG and messy (many people, many question depths, shared accumulation) while knowledge is LEAN and mandatory (fixed per-project architecture/function/design/usage, loaded into the prompt at every session start).
+
+**Memory (memory/memory.db — SQLite WAL + FTS5):**
+- `categories` table with materialized paths (`bdev/nvme/pcie`) — missing levels auto-created on save; `manage-memory --action categories` lists the tree with direct/subtree counts
+- `memories` + `memories_fts`: BM25 retrieval × weight with category-prefix (subtree), tag (ALL), author, and status filters; token-similarity fallback; results grouped by similarity cluster (variant_count) so one hot Q&A can't flood the list
+- Governance for the shared store: `split` (over-broad entry → focused children with lineage), `merge` (duplicates → canonical, variants re-pointed), `move` (recategorize)
+- `author` attribution for multi-user stores
+- Weight/decay formula, merge threshold 0.7, weak-merge protection, persisted boost, L0/L1/L2 packs — all unchanged from the JSON store
+- MemoryManager is now a facade over MemoryStore (public API stable — graph_build/MCP/CLI call sites unchanged); scratch sessions stay file-based
+- Old `memory/*.json` data is NOT migrated (fresh start per user decision); files on disk are ignored
+
+**Knowledge (knowledge/brief.json — the project brief):**
+- Sections: project / one_liner / description / hard_rules (mandatory macros/branches/configs with type+evidence) / modes (usage scenario distinctions, e.g. pcie vs tcp vs rdma) / key_abstractions / conventions / pitfalls / query_paths / must_know / auto graph_stats
+- Session-start protocol: `knowledge-brief` (alias `brief`) renders the prompt form — documented as Step 0 in SKILL.md (en/zh)
+- `brief-update --set/--add/--remove/--refresh-stats` for small-scope adjustments; `brief-extract` bootstraps from graph stats; `brief-validate` enforces the size budget (warn >3000 chars, error >6000) and flags graph drift >20%
+- The old knowledge/*.md system (extract/apply/query/validate commands, curation guard, MD packs, `knowledge_manager.py`) is fully removed; `import-foreign-knowledge` now copies the foreign brief; cgdb cross-branch knowledge merging retired (briefs are per-project curated); memory merging is DB→DB
+- kb_index sources switched: memory from memory.db, knowledge from brief sections (new FTS kinds: hard_rule/mode/abstraction/...); MCP knowledge tool falls back to rendering the brief itself
+
+**Tests:** +96 new/rewritten (test_memory_store 62, test_knowledge_brief 34); test_memory_manager*/test_memory_cmd rewritten for DB semantics; test_kb_modules/test_c2d_phase3 fixtures switched to DB+brief; old MD tests removed. Suite: 2067 tests / 110 files.
+
 ### Deep Audit Round 19 — test-coverage enrichment (276 new cases, 10 files, 4 bugs found by the new tests)
 
 Systematic interface-by-interface test enrichment driven by a static coverage map (public functions per module vs test references). New test files: test_search_cmd (44), test_query_cmds (41), test_transactions_wal_api (21), test_line_utils (14), test_logging_utils (23), test_memory_guard (36), test_cgdb_commands (34), test_memory_cmd (18), test_analysis_helpers (25), test_validate (20).

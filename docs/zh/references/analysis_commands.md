@@ -658,15 +658,17 @@ python3 scripts/code2database_builder.py apply-semantics \
   [--yes]  # 不推荐——需用户确认
 ```
 
-### `extract-knowledge` / `apply-knowledge` / `knowledge-query` / `knowledge-validate`
+### `knowledge-brief` / `brief-update` / `brief-extract` / `brief-validate`
 
-知识管理命令。`apply-knowledge` 需用户确认。
+项目简报命令（知识 = 精简必载简报）。每次会话启动加载简报；架构变化时小范围调整。
 
 ```bash
-python3 scripts/code2database_builder.py extract-knowledge --graph code2db-out/ --topic TOPIC [--json]
-python3 scripts/code2database_builder.py apply-knowledge --graph code2db-out/ --topic TOPIC [--yes]
-python3 scripts/code2database_builder.py knowledge-query --graph code2db-out/ --topic TOPIC [--json]
-python3 scripts/code2database_builder.py knowledge-validate --graph code2db-out/ --topic TOPIC [--json]
+python3 scripts/code2database_builder.py knowledge-brief --graph code2db-out/ [--json]
+python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --set one_liner --value "..."
+python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --add hard_rules --json '{"rule": "强制开启 XXX 宏", "type": "macro"}'
+python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --add modes --json '{"name": "pcie", "when": "...", "differences": "..."}'
+python3 scripts/code2database_builder.py brief-extract --graph code2db-out/
+python3 scripts/code2database_builder.py brief-validate --graph code2db-out/
 ```
 
 ## cgdb MCP 工具（19 个，clang 后端）

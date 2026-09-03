@@ -594,23 +594,28 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" export-html --graph code2d
 python3 "$SKILL_DIR/scripts/code2database_builder.py" export-obsidian --graph code2db-out/
 ```
 
-## 第9b步 — 知识管理
+## 第9b步 — 知识（项目简报）
 
 ```bash
-# 从文档和图谱推断提取知识
-python3 "$SKILL_DIR/scripts/code2database_builder.py" extract-knowledge \
-  --graph code2db-out/ --source SOURCE_PATH
-
-# Claude填写知识后写回
-python3 "$SKILL_DIR/scripts/code2database_builder.py" apply-knowledge \
+# 会话启动（必须）：把简报渲染进 prompt
+python3 "$SKILL_DIR/scripts/code2database_builder.py" knowledge-brief \
   --graph code2db-out/
 
-# 按主题查询知识
-python3 "$SKILL_DIR/scripts/code2database_builder.py" knowledge-query \
-  --graph code2db-out/ --topic "架构"
+# 首次：从图谱统计自举简报模板
+python3 "$SKILL_DIR/scripts/code2database_builder.py" brief-extract \
+  --graph code2db-out/
+
+# 精炼：强制宏、使用模式、坑
+python3 "$SKILL_DIR/scripts/code2database_builder.py" brief-update \
+  --graph code2db-out/ --add hard_rules \
+  --json '{"rule": "强制开启 XXX 宏", "type": "macro"}'
+
+# 校验（schema、体积预算、图漂移）
+python3 "$SKILL_DIR/scripts/code2database_builder.py" brief-validate \
+  --graph code2db-out/
 ```
 
-知识存储在 `code2db-out/knowledge/` 下：architecture.md、module_*.md、constraints.md、glossary.md、patterns.md、build_rules.md
+知识即精简的项目简报：`code2db-out/knowledge/brief.json`。
 
 ## 第9c步 — 高效图谱更新
 
@@ -703,7 +708,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" quick-update \
 cat code2db-out/ARCHITECTURE_FLOWS.md
 
 # 验证知识文件质量（空文件、签名文件、模板标记检测）
-python3 "$SKILL_DIR/scripts/code2database_builder.py" knowledge-validate \
+python3 "$SKILL_DIR/scripts/code2database_builder.py" brief-validate \
   --graph code2db-out/
 ```
 
@@ -795,7 +800,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `add-function` | Add a new function to the graph |
 | `add-semantic-edges` | Walk graph and add ALLOCATES/FREES/LOCKS/UNLOCKS edges from body text |
 | `apply-invariants` | Apply LLM-enhanced invariants from .code2database_invariants.json back to the graph |
-| `apply-knowledge` | Apply LLM knowledge to knowledge directory |
+| `brief-update` | 更新项目简报的某一节 |
 | `apply-semantics` | Apply LLM semantic descriptions to graph |
 | `ast-search` | Structural code search: write patterns AS code with $metavars and ... ellipsis |
 | `audit-log` | Query the audit log (who edited what, when, why) |
@@ -893,7 +898,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `export-obsidian` | Export invocation graph as Obsidian vault with [[links]] = calls |
 | `extract-invariants` | Extract preconditions/postconditions/loop_invariants + state machines from function bodies |
 | `extract-invariants-llm` | Extract invariants with LLM consensus and continuous confidence |
-| `extract-knowledge` | Extract knowledge from docs and graph |
+| `brief-extract` | 从图谱统计自举/刷新简报模板 |
 | `extract-semantics` | Export nodes for LLM semantic description |
 | `extract-signals` | Extract #ifdef condition→affected edges map |
 | `ffi-auto-link` | Auto-link FFI bindings to watched foreign C2Ds |
@@ -940,8 +945,8 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `kb-rebuild-index` | Rebuild the unified kb_paragraphs FTS5 index  |
 | `kb-rollback` | Restore a kb_item to a prior version |
 | `key-paths` | Extract key execution paths from entry points automatically |
-| `knowledge-query` | Query knowledge by topic |
-| `knowledge-validate` | Validate knowledge against current graph |
+| `knowledge-brief` | 渲染项目简报（会话启动加载） |
+| `brief-validate` | 校验简报（schema、体积预算、图漂移） |
 | `light-scan` | Lightweight scan of changed files (no LLM) |
 | `load` | Load and summarize the invocation graph |
 | `lock-coverage` | Analyze lock-held regions and per-access locksets (replaces over-approximation) |

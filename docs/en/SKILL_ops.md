@@ -39,9 +39,9 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 - `patch-profile` — LLM-driven incremental auto-profile calibration
 - `apply-semantics` — Apply LLM-filled semantic descriptions to graph
 - `classify-endpoints` — Apply LLM endpoint classification results
-- `manage-memory --action add/correct/reshape/promote/refine` — Write persistent memory
+- `manage-memory --action add/correct/reshape/promote/refine/split/merge/move` — Write persistent memory
 - `save-memory` — Save Q&A memory
-- `kb-rebuild-index` — Rebuild unified FTS5 index from memory/*.json + knowledge/*.md (run after each build/update or manual edit)
+- `kb-rebuild-index` — Rebuild unified FTS5 index from memory.db + brief.json (run after each build/update or edit)
 - `kb-cluster` — Cluster similar kb items + link memory_qa → knowledge_principle
 - `kb-migrate` — Migrate kb_paragraphs to kb_items (fact-level + versions + provenance)
 - `kb-forget --id N` — Immediately delete a kb_paragraph (no decay; writes audit_log)
@@ -92,7 +92,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 | `update-node` | LLM-driven incremental node attribute supplement (**requires user confirmation**, non-destructive) |
 | `update-edge` | LLM-driven incremental edge attribute supplement (**requires user confirmation**, non-destructive) |
 | `serve` | MCP server mode (stdio, 81 tools: 34 code2database_* + 19 cgdb_* + 28 design-report) |
-| `kb-rebuild-index` | Rebuild unified FTS5 index from memory/ + knowledge/ (run after build/update) |
+| `kb-rebuild-index` | Rebuild unified FTS5 index from memory.db + brief.json (run after build/update) |
 | `kb-cluster` | Cluster similar kb items + link principle refs |
 | `kb-audit` | KB audit: counts by kind / stale / low-confidence / citations |
 | `kb-known-unknowns` | List unmatched queries (feedback loop) |
@@ -109,7 +109,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 | **Keep graph up to date** | `daemon-start` → `daemon-status` → `daemon-pause` / `daemon-resume` / `daemon-force-refresh` / `daemon-wait-sync` / `daemon-logs` / `daemon-reload` / `daemon-list-projects` → `daemon-stop` ; or `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes` |
 | **Profile and doc-code** | `profile-health` → `profile-evolve` → `profile-bind-version` ; `doc-code-check` → `doc-alignment-report` → `doc-signature-diff` → `doc-mark-stale` |
 | **Graph versioning** | `graph-record-version` → `graph-history` → `graph-diff` |
-| **Memory management** | `save-memory` → `search-memory` → `manage-memory` → `memory-health` → `validate-memory` |
+| **Memory management** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory` |
 | **Export / plugin / benchmark** | `export-html` / `export-obsidian` / `web-ui` ; `plugins` / `validate-plugin` ; `bug-benchmark` |
 | **Embeddings (experimental)** | `embeddings-build` → `embeddings-search` |
 
@@ -140,7 +140,7 @@ When you detect a question about **simple browsing, scanning, building, or gener
 - **Daemon freshness**: call `daemon-status` before important queries; if `syncing` or `pending_events > 0`, call `daemon-wait-sync` to block until sync completes. Circuit breaker triggers bulk rebuild above 1000 events/minute
 - **Doc-code alignment**: `describe-node` (parent skill) surfaces `doc_code_mismatches` — if non-empty, `semantic_desc` may be unreliable; consult `body_text` and consider `doc-mark-stale` until docs are re-extracted
 - **Profile evolution**: `profile-evolve --apply` only applies EXTRACTED-confidence suggestions; INFERRED **require user confirmation**. Run `profile-bind-version` after evolution to bind to git/svn HEAD
-- **Memory management**: `manage-memory --action add/correct/reshape/promote/refine` requires user confirmation; `save-memory` requires user confirmation
+- **Memory management**: `manage-memory` write actions (add/correct/reshape/promote/refine/split/merge/move) and `save-memory` require user confirmation; `brief-update` edits the mandatory-load knowledge brief
 - **MCP server**: `serve` exposes 81 tools (34 `code2database_*` + 19 `cgdb_*` + 28 design-report); all accessible regardless of sub-skill activation
 - **Do not pre-load** `references/ops_commands.md` — read on demand only when you need detailed syntax for a specific command
 - **Daemon logs** at `~/.code2database/daemon-<project>.log`; daemon state at `<graph_dir>/.daemon_status.json`

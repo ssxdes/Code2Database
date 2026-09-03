@@ -658,15 +658,17 @@ python3 scripts/code2database_builder.py apply-semantics \
   [--yes]  # NOT recommended — requires user confirmation
 ```
 
-### `extract-knowledge` / `apply-knowledge` / `knowledge-query` / `knowledge-validate`
+### `knowledge-brief` / `brief-update` / `brief-extract` / `brief-validate`
 
-Knowledge management commands. `apply-knowledge` requires user confirmation.
+Project brief commands (knowledge = the lean, mandatory-load brief). Load the brief at every session start; adjust it in small scope when the architecture changes.
 
 ```bash
-python3 scripts/code2database_builder.py extract-knowledge --graph code2db-out/ --topic TOPIC [--json]
-python3 scripts/code2database_builder.py apply-knowledge --graph code2db-out/ --topic TOPIC [--yes]
-python3 scripts/code2database_builder.py knowledge-query --graph code2db-out/ --topic TOPIC [--json]
-python3 scripts/code2database_builder.py knowledge-validate --graph code2db-out/ --topic TOPIC [--json]
+python3 scripts/code2database_builder.py knowledge-brief --graph code2db-out/ [--json]
+python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --set one_liner --value "..."
+python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --add hard_rules --json '{"rule": "强制开启 XXX 宏", "type": "macro"}'
+python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --add modes --json '{"name": "pcie", "when": "...", "differences": "..."}'
+python3 scripts/code2database_builder.py brief-extract --graph code2db-out/
+python3 scripts/code2database_builder.py brief-validate --graph code2db-out/
 ```
 
 ## cgdb MCP Tools (19 tools, clang backend)

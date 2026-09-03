@@ -594,23 +594,28 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" export-html --graph code2d
 python3 "$SKILL_DIR/scripts/code2database_builder.py" export-obsidian --graph code2db-out/
 ```
 
-## Step 9b — Knowledge Management
+## Step 9b — Knowledge (Project Brief)
 
 ```bash
-# Extract knowledge from docs and graph inference
-python3 "$SKILL_DIR/scripts/code2database_builder.py" extract-knowledge \
-  --graph code2db-out/ --source SOURCE_PATH
-
-# Claude fills in knowledge then writes back
-python3 "$SKILL_DIR/scripts/code2database_builder.py" apply-knowledge \
+# Session start (MANDATORY): render the brief into your prompt
+python3 "$SKILL_DIR/scripts/code2database_builder.py" knowledge-brief \
   --graph code2db-out/
 
-# Query knowledge by topic
-python3 "$SKILL_DIR/scripts/code2database_builder.py" knowledge-query \
-  --graph code2db-out/ --topic "architecture"
+# Bootstrap the brief template from graph stats (first time)
+python3 "$SKILL_DIR/scripts/code2database_builder.py" brief-extract \
+  --graph code2db-out/
+
+# Curate: mandatory macros, usage modes, pitfalls
+python3 "$SKILL_DIR/scripts/code2database_builder.py" brief-update \
+  --graph code2db-out/ --add hard_rules \
+  --json '{"rule": "强制开启 XXX 宏", "type": "macro"}'
+
+# Validate (schema, size budget, graph drift)
+python3 "$SKILL_DIR/scripts/code2database_builder.py" brief-validate \
+  --graph code2db-out/
 ```
 
-Knowledge stored under `code2db-out/knowledge/`: architecture.md, module_*.md, constraints.md, glossary.md, patterns.md, build_rules.md
+Knowledge is the lean per-project brief: `code2db-out/knowledge/brief.json`.
 
 ## Step 9c — Efficient Graph Updates
 
@@ -702,8 +707,8 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" quick-update \
 # View core execution flow narratives (auto-generated API→endpoint path descriptions)
 cat code2db-out/ARCHITECTURE_FLOWS.md
 
-# Validate knowledge file quality (empty files, signature files, template marker detection)
-python3 "$SKILL_DIR/scripts/code2database_builder.py" knowledge-validate \
+# Validate the project brief (schema, size budget, graph drift)
+python3 "$SKILL_DIR/scripts/code2database_builder.py" brief-validate \
   --graph code2db-out/
 ```
 
@@ -795,7 +800,7 @@ All 222 CLI subparsers across `code2database_builder.py` (214) and `code2databas
 | `add-function` | Add a new function to the graph |
 | `add-semantic-edges` | Walk graph and add ALLOCATES/FREES/LOCKS/UNLOCKS edges from body text |
 | `apply-invariants` | Apply LLM-enhanced invariants from .code2database_invariants.json back to the graph |
-| `apply-knowledge` | Apply LLM knowledge to knowledge directory |
+| `brief-update` | Update a section of the project brief |
 | `apply-semantics` | Apply LLM semantic descriptions to graph |
 | `ast-search` | Structural code search: write patterns AS code with $metavars and ... ellipsis |
 | `audit-log` | Query the audit log (who edited what, when, why) |
@@ -893,7 +898,7 @@ All 222 CLI subparsers across `code2database_builder.py` (214) and `code2databas
 | `export-obsidian` | Export invocation graph as Obsidian vault with [[links]] = calls |
 | `extract-invariants` | Extract preconditions/postconditions/loop_invariants + state machines from function bodies |
 | `extract-invariants-llm` | Extract invariants with LLM consensus and continuous confidence |
-| `extract-knowledge` | Extract knowledge from docs and graph |
+| `brief-extract` | Initialize/refresh the brief template from graph stats |
 | `extract-semantics` | Export nodes for LLM semantic description |
 | `extract-signals` | Extract #ifdef condition→affected edges map |
 | `ffi-auto-link` | Auto-link FFI bindings to watched foreign C2Ds |
@@ -940,8 +945,8 @@ All 222 CLI subparsers across `code2database_builder.py` (214) and `code2databas
 | `kb-rebuild-index` | Rebuild the unified kb_paragraphs FTS5 index  |
 | `kb-rollback` | Restore a kb_item to a prior version |
 | `key-paths` | Extract key execution paths from entry points automatically |
-| `knowledge-query` | Query knowledge by topic |
-| `knowledge-validate` | Validate knowledge against current graph |
+| `knowledge-brief` | Render the project brief (session-start load) |
+| `brief-validate` | Validate the brief (schema, size budget, graph drift) |
 | `light-scan` | Lightweight scan of changed files (no LLM) |
 | `load` | Load and summarize the invocation graph |
 | `lock-coverage` | Analyze lock-held regions and per-access locksets (replaces over-approximation) |

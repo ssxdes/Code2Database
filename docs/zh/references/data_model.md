@@ -321,7 +321,7 @@ CREATE INDEX idx_field_struct ON field_access(struct_name);
 
 `SQLiteStore.SCHEMA_VERSION`（当前 **12**，在同一 db 的遗留表侧）跟踪非-cgdb schema。v9-v12 新增：
 
-- **kb_paragraphs**（Phase 1）— 跨 `memory/*.json` + `knowledge/*.md` 的统一 FTS5+BM25 索引；替代逐存储的 Jaccard / 子串搜索。可通过 `kb-rebuild-index` 重建。
+- **kb_paragraphs**（Phase 1）— 跨 `memory.db` + `knowledge/brief.json` 的统一 FTS5+BM25 索引；替代逐存储的 Jaccard / 子串搜索。可通过 `kb-rebuild-index` 重建。
 - **kb_paragraphs_fts** — title/body/tags 的 FTS5 虚拟表（porter + unicode61 分词器），带 AI/AD/AU 触发器。
 - **scope_id / canonical_id / principle_ref** 列（Phase 4）— 聚类 + 跨类型链接。
 - **embedding BLOB** 列（Phase 5）— 可选的 384 维 float32 语义搜索；sentence-transformers 不可用时为 NULL。

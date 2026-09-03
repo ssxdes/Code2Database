@@ -339,19 +339,11 @@ def reverse_value_trace(G, start_id: str, value_pattern: str,
             ed = G.get_edge_data(cur_id, succ) or {}
             if ed.get("relation") in ("CONTAINS", "IMPORTS"):
                 continue
-            # Check if caller passes a value matching the pattern to this callee
-            callee_args = cur_nd.get("callee_args", []) or []
-            passes_pattern = False
-            for ca in callee_args:
-                if ca.get("callee") != G.nodes[succ].get("name", ""):
-                    continue
-                for arg in ca.get("args", []):
-                    if _value_references(arg.get("value", ""), cur_pattern):
-                        passes_pattern = True
-                        break
             new_path = path + [succ]
             # Always explore callees (the value could originate there even if
-            # the caller doesn't pass it explicitly — e.g., a callee returns NULL)
+            # the caller doesn't pass it explicitly — e.g., a callee returns NULL).
+            # NOTE: an earlier version computed a 'passes_pattern' check here
+            # and never used it — dead per-edge regex work, removed.
             queue.append((succ, cur_pattern, depth + 1, new_path))
 
     return {

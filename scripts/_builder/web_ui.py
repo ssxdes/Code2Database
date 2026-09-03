@@ -562,7 +562,11 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 return
             if path.startswith("/api/neighbors/"):
                 node_id = urllib.parse.unquote(path[len("/api/neighbors/"):])
-                depth = int(query.get("depth", ["1"])[0])
+                try:
+                    depth = int(query.get("depth", ["1"])[0])
+                except ValueError:
+                    self._send_json(400, {"error": "depth must be an integer"})
+                    return
                 self._send_json(200, self.cache.neighbors(node_id, depth))
                 return
             if path == "/api/path":

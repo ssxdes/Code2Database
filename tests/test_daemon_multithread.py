@@ -175,6 +175,23 @@ class TestStartupGracePeriod(unittest.TestCase):
             t.start()
         return t
 
+    @staticmethod
+    def _draining_fake_sync(daemon, syncs):
+        """Fake _sync_incremental honoring the real one's contract: the
+        real implementation drains _pending at entry (the sync worker
+        re-fills it from the job's paths before calling). A fake that
+        does NOT drain leaves _pending repopulated forever — the main
+        loop re-dispatches the same job every ~1.2s and wait-sync (which
+        waits for quiescence) times out deterministically. This made
+        test_wait_sync_ends_grace_early a 1-in-10 lottery before.
+        """
+        def _sync():
+            with daemon._pending_lock:
+                daemon._pending.clear()
+                daemon.state.pending_events = 0
+            syncs.append(time.time())
+        return _sync
+
     def test_grace_default_is_60s(self):
         """Default config carries a 60s startup grace."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -187,7 +204,7 @@ class TestStartupGracePeriod(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             d = self._make_daemon(tmp, grace_sec=2.0)
             syncs = []
-            d._sync_incremental = lambda: syncs.append(time.time())
+            d._sync_incremental = self._draining_fake_sync(d, syncs)
             t = self._run_daemon(d)
             try:
                 time.sleep(0.4)
@@ -209,7 +226,7 @@ class TestStartupGracePeriod(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             d = self._make_daemon(tmp, grace_sec=30.0)
             syncs = []
-            d._sync_incremental = lambda: syncs.append(time.time())
+            d._sync_incremental = self._draining_fake_sync(d, syncs)
             t = self._run_daemon(d)
             try:
                 time.sleep(0.3)
@@ -229,7 +246,7 @@ class TestStartupGracePeriod(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             d = self._make_daemon(tmp, grace_sec=30.0)
             syncs = []
-            d._sync_incremental = lambda: syncs.append(time.time())
+            d._sync_incremental = self._draining_fake_sync(d, syncs)
             t = self._run_daemon(d)
             try:
                 time.sleep(0.3)

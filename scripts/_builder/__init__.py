@@ -132,6 +132,14 @@ _LAZY_IMPORTS = {
     "cmd_knowledge_query": ("_builder.knowledge_manager", "cmd_knowledge_query"),
     "cmd_knowledge_validate": ("_builder.knowledge_manager", "cmd_knowledge_validate"),
     "validate_knowledge": ("_builder.knowledge_manager", "validate_knowledge"),
+    # brief
+    "cmd_knowledge_brief": ("_builder.brief", "cmd_knowledge_brief"),
+    "cmd_brief_update": ("_builder.brief", "cmd_brief_update"),
+    "cmd_brief_extract": ("_builder.brief", "cmd_brief_extract"),
+    "cmd_brief_validate": ("_builder.brief", "cmd_brief_validate"),
+    "render_brief_prompt": ("_builder.brief", "render_brief_prompt"),
+    "load_brief": ("_builder.brief", "load_brief"),
+    "validate_brief": ("_builder.brief", "validate_brief"),
     # patcher
     "patch_from_diff": ("_builder.patcher", "patch_from_diff"),
     "patch_from_git": ("_builder.patcher", "patch_from_git"),

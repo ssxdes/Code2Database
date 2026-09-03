@@ -59,6 +59,10 @@ from _builder.graph_history import (
 )
 from _builder.memory_manager import cmd_manage_memory, cmd_memory_health
 from _builder.knowledge_manager import cmd_extract_knowledge, cmd_apply_knowledge, cmd_knowledge_query, cmd_knowledge_validate
+from _builder.brief import (
+    cmd_knowledge_brief, cmd_brief_update, cmd_brief_extract,
+    cmd_brief_validate,
+)
 from _builder.kb_index import rebuild_kb_index as cmd_kb_rebuild_index_impl
 from _builder.patcher import cmd_patch_from_diff, cmd_patch_from_git, cmd_light_scan
 from _builder.changelog_update import cmd_quick_update, cmd_export_changes, cmd_merge_changes, cmd_semantic_status
@@ -1020,6 +1024,37 @@ def main():
     p_val_mem = sub.add_parser("validate-memory",
                                help="Validate memory against current graph; invalidate stale → experience")
     p_val_mem.add_argument("--graph", required=True, help="Call graph output directory")
+
+    # knowledge-brief (session-start mandatory load)
+    p_kb = sub.add_parser("knowledge-brief",
+                          help="Render the project brief as prompt text (load at session start)")
+    p_kb.add_argument("--graph", required=True, help="Call graph output directory")
+    p_kb.add_argument("--json", action="store_true", help="Output raw brief JSON")
+
+    # brief-update
+    p_bu = sub.add_parser("brief-update", help="Update a section of the project brief")
+    p_bu.add_argument("--graph", required=True, help="Call graph output directory")
+    p_bu.add_argument("--set", default=None,
+                      help="Scalar field to set (project/one_liner/description/must_know)")
+    p_bu.add_argument("--add", default=None,
+                      help="Item section to append to (hard_rules/modes/key_abstractions/conventions/pitfalls/query_paths)")
+    p_bu.add_argument("--remove", default=None,
+                      help="Item section to remove from (with --index)")
+    p_bu.add_argument("--index", default=None, type=int, help="Item index to remove")
+    p_bu.add_argument("--value", default=None,
+                      help="Value (plain text) or JSON object/array for --set/--add")
+    p_bu.add_argument("--refresh-stats", dest="refresh_stats", action="store_true",
+                      help="Refresh auto graph_stats section")
+
+    # brief-extract
+    p_be = sub.add_parser("brief-extract",
+                          help="Initialize/refresh the brief template from graph stats")
+    p_be.add_argument("--graph", required=True, help="Call graph output directory")
+
+    # brief-validate
+    p_bv = sub.add_parser("brief-validate",
+                          help="Validate the brief (schema, size budget, graph drift)")
+    p_bv.add_argument("--graph", required=True, help="Call graph output directory")
 
     # export-html
     p_html = sub.add_parser("export-html", help="Export invocation graph as interactive HTML")
@@ -2587,6 +2622,10 @@ def main():
         "extract-knowledge": cmd_extract_knowledge,
         "apply-knowledge": cmd_apply_knowledge,
         "knowledge-query": cmd_knowledge_query,
+        "knowledge-brief": cmd_knowledge_brief,
+        "brief-update": cmd_brief_update,
+        "brief-extract": cmd_brief_extract,
+        "brief-validate": cmd_brief_validate,
         "know": cmd_knowledge_query,  # SKILL.md alias
         "knowledge-validate": cmd_knowledge_validate,
         "kb-rebuild-index": cmd_kb_rebuild_index,

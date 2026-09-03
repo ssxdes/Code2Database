@@ -226,7 +226,14 @@ class _Parser:
         # Optional LIMIT
         if self._accept("WORD", "LIMIT"):
             tok = self._next()
-            q.limit = int(tok[1])
+            try:
+                q.limit = int(tok[1])
+            except (ValueError, TypeError):
+                raise SyntaxError(
+                    f"LIMIT must be an integer, got {tok[1]!r}")
+            # SQLite semantics: a negative LIMIT means no limit.
+            if q.limit < 0:
+                q.limit = None
         return q
 
     def _parse_match(self, q: Query):
@@ -720,8 +727,9 @@ def execute_query(query: Query, G) -> List[Dict]:
     if query.order_by:
         rows = _apply_order_by(rows, query.order_by, query.order_desc)
 
-    # Apply LIMIT (post-aggregation, post-order)
-    if saved_limit and len(rows) > saved_limit:
+    # Apply LIMIT (post-aggregation, post-order). limit=0 must yield
+    # zero rows (not "all rows" as the old truthiness check did).
+    if saved_limit is not None and len(rows) > saved_limit:
         rows = rows[:saved_limit]
     return rows
 
@@ -854,7 +862,7 @@ def _execute_node_match(query: Query, G, pattern: NodePattern) -> List[Dict]:
             continue
         row = _project_return(query.return_items, binding)
         rows.append(row)
-        if query.limit and len(rows) >= query.limit:
+        if query.limit is not None and len(rows) >= query.limit:
             break
     return rows
 
@@ -916,7 +924,7 @@ def _execute_rel_match(query: Query, G, left: NodePattern, rel: RelPattern,
                 continue
             row = _project_return(query.return_items, binding)
             rows.append(row)
-            if query.limit and len(rows) >= query.limit:
+            if query.limit is not None and len(rows) >= query.limit:
                 return rows
     return rows
 
@@ -955,7 +963,7 @@ def _execute_varlen_match(query: Query, G, path: PathPattern) -> List[Dict]:
                 continue
             row = _project_return(query.return_items, binding)
             rows.append(row)
-            if query.limit and len(rows) >= query.limit:
+            if query.limit is not None and len(rows) >= query.limit:
                 return rows
     return rows
 
@@ -1226,7 +1234,7 @@ def _try_cte_execution(query: Query, cgdb_store) -> Optional[List[Dict]]:
             WHERE t.depth >= ?{end_where}
             LIMIT ?
         """
-        params = start_params + [max_depth, edge_kind, rel.min_hops] + end_params + [query.limit or 500]
+        params = start_params + [max_depth, edge_kind, rel.min_hops] + end_params + [query.limit if query.limit is not None else 500]
         rows = conn.execute(sql, params).fetchall()
         results: List[Dict] = []
         for r in rows:
@@ -1321,7 +1329,7 @@ def cmd_query(args):
                 rows = _apply_group_by_and_aggregates(q, rows)
             if q.order_by:
                 rows = _apply_order_by(rows, q.order_by, q.order_desc)
-            if q.limit and len(rows) > q.limit:
+            if q.limit is not None and len(rows) > q.limit:
                 rows = rows[:q.limit]
         else:
             rows = execute_query(q, G)

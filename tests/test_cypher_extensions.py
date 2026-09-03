@@ -201,5 +201,37 @@ class TestReturnItemParsing(unittest.TestCase):
         self.assertFalse(item.is_aggregate)
 
 
+class TestLimitSemantics(unittest.TestCase):
+    """LIMIT parsing and canonical semantics (negative = unlimited,
+    0 = zero rows — matching SQLite)."""
+
+    def test_limit_non_integer_is_syntax_error(self):
+        for bad in ("MATCH (n) RETURN n LIMIT abc",
+                    "MATCH (n) RETURN n LIMIT 2.5"):
+            with self.assertRaises(SyntaxError, msg=bad):
+                parse_query(bad)
+
+    def test_limit_negative_means_unlimited(self):
+        q = parse_query("MATCH (n) RETURN n LIMIT -1")
+        self.assertIsNone(q.limit)
+        G = _build_test_graph()
+        self.assertEqual(len(execute_query(q, G)), 4)
+
+    def test_limit_zero_returns_no_rows(self):
+        G = _build_test_graph()
+        for query in ("MATCH (n) RETURN n LIMIT 0",
+                      "MATCH (n) RETURN n ORDER BY n.line LIMIT 0",
+                      "MATCH (n) RETURN COUNT(*) LIMIT 0",
+                      "MATCH (a)-[:INVOKES]->(b) RETURN a LIMIT 0",
+                      "MATCH (a)-[:INVOKES*1..2]->(b) RETURN a LIMIT 0"):
+            rows = execute_query(parse_query(query), G)
+            self.assertEqual(rows, [], query)
+
+    def test_limit_positive_slices_normally(self):
+        G = _build_test_graph()
+        rows = execute_query(parse_query("MATCH (n) RETURN n LIMIT 2"), G)
+        self.assertEqual(len(rows), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

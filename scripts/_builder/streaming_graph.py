@@ -424,6 +424,30 @@ class StreamingGraph:
         del self.id_registry[node_id]
         self._node_count -= 1
 
+        # Deferred mode: already-flushed rows must be deleted from the
+        # DB too — the in-memory bookkeeping below does NOT reach them,
+        # and close()'s deferred path never rewrites the edges table.
+        # Residual _edge_batch entries for this node must also go, or
+        # close() would re-introduce the removed edges.
+        if self._deferred:
+            try:
+                self._store._conn.execute(
+                    "DELETE FROM edges WHERE invoker_id = ? OR invoked_id = ?",
+                    (node_id, node_id))
+                self._store._conn.execute(
+                    "DELETE FROM functions WHERE id = ?", (node_id,))
+            except Exception:
+                # Surface the failure: silently leaving DB rows for a
+                # removed node produces dangling edges at close().
+                raise RuntimeError(
+                    f"StreamingGraph.remove_node({node_id!r}): deleting "
+                    f"flushed rows from SQLite failed — DB and in-memory "
+                    f"state would diverge") from None
+            self._edge_batch = [
+                e for e in self._edge_batch
+                if e.get("caller") != node_id and e.get("callee") != node_id
+            ]
+
         # Remove edges involving this node
         if self._deferred:
             edges_to_remove = [ek for ek in self._edge_set
@@ -599,11 +623,19 @@ class StreamingGraph:
         try:
             # Commit any pending transaction from intermediate flushes
             # (store_edges/store_functions with autocommit=False may
-            # have left an auto-transaction open).
+            # have left an auto-transaction open). If the commit FAILS
+            # (disk full, IO error) the transaction is still open —
+            # ROLLBACK it so the BEGIN below doesn't die with a
+            # confusing 'cannot start a transaction within a
+            # transaction', and re-raise the ORIGINAL error instead.
             try:
                 self._store._conn.commit()
-            except Exception:
-                pass
+            except Exception as _commit_exc:
+                try:
+                    self._store._conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+                raise _commit_exc
             # Start a single transaction for the entire write
             self._store._conn.execute("BEGIN TRANSACTION")
 

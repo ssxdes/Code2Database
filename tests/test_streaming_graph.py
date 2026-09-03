@@ -176,5 +176,69 @@ class TestDeferredReloadCorrectness(unittest.TestCase):
         self.assertEqual(rows, [("f1", "f2", "EXTRACTED")])
 
 
+class TestDeferredRemoveNode(unittest.TestCase):
+    """remove_node during the deferred window must clean the DB too.
+
+    In-memory bookkeeping alone left (a) already-flushed edge rows in
+    the edges table (close()'s deferred path never rewrites it) and
+    (b) residual _edge_batch entries that close() would re-introduce.
+    """
+
+    def test_remove_node_in_deferred_mode_cleans_db_and_batch(self):
+        import sqlite3
+        d = tempfile.mkdtemp()
+        sg = StreamingGraph(os.path.join(d, "code2database.db"))
+        sg.set_deferred(True)
+        sg.add_node("f1", name="f1")
+        sg.add_node("f2", name="f2")
+        sg.add_node("f3", name="f3")
+        sg.add_edge("f1", "f2", confidence="EXTRACTED")
+        sg._flush_edges()  # f1->f2 now lives in SQLite
+        sg.add_edge("f1", "f3", confidence="EXTRACTED")  # batch only
+        sg.add_edge("f3", "f2", confidence="EXTRACTED")  # batch only
+        sg.remove_node("f1")
+        sg.close()
+        conn = sqlite3.connect(os.path.join(d, "code2database.db"))
+        try:
+            edges = conn.execute(
+                "SELECT invoker_id, invoked_id FROM edges "
+                "ORDER BY 1, 2").fetchall()
+            funcs = conn.execute(
+                "SELECT id FROM functions ORDER BY 1").fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(edges, [("f3", "f2")])
+        self.assertEqual(funcs, [("f2",), ("f3",)])
+
+
+class TestCloseCommitFailure(unittest.TestCase):
+    """A failed pre-close commit must surface, not turn into a
+    confusing 'cannot start a transaction within a transaction' from
+    the BEGIN that follows."""
+
+    def test_commit_failure_raises_original_error(self):
+        import sqlite3
+        d = tempfile.mkdtemp()
+        sg = StreamingGraph(os.path.join(d, "code2database.db"))
+        sg.add_node("f1", name="f1")
+
+        class BadCommitConn:
+            def __init__(self, real):
+                self._real = real
+
+            def commit(self):
+                raise sqlite3.OperationalError(
+                    "database or disk is full (simulated)")
+
+            def __getattr__(self, name):
+                return getattr(self._real, name)
+
+        sg._store._conn = BadCommitConn(sg._store._conn)
+        with self.assertRaises(sqlite3.OperationalError) as cm:
+            sg.close()
+        self.assertIn("disk is full", str(cm.exception))
+        self.assertNotIn("within a transaction", str(cm.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

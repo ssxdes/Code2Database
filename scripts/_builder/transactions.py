@@ -55,6 +55,7 @@ import json
 import os
 import shutil
 import sys
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -94,6 +95,19 @@ SNAPSHOTS_DIR_NAME = "snapshots"
 WAL_FILE_NAME = "wal.jsonl"
 LOCK_FILE_NAME = "tx.lock"
 TX_STATE_FILE_NAME = "tx_state.json"
+
+def _fsync_dir(path: str) -> None:
+    """Best-effort fsync of a directory so renames/unlinks inside it
+    survive a crash. Not all platforms/filesystems support this."""
+    try:
+        fd = os.open(path, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+
 
 # Files that are part of the "graph state" and must be snapshotted together
 GRAPH_STATE_FILES = [
@@ -169,6 +183,17 @@ def _tx_state_path(graph_dir: str) -> str:
 # Read-write lock (file-based, multi-process)
 # ---------------------------------------------------------------------------
 
+class _HeldLock:
+    """Bookkeeping for a process-held GraphLock (re-entrancy support)."""
+    __slots__ = ("fd", "mode", "owner", "count")
+
+    def __init__(self, fd, mode: str, owner: int):
+        self.fd = fd
+        self.mode = mode
+        self.owner = owner  # thread ident of the acquiring thread
+        self.count = 1      # 1 (owner) + re-entrant acquisitions
+
+
 class GraphLock:
     """File-based read-write lock for the graph directory.
 
@@ -177,13 +202,28 @@ class GraphLock:
 
     Uses fcntl.flock on Linux/Mac. The lock is held while the file
     descriptor is open; closing it releases the lock.
+
+    Same-THREAD re-entrancy: flock locks are per open-file-description,
+    so a second lock from the same process on a separate fd BLOCKS —
+    `with transaction(...)` code that internally calls write_lock()/
+    read_lock() on the same graph_dir deadlocked for the full timeout
+    (60s) and then raised TimeoutError. Re-entrant acquisition by the
+    same thread (same mode, or read inside write) is now served from an
+    in-process registry; cross-thread and cross-process contention
+    still goes through flock unchanged.
     """
+
+    # graph_dir -> _HeldLock (only while some thread of THIS process
+    # holds the lock). Guarded by _HELD_GUARD.
+    _HELD: Dict[str, _HeldLock] = {}
+    _HELD_GUARD = threading.Lock()
 
     def __init__(self, graph_dir: str):
         self.graph_dir = graph_dir
         os.makedirs(_tx_dir(graph_dir), exist_ok=True)
         self._lock_fd: Optional[Any] = None
         self._mode: Optional[str] = None  # 'r' or 'w'
+        self._reentrant = False
 
     def acquire_read(self, timeout: float = 30.0):
         """Acquire a shared (read) lock. Blocks up to timeout seconds."""
@@ -195,6 +235,18 @@ class GraphLock:
 
     def _acquire(self, mode: str, timeout: float):
         import time as _time
+        # Same-thread re-entrancy: serve from the registry instead of
+        # blocking on our own flock for the whole timeout.
+        with GraphLock._HELD_GUARD:
+            held = GraphLock._HELD.get(self.graph_dir)
+            if held is not None and held.owner == threading.get_ident():
+                if held.mode == mode or (held.mode == "w" and mode == "r"):
+                    held.count += 1
+                    self._reentrant = True
+                    self._mode = mode
+                    return True
+                # r->w upgrade falls through to the normal path —
+                # shortcutting it would break exclusion vs other readers.
         path = _lock_path(self.graph_dir)
         deadline = _time.time() + timeout
         # Open the lock file. If anything fails between open and the lock
@@ -231,6 +283,10 @@ class GraphLock:
                             self._warned_noop = True
                     self._lock_fd = fd
                     self._mode = mode
+                    with GraphLock._HELD_GUARD:
+                        GraphLock._HELD[self.graph_dir] = _HeldLock(
+                            fd=fd, mode=mode,
+                            owner=threading.get_ident())
                     return True
                 except (BlockingIOError, OSError) as _lock_err:
                     # Only retry on lock contention (EAGAIN/EACCES),
@@ -252,7 +308,34 @@ class GraphLock:
             raise
 
     def release(self):
+        if self._reentrant:
+            # Drop one re-entrant reference. The fd stays with the
+            # owning acquire (count includes it).
+            self._reentrant = False
+            self._mode = None
+            with GraphLock._HELD_GUARD:
+                held = GraphLock._HELD.get(self.graph_dir)
+                if held is not None:
+                    held.count -= 1
+                    if held.count <= 0:
+                        # Owner already released out-of-order; entry
+                        # dropped there — nothing further to do.
+                        pass
+            return
         if self._lock_fd is not None:
+            # Owning release: unregister BEFORE dropping the flock so a
+            # waiting same-thread acquire can't re-enter against a fd
+            # that's about to be unlocked.
+            with GraphLock._HELD_GUARD:
+                held = GraphLock._HELD.get(self.graph_dir)
+                if held is not None and held.fd is self._lock_fd:
+                    if held.count > 1:
+                        print(f"[transactions] Warning: write lock on "
+                              f"{self.graph_dir} released while "
+                              f"{held.count - 1} inner re-entrant holder(s) "
+                              f"still active (out-of-order release)",
+                              file=sys.stderr)
+                    del GraphLock._HELD[self.graph_dir]
             try:
                 if _LOCK_BACKEND == "fcntl":
                     _fcntl.flock(self._lock_fd, _fcntl.LOCK_UN)
@@ -473,6 +556,9 @@ def restore_snapshot(graph_dir: str, snap_id: str) -> Dict:
                 "restored_files": restored_files,
                 "reason": "failed to delete live WAL sidecar(s): "
                           + "; ".join(wal_errors)}
+    # Durability of the replaces above (each file was already fsynced
+    # via its tmp; this syncs the directory entries themselves).
+    _fsync_dir(graph_dir)
     return {"restored": True, "snapshot_id": snap_id,
             "restored_files": restored_files}
 
@@ -624,7 +710,10 @@ def mark_wal_entry_applied(graph_dir: str, seq):
                                        default=str) + "\n")
             except json.JSONDecodeError:
                 f_out.write(line)
+        f_out.flush()
+        os.fsync(f_out.fileno())
     os.replace(tmp_path, wal_path)
+    _fsync_dir(os.path.dirname(wal_path) or ".")
 
 
 def read_wal(graph_dir: str, only_unapplied: bool = False) -> List[Dict]:
@@ -686,8 +775,11 @@ class TransactionState:
 
 def _write_tx_state(graph_dir: str, state: TransactionState):
     os.makedirs(_tx_dir(graph_dir), exist_ok=True)
-    # Atomic write: tmp + os.replace. Prevents concurrent readers
-    # (tx-status, daemon) from reading a half-written JSON file.
+    # Atomic write: tmp + fsync + os.replace. Prevents concurrent
+    # readers (tx-status, daemon) from reading a half-written JSON
+    # file, and the fsync makes the replace itself crash-durable —
+    # an unsynced rename could vanish on power loss, resurrecting a
+    # stale 'active' tx state after a rollback.
     path = _tx_state_path(graph_dir)
     tmp_path = path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
@@ -699,7 +791,10 @@ def _write_tx_state(graph_dir: str, state: TransactionState):
             "dirty_file_ids": state.dirty_file_ids,
             "consistency_results": state.consistency_results,
         }, f, ensure_ascii=False, indent=2, default=str)
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(tmp_path, path)
+    _fsync_dir(_tx_dir(graph_dir))
 
 
 def _read_tx_state(graph_dir: str) -> Optional[TransactionState]:

@@ -148,15 +148,16 @@ class WritebackPipeline:
         # Store the snapshot ID in meta so _rollback knows which snapshot
         # to restore (not just "the latest" — which might belong to a
         # different transaction).
-        snap_id = ""
-        try:
-            from _builder.transactions import create_snapshot
-            snap = create_snapshot(self.graph_dir,
-                                   description=f"writeback tx {tx_id[:8]}")
-            snap_id = snap.id
-        except Exception:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
-            pass
+        #
+        # FATAL on failure (was: debug-log + snap_id=""): a write-back
+        # transaction whose rollback cannot restore anything is a lie —
+        # rollback_db_transaction would silently succeed at nothing.
+        # begin() runs BEFORE any edit is applied, so raising here fails
+        # cleanly with the edit tool reporting the error.
+        from _builder.transactions import create_snapshot
+        snap = create_snapshot(self.graph_dir,
+                               description=f"writeback tx {tx_id[:8]}")
+        snap_id = snap.id
         self.conn.execute(
             "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
             (f"writeback_tx_snap:{tx_id}", snap_id)

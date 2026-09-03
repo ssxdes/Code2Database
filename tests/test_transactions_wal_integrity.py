@@ -120,5 +120,74 @@ class TestRestoreWalIntegrity(unittest.TestCase):
                 os.rmdir(wal)
 
 
+class TestGraphLockReentrancy(unittest.TestCase):
+    """Same-thread nested lock acquisition used to deadlock.
+
+    flock locks are per open-file-description: a second GraphLock from
+    the same process opened a NEW fd and blocked against itself for the
+    full timeout (60s in transaction()), then raised TimeoutError —
+    `with transaction(...)` code that internally called write_lock() on
+    the same graph_dir was unusable.
+    """
+
+    def test_nested_same_thread_locks(self):
+        import time
+        from _builder.transactions import write_lock, read_lock
+        with tempfile.TemporaryDirectory() as d:
+            t0 = time.time()
+            with write_lock(d, timeout=5.0):
+                with write_lock(d, timeout=5.0):
+                    with read_lock(d, timeout=5.0):
+                        pass
+            self.assertLess(time.time() - t0, 2.0)
+
+    def test_transaction_with_nested_write_lock(self):
+        import time
+        from _builder.transactions import transaction, write_lock
+        with tempfile.TemporaryDirectory() as d:
+            t0 = time.time()
+            try:
+                with transaction(d, description="outer"):
+                    with write_lock(d, timeout=5.0):
+                        pass
+                    raise RuntimeError("boom")
+            except RuntimeError:
+                pass
+            self.assertLess(time.time() - t0, 5.0)
+
+    def test_cross_thread_still_blocks(self):
+        import threading
+        import time
+        from _builder.transactions import GraphLock
+        with tempfile.TemporaryDirectory() as d:
+            outer = GraphLock(d)
+            self.assertTrue(outer.acquire_write(timeout=5.0))
+            res = {}
+
+            def other():
+                l2 = GraphLock(d)
+                t0 = time.time()
+                res["ok"] = l2.acquire_write(timeout=1.0)
+                res["elapsed"] = time.time() - t0
+
+            t = threading.Thread(target=other)
+            t.start()
+            t.join()
+            self.assertFalse(res["ok"], "cross-thread lock must block")
+            self.assertGreaterEqual(res["elapsed"], 0.9)
+            outer.release()
+            # and becomes acquirable after release
+            l3 = GraphLock(d)
+            self.assertTrue(l3.acquire_write(timeout=2.0))
+            l3.release()
+
+    def test_sequential_cycles(self):
+        from _builder.transactions import write_lock
+        with tempfile.TemporaryDirectory() as d:
+            for _ in range(3):
+                with write_lock(d, timeout=2.0):
+                    pass
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -101,6 +101,51 @@ def _wipe_cgdb_data(conn) -> None:
         logging.getLogger(__name__).warning(
             "_wipe_cgdb_data: post-wipe commit failed", exc_info=True)
         pass
+# Marker file recording that a build's cgdb export failed — the graph
+# is then missing (parts of) its semantic layer (L1 tokens, types,
+# vtables, invoke_sites, ...) while the legacy tables look fine.
+_CGDB_EXPORT_FAILED_MARKER = ".code2database_cgdb_export_failed.json"
+
+
+def _mark_cgdb_export_failed(outdir, error, context=None):
+    """Persist the cgdb-export-failure marker in outdir.
+
+    The cgdb export failure used to be logged as a mere WARNING on
+    stderr: the build reported success while cgdb semantic tables were
+    silently missing/partial (e.g. pool workers killed by the OOM
+    killer). The marker makes the degraded state durable and
+    machine-detectable; the build summary also surfaces it on stdout.
+    Returns the marker path.
+    """
+    import time as _time
+    marker = os.path.join(outdir, _CGDB_EXPORT_FAILED_MARKER)
+    payload = {
+        "error": str(error),
+        "failed_at": _time.strftime("%Y-%m-%d %H:%M:%S"),
+        "failed_at_ts": _time.time(),
+    }
+    if context:
+        payload.update(context)
+    tmp = marker + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, marker)
+    return marker
+
+
+def _clear_cgdb_export_failed(outdir):
+    """Remove a stale failure marker left by a previous build.
+
+    Called when this build's cgdb export completed, so the marker only
+    ever reflects the LATEST build. Missing marker is a no-op.
+    """
+    marker = os.path.join(outdir, _CGDB_EXPORT_FAILED_MARKER)
+    try:
+        os.unlink(marker)
+    except FileNotFoundError:
+        pass
+
+
 def _detect_commit_hash(source_root: str) -> str:
     """Detect the current commit hash of a source root.
 
@@ -7513,6 +7558,7 @@ def cmd_build(args):
             # cgdb (code graph database) 13-layer export — writes cgdb_nodes/
             # cgdb_types/cgdb_edges/cgdb_invoke_sites to the new schema tables
             # alongside the legacy functions/edges.
+            _cgdb_export_error = ""  # set if the export below fails
             if cgdb_nodes_data or cgdb_types_data or cgdb_edges_data:
                 print(f"[cgdb] Writing cgdb 13-layer records...", file=sys.stderr)
                 _cgdb_start = time.time()
@@ -8090,8 +8136,29 @@ def cmd_build(args):
                         print(f"[cgdb] WARNING: record_version failed: {ve}",
                               file=sys.stderr)
                 except Exception as e:
-                    print(f"[cgdb] WARNING: cgdb export failed: {e}",
+                    # cgdb semantic data is missing/partial after this —
+                    # escalate beyond a stderr WARNING (which scrolled by
+                    # unnoticed while builds reported success) and make
+                    # the degraded state durable + machine-detectable.
+                    _cgdb_export_error = str(e)
+                    _marker = _mark_cgdb_export_failed(outdir, str(e), {
+                        "stage": "cgdb_export",
+                        "cgdb_nodes_input": len(cgdb_nodes_data),
+                        "cgdb_edges_input": len(cgdb_edges_data),
+                        "cgdb_types_input": len(cgdb_types_data),
+                    })
+                    print(f"[cgdb] ERROR: cgdb export failed: {e}",
                           file=sys.stderr)
+                    print(f"[cgdb] ERROR: the graph is missing cgdb "
+                          f"semantic data (L1 tokens, types, vtables, "
+                          f"invoke_sites, ...); marker: {_marker} — "
+                          f"re-run the build", file=sys.stderr)
+                else:
+                    # This build's cgdb export completed: drop any stale
+                    # failure marker from a previous build so the marker
+                    # always reflects the latest build.
+                    _cgdb_export_error = ""
+                    _clear_cgdb_export_failed(outdir)
 
         print(f"[SQLite] Export complete: {db_path} ({time.time()-_sqlite_start:.0f}s)", file=sys.stderr)
 
@@ -8143,6 +8210,15 @@ def cmd_build(args):
                 encoding="utf-8")
 
         print(f"Built invocation graph: {_node_count} nodes, {_edge_count} edges")
+        if _cgdb_export_error:
+            # stdout (not stderr): the failure must be visible in the
+            # command's primary output, not just in log scroll.
+            print("WARNING: cgdb export FAILED during this build — "
+                  "cgdb semantic tables are missing/partial: "
+                  f"{_cgdb_export_error}")
+            print("WARNING: see "
+                  f"{os.path.join(outdir, _CGDB_EXPORT_FAILED_MARKER)}; "
+                  "re-run the build to restore cgdb data")
         print(f"Domain files written to {outdir}/")
         print(f"Summary: {summary_path}")
         print(f"Context pack: {pack_path}")

@@ -44,10 +44,10 @@ import json
 from typing import Optional
 import logging
 
-# Module-level globals for fork COW parallelism (set by graph_build when
-# spawning ProcessPoolExecutor workers). Each forked child inherits these
-# via copy-on-write — no pickling needed. Empty by default; only populated
-# when _l1_ingest_proc_worker is invoked from a ProcessPoolExecutor.
+# Module-level globals for ProcessPoolExecutor workers. Set per-worker in
+# each spawned child by _l1_worker_init (the pool initializer) — with the
+# spawn start method nothing is inherited from the parent. Read by
+# _l1_ingest_proc_worker; empty by default.
 _L1_DB_PATH: str = ""
 _L1_SOURCE_ROOT: str = ""
 _L1_COMMIT_HASH: str = "unknown"
@@ -96,20 +96,20 @@ def _resolve_source_path(file_path: str, source_root: str = "") -> str:
 
 
 def _l1_ingest_proc_worker(task):
-    """Module-level worker for ProcessPoolExecutor (fork COW).
+    """Module-level worker for ProcessPoolExecutor.
 
-    Each forked child inherits _L1_DB_PATH, _L1_SOURCE_ROOT, _L1_COMMIT_HASH
-    via copy-on-write — no pickling needed for these globals. Opens its own
-    SQLite connection in WAL mode so the libclang parse (CPU-bound) runs in
-    parallel across N processes while SQLite handles write contention via
-    busy_timeout (60s). The libclang Index is created per-worker (libclang
-    is not thread/process-safe across fork without re-init).
-
-    Args:
-        task: (file_path, file_id) tuple
-
-    Returns:
-        stats dict from ingest_l1, plus 'file_path' for caller reporting.
+    Receives (file_path, file_id). Reads _L1_DB_PATH / _L1_SOURCE_ROOT /
+    _L1_COMMIT_HASH from module globals — these are set per-worker by
+    ``_l1_worker_init`` (the pool initializer), NOT inherited from the
+    parent: the pool uses the ``spawn`` start method because the parent
+    build process holds the full graph in memory (tens of GB on large
+    projects). fork() would give every worker a copy-on-write mapping of
+    that entire graph — page-table copies plus COW faults on first write
+    multiplied by N workers exceeded available memory (2026-09-02 OOM:
+    86GB parent x 48 forks -> ~326GB demand on a 251GB box). fork also
+    corrupts inherited libclang/ctypes state (TypeError: cannot build
+    parameter). spawn children start clean and each opens its own WAL
+    connection; the libclang Index is created per-worker anyway.
     """
     fp, fid = task
     conn = sqlite3.connect(_L1_DB_PATH, timeout=120.0)
@@ -145,13 +145,28 @@ def _l1_ingest_proc_worker(task):
             pass
 
 
+def _l1_worker_init(db_path, source_root, commit_hash):
+    """ProcessPoolExecutor initializer: set the module-level globals the
+    worker reads. With the spawn start method these are set in each
+    child process here (nothing is inherited from the parent).
+    """
+    global _L1_DB_PATH, _L1_SOURCE_ROOT, _L1_COMMIT_HASH
+    _L1_DB_PATH = db_path
+    _L1_SOURCE_ROOT = source_root or ""
+    _L1_COMMIT_HASH = commit_hash
+
+
 def run_l1_ingest(tasks, db_path, source_root, commit_hash,
                   workers, parallel_mode, serial_conn=None):
     """Run L1 ingest over a list of (file_path, file_id) tasks.
 
     When parallel_mode == 'process' and workers > 1 and len(tasks) > 100,
-    use ProcessPoolExecutor with fork COW (each worker opens its own WAL
-    connection). Otherwise fall back to serial execution on serial_conn.
+    use ProcessPoolExecutor with the spawn start method. The parent build
+    process holds the full graph in memory at this point — fork() would
+    hand every worker a COW mapping of all of it and OOM the box on large
+    projects (see _l1_ingest_proc_worker). Each spawned worker gets its
+    context via the pool initializer and opens its own WAL connection.
+    Otherwise fall back to serial execution on serial_conn.
 
     The caller is responsible for committing any pending transaction on
     serial_conn BEFORE calling this function (Phase 1 must be flushed so
@@ -162,15 +177,16 @@ def run_l1_ingest(tasks, db_path, source_root, commit_hash,
     use_process = (parallel_mode == "process" and workers > 1
                     and len(tasks) > 100)
     if use_process:
-        global _L1_DB_PATH, _L1_SOURCE_ROOT, _L1_COMMIT_HASH
-        _L1_DB_PATH = db_path
-        _L1_SOURCE_ROOT = source_root or ""
-        _L1_COMMIT_HASH = commit_hash
         try:
             from concurrent.futures import ProcessPoolExecutor
             import multiprocessing as _mp
-            _ctx = _mp.get_context("fork")
-            with ProcessPoolExecutor(max_workers=workers, mp_context=_ctx) as _pool:
+            # spawn: no inherited parent memory (COW OOM) and no
+            # inherited libclang/ctypes state (fork corrupts it).
+            _ctx = _mp.get_context("spawn")
+            with ProcessPoolExecutor(
+                    max_workers=workers, mp_context=_ctx,
+                    initializer=_l1_worker_init,
+                    initargs=(db_path, source_root, commit_hash)) as _pool:
                 results = list(_pool.map(
                     _l1_ingest_proc_worker,
                     tasks,
@@ -178,12 +194,8 @@ def run_l1_ingest(tasks, db_path, source_root, commit_hash,
                 ))
             return results
         except (ImportError, OSError, BrokenPipeError, ValueError):
-            # ValueError: fork context unavailable on Windows
+            # ValueError: start context unavailable; fall back to serial.
             pass
-        finally:
-            _L1_DB_PATH = ""
-            _L1_SOURCE_ROOT = ""
-            _L1_COMMIT_HASH = "unknown"
     conn = serial_conn if serial_conn is not None else sqlite3.connect(
         db_path, timeout=120.0)
     own_conn = serial_conn is None

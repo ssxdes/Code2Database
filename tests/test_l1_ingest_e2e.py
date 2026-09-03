@@ -248,6 +248,89 @@ class TestRunL1IngestOrchestrator(unittest.TestCase):
             conn.close()
 
 
+def _l1_context_probe(task):
+    """Module-level spawn-safe probe: report the child's view of the L1
+    context globals (set by _l1_worker_init) WITHOUT touching the DB —
+    concurrent multi-process SQLite is unusable on some environments
+    (WSL1), which would obscure the pool-contract assertions below.
+    """
+    import _builder.l1_ingest as _l1
+    fp, _fid = task
+    return {
+        "file_path": fp,
+        "ctx": (_l1._L1_DB_PATH, _l1._L1_SOURCE_ROOT, _l1._L1_COMMIT_HASH),
+        "pid": os.getpid(),
+    }
+
+
+class TestProcessPoolSpawnContext(unittest.TestCase):
+    """run_l1_ingest's process pool must use the spawn start method with
+    the context passed via the pool initializer.
+
+    The old fork pool inherited the parent build process's full memory
+    (the 86GB graph) as copy-on-write mappings — N workers touching
+    pages multiplied memory demand past what the box had (2026-09-02
+    OOM) — and forked children inherited corrupted libclang/ctypes state
+    ("TypeError: cannot build parameter"). spawn children start clean
+    and receive db_path/source_root/commit_hash via _l1_worker_init.
+    """
+
+    def test_pool_uses_spawn_and_initializer_sets_context(self):
+        import multiprocessing as _mp
+        import _builder.l1_ingest as _l1
+        from unittest.mock import patch as _patch
+
+        tasks = [(f"/fake/src/f{i}.c", i + 1) for i in range(120)]
+        seen_methods = []
+        _orig_get_context = _mp.get_context
+
+        def _spy(name=None):
+            seen_methods.append(name)
+            return _orig_get_context(name)
+
+        orig_worker = _l1._l1_ingest_proc_worker
+        _l1._l1_ingest_proc_worker = _l1_context_probe
+        try:
+            with _patch.object(_mp, "get_context", _spy):
+                results = run_l1_ingest(
+                    tasks=tasks, db_path="/probe/db.sqlite",
+                    source_root="/probe/src", commit_hash="cafe",
+                    workers=3, parallel_mode="process")
+        finally:
+            _l1._l1_ingest_proc_worker = orig_worker
+
+        # The pool must have been created with the spawn start method.
+        self.assertIn("spawn", seen_methods)
+        self.assertNotIn("fork", seen_methods)
+        self.assertEqual(len(results), 120)
+        child_pids = set()
+        for r in results:
+            self.assertEqual(
+                r["ctx"], ("/probe/db.sqlite", "/probe/src", "cafe"),
+                "spawned worker did not receive initializer context")
+            child_pids.add(r["pid"])
+        # Work really ran in child processes, not inline in the parent.
+        self.assertNotIn(os.getpid(), child_pids)
+        self.assertTrue(child_pids)
+        # The parent's module globals were never populated — the new
+        # code must not rely on fork COW inheritance.
+        self.assertEqual(_l1._L1_DB_PATH, "")
+        self.assertEqual(_l1._L1_SOURCE_ROOT, "")
+        self.assertEqual(_l1._L1_COMMIT_HASH, "unknown")
+
+    def test_worker_init_sets_globals(self):
+        """_l1_worker_init directly sets the three context globals."""
+        import _builder.l1_ingest as _l1
+        old = (_l1._L1_DB_PATH, _l1._L1_SOURCE_ROOT, _l1._L1_COMMIT_HASH)
+        try:
+            _l1._l1_worker_init("/x/y.db", "/src", "abc123")
+            self.assertEqual(_l1._L1_DB_PATH, "/x/y.db")
+            self.assertEqual(_l1._L1_SOURCE_ROOT, "/src")
+            self.assertEqual(_l1._L1_COMMIT_HASH, "abc123")
+        finally:
+            (_l1._L1_DB_PATH, _l1._L1_SOURCE_ROOT, _l1._L1_COMMIT_HASH) = old
+
+
 class TestResolveSourceFileGraphDir(unittest.TestCase):
     """Tests for the shared utils.resolve_source_file helper."""
 

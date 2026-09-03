@@ -38,52 +38,41 @@ from _builder.kb_conflict import detect_conflicts, forget_kb_paragraph, rollback
 
 def _make_memory_entry(graph_dir, entry_id, question, answer, tags=None,
                        status="trusted", subdir="root"):
-    """Write a single memory entry to graph_dir/memory/<subdir>/."""
-    mem_dir = os.path.join(graph_dir, "memory")
-    sub_path = os.path.join(mem_dir, subdir)
-    os.makedirs(sub_path, exist_ok=True)
-    prefix = {"root": "root_", "leaf": "mem_", "experience": "experience_"}[subdir]
-    entry = {
-        "id": entry_id,
-        "question": question,
-        "answer": answer,
-        "tags": tags or [],
-        "status": status,
-        "weight": 1.0,
-        "root_id": entry_id if subdir == "root" else 0,
-        "merged_count": 0,
-        "access_count": 0,
-        "knowledge_refs": [],
-        "versions": [],
-        "created": "2026-08-25T10:00:00",
-        "validated_at": "2026-08-25T10:00:00",
-    }
-    fname = f"{prefix}{entry_id}.json"
-    with open(os.path.join(sub_path, fname), "w", encoding="utf-8") as f:
-        json.dump(entry, f, ensure_ascii=False, indent=2)
-    # Update index.json
-    idx_path = os.path.join(mem_dir, "index.json")
-    index = {"entries": [], "next_id": entry_id + 1, "roots": []}
-    if os.path.exists(idx_path):
-        with open(idx_path, "r", encoding="utf-8") as f:
-            index = json.load(f)
-    if subdir == "root" and not any(r.get("id") == entry_id for r in index.get("roots", [])):
-        index.setdefault("roots", []).append({"id": entry_id, "question": question})
-    if not any(e.get("id") == entry_id for e in index.get("entries", [])):
-        index.setdefault("entries", []).append({
-            "id": entry_id, "question": question, "tags": tags or [],
-            "status": status, "root_id": entry_id if subdir == "root" else 0,
-        })
-    with open(idx_path, "w", encoding="utf-8") as f:
-        json.dump(index, f, ensure_ascii=False, indent=2)
+    """Add a memory entry to graph_dir/memory/memory.db (SQLite store).
+
+    entry_id is informational — the store assigns ids sequentially
+    (fresh dirs match the requested ids). status maps to the store's
+    lifecycle ('trusted' → active).
+    """
+    from _builder.memory_store import MemoryStore
+    store = MemoryStore(graph_dir)
+    return store.add(question=question, answer=answer, tags=tags or [],
+                     no_merge=True)
 
 
 def _make_knowledge_md(graph_dir, fname, content):
-    """Write a .md file to graph_dir/knowledge/."""
+    """Write a brief-like knowledge/brief.json (name kept for history).
+
+    The 'content' markdown is stored as the brief description so kb
+    indexing picks it up as a knowledge paragraph.
+    """
     know_dir = os.path.join(graph_dir, "knowledge")
     os.makedirs(know_dir, exist_ok=True)
-    with open(os.path.join(know_dir, fname), "w", encoding="utf-8") as f:
-        f.write(content)
+    brief = {
+        "schema_version": 1,
+        "project": "testproj",
+        "one_liner": "test project",
+        "description": content,
+        "hard_rules": [
+            {"rule": "All bdev modules must call bdev_register() "
+                     "before use.", "type": "api"},
+        ],
+        "modes": [], "key_abstractions": [], "conventions": [],
+        "pitfalls": [], "query_paths": [], "must_know": "",
+        "graph_stats": {},
+    }
+    with open(os.path.join(know_dir, "brief.json"), "w", encoding="utf-8") as f:
+        json.dump(brief, f, ensure_ascii=False, indent=2)
 
 
 class TestFTS5Escape(unittest.TestCase):
@@ -196,7 +185,7 @@ class TestRebuildAndQueryKB(unittest.TestCase):
         for r in results:
             self.assertEqual(r["source_kind"], "memory")
         # Filter to only knowledge
-        results = query_kb(self.graph_dir, "bdev", kinds=["principle", "fact"])
+        results = query_kb(self.graph_dir, "bdev", kinds=["hard_rule", "description"])
         self.assertGreater(len(results), 0)
         for r in results:
             self.assertEqual(r["source_kind"], "knowledge")

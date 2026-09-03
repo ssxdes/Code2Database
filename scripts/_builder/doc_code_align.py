@@ -2,11 +2,11 @@
 """Documentation-code dual source truth alignment.
 
 The current system has a "dual source truth" problem:
-- `knowledge_manager` extracts facts from docs → stored as Markdown
+- Project knowledge lives in the lean brief (knowledge/brief.json)
 - `extract-semantics` extracts descriptions from docs → applied to graph nodes
   as `semantic_desc`, `external_desc`, `api_constraints`
 - BUT: docs may say "function returns 0 on success" while code returns -1
-- `knowledge-validate` only checks reference staleness (related_functions exist),
+- `brief-validate` only checks brief schema/size/graph drift,
   NOT doc-vs-code semantic consistency
 - LLM queries read both `semantic_desc` (from docs) and `body_text` (from code)
   without knowing they may disagree

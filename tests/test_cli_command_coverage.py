@@ -177,7 +177,7 @@ class TestCLIAliasesRegistered(unittest.TestCase):
         'concurrency': 'concurrency-risks',
         'save': 'save-memory',
         'recall': 'search-memory',
-        'know': 'knowledge-query',
+        'brief': 'knowledge-brief',
         'flow': 'value-flow',
         'find': 'find-invariants',
         'health': 'profile-health',

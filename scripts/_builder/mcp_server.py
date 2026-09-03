@@ -621,11 +621,11 @@ def _tool_domain(args: dict, graph_dir: str) -> dict:
 
 
 def _tool_knowledge_query(args: dict, graph_dir: str) -> dict:
-    """Query knowledge by topic.
+    """Query knowledge (project brief) by topic.
 
-    Prefers the unified FTS5+BM25 path (kb_paragraphs) when the
-    project has code2database.db; falls back to the legacy substring
-    search via KnowledgeManager otherwise.
+    Prefers the unified FTS5+BM25 path (kb_paragraphs, indexed from
+    brief.json sections) when the project has code2database.db; falls
+    back to substring matching against the rendered brief otherwise.
     """
     topic = args.get("topic", "")
     if not topic:
@@ -636,7 +636,9 @@ def _tool_knowledge_query(args: dict, graph_dir: str) -> dict:
             graph_dir=graph_dir,
             query=topic,
             top_n=10,
-            kinds=["principle", "fact", "pattern", "glossary"],
+            kinds=["hard_rule", "mode", "abstraction", "description",
+                   "must_know", "conventions", "pitfalls",
+                   "query_paths"],
             min_weight=0.0,
             max_tokens=int(args.get("max_tokens", 500)),
         )
@@ -646,14 +648,27 @@ def _tool_knowledge_query(args: dict, graph_dir: str) -> dict:
                 "matches": results,
                 "engine": "fts5_bm25",
             }
-        # No FTS5 hits — fall through to legacy
+        # No FTS5 hits — fall through to brief fallback
     except Exception:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-    from _builder.knowledge_manager import KnowledgeManager
-    km = KnowledgeManager(graph_dir)
-    result = km.query_knowledge(args.get("topic", ""), max_tokens=args.get("max_tokens", 500))
-    return {"topic": args.get("topic", ""), "result": result, "engine": "substring_fallback"}
+    from _builder.brief import load_brief, render_brief_prompt
+    brief = load_brief(graph_dir)
+    if brief is None:
+        return {"topic": topic, "result": "No project brief found. "
+                "Run brief-extract to initialize.",
+                "engine": "brief_fallback"}
+    rendered = render_brief_prompt(graph_dir, brief)
+    topic_lower = topic.lower()
+    matching = [line for line in rendered.split("\n")
+                if topic_lower in line.lower()]
+    if matching:
+        return {"topic": topic, "result": "\n".join(matching[:20]),
+                "engine": "brief_fallback"}
+    # No line matched — return the full (lean) brief; it IS the
+    # knowledge of this project.
+    return {"topic": topic, "result": rendered,
+            "engine": "brief_fallback"}
 
 
 def _tool_memory_search(args: dict, graph_dir: str) -> list:

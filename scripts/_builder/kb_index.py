@@ -335,115 +335,122 @@ def _split_markdown_paragraphs(text: str) -> List[tuple]:
 
 
 def _load_memory_entries(graph_dir: str) -> List[dict]:
-    """Load all memory entries (root + leaf + experience) as dicts.
+    """Load all memory entries from memory/memory.db (SQLite store).
 
-    Defensive against corrupt/legacy index files. Returns entries with
-    a `kind` field set to 'memory_qa' or 'memory_experience' based on
-    location.
+    Returns active + experience rows as dicts with kind set to
+    'memory_qa' or 'memory_experience' based on status. Returns []
+    when no memory store exists yet.
     """
-    memory_dir = os.path.join(graph_dir, "memory")
+    db_path = os.path.join(graph_dir, "memory", "memory.db")
+    if not os.path.exists(db_path):
+        return []
+    import sqlite3 as _sqlite3
     entries: List[dict] = []
-    if not os.path.isdir(memory_dir):
-        return entries
-    # Walk root/, leaf/, experience/ subdirs
-    for subdir, prefix, kind in (
-        ("root", "root_", "memory_qa"),
-        ("leaf", "mem_", "memory_qa"),
-        ("experience", "experience_", "memory_experience"),
-    ):
-        sub_path = os.path.join(memory_dir, subdir)
-        if not os.path.isdir(sub_path):
-            continue
-        for fname in sorted(os.listdir(sub_path)):
-            # Skip index.json files inside subdirs (experience/index.json
-            # would otherwise be loaded as a memory entry — harmless
-            # because rebuild skips empty Q/A, but wasteful).
-            if not fname.endswith(".json") or fname == "index.json":
-                continue
-            fpath = os.path.join(sub_path, fname)
-            try:
-                with open(fpath, "r", encoding="utf-8") as f:
-                    entry = json.load(f)
-                if isinstance(entry, dict):
-                    entry.setdefault("kind", kind)
-                    entry["_source_subdir"] = subdir
-                    entry["_source_prefix"] = prefix
-                    entries.append(entry)
-            except (OSError, json.JSONDecodeError):
-                logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                continue
-    for fname in sorted(os.listdir(memory_dir)):
-        if not fname.startswith("memory_") or not fname.endswith(".json"):
-            continue
-        fpath = os.path.join(memory_dir, fname)
-        if os.path.isdir(fpath):
-            continue
+    conn = None
+    try:
+        conn = _sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn.row_factory = _sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM memories WHERE status IN "
+            "('active', 'experience')").fetchall()
+    except (_sqlite3.Error, OSError):
+        if conn is not None:
+            conn.close()
+        return []
+    for r in rows:
         try:
-            with open(fpath, "r", encoding="utf-8") as f:
-                entry = json.load(f)
-            if isinstance(entry, dict):
-                entry.setdefault("kind", "memory_qa")
-                entry["_source_subdir"] = ""
-                entry["_source_prefix"] = "memory_"
-                entries.append(entry)
-        except (OSError, json.JSONDecodeError):
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            entry = dict(r)
+        except Exception:
             continue
+        entry["kind"] = ("memory_qa" if entry.get("status") == "active"
+                         else "memory_experience")
+        entry["_source_subdir"] = "db"
+        entry["_source_prefix"] = "mem_"
+        entries.append(entry)
+    conn.close()
     return entries
 
 
+def _brief_sections_as_paragraphs(brief: dict, source_file: str,
+                                  project: str = "") -> List[dict]:
+    """Flatten a brief (or foreign brief) into kb paragraph dicts."""
+    paragraphs: List[dict] = []
+    section_map = [
+        ("description", "Description", brief.get("description", "")),
+        ("must_know", "Must Know", brief.get("must_know", "")),
+    ]
+    for hr in brief.get("hard_rules") or []:
+        if isinstance(hr, dict) and hr.get("rule"):
+            section_map.append(("hard_rule", "Hard Rule", hr["rule"]))
+    for m in brief.get("modes") or []:
+        if isinstance(m, dict) and m.get("name"):
+            body = f"use when {m.get('when', '')} — " \
+                   f"{m.get('differences', '')}"
+            section_map.append(("mode", f"Mode: {m['name']}", body))
+    for ab in brief.get("key_abstractions") or []:
+        if isinstance(ab, dict) and ab.get("name"):
+            section_map.append(("abstraction", ab["name"],
+                                ab.get("role", "")))
+    for key, title in (("conventions", "Convention"),
+                       ("pitfalls", "Pitfall"),
+                       ("query_paths", "Query Path")):
+        for item in brief.get(key) or []:
+            if item:
+                section_map.append((key, title, str(item)))
+
+    for para_index, (kind, title, body) in enumerate(section_map):
+        if not body or not str(body).strip():
+            continue
+        paragraphs.append({
+            "source_kind": "knowledge",
+            "source_file": source_file,
+            "para_index": para_index,
+            "title": f"[{project}] {title}" if project else title,
+            "body": str(body),
+            "tags": None,
+            "node_ids": None,
+            "weight": 1.0,  # knowledge has no decay
+            "confidence": 1.0,
+            "kind": kind,
+            "graph_version": None,
+            "created_at": datetime.now().isoformat(),
+        })
+    return paragraphs
+
+
 def _load_knowledge_paragraphs(graph_dir: str) -> List[dict]:
-    """Load all knowledge .md files as paragraph dicts."""
+    """Load knowledge paragraphs from the project brief (+ foreign briefs).
+
+    The knowledge store is knowledge/brief.json (lean curated prompt
+    content). Foreign briefs shared via import-foreign-knowledge land
+    as knowledge/foreign_<project>_brief.json and are indexed too.
+    """
     knowledge_dir = os.path.join(graph_dir, "knowledge")
     paragraphs: List[dict] = []
     if not os.path.isdir(knowledge_dir):
         return paragraphs
     for fname in sorted(os.listdir(knowledge_dir)):
-        if not fname.endswith(".md"):
-            continue
-        # C7: Skip merged_*.md files — these are merge artifacts written by
-        # cgdb_merge (merged_<branch>_*.md). They duplicate content from the
-        # source .md files and would be double-counted in kb_paragraphs.
-        if fname.startswith("merged_"):
+        if not fname.endswith(".json"):
             continue
         fpath = os.path.join(knowledge_dir, fname)
         if not os.path.isfile(fpath):
             continue
         try:
             with open(fpath, "r", encoding="utf-8") as f:
-                content = f.read()
-        except (OSError, UnicodeDecodeError):
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                brief = json.load(f)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             continue
-        if fname.startswith("principles"):
-            kind = "principle"
-        elif fname.startswith("glossary"):
-            kind = "glossary"
-        elif fname.startswith("constraints"):
-            kind = "fact"
-        elif fname.startswith("patterns"):
-            kind = "pattern"
-        elif fname.startswith("detail_"):
-            kind = "fact"
-        elif fname.startswith("custom_"):
-            kind = "fact"
+        if not isinstance(brief, dict):
+            continue
+        project = brief.get("project", "")
+        if fname == "brief.json":
+            project = project or "this project"
         else:
-            kind = "fact"
-        for para_index, (title, body) in enumerate(_split_markdown_paragraphs(content)):
-            paragraphs.append({
-                "source_kind": "knowledge",
-                "source_file": fname,
-                "para_index": para_index,
-                "title": title,
-                "body": body,
-                "tags": None,
-                "node_ids": None,
-                "weight": 1.0,  # knowledge has no decay
-                "confidence": 1.0,
-                "kind": kind,
-                "graph_version": None,
-                "created_at": datetime.now().isoformat(),
-            })
+            m = re.match(r'foreign_(\w+)_brief\.json$', fname)
+            if m:
+                project = project or m.group(1)
+        paragraphs.extend(
+            _brief_sections_as_paragraphs(brief, fname, project))
     return paragraphs
 
 
@@ -606,7 +613,7 @@ def upsert_kb_paragraph(graph_dir: str, source_kind: str, source_file: str,
                         graph_version: str = None) -> int:
     """Insert or update a single kb_paragraph row.
 
-    Used by save-memory / apply-knowledge to keep the FTS5 index in sync
+    Used to keep the FTS5 index in sync after direct kb writes
     after a filesystem write. Returns the row id.
     """
     conn = _kb_connect(graph_dir)

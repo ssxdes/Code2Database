@@ -58,7 +58,6 @@ from _builder.graph_history import (
     cmd_graph_history, cmd_graph_diff, cmd_graph_record_version,
 )
 from _builder.memory_manager import cmd_manage_memory, cmd_memory_health
-from _builder.knowledge_manager import cmd_extract_knowledge, cmd_apply_knowledge, cmd_knowledge_query, cmd_knowledge_validate
 from _builder.brief import (
     cmd_knowledge_brief, cmd_brief_update, cmd_brief_extract,
     cmd_brief_validate,
@@ -578,7 +577,7 @@ def cmd_scan_rpc(args):
 
 
 def cmd_import_foreign_knowledge(args):
-    """Phase 3: copy foreign knowledge/*.md into local."""
+    """Phase 3: copy foreign project brief into local knowledge/"""
     from _builder.c2d_phase3 import import_foreign_knowledge
     summary = import_foreign_knowledge(
         graph_dir=args.graph,
@@ -1114,30 +1113,10 @@ def main():
     p_mh = sub.add_parser("memory-health", help="Report memory system health statistics")
     p_mh.add_argument("--graph", required=True, help="Call graph output directory")
 
-    # extract-knowledge
-    p_ek = sub.add_parser("extract-knowledge", help="Extract knowledge from docs and graph")
-    p_ek.add_argument("--graph", required=True, help="Call graph output directory")
-    p_ek.add_argument("--source", default="", help="Source root directory")
-    p_ek.add_argument("--docs", default="", help="Documentation directory or file")
-
-    # apply-knowledge
-    p_ak = sub.add_parser("apply-knowledge", help="Apply LLM knowledge to knowledge directory")
-    p_ak.add_argument("--graph", required=True, help="Call graph output directory")
-
-    # knowledge-query
-    p_kq = sub.add_parser("knowledge-query", help="Query knowledge by topic")
-    p_kq.add_argument("--graph", required=True, help="Call graph output directory")
-    p_kq.add_argument("--topic", required=True, help="Topic to search")
-    p_kq.add_argument("--max-tokens", type=int, default=500, help="Max output tokens")
-
-    # knowledge-validate
-    p_kv = sub.add_parser("knowledge-validate", help="Validate knowledge against current graph")
-    p_kv.add_argument("--graph", required=True, help="Call graph output directory")
-
     # kb-rebuild-index (Phase 1: unified FTS5 index rebuild)
     p_kri = sub.add_parser("kb-rebuild-index",
                            help="Rebuild the unified kb_paragraphs FTS5 index "
-                                "from memory/*.json and knowledge/*.md")
+                                "from memory.db + brief.json")
     p_kri.add_argument("--graph", required=True, help="Call graph output directory")
 
     # kb-query (Phase 3: unified FTS5+BM25 query across memory + knowledge)
@@ -1428,7 +1407,7 @@ def main():
     p_sre.add_argument("--graph", required=True, help="Local C2D directory")
 
     p_ifk = sub.add_parser("import-foreign-knowledge",
-                           help="Copy foreign C2D's knowledge/*.md into local knowledge/")
+                           help="Copy foreign C2D project brief (knowledge/brief.json) into local knowledge/.")
     p_ifk.add_argument("--graph", required=True, help="Local C2D directory")
     p_ifk.add_argument("--foreign-c2d", required=True, help="Foreign C2D directory")
     p_ifk.add_argument("--project-name", default="", help="Foreign project name")
@@ -2529,7 +2508,7 @@ def main():
         "concurrency": "concurrency-risks",
         "save": "save-memory",
         "recall": "search-memory",
-        "know": "knowledge-query",
+        "brief": "knowledge-brief",
         "flow": "value-flow",
         "find": "find-invariants",
         "health": "profile-health",
@@ -2589,6 +2568,7 @@ def main():
         "save": cmd_save_memory,  # SKILL.md alias
         "search-memory": cmd_search_memory,
         "recall": cmd_search_memory,  # SKILL.md alias
+        "brief": cmd_knowledge_brief,  # SKILL.md alias
         "validate-memory": cmd_validate_memory,
         "export-html": cmd_export_html,
         "export-obsidian": cmd_export_obsidian,
@@ -2619,15 +2599,10 @@ def main():
         "validate-plugin": cmd_validate_plugin,
         "manage-memory": cmd_manage_memory,
         "memory-health": cmd_memory_health,
-        "extract-knowledge": cmd_extract_knowledge,
-        "apply-knowledge": cmd_apply_knowledge,
-        "knowledge-query": cmd_knowledge_query,
         "knowledge-brief": cmd_knowledge_brief,
         "brief-update": cmd_brief_update,
         "brief-extract": cmd_brief_extract,
         "brief-validate": cmd_brief_validate,
-        "know": cmd_knowledge_query,  # SKILL.md alias
-        "knowledge-validate": cmd_knowledge_validate,
         "kb-rebuild-index": cmd_kb_rebuild_index,
         "kb-query": cmd_kb_query,
         "kb-cluster": cmd_kb_cluster,

@@ -445,11 +445,12 @@ def scan_rpc_edges(graph_dir: str, verbose: bool = True) -> Dict[str, Any]:
 def import_foreign_knowledge(graph_dir: str, foreign_c2d_path: str,
                               project_name: str = "",
                               verbose: bool = True) -> Dict[str, Any]:
-    """Copy foreign C2D's knowledge/*.md into local knowledge/ with
-    foreign_<project>_ prefix.
+    """Copy a foreign C2D's project brief (knowledge/brief.json) into
+    local knowledge/ as foreign_<project>_brief.json.
 
-    Lets B's kb-query see A's principles/glossary/etc. without merging
-    the C2Ds themselves.
+    Lets B's kb-query see A's hard rules / modes / abstractions without
+    merging the C2Ds themselves. (The old .md copying is gone —
+    knowledge is now the lean per-project brief.)
     """
     summary: Dict[str, Any] = {
         "foreign_c2d_path": foreign_c2d_path,
@@ -457,53 +458,26 @@ def import_foreign_knowledge(graph_dir: str, foreign_c2d_path: str,
         "files_copied": 0,
         "files_failed": 0,
     }
-    foreign_knowledge_dir = os.path.join(foreign_c2d_path, "knowledge")
-    if not os.path.isdir(foreign_knowledge_dir):
-        summary["message"] = f"no knowledge/ dir in {foreign_c2d_path}"
+    foreign_brief = os.path.join(foreign_c2d_path, "knowledge",
+                                 "brief.json")
+    if not os.path.exists(foreign_brief):
+        summary["message"] = (f"no knowledge/brief.json in "
+                              f"{foreign_c2d_path}")
         return summary
     local_knowledge_dir = os.path.join(graph_dir, "knowledge")
     os.makedirs(local_knowledge_dir, exist_ok=True)
-    safe_project = re.sub(r'[^A-Za-z0-9_]', '_', project_name or "foreign")
-    copied = 0
-    for fname in sorted(os.listdir(foreign_knowledge_dir)):
-        if not fname.endswith(".md"):
-            continue
-        # Skip files that look like merge artifacts (don't re-merge)
-        if fname.startswith("merged_") or fname.startswith(f"foreign_{safe_project}_"):
-            continue
-        src = os.path.join(foreign_knowledge_dir, fname)
-        if not os.path.isfile(src):
-            continue
-        dst_name = f"foreign_{safe_project}_{fname}"
-        dst = os.path.join(local_knowledge_dir, dst_name)
-        # Skip if destination exists AND is newer than source (up-to-date).
-        # Overwrite if source is newer (A updated its knowledge).
-        if os.path.exists(dst):
-            try:
-                src_mtime = os.path.getmtime(src)
-                dst_mtime = os.path.getmtime(dst)
-                if src_mtime <= dst_mtime:
-                    continue  # dst is up-to-date
-            except OSError:
-                logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                pass
-        try:
-            shutil.copy2(src, dst)
-            copied += 1
-        except OSError as e:
-            summary["files_failed"] += 1
-            if verbose:
-                print(f"[import-foreign-knowledge] failed to copy "
-                      f"{fname}: {e}", file=sys.stderr)
-    summary["files_copied"] = copied
-    # Touch the local knowledge index so it gets rebuilt on next kb-rebuild
-    index_path = os.path.join(local_knowledge_dir, "index.json")
-    if os.path.exists(index_path):
-        try:
-            os.utime(index_path, None)
-        except OSError:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
-            pass
+    safe_project = re.sub(r'[^A-Za-z0-9_]', '_',
+                          project_name or "foreign")
+    dst = os.path.join(local_knowledge_dir,
+                       f"foreign_{safe_project}_brief.json")
+    try:
+        shutil.copy2(foreign_brief, dst)
+        summary["files_copied"] = 1
+    except OSError as e:
+        summary["files_failed"] = 1
+        if verbose:
+            print(f"[import-foreign-knowledge] failed to copy "
+                  f"brief.json: {e}", file=sys.stderr)
     return summary
 
 

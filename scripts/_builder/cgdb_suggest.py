@@ -196,41 +196,50 @@ def _load_edges(graph_dir: str) -> List[dict]:
 
 
 def _load_knowledge_index(graph_dir: str) -> List[dict]:
-    """Load knowledge index entries from the canonical knowledge/ directory."""
-    path = os.path.join(graph_dir, "knowledge", "index.json")
+    """Load knowledge entries from the project brief (knowledge/brief.json).
+
+    Returns one pseudo-entry per populated section so suggestion logic
+    can see what's already documented.
+    """
+    path = os.path.join(graph_dir, "knowledge", "brief.json")
     if not os.path.exists(path):
         return []
     try:
         with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if not isinstance(data, dict):
+            brief = json.load(f)
+        if not isinstance(brief, dict):
             return []
-        # Knowledge index schema: {"files": [...], "topics": [...]}
-        # Return file entries (each has name, size, headings)
-        files = data.get("files", [])
-        if not isinstance(files, list):
-            return []
-        return [f for f in files if isinstance(f, dict)]
+        entries = []
+        for key in ("description", "must_know"):
+            if brief.get(key):
+                entries.append({"name": key, "section": key})
+        for key in ("hard_rules", "modes", "key_abstractions",
+                    "conventions", "pitfalls", "query_paths"):
+            for i, item in enumerate(brief.get(key) or []):
+                name = item.get("name", item.get("rule", "")) \
+                    if isinstance(item, dict) else str(item)
+                entries.append({"name": name, "section": key, "index": i})
+        return entries
     except (OSError, json.JSONDecodeError):
         return []
 
 
 def _load_memory_index(graph_dir: str) -> List[dict]:
-    """Load memory index entries from the canonical memory/ directory."""
-    path = os.path.join(graph_dir, "memory", "index.json")
-    if not os.path.exists(path):
+    """Load memory entries from the SQLite memory store (memory.db)."""
+    db_path = os.path.join(graph_dir, "memory", "memory.db")
+    if not os.path.exists(db_path):
         return []
+    import sqlite3
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if not isinstance(data, dict):
-            return []
-        entries = data.get("entries", [])
-        if not isinstance(entries, list):
-            return []
-        # Defensive: filter non-dict entries (mirrors _sanitize_memory_index)
-        return [e for e in entries if isinstance(e, dict)]
-    except (OSError, json.JSONDecodeError):
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT id, question, tags, status FROM memories "
+            "WHERE status IN ('active', 'experience')").fetchall()
+        entries = [dict(r) for r in rows]
+        conn.close()
+        return entries
+    except (sqlite3.Error, OSError):
         return []
 
 
@@ -349,7 +358,7 @@ def _suggest_stale_knowledge(
         "message": f"{len(stale)} knowledge entries reference functions that "
                    f"no longer exist in the graph (likely deleted or renamed).",
         "functions": [s.get("function", "") for s in stale[:10]],
-        "action": "knowledge-validate",
+        "action": "brief-validate",
     }]
 
 

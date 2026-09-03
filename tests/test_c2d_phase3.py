@@ -195,50 +195,61 @@ class TestScanRpcEdges(unittest.TestCase):
 
 
 class TestImportForeignKnowledge(unittest.TestCase):
-    """Test cross-team knowledge import (copy .md files)."""
+    """Test cross-team knowledge import (copy foreign project brief)."""
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix="know_test_")
         self.b_dir = os.path.join(self.tmpdir, "B")
         os.makedirs(os.path.join(self.b_dir, "knowledge"), exist_ok=True)
-        # Create A's knowledge dir with some .md files
+        # A has a project brief
         self.a_dir = os.path.join(self.tmpdir, "A")
         a_knowledge = os.path.join(self.a_dir, "knowledge")
         os.makedirs(a_knowledge, exist_ok=True)
-        with open(os.path.join(a_knowledge, "principles.md"), "w") as f:
-            f.write("# A Principles\n\nAll A APIs require init.\n")
-        with open(os.path.join(a_knowledge, "glossary.md"), "w") as f:
-            f.write("# A Glossary\n\ninit = initialize\n")
-        # Also create a non-md file that should be skipped
-        with open(os.path.join(a_knowledge, "data.json"), "w") as f:
-            f.write("{}")
+        with open(os.path.join(a_knowledge, "brief.json"), "w") as f:
+            json.dump({
+                "schema_version": 1, "project": "A",
+                "one_liner": "project A",
+                "description": "A does things.",
+                "hard_rules": [{"rule": "All A APIs require init.",
+                                "type": "api"}],
+                "modes": [], "key_abstractions": [], "conventions": [],
+                "pitfalls": [], "query_paths": [], "must_know": "",
+                "graph_stats": {},
+            }, f)
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def test_import_copies_md_with_prefix(self):
+    def test_import_copies_brief_with_prefix(self):
         from _builder.c2d_phase3 import import_foreign_knowledge
         summary = import_foreign_knowledge(
             self.b_dir, self.a_dir, "A", verbose=False)
-        self.assertEqual(summary["files_copied"], 2)
-        # Check files exist with prefix
-        b_knowledge = os.path.join(self.b_dir, "knowledge")
+        self.assertEqual(summary["files_copied"], 1)
         self.assertTrue(os.path.exists(
-            os.path.join(b_knowledge, "foreign_A_principles.md")))
-        self.assertTrue(os.path.exists(
-            os.path.join(b_knowledge, "foreign_A_glossary.md")))
-        # Non-md file should NOT be copied
-        self.assertFalse(os.path.exists(
-            os.path.join(b_knowledge, "foreign_A_data.json")))
+            os.path.join(self.b_dir, "knowledge",
+                         "foreign_A_brief.json")))
+        # The copied brief is indexable knowledge (kb_paragraphs source)
+        from _builder.kb_index import _load_knowledge_paragraphs
+        paras = _load_knowledge_paragraphs(self.b_dir)
+        self.assertTrue(any("All A APIs require init" in p["body"]
+                            for p in paras))
 
-    def test_import_skips_already_imported(self):
+    def test_import_without_brief_reports_message(self):
         from _builder.c2d_phase3 import import_foreign_knowledge
-        # First import
-        import_foreign_knowledge(self.b_dir, self.a_dir, "A", verbose=False)
-        # Second import should skip already-prefixed files
-        summary = import_foreign_knowledge(self.b_dir, self.a_dir, "A",
-                                            verbose=False)
+        empty = os.path.join(self.tmpdir, "C")
+        os.makedirs(empty, exist_ok=True)
+        summary = import_foreign_knowledge(
+            self.b_dir, empty, "C", verbose=False)
         self.assertEqual(summary["files_copied"], 0)
+        self.assertIn("message", summary)
+
+    def test_import_reimport_overwrites(self):
+        from _builder.c2d_phase3 import import_foreign_knowledge
+        import_foreign_knowledge(self.b_dir, self.a_dir, "A", verbose=False)
+        # Re-import copies again (idempotent overwrite)
+        summary = import_foreign_knowledge(
+            self.b_dir, self.a_dir, "A", verbose=False)
+        self.assertEqual(summary["files_copied"], 1)
 
 
 class TestF1DescribeNodeForeignRefs(unittest.TestCase):

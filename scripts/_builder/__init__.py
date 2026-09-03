@@ -125,13 +125,6 @@ _LAZY_IMPORTS = {
     "cmd_memory_store_split": ("_builder.memory_store", "cmd_memory_store_split"),
     "cmd_memory_store_merge": ("_builder.memory_store", "cmd_memory_store_merge"),
     "cmd_memory_store_move": ("_builder.memory_store", "cmd_memory_store_move"),
-    # knowledge_manager
-    "KnowledgeManager": ("_builder.knowledge_manager", "KnowledgeManager"),
-    "cmd_extract_knowledge": ("_builder.knowledge_manager", "cmd_extract_knowledge"),
-    "cmd_apply_knowledge": ("_builder.knowledge_manager", "cmd_apply_knowledge"),
-    "cmd_knowledge_query": ("_builder.knowledge_manager", "cmd_knowledge_query"),
-    "cmd_knowledge_validate": ("_builder.knowledge_manager", "cmd_knowledge_validate"),
-    "validate_knowledge": ("_builder.knowledge_manager", "validate_knowledge"),
     # brief
     "cmd_knowledge_brief": ("_builder.brief", "cmd_knowledge_brief"),
     "cmd_brief_update": ("_builder.brief", "cmd_brief_update"),

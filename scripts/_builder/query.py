@@ -3331,6 +3331,7 @@ def cmd_describe_commit(args):
 
     # Fallback: read change_log.json if it exists
     log_path = os.path.join(graph_dir, ".code2database_change_log.json")
+    log_corrupt = False
     if os.path.exists(log_path):
         try:
             log_data = json.loads(Path(log_path).read_text(encoding="utf-8"))
@@ -3339,12 +3340,21 @@ def cmd_describe_commit(args):
             result = {"commit": commit, "affected_nodes": entries, "_source": "json"}
             _output_result(result, getattr(args, 'json', False))
             return
-        except Exception:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
-            pass
-    print(f"No change log found for commit {commit}. "
-          f"Run a build with --track-commits to populate change_log.",
-          file=sys.stderr)
+        except Exception as exc:
+            # The log EXISTS but can't be read/parsed. Saying "run a
+            # build with --track-commits" here would be a lie — the data
+            # was tracked, the file is corrupt. Say so.
+            logging.getLogger(__name__).debug(
+                "change_log read failed: %s", exc, exc_info=True)
+            log_corrupt = True
+    if log_corrupt:
+        print(f"Change log at {log_path} exists but could not be read "
+              f"(corrupt or truncated). Delete it and re-run a build "
+              f"with --track-commits to regenerate.", file=sys.stderr)
+    else:
+        print(f"No change log found for commit {commit}. "
+              f"Run a build with --track-commits to populate change_log.",
+              file=sys.stderr)
     sys.exit(1)
 
 
@@ -3383,6 +3393,7 @@ def cmd_node_history(args):
 
     # Fallback: read change_log.json
     log_path = os.path.join(graph_dir, ".code2database_change_log.json")
+    log_corrupt = False
     if os.path.exists(log_path):
         try:
             log_data = json.loads(Path(log_path).read_text(encoding="utf-8"))
@@ -3392,10 +3403,18 @@ def cmd_node_history(args):
             result = {"node": node_id, "history": entries, "_source": "json"}
             _output_result(result, getattr(args, 'json', False))
             return
-        except Exception:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
-            pass
-    print(f"No change log found for node {node_id}.", file=sys.stderr)
+        except Exception as exc:
+            # See cmd_describe_commit: a corrupt log must not be
+            # reported as "no change log found".
+            logging.getLogger(__name__).debug(
+                "change_log read failed: %s", exc, exc_info=True)
+            log_corrupt = True
+    if log_corrupt:
+        print(f"Change log at {log_path} exists but could not be read "
+              f"(corrupt or truncated). Delete it and re-run a build "
+              f"with --track-commits to regenerate.", file=sys.stderr)
+    else:
+        print(f"No change log found for node {node_id}.", file=sys.stderr)
     sys.exit(1)
 
 

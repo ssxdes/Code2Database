@@ -106,5 +106,67 @@ class TestDeleteTokenSeqShift(unittest.TestCase):
         self.assertEqual(_seqs(db), ["t1", "t2", "t4"])
 
 
+class TestAliasSet(unittest.TestCase):
+    def _seed_aliases(self, db):
+        conn = sqlite3.connect(db)
+        conn.execute(
+            "INSERT INTO cgdb_nodes (kind, name, fqn, line, col, byte_start, "
+            "byte_end) VALUES "
+            "('function', 'myfn', 'myfn', 1, 1, 0, 0),"
+            "('function', 'otherfn', 'otherfn', 1, 1, 0, 0)")
+        conn.commit()
+        conn.execute(
+            "INSERT INTO cgdb_nodes (kind, name, fqn, line, col, byte_start, "
+            "byte_end, enclosing_symbol_id) VALUES "
+            "('var', 'myvar', 'myvar', 2, 1, 0, 0, "
+            "(SELECT id FROM cgdb_nodes WHERE name='myfn')),"
+            "('var', 'infn', 'infn', 3, 1, 0, 0, "
+            "(SELECT id FROM cgdb_nodes WHERE name='myfn')),"
+            "('var', 'outfn', 'outfn', 4, 1, 0, 0, "
+            "(SELECT id FROM cgdb_nodes WHERE name='otherfn'))")
+        conn.commit()
+        conn.execute(
+            "INSERT INTO alias_sets (ptr1_node_id, ptr2_node_id, kind, "
+            "confidence) VALUES ("
+            "(SELECT id FROM cgdb_nodes WHERE name='myvar'), "
+            "(SELECT id FROM cgdb_nodes WHERE name='infn'), "
+            "'may_alias', 0.9), ("
+            "(SELECT id FROM cgdb_nodes WHERE name='myvar'), "
+            "(SELECT id FROM cgdb_nodes WHERE name='outfn'), "
+            "'may_alias', 0.5)")
+        conn.commit()
+        conn.close()
+
+    def test_alias_set_returns_aliases(self):
+        d, db, fid = _make_graph_dir()
+        self._seed_aliases(db)
+        res = m._tool_alias_set({"variable": "myvar"}, d)
+        self.assertEqual(len(res), 2, res)
+        names = {r["alias_var"] for r in res}
+        self.assertEqual(names, {"infn", "outfn"})
+        for r in res:
+            self.assertNotIn("error", r)
+            self.assertIn(r["kind"], ("may_alias", "must_alias", "no_alias"))
+
+    def test_alias_set_scope_filters_by_enclosing_function(self):
+        d, db, fid = _make_graph_dir()
+        self._seed_aliases(db)
+        res = m._tool_alias_set({"variable": "myvar", "scope": "myfn"}, d)
+        self.assertEqual(len(res), 1, res)
+        self.assertEqual(res[0]["alias_var"], "infn")
+
+    def test_alias_set_unknown_scope_returns_empty(self):
+        d, db, fid = _make_graph_dir()
+        self._seed_aliases(db)
+        res = m._tool_alias_set(
+            {"variable": "myvar", "scope": "no_such_fn"}, d)
+        self.assertEqual(res, [])
+
+    def test_alias_set_unknown_variable_returns_empty(self):
+        d, db, fid = _make_graph_dir()
+        res = m._tool_alias_set({"variable": "no_such_var"}, d)
+        self.assertEqual(res, [])
+
+
 if __name__ == "__main__":
     unittest.main()

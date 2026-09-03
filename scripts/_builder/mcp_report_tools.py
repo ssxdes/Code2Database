@@ -828,24 +828,37 @@ def _tool_alias_set(args: dict, graph_dir: str) -> list:
         if row is None:
             return []
         var_id = row["id"]
-        # Find aliases
+        # alias_sets has no per-function column. A scope (function name)
+        # is resolved to its function node id and matched against the
+        # enclosing_symbol_id of the alias endpoints instead.
+        scope_fn_id = None
         if scope:
+            fn = conn.execute(
+                "SELECT id FROM cgdb_nodes WHERE name = ? "
+                "AND kind = 'function' LIMIT 1",
+                (scope,)
+            ).fetchone()
+            if fn is None:
+                return []
+            scope_fn_id = fn["id"]
+        # Find aliases (alias_sets columns: ptr1/ptr2 node ids, kind,
+        # confidence — there is no analysis/function_id column)
+        if scope_fn_id is not None:
             rows = conn.execute(
                 "SELECT a.ptr1_node_id, a.ptr2_node_id, a.kind, a.confidence, "
-                "a.analysis, a.function_id, "
                 "n1.name AS var1, n2.name AS var2 "
                 "FROM alias_sets a "
                 "LEFT JOIN cgdb_nodes n1 ON a.ptr1_node_id = n1.id "
                 "LEFT JOIN cgdb_nodes n2 ON a.ptr2_node_id = n2.id "
                 "WHERE (a.ptr1_node_id = ? OR a.ptr2_node_id = ?) "
-                "AND a.function_id = ? "
+                "AND (CASE WHEN a.ptr1_node_id = ? THEN n2.enclosing_symbol_id "
+                "ELSE n1.enclosing_symbol_id END) = ? "
                 "ORDER BY a.confidence DESC",
-                (var_id, var_id, scope)
+                (var_id, var_id, var_id, scope_fn_id)
             ).fetchall()
         else:
             rows = conn.execute(
                 "SELECT a.ptr1_node_id, a.ptr2_node_id, a.kind, a.confidence, "
-                "a.analysis, a.function_id, "
                 "n1.name AS var1, n2.name AS var2 "
                 "FROM alias_sets a "
                 "LEFT JOIN cgdb_nodes n1 ON a.ptr1_node_id = n1.id "
@@ -854,13 +867,20 @@ def _tool_alias_set(args: dict, graph_dir: str) -> list:
                 "ORDER BY a.confidence DESC",
                 (var_id, var_id)
             ).fetchall()
-        return [{
-            "alias_var": r["var2"] if r["ptr1_node_id"] == var_id else r["var1"],
-            "kind": r["kind"],
-            "confidence": r["confidence"],
-            "analysis": r["analysis"] if "analysis" in r.keys() else "heuristic",
-            "function_id": r["function_id"] if "function_id" in r.keys() else None,
-        } for r in rows]
+        results = []
+        for r in rows:
+            other_id = r["ptr2_node_id"] if r["ptr1_node_id"] == var_id \
+                else r["ptr1_node_id"]
+            other_name = r["var2"] if r["ptr1_node_id"] == var_id \
+                else r["var1"]
+            results.append({
+                "alias_var": other_name if other_name is not None
+                else f"node:{other_id}",
+                "alias_node_id": other_id,
+                "kind": r["kind"],
+                "confidence": r["confidence"],
+            })
+        return results
     except Exception as exc:
         return [{"error": str(exc)}]
     finally:
@@ -1496,7 +1516,7 @@ TOOLS_REPORT = {
         "handler": _tool_indirect_targets,
     },
     "alias_set": {
-        "description": "Find the alias set of a variable (may/must/no-alias, confidence, analysis source). (design-report L3)",
+        "description": "Find the alias set of a variable (may/must/no-alias with confidence). Optional scope limits to aliases whose endpoints are enclosed by that function. (design-report L3)",
         "inputSchema": {
             "type": "object",
             "properties": {

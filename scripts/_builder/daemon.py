@@ -405,6 +405,23 @@ class FileWatcher:
         if gda and gda != self.source_root:
             if path == gda or path.startswith(gda + os.sep):
                 return True
+        if gda and gda == self.source_root:
+            # Degenerate config: graph_dir == source_root, so the
+            # graph_dir subtree CANNOT be excluded wholesale (it is the
+            # watch root — real source files live there too). Exclude
+            # the daemon/build's own artifacts by name instead, or the
+            # daemon reacts to its own .daemon_status.json writes
+            # (written on every sync) with another sync — a perpetual
+            # sync storm that also starves wait-sync (it waits for
+            # quiescence that never comes). Observed: 8 syncs / 10s.
+            base = os.path.basename(path)
+            if (base.startswith(".daemon_")
+                    or base.startswith(".code2database_")
+                    or base.startswith("code2database_")
+                    or base.startswith("code2database.db")
+                    or base.startswith("CODE2DATABASE_")
+                    or base == "SCENARIOS_SUMMARY.md"):
+                return True
         norm_path = path.replace("\\", "/")
         parts = norm_path.split("/")
         for pat in self.exclude_patterns:

@@ -255,11 +255,31 @@ class TestGraphDirExclusion(unittest.TestCase):
             self.assertFalse(w._is_excluded(os.path.join(root, "a.json")))
 
     def test_graph_dir_equal_source_root_not_excluded(self):
-        """Degenerate config graph_dir == source_root must not exclude all."""
+        """Degenerate config graph_dir == source_root must not exclude all
+        — but the daemon/build's own artifacts ARE excluded by name, or
+        the daemon's per-sync .daemon_status.json write re-enters the
+        event stream as a perpetual sync storm (~8 syncs / 10s, starves
+        wait-sync quiescence)."""
         with tempfile.TemporaryDirectory() as root:
             w = FileWatcher(root, exclude_patterns=[], backend="polling",
                             graph_dir=root)
+            # Real sources still watched.
             self.assertFalse(w._is_excluded(os.path.join(root, "a.json")))
+            self.assertFalse(w._is_excluded(
+                os.path.join(root, "src", "main.c")))
+            # Daemon/build artifacts excluded by name.
+            for name in (".daemon_status.json",
+                         ".daemon_state.json",
+                         ".code2database_context_pack.json",
+                         ".code2database_cgdb_export_failed.json",
+                         "code2database_master.json",
+                         "code2database.db",
+                         "code2database.db-wal",
+                         "CODE2DATABASE_SUMMARY.md",
+                         "SCENARIOS_SUMMARY.md"):
+                self.assertTrue(
+                    w._is_excluded(os.path.join(root, name)),
+                    f"{name} must be excluded when graph_dir == source_root")
 
 
 class TestStartWithPlatformFallback(unittest.TestCase):

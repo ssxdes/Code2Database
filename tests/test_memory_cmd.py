@@ -1,18 +1,17 @@
-"""Unit tests for memory_cmd.py + memory_manager cmd surfaces.
+"""Unit tests for memory_cmd.py + memory_manager cmd surfaces (SQLite).
 
-Covers: _sanitize_memory_index (corrupt/non-dict/string-entry defense),
-cmd_save_memory (new entry via MemoryManager root/leaf layout, similar
-question merge, --no-merge), cmd_search_memory (legacy Jaccard search,
-experience penalty, no-match message, answer hydration),
-cmd_validate_memory (stale node_ids → entry moved to experience dir,
-trusted entries kept), cmd_memory_health (stats structure),
-cmd_manage_memory (add/query/pack actions).
+Covers: cmd_save_memory (DB entry creation, category/author flags,
+--no-merge), cmd_search_memory (FTS search, category/author filters,
+no-match message), cmd_validate_memory (stale node_ids → experience),
+_auto_validate_memory (daemon path), cmd_memory_health (stats
+structure), cmd_manage_memory (add/query/search/get/categories/
+split/merge/move/pack actions).
 """
 import argparse
 import io
 import json
 import os
-import shutil
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -22,9 +21,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 from _builder import memory_cmd
 from _builder.memory_cmd import (
-    _sanitize_memory_index, cmd_save_memory, cmd_search_memory,
-    cmd_validate_memory,
+    cmd_save_memory, cmd_search_memory, cmd_validate_memory,
+    _auto_validate_memory,
 )
+from _builder.memory_manager import cmd_manage_memory, cmd_memory_health
 
 
 def _ns(**kw):
@@ -67,230 +67,290 @@ def _make_graph_dir():
     return tmp
 
 
-def _read_memory_entry(graph_dir, eid):
-    """Read a memory entry file from root/leaf layout (or flat fallback)."""
-    mem_dir = os.path.join(graph_dir, "memory")
-    for path in (os.path.join(mem_dir, "root", f"root_{eid}.json"),
-                 os.path.join(mem_dir, "leaf", f"mem_{eid}.json"),
-                 os.path.join(mem_dir, f"memory_{eid}.json")):
-        if os.path.exists(path):
-            return json.loads(open(path).read())
-    raise AssertionError(f"entry file for #{eid} not found")
+def _db_rows(graph_dir):
+    conn = sqlite3.connect(os.path.join(graph_dir, "memory", "memory.db"))
+    conn.row_factory = sqlite3.Row
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM memories ORDER BY id").fetchall()]
+    finally:
+        conn.close()
 
 
-class TestSanitizeMemoryIndex(unittest.TestCase):
-    def test_non_dict_returns_default(self):
-        result = _sanitize_memory_index(["not", "a", "dict"], "warn.json")
-        self.assertEqual(result, {"entries": [], "next_id": 1, "roots": []})
-
-    def test_string_entries_filtered_with_warning(self):
-        idx = {"entries": ["bad", {"id": 1, "question": "ok"}], "next_id": 2}
-        err = io.StringIO()
-        with redirect_stderr(err):
-            result = _sanitize_memory_index(idx, "mem.json")
-        self.assertEqual(len(result["entries"]), 1)
-        self.assertEqual(result["entries"][0]["id"], 1)
-        self.assertIn("filtered 1 non-dict", err.getvalue())
-
-    def test_missing_keys_defaulted(self):
-        result = _sanitize_memory_index({"entries": []})
-        self.assertEqual(result["next_id"], 1)
-        self.assertEqual(result["roots"], [])
-
-
-class TestCmdSaveMemory(unittest.TestCase):
+class TestSaveMemory(unittest.TestCase):
     def setUp(self):
         self.graph_dir = _make_graph_dir()
-        self.addCleanup(shutil.rmtree, self.graph_dir, ignore_errors=True)
 
-    def _args(self, **kw):
-        kw.setdefault("graph", self.graph_dir)
-        kw.setdefault("question", "How does A call B?")
-        kw.setdefault("answer", "via the INVOKES edge")
-        kw.setdefault("chains", "")
-        kw.setdefault("tags", "")
-        kw.setdefault("node_ids", "")
-        kw.setdefault("no_merge", False)
-        return _ns(**kw)
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.graph_dir, ignore_errors=True)
 
-    def _read_entry(self, eid=1):
-        return _read_memory_entry(self.graph_dir, eid)
+    def test_save_creates_db_entry(self):
+        _run(cmd_save_memory, _ns(graph=self.graph_dir,
+                                  question="What does a do?",
+                                  answer="calls b",
+                                  chains="", tags="", node_ids="",
+                                  category="", author="",
+                                  no_merge=False))
+        rows = _db_rows(self.graph_dir)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["question"], "What does a do?")
+        self.assertEqual(rows[0]["answer"], "calls b")
+        self.assertEqual(rows[0]["root_id"], rows[0]["id"])
 
-    def test_new_entry_saved_with_node_tracking(self):
-        _, out, _ = _run(cmd_save_memory,
-                         self._args(node_ids="a,b", tags="flow,core"))
-        self.assertIn("Saved memory #", out)
-        mem_dir = os.path.join(self.graph_dir, "memory")
-        index = json.loads(open(os.path.join(mem_dir, "index.json")).read())
-        self.assertEqual(len(index["entries"]), 1)
-        # node_ids live on the entry FILE, not the index metadata
-        self.assertEqual(self._read_entry(1)["node_ids"], ["a", "b"])
+    def test_save_with_category_and_author(self):
+        _run(cmd_save_memory, _ns(graph=self.graph_dir,
+                                  question="q", answer="a",
+                                  chains="", tags="io,nvme", node_ids="",
+                                  category="bdev/nvme/pcie",
+                                  author="alice", no_merge=False))
+        rows = _db_rows(self.graph_dir)
+        self.assertEqual(json.loads(rows[0]["tags"]), ["io", "nvme"])
+        self.assertEqual(rows[0]["author"], "alice")
+        conn = sqlite3.connect(
+            os.path.join(self.graph_dir, "memory", "memory.db"))
+        paths = {r[0] for r in conn.execute(
+            "SELECT path FROM categories").fetchall()}
+        conn.close()
+        self.assertEqual(paths, {"bdev", "bdev/nvme", "bdev/nvme/pcie"})
 
-    def test_similar_question_merges_into_existing(self):
-        _run(cmd_save_memory, self._args())
-        _, out, _ = _run(cmd_save_memory, self._args(
-            question="How does A call B", answer="updated answer",
-            tags="extra"))
-        self.assertIn("Merged with existing memory #1", out)
-        mem_dir = os.path.join(self.graph_dir, "memory")
-        index = json.loads(open(os.path.join(mem_dir, "index.json")).read())
-        self.assertEqual(len(index["entries"]), 1)  # no duplicate
-        entry = self._read_entry(1)
-        self.assertEqual(entry["answer"], "updated answer")
-        self.assertGreaterEqual(entry.get("merged_count", 0), 1)
-        self.assertIn("extra", entry.get("tags", []))
+    def test_save_node_ids_from_chains(self):
+        chains = json.dumps([{"steps": [{"id": "a"}, {"id": "b"}],
+                              "from": "a", "to": "b"}])
+        _run(cmd_save_memory, _ns(graph=self.graph_dir,
+                                  question="q", answer="a",
+                                  chains=chains, tags="", node_ids="",
+                                  category="", author="", no_merge=False))
+        rows = _db_rows(self.graph_dir)
+        self.assertEqual(json.loads(rows[0]["node_ids"]), ["a", "b"])
 
-    def test_merge_search_returns_hydrated_answer(self):
-        """Regression: legacy search must hydrate the answer for root-layout
-        entries (scored results previously lacked root_id → is_root was
-        always False → no answer in output)."""
-        _run(cmd_save_memory, self._args())
-        _, out, _ = _run(cmd_search_memory, _ns(
-            graph=self.graph_dir, query="How does A call B", top=5))
-        results = json.loads(out)
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["answer"], "via the INVOKES edge")
-
-    def test_no_merge_flag_forces_new_entry(self):
-        _run(cmd_save_memory, self._args())
-        _run(cmd_save_memory, self._args(no_merge=True))
-        mem_dir = os.path.join(self.graph_dir, "memory")
-        index = json.loads(open(os.path.join(mem_dir, "index.json")).read())
-        self.assertEqual(len(index["entries"]), 2)
-
-    def test_node_ids_extracted_from_chains(self):
-        chains = json.dumps([{"steps": [{"id": "a"}, {"id": "b"}]}])
-        _run(cmd_save_memory, self._args(chains=chains))
-        self.assertTrue(self._read_entry(1)["node_ids"])
+    def test_save_prints_confirmation(self):
+        _, out, _ = _run(cmd_save_memory, _ns(
+            graph=self.graph_dir, question="q", answer="a",
+            chains="", tags="", node_ids="",
+            category="bdev/nvme", author="", no_merge=False))
+        self.assertIn("Saved memory #1", out)
+        self.assertIn("bdev/nvme", out)
 
 
-class TestCmdSearchMemory(unittest.TestCase):
+class TestSearchMemory(unittest.TestCase):
     def setUp(self):
         self.graph_dir = _make_graph_dir()
-        self.addCleanup(shutil.rmtree, self.graph_dir, ignore_errors=True)
         _run(cmd_save_memory, _ns(
-            graph=self.graph_dir, question="How does lock contention happen?",
-            answer="try lock refactor", chains="", tags="locking",
-            node_ids="", no_merge=False))
+            graph=self.graph_dir,
+            question="How does nvme submit IO?",
+            answer="submission queue doorbell",
+            chains="", tags="nvme", node_ids="",
+            category="bdev/nvme/pcie", author="alice", no_merge=False))
+        _run(cmd_save_memory, _ns(
+            graph=self.graph_dir,
+            question="How to configure tcp transport?",
+            answer="config file",
+            chains="", tags="", node_ids="",
+            category="bdev/nvme/tcp", author="bob", no_merge=True))
 
-    def _args(self, **kw):
-        kw.setdefault("graph", self.graph_dir)
-        kw.setdefault("query", "lock contention")
-        kw.setdefault("top", 5)
-        return _ns(**kw)
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.graph_dir, ignore_errors=True)
 
-    def test_similar_question_found_with_answer(self):
-        _, out, _ = _run(cmd_search_memory, self._args())
+    def test_search_returns_json_results(self):
+        _, out, _ = _run(cmd_search_memory, _ns(
+            graph=self.graph_dir, query="nvme submit", top=5,
+            category="", tags="", author="",
+            include_experience=False))
         results = json.loads(out)
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["answer"], "try lock refactor")
-        self.assertGreater(results[0]["score"], 0)
+        self.assertIn("doorbell", results[0]["answer"])
 
-    def test_no_match_message(self):
-        _, out, _ = _run(cmd_search_memory, self._args(query="zzz unrelated"))
+    def test_search_category_filter(self):
+        _, out, _ = _run(cmd_search_memory, _ns(
+            graph=self.graph_dir, query="transport", top=5,
+            category="bdev/nvme/pcie", tags="", author="",
+            include_experience=False))
+        # "transport" only lives under bdev/nvme/tcp — filtered out
+        self.assertIn("No similar memories found.", out)
+        _, out2, _ = _run(cmd_search_memory, _ns(
+            graph=self.graph_dir, query="transport", top=5,
+            category="bdev", tags="", author="",
+            include_experience=False))
+        self.assertEqual(len(json.loads(out2)), 1)
+
+    def test_search_author_filter(self):
+        _, out, _ = _run(cmd_search_memory, _ns(
+            graph=self.graph_dir, query="nvme", top=5,
+            category="", tags="", author="bob",
+            include_experience=False))
+        # nvme entry is alice's; bob only wrote the transport one
         self.assertIn("No similar memories found.", out)
 
-    def test_experience_ranked_lower_than_trusted(self):
-        # add an experience entry with the SAME question text
-        mem_dir = os.path.join(self.graph_dir, "memory")
-        index = json.loads(open(os.path.join(mem_dir, "index.json")).read())
-        index["entries"].append({"id": 2, "question": "How does lock "
-                                 "contention happen?", "status": "experience",
-                                 "tags": ["locking"]})
-        open(os.path.join(mem_dir, "index.json"), "w").write(
-            json.dumps(index))
-        _, out, _ = _run(cmd_search_memory, self._args())
-        results = json.loads(out)
-        self.assertEqual(len(results), 2)
-        self.assertEqual(results[0]["status"], "trusted")
-        self.assertEqual(results[1]["status"], "experience")
+    def test_search_no_match_message(self):
+        _, out, _ = _run(cmd_search_memory, _ns(
+            graph=self.graph_dir, query="zzz unmatched", top=5,
+            category="", tags="", author="",
+            include_experience=False))
+        self.assertIn("No similar memories found.", out)
 
 
-class TestCmdValidateMemory(unittest.TestCase):
+class TestValidateMemory(unittest.TestCase):
     def setUp(self):
         self.graph_dir = _make_graph_dir()
-        self.addCleanup(shutil.rmtree, self.graph_dir, ignore_errors=True)
-
-    def _args(self, **kw):
-        kw.setdefault("graph", self.graph_dir)
-        return _ns(**kw)
-
-    def test_stale_nodes_invalidate_entry(self):
-        # entry references node 'a' (exists) + 'ghost' (missing)
         _run(cmd_save_memory, _ns(
-            graph=self.graph_dir, question="q about nodes",
-            answer="a", chains="", tags="", node_ids="a,ghost",
-            no_merge=False))
-        # sanity: the entry file exists before validation
-        self.assertTrue(_read_memory_entry(self.graph_dir, 1))
-        _, out, _ = _run(cmd_validate_memory, self._args())
-        self.assertIn("1 → experience", out)
-        # _experience_dir lives INSIDE the memory dir
-        exp_dir = os.path.join(self.graph_dir, "memory", "experience")
-        self.assertTrue(os.path.exists(
-            os.path.join(exp_dir, "experience_1.json")))
-        entry = json.loads(open(
-            os.path.join(exp_dir, "experience_1.json")).read())
-        self.assertEqual(entry["status"], "experience")
-        self.assertIn("no longer in graph", entry["invalidated_reason"])
-
-    def test_all_nodes_present_keeps_trusted(self):
+            graph=self.graph_dir, question="q1", answer="a",
+            chains="", tags="", node_ids="a,b",
+            category="", author="", no_merge=False))
         _run(cmd_save_memory, _ns(
-            graph=self.graph_dir, question="q ok", answer="a", chains="",
-            tags="", node_ids="a,b", no_merge=False))
-        _, out, _ = _run(cmd_validate_memory, self._args())
+            graph=self.graph_dir, question="q2", answer="a",
+            chains="", tags="", node_ids="a,ghost",
+            category="", author="", no_merge=True))
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.graph_dir, ignore_errors=True)
+
+    def test_validate_demotes_stale(self):
+        _, out, _ = _run(cmd_validate_memory, _ns(graph=self.graph_dir))
         self.assertIn("1 trusted", out)
-        self.assertIn("0 → experience", out)
-        # entry file still in place, not moved
-        self.assertEqual(_read_memory_entry(self.graph_dir, 1)["status"],
-                         "trusted")
+        rows = {r["question"]: r for r in _db_rows(self.graph_dir)}
+        self.assertEqual(rows["q1"]["status"], "active")
+        self.assertEqual(rows["q2"]["status"], "experience")
+        self.assertIn("no longer in graph",
+                      rows["q2"]["invalidated_reason"])
 
-    def test_no_memory_dir_is_noop(self):
-        _, out, _ = _run(cmd_validate_memory, self._args())
-        self.assertEqual(out, "")
+    def test_auto_validate_daemon_path(self):
+        import networkx as nx
+        G = nx.DiGraph()
+        G.add_node("a")
+        _auto_validate_memory(G, os.path.join(self.graph_dir, "memory"),
+                              self.graph_dir)
+        rows = {r["question"]: r for r in _db_rows(self.graph_dir)}
+        self.assertEqual(rows["q2"]["status"], "experience")
 
 
-class TestCmdMemoryHealthAndManage(unittest.TestCase):
-    """cmd_memory_health + cmd_manage_memory (memory_manager module)."""
+class TestMemoryHealth(unittest.TestCase):
+    def test_health_stats_structure(self):
+        graph_dir = _make_graph_dir()
+        _run(cmd_save_memory, _ns(
+            graph=graph_dir, question="q", answer="a",
+            chains="", tags="", node_ids="",
+            category="cat", author="", no_merge=False))
+        ret, out, _ = _run(cmd_memory_health, _ns(graph=graph_dir))
+        stats = json.loads(out)
+        self.assertEqual(stats["total_entries"], 1)
+        self.assertEqual(stats["active_entries"], 1)
+        self.assertEqual(stats["categories"], 1)
+        self.assertEqual(stats["storage"], "sqlite")
+        self.assertIn("scratch_sessions", stats)
+        import shutil
+        shutil.rmtree(graph_dir, ignore_errors=True)
 
+
+class TestManageMemory(unittest.TestCase):
     def setUp(self):
         self.graph_dir = _make_graph_dir()
-        self.addCleanup(shutil.rmtree, self.graph_dir, ignore_errors=True)
-        _run(cmd_save_memory, _ns(
-            graph=self.graph_dir, question="health check question",
-            answer="yes", chains="", tags="meta", node_ids="a",
-            no_merge=False))
 
-    def test_memory_health_reports_structure(self):
-        from _builder.memory_manager import cmd_memory_health
-        _, out, _ = _run(cmd_memory_health, _ns(graph=self.graph_dir))
-        text = out.lower()
-        self.assertIn("entries", text)
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.graph_dir, ignore_errors=True)
 
-    def test_manage_query_returns_results(self):
-        from _builder.memory_manager import cmd_manage_memory
-        _, out, _ = _run(cmd_manage_memory, _ns(
-            graph=self.graph_dir, action="query", query="health check",
-            top="5", min_weight="0.0"))
+    def _mgmt(self, action, **kw):
+        defaults = dict(graph=self.graph_dir, question="", answer="",
+                        tags="", node_ids="", id="0", field="", value="",
+                        root_id="0", scratch_id="", boost="1.0", top="5",
+                        min_weight="0.3", tier="lite", query="", output="",
+                        input="", session_id="", chains="", params="",
+                        react="", ttl="24", merge=True, category="",
+                        author="", include_experience=False, parts="",
+                        ids="", canonical="")
+        defaults.update(kw)
+        return _run(cmd_manage_memory, _ns(action=action, **defaults))
+
+    def test_add_action(self):
+        self._mgmt("add", question="q", answer="a", tags="x",
+                   category="bdev")
+        rows = _db_rows(self.graph_dir)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(json.loads(rows[0]["tags"]), ["x"])
+
+    def test_query_action(self):
+        self._mgmt("add", question="nvme question", answer="a")
+        _, out, _ = self._mgmt("query", query="nvme")
         results = json.loads(out)
-        self.assertIsInstance(results, list)
+        self.assertEqual(len(results), 1)
 
-    def test_manage_pack_returns_tier_content(self):
-        from _builder.memory_manager import cmd_manage_memory
-        _, out, _ = _run(cmd_manage_memory, _ns(
-            graph=self.graph_dir, action="pack", tier="lite"))
+    def test_get_action(self):
+        self._mgmt("add", question="q", answer="a")
+        _, out, _ = self._mgmt("get", id="1")
+        entry = json.loads(out)
+        self.assertEqual(entry["question"], "q")
+
+    def test_get_missing_exits_1(self):
+        _, _, _, code = _capture_call(
+            cmd_manage_memory, _ns(action="get", graph=self.graph_dir,
+                                   id="99", question="", answer="",
+                                   tags="", node_ids="", field="", value="",
+                                   root_id="0", scratch_id="", boost="1.0",
+                                   top="5", min_weight="0.3", tier="lite",
+                                   query="", output="", input="",
+                                   session_id="", chains="", params="",
+                                   react="", ttl="24", merge=True,
+                                   category="", author="",
+                                   include_experience=False, parts="",
+                                   ids="", canonical=""))
+        self.assertEqual(code, 1)
+
+    def test_categories_action(self):
+        self._mgmt("add", question="q", answer="a", category="bdev/nvme")
+        _, out, _ = self._mgmt("categories")
+        self.assertIn("bdev", out)
+        self.assertIn("nvme", out)
+        self.assertIn("1 subtree", out)
+
+    def test_split_merge_move_actions(self):
+        self._mgmt("add", question="broad q", answer="a", tags="t")
+        parts = json.dumps([{"question": "narrow q1", "answer": "a1"},
+                            {"question": "narrow q2", "answer": "a2"}])
+        self._mgmt("split", id="1", parts=parts)
+        self.assertEqual(_db_rows(self.graph_dir)[0]["status"], "split")
+
+        self._mgmt("add", question="dup q", answer="x")
+        self._mgmt("add", question="dup q again", answer="y")
+        self._mgmt("merge", ids="2,3", canonical="2")
+        rows = _db_rows(self.graph_dir)
+        by_id = {r["id"]: r for r in rows}
+        self.assertEqual(by_id[3]["status"], "merged")
+        self.assertEqual(by_id[3]["merged_into"], 2)
+
+        self._mgmt("move", id="2", category="moved/to/here")
+        self.assertEqual(
+            by_id_move_check(self.graph_dir, 2), "moved/to/here")
+
+    def test_pack_action(self):
+        self._mgmt("add", question="q", answer="a")
+        _, out, _ = self._mgmt("pack", tier="lite")
         pack = json.loads(out)
-        self.assertIsInstance(pack, (dict, list))
-        self.assertTrue(json.dumps(pack))
+        self.assertIn("top_questions", pack)
 
-    def test_manage_decay_and_unknown_action(self):
-        from _builder.memory_manager import cmd_manage_memory
-        ret, out, err, code = _capture_call(cmd_manage_memory, _ns(
-            graph=self.graph_dir, action="decay"))
-        self.assertIn(code, (None, 0, 2))
-        ret, out, err, code = _capture_call(cmd_manage_memory, _ns(
-            graph=self.graph_dir, action="zzz-unknown"))
-        self.assertIn(code, (None, 0, 2))
+    def test_search_action(self):
+        self._mgmt("add", question="nvme q", answer="a",
+                   category="bdev/nvme", author="alice")
+        _, out, _ = self._mgmt("search", query="nvme",
+                               category="bdev", author="alice")
+        results = json.loads(out)
+        self.assertEqual(len(results), 1)
+
+
+def by_id_move_check(graph_dir, mem_id):
+    conn = sqlite3.connect(
+        os.path.join(graph_dir, "memory", "memory.db"))
+    try:
+        cat_id = conn.execute(
+            "SELECT category_id FROM memories WHERE id = ?",
+            (mem_id,)).fetchone()[0]
+        return conn.execute(
+            "SELECT path FROM categories WHERE id = ?",
+            (cat_id,)).fetchone()[0]
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

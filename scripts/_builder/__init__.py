@@ -119,6 +119,12 @@ _LAZY_IMPORTS = {
     "MemoryManager": ("_builder.memory_manager", "MemoryManager"),
     "cmd_manage_memory": ("_builder.memory_manager", "cmd_manage_memory"),
     "cmd_memory_health": ("_builder.memory_manager", "cmd_memory_health"),
+    # memory_store
+    "MemoryStore": ("_builder.memory_store", "MemoryStore"),
+    "cmd_memory_store_categories": ("_builder.memory_store", "cmd_memory_store_categories"),
+    "cmd_memory_store_split": ("_builder.memory_store", "cmd_memory_store_split"),
+    "cmd_memory_store_merge": ("_builder.memory_store", "cmd_memory_store_merge"),
+    "cmd_memory_store_move": ("_builder.memory_store", "cmd_memory_store_move"),
     # knowledge_manager
     "KnowledgeManager": ("_builder.knowledge_manager", "KnowledgeManager"),
     "cmd_extract_knowledge": ("_builder.knowledge_manager", "cmd_extract_knowledge"),

@@ -1002,13 +1002,19 @@ def main():
     p_save_mem.add_argument("--chains", default="", help="JSON string of call chain data")
     p_save_mem.add_argument("--tags", default="", help="Comma-separated tags")
     p_save_mem.add_argument("--node-ids", default="", help="Comma-separated node IDs this memory depends on")
+    p_save_mem.add_argument("--category", default="", help="Category path (e.g. bdev/nvme/pcie; auto-created)")
+    p_save_mem.add_argument("--author", default="", help="Author attribution for shared memory stores")
     p_save_mem.add_argument("--no-merge", action="store_true", help="Don't merge with similar existing entry")
 
     # search-memory
-    p_search_mem = sub.add_parser("search-memory", help="Search memory for similar questions")
+    p_search_mem = sub.add_parser("search-memory", help="Search memory for similar questions (FTS5 + filters)")
     p_search_mem.add_argument("--graph", required=True, help="Call graph output directory")
     p_search_mem.add_argument("--query", required=True, help="Search query")
     p_search_mem.add_argument("--top", type=int, default=5, help="Max results")
+    p_search_mem.add_argument("--category", default="", help="Category prefix filter (includes subcategories)")
+    p_search_mem.add_argument("--tags", default="", help="Comma-separated tags (ALL must match)")
+    p_search_mem.add_argument("--author", default="", help="Filter by author")
+    p_search_mem.add_argument("--include-experience", action="store_true", help="Include archived experience entries")
 
     # validate-memory
     p_val_mem = sub.add_parser("validate-memory",
@@ -1031,27 +1037,28 @@ def main():
     p_plugins.add_argument("--plugin", action="append", default=[], help="Additional plugin path to check")
 
     # manage-memory
-    p_mgmt = sub.add_parser("manage-memory", help="Manage persistent memory (add/correct/reshape/decay/promote/refine/query/pack/consolidate/export/import/scratch-*)")
+    p_mgmt = sub.add_parser("manage-memory", help="Manage persistent memory (add/correct/reshape/decay/promote/refine/query/search/get/categories/split/merge/move/pack/consolidate/export/import/scratch-*)")
     p_mgmt.add_argument("--graph", required=True, help="Call graph output directory")
     p_mgmt.add_argument("--action", required=True,
-                         choices=["add", "correct", "reshape", "decay", "promote", "refine", "query", "pack",
+                         choices=["add", "correct", "reshape", "decay", "promote", "refine", "query", "search",
+                                  "get", "categories", "split", "merge", "move", "pack",
                                   "consolidate", "export", "import", "scratch-save", "scratch-restore",
                                   "scratch-list", "scratch-cleanup"],
                          help="Action to perform")
-    p_mgmt.add_argument("--question", default="", help="Question (for add/refine/query)")
-    p_mgmt.add_argument("--answer", default="", help="Answer (for add/correct/reshape/refine)")
-    p_mgmt.add_argument("--tags", default="", help="Comma-separated tags (for add/refine)")
+    p_mgmt.add_argument("--question", default="", help="Question (for add/refine/query/merge)")
+    p_mgmt.add_argument("--answer", default="", help="Answer (for add/correct/reshape/refine/merge)")
+    p_mgmt.add_argument("--tags", default="", help="Comma-separated tags (for add/refine/search)")
     p_mgmt.add_argument("--node-ids", default="", help="Comma-separated node IDs (for add)")
-    p_mgmt.add_argument("--id", default="0", help="Memory ID (for correct/promote)")
+    p_mgmt.add_argument("--id", default="0", help="Memory ID (for correct/promote/get/split/move)")
     p_mgmt.add_argument("--field", default="", help="Field name (for correct)")
     p_mgmt.add_argument("--value", default="", help="Field value (for correct)")
     p_mgmt.add_argument("--root-id", default="0", help="Root memory ID (for reshape)")
     p_mgmt.add_argument("--scratch-id", default="", help="Scratch session ID (for refine)")
     p_mgmt.add_argument("--boost", default="1.0", help="Weight boost (for promote)")
-    p_mgmt.add_argument("--top", default="5", help="Max results (for query)")
+    p_mgmt.add_argument("--top", default="5", help="Max results (for query/search)")
     p_mgmt.add_argument("--min-weight", default="0.3", help="Min weight filter (for query)")
     p_mgmt.add_argument("--tier", default="lite", choices=["lite", "standard", "deep", "full"], help="Pack tier (for pack)")
-    p_mgmt.add_argument("--query", default="", help="Query text (for query)")
+    p_mgmt.add_argument("--query", default="", help="Query text (for query/search)")
     p_mgmt.add_argument("--output", default="", help="Output path (for export)")
     p_mgmt.add_argument("--input", default="", help="Input JSON path (for import)")
     p_mgmt.add_argument("--session-id", default="", help="Session ID (for scratch-*)")
@@ -1061,6 +1068,12 @@ def main():
     p_mgmt.add_argument("--ttl", default="24", help="TTL in hours (for scratch-save)")
     p_mgmt.add_argument("--merge", default=True, action=argparse.BooleanOptionalAction,
                          help="Merge on import (for import)")
+    p_mgmt.add_argument("--category", default="", help="Category path (for add/search/move)")
+    p_mgmt.add_argument("--author", default="", help="Author (for add/search)")
+    p_mgmt.add_argument("--include-experience", action="store_true", help="Include experience entries (for search)")
+    p_mgmt.add_argument("--parts", default="", help="JSON array of split parts (for split)")
+    p_mgmt.add_argument("--ids", default="", help="Comma-separated memory IDs (for merge)")
+    p_mgmt.add_argument("--canonical", default="", help="Canonical memory ID (for merge)")
 
     # memory-health
     p_mh = sub.add_parser("memory-health", help="Report memory system health statistics")

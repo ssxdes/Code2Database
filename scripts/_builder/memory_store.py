@@ -697,6 +697,22 @@ class MemoryStore:
         finally:
             conn.close()
 
+    def set_provenance(self, mem_id: int, promoted_from: str = "",
+                       param_bindings: dict = None):
+        """Attach scratch provenance to a promoted memory."""
+        with _memory_lock(self.mem_dir):
+            conn = self._connect()
+            try:
+                conn.execute(
+                    "UPDATE memories SET promoted_from = ?, "
+                    "param_bindings = ? WHERE id = ?",
+                    (promoted_from,
+                     json.dumps(param_bindings or {}, ensure_ascii=False),
+                     mem_id))
+                conn.commit()
+            finally:
+                conn.close()
+
     def correct(self, mem_id: int, field: str, value: str):
         """Correct a field (question/answer/author), recording a version."""
         if field not in CORRECTABLE_FIELDS:

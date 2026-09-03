@@ -357,12 +357,22 @@ def _tool_find_macros(args: dict, graph_dir: str) -> list:
                 "FROM macros ORDER BY name LIMIT 500"
             ).fetchall()
         result = []
+        # Batch the invocation lookup: one query for ALL macros in the
+        # result set instead of one per macro (the old N+1 issued up to
+        # 501 queries per call — 500 macros + the name query).
+        _macro_ids = [m["id"] for m in macros]
+        _uses_by_macro: dict = {}
+        if _macro_ids:
+            _ph = ",".join("?" * len(_macro_ids))
+            for u in conn.execute(
+                f"SELECT macro_id, file_id, line, col FROM macro_invocations "
+                f"WHERE macro_id IN ({_ph}) ORDER BY file_id, line",
+                _macro_ids
+            ).fetchall():
+                _uses_by_macro.setdefault(u["macro_id"], []).append(
+                    {"file_id": u["file_id"], "line": u["line"],
+                     "col": u["col"]})
         for m in macros:
-            uses = conn.execute(
-                "SELECT file_id, line, col FROM macro_invocations "
-                "WHERE macro_id = ? ORDER BY file_id, line",
-                (m["id"],)
-            ).fetchall()
             result.append({
                 "macro_id": m["id"],
                 "name": m["name"],
@@ -374,8 +384,7 @@ def _tool_find_macros(args: dict, graph_dir: str) -> list:
                 "body_text": m["body_text"],
                 "is_undef": bool(m["is_undef"]),
                 "defined_at_token_id": m["defined_at_token_id"],
-                "used_at": [{"file_id": u["file_id"], "line": u["line"],
-                             "col": u["col"]} for u in uses],
+                "used_at": _uses_by_macro.get(m["id"], []),
             })
         return result
     except Exception as exc:
@@ -817,15 +826,20 @@ def _tool_indirect_targets(args: dict, graph_dir: str) -> list:
     conn = None
     try:
         conn = _get_conn(graph_dir)
+        # Filter by file via the call edge: indirect_calls itself has no
+        # file column, but its call_edge_id references cgdb_edges, which
+        # carries file_id. Without this the query matched the line in
+        # EVERY file (cross-file false positives).
         rows = conn.execute(
             "SELECT ic.call_site_id, ic.call_edge_id, ic.function_id, "
             "ic.line, ic.col, ic.possible_target_symbol_id, "
             "n.name AS target_fn, ic.confidence, ic.analysis "
             "FROM indirect_calls ic "
+            "JOIN cgdb_edges ce ON ic.call_edge_id = ce.id "
             "LEFT JOIN cgdb_nodes n ON ic.possible_target_symbol_id = n.id "
-            "WHERE ic.line = ? "
+            "WHERE ic.line = ? AND ce.file_id = ? "
             "ORDER BY ic.confidence DESC",
-            (line,)
+            (line, file_id)
         ).fetchall()
         return [{
             "target_fn": r["target_fn"],
@@ -942,9 +956,16 @@ def _tool_trace_data_flow(args: dict, graph_dir: str) -> dict:
                 "SELECT id FROM ssa_values WHERE value_name = ? LIMIT 1",
                 (to_var,)
             ).fetchone()
-            if to_row:
-                to_ssa_id = to_row["id"]
-        # Trace data_deps
+            if to_row is None:
+                return {"error": f"to_var {to_var} not found in ssa_values"}
+            to_ssa_id = to_row["id"]
+        # Trace data_deps.
+        #
+        # Standard transitive closure from from_ssa_id. The old CTE had
+        # 'WHERE dc.to_id = ?' (the TARGET) on the recursive arm, so it
+        # only expanded chains that had already reached the target —
+        # multi-hop paths from→A→B→to were never walked, and the result
+        # was just from's direct deps ∪ the target's deps.
         if to_ssa_id:
             deps = conn.execute(
                 "WITH RECURSIVE dep_chain(from_id, to_id, kind, fn_id, depth) AS ("
@@ -953,10 +974,10 @@ def _tool_trace_data_flow(args: dict, graph_dir: str) -> dict:
                 "  UNION "
                 "  SELECT d.from_ssa_id, d.to_ssa_id, d.kind, d.function_id, dc.depth+1 "
                 "  FROM data_deps d JOIN dep_chain dc ON d.from_ssa_id = dc.to_id "
-                "  WHERE dc.to_id = ? AND dc.depth < 20"
+                "  WHERE dc.depth < 20"
                 ") "
-                "SELECT * FROM dep_chain ORDER BY depth",
-                (from_ssa_id, to_ssa_id)
+                "SELECT * FROM dep_chain ORDER BY depth LIMIT 1000",
+                (from_ssa_id,)
             ).fetchall()
         else:
             deps = conn.execute(
@@ -964,18 +985,27 @@ def _tool_trace_data_flow(args: dict, graph_dir: str) -> dict:
                 "FROM data_deps WHERE from_ssa_id = ? LIMIT 500",
                 (from_ssa_id,)
             ).fetchall()
+        path_rows = [{
+            "from_ssa_id": r["from_ssa_id"] if "from_ssa_id" in r.keys() else r["from_id"],
+            "to_ssa_id": r["to_ssa_id"] if "to_ssa_id" in r.keys() else r["to_id"],
+            "kind": r["kind"],
+            "function_id": r["function_id"] if "function_id" in r.keys() else r["fn_id"],
+            "depth": r["depth"] if "depth" in r.keys() else 0,
+        } for r in deps]
+        reached = None
+        if to_ssa_id:
+            reached = any(
+                p["to_ssa_id"] == to_ssa_id for p in path_rows)
         return {
             "from_var": from_var,
             "to_var": to_var,
             "from_ssa_id": from_ssa_id,
             "to_ssa_id": to_ssa_id,
-            "path": [{
-                "from_ssa_id": r["from_ssa_id"] if "from_ssa_id" in r.keys() else r["from_id"],
-                "to_ssa_id": r["to_ssa_id"] if "to_ssa_id" in r.keys() else r["to_id"],
-                "kind": r["kind"],
-                "function_id": r["function_id"] if "function_id" in r.keys() else r["fn_id"],
-                "depth": r["depth"] if "depth" in r.keys() else 0,
-            } for r in deps],
+            # full downstream closure of from_var (bounded: depth<=20,
+            # 1000 edges); when to_var was given, `reached` says whether
+            # it is reachable through data_deps
+            "path": path_rows,
+            "reached": reached,
         }
     except Exception as exc:
         return {"error": str(exc)}
@@ -1041,12 +1071,18 @@ def _tool_path_sensitive_states(args: dict, graph_dir: str) -> dict:
     conn = None
     try:
         conn = _get_conn(graph_dir)
+        # path_states.function_id references ir_functions(id), NOT
+        # cgdb_nodes(id) — the old lookup fed a cgdb node id into an
+        # ir_functions-keyed table (wrong function or empty result).
+        # Resolve fn -> symbol (cgdb_nodes) -> ir_functions.id.
         row = conn.execute(
-            "SELECT id FROM cgdb_nodes WHERE name = ? AND kind = 'function' LIMIT 1",
+            "SELECT ir.id FROM ir_functions ir "
+            "JOIN cgdb_nodes n ON ir.symbol_id = n.id "
+            "WHERE n.name = ? AND n.kind = 'function' LIMIT 1",
             (fn,)
         ).fetchone()
         if row is None:
-            return {"error": f"function {fn} not found"}
+            return {"error": f"function {fn} not found in ir_functions"}
         fn_id = row["id"]
         # Get path states
         if condition:

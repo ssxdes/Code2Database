@@ -145,11 +145,26 @@ def _migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
         )
 
 
+def _migrate_v4_to_v5(conn: sqlite3.Connection) -> None:
+    """v4 → v5: Add the tokens.ast_node_id index.
+
+    find_symbol / delete_node query tokens by ast_node_id, but the v4
+    DDL had no index for it — every such tool call was a full scan of
+    the tokens table (the largest table in the DB on L1-ingested
+    projects). Purely additive (CREATE INDEX IF NOT EXISTS).
+    """
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tokens_ast_node "
+        "ON tokens(ast_node_id)"
+    )
+
+
 # Registry of migrations: (target_version, migration_function)
 MIGRATIONS: List[Tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (2, _migrate_v1_to_v2),
     (3, _migrate_v2_to_v3),
     (4, _migrate_v3_to_v4),
+    (5, _migrate_v4_to_v5),
 ]
 
 

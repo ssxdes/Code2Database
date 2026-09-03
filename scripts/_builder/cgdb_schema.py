@@ -43,7 +43,7 @@ data.
 """
 import sqlite3
 
-CGDB_SCHEMA_VERSION = 4
+CGDB_SCHEMA_VERSION = 5
 
 
 def apply_cgdb_schema(conn: sqlite3.Connection) -> None:
@@ -634,6 +634,7 @@ CREATE TABLE IF NOT EXISTS tokens (
 CREATE INDEX IF NOT EXISTS idx_tokens_file_line ON tokens(file_id, line);
 CREATE INDEX IF NOT EXISTS idx_tokens_seq ON tokens(file_id, seq);
 CREATE INDEX IF NOT EXISTS idx_tokens_symbol ON tokens(symbol_id);
+CREATE INDEX IF NOT EXISTS idx_tokens_ast_node ON tokens(ast_node_id);
 CREATE INDEX IF NOT EXISTS idx_tokens_kind ON tokens(kind);
 CREATE INDEX IF NOT EXISTS idx_tokens_byte ON tokens(file_id, byte_offset);
 

@@ -684,6 +684,13 @@ def cmd_path(args):
     except nx.NetworkXNoPath:
         print("No call path found between these nodes.", file=sys.stderr)
         sys.exit(1)
+    except nx.NodeNotFound as e:
+        # e.g. --domain-filter removed the endpoint node from the call
+        # subgraph, or a CONTAINS-only node never entered it. Graceful
+        # error instead of a raw traceback.
+        print(f"No call path found between these nodes "
+              f"(node {e} not in the traversable call graph).", file=sys.stderr)
+        sys.exit(1)
 
     path_info = []
     for nid in path:

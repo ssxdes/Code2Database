@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-09-03
 
+### Deep Audit Round 19 — test-coverage enrichment (276 new cases, 10 files, 4 bugs found by the new tests)
+
+Systematic interface-by-interface test enrichment driven by a static coverage map (public functions per module vs test references). New test files: test_search_cmd (44), test_query_cmds (41), test_transactions_wal_api (21), test_line_utils (14), test_logging_utils (23), test_memory_guard (36), test_cgdb_commands (34), test_memory_cmd (18), test_analysis_helpers (25), test_validate (20).
+
+**Bugs found by the new tests (each fixed + regression-pinned):**
+- `path --domain-filter` excluding an endpoint node crashed with a raw nx.NodeNotFound traceback (warning promised "No path will be found" then died) — now a graceful exit-1 error.
+- `get-code-snippet` labeled every line one higher than its real file line (zip already yields 1-indexed numbers via range(start+1,…); the format string printed i+1).
+- `search-memory` legacy path never hydrated answers for root-layout entries (the current default layout): scored results lacked root_id, so the is_root check was always False and root/root_N.json was never read.
+- `explore-flow`'s exact-symbol-match fast path (#10 fix) only ran for LazySQLiteGraph — regular NetworkX graphs (JSON builds, small projects) always fell through to BM25 scoring. The Unicode-aware fallback loop now runs for any graph when the SQL lookup didn't fire.
+
+**Coverage added:** search_cmd 6 commands (scoring tiers, LIKE escaping, vtable/domain/condition path filters, impact/neighbors semantics, SQLite fallbacks); query.py 11 command surfaces (describe-node exact-ID contract, trace/resolve/diff chains with bindings, blast radius, field access with NULL-form filter, param flow word-boundary, code snippet, provenance, blame, reverse trace entry-first ordering); transactions WAL + snapshot management APIs (crash-safety seq counter contract, batch applied marks, prune/restore/list); cgdb CLI commands against a real 13-layer store (read-only SQL guard, views, schema version, closures, node-id resolution ladder); memory_cmd save/search/validate lifecycle (merge, experience demotion, root/leaf layout); pure utils previously at 0% (line_utils, logging_utils incl. JSON formatter/StageTimer, memory_guard thresholds/gc gating/streaming writers); analysis helpers (code_slice, co_change against a real git repo, lock_coverage per-access locksets, key_paths, explore-flow); validate.py post-build checks (edge logic, call-chain integrity, data consistency, exit codes).
+
 ### Deep Audit Rounds 17–18 — transaction integrity, memory/knowledge correctness, concurrency false negatives, latent L3 tools
 
 **Round 18 — remaining backlog:**

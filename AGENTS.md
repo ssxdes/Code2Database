@@ -123,7 +123,7 @@ Capability modules have dedicated unit tests in `tests/` covering:
 - Update command (confirmation gate, attribute parsing, backend detection)
 - Profile generation (auto-profile, project-type detection, struct_op_types)
 
-**Test suite**: 1714 tests across 100 files (1250 at v1.3.0 + 464 added since). Run with `python3 -m pytest tests/ -v`. 1713 passed, 1 skipped (libclang fallback path).
+**Test suite**: 1990 tests across 110 files (1250 at v1.3.0 + 740 added since). Run with `python3 -m pytest tests/ -v`. 1989 passed, 1 skipped (libclang fallback path).
 
 ## Language Support
 

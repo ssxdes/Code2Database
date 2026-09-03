@@ -91,6 +91,15 @@ def _wipe_cgdb_data(conn) -> None:
             "_wipe_cgdb_data: pre-wipe commit failed", exc_info=True)
     for tbl in _CGDB_WIPE_TABLES:
         try:
+            # Skip tables that don't exist yet (fresh or incomplete DB).
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (tbl,)
+            ).fetchone()
+            if not exists:
+                logging.getLogger(__name__).info(
+                    "_wipe_cgdb_data: table %s not found — skipping", tbl)
+                continue
             conn.execute(f"DELETE FROM {tbl}")
         except Exception:
             logging.getLogger(__name__).warning(

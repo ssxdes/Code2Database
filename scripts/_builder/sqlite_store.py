@@ -57,6 +57,16 @@ class SQLiteStore:
     def _migrate_schema(self):
         """Migrate schema if database exists with older version."""
         try:
+            # Guard: if meta table doesn't exist yet (fresh or incomplete DB),
+            # there's nothing to migrate — _create_tables will build it.
+            meta_exists = self._conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='meta'"
+            ).fetchone()
+            if not meta_exists:
+                logging.getLogger(__name__).info(
+                    "sqlite_store: meta table not found — skipping migration "
+                    "(fresh or incomplete DB, _create_tables will create it)")
+                return
             row = self._conn.execute(
                 "SELECT value FROM meta WHERE key='schema_version'"
             ).fetchone()

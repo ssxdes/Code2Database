@@ -71,6 +71,29 @@ def _close_conn(conn: Optional[sqlite3.Connection]) -> None:
         except Exception:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
+
+
+def _begin_writeback_tx(conn: sqlite3.Connection, graph_dir: str,
+                        file_id: int) -> str:
+    """Start a real write-back transaction for `file_id`.
+
+    Registers the tx in meta and takes a pre-edit snapshot, so that the
+    transaction_id returned by an edit tool actually works with
+    commit_db_transaction / rollback_db_transaction.  Must be called
+    BEFORE the edit is applied (the snapshot is the rollback point).
+    """
+    from _builder.writeback_pipeline import WritebackPipeline
+    source_root = ""
+    try:
+        row = conn.execute(
+            "SELECT value FROM meta WHERE key = 'source_root'"
+        ).fetchone()
+        if row:
+            source_root = row[0]
+    except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+    pipe = WritebackPipeline(conn, graph_dir, source_root)
+    return pipe.begin(file_id)
 # L1 无损重建层 tools (8)
 # ===========================================================================
 
@@ -170,6 +193,9 @@ def _tool_edit_token(args: dict, graph_dir: str) -> dict:
         if row is None:
             return {"error": f"token_id {token_id} not found"}
         file_id, old_text = row["file_id"], row["spelling"]
+        # Real write-back tx (pre-edit snapshot) so the returned id works
+        # with commit_db_transaction / rollback_db_transaction.
+        tx_id = _begin_writeback_tx(conn, graph_dir, file_id)
         # Update the token
         conn.execute(
             "UPDATE tokens SET spelling = ? WHERE id = ?",
@@ -189,7 +215,7 @@ def _tool_edit_token(args: dict, graph_dir: str) -> dict:
             "old_text": old_text,
             "new_text": new_text,
             "affected_nodes": affected_nodes,
-            "transaction_id": f"edit_token_{token_id}",
+            "transaction_id": tx_id,
             "note": "DB edit applied; run commit_db_transaction to render and write to disk",
         }
     except Exception as exc:
@@ -217,6 +243,8 @@ def _tool_insert_token(args: dict, graph_dir: str) -> dict:
         file_id, anchor_seq, anchor_line, anchor_col, anchor_byte = (
             row["file_id"], row["seq"], row["line"], row["col"], row["byte_offset"]
         )
+        # Real write-back tx (pre-edit snapshot) — see edit_token.
+        tx_id = _begin_writeback_tx(conn, graph_dir, file_id)
         # Shift all tokens with seq > anchor_seq up by len(tokens).
         # Two-phase via negative seq space: a direct `seq = seq + N` UPDATE
         # transiently collides with not-yet-shifted rows under the
@@ -249,7 +277,7 @@ def _tool_insert_token(args: dict, graph_dir: str) -> dict:
         return {
             "after_token_id": after_token_id,
             "new_token_ids": new_ids,
-            "transaction_id": f"insert_token_{after_token_id}",
+            "transaction_id": tx_id,
             "note": "DB edit applied; run commit_db_transaction to render and write to disk",
         }
     except Exception as exc:
@@ -272,6 +300,8 @@ def _tool_delete_token(args: dict, graph_dir: str) -> dict:
         if row is None:
             return {"error": f"token_id {token_id} not found"}
         file_id, seq = row["file_id"], row["seq"]
+        # Real write-back tx (pre-edit snapshot) — see edit_token.
+        tx_id = _begin_writeback_tx(conn, graph_dir, file_id)
         # Find affected AST nodes BEFORE delete
         affected_nodes = [
             r[0] for r in conn.execute(
@@ -298,7 +328,7 @@ def _tool_delete_token(args: dict, graph_dir: str) -> dict:
             "token_id": token_id,
             "file_id": file_id,
             "affected_nodes": affected_nodes,
-            "transaction_id": f"delete_token_{token_id}",
+            "transaction_id": tx_id,
             "note": "DB edit applied; run commit_db_transaction to render and write to disk",
         }
     except Exception as exc:
@@ -1208,7 +1238,9 @@ def _tool_insert_node_after(args: dict, graph_dir: str) -> dict:
             "new_node_id": new_id,
             "token_ids": [],  # tokens not yet created
             "transaction_id": f"insert_node_{new_id}",
-            "note": "DB node inserted; run commit_db_transaction to render and write to disk",
+            "note": "DB node inserted — no tokens created, so source "
+                    "rendering is UNCHANGED; commit_db_transaction is not "
+                    "applicable (use insert_token to change the source)",
         }
     except Exception as exc:
         return {"error": str(exc)}
@@ -1242,7 +1274,9 @@ def _tool_delete_node(args: dict, graph_dir: str) -> dict:
         return {
             "affected_tokens": affected_tokens,
             "transaction_id": f"delete_node_{ast_node_id}",
-            "note": "DB node soft-deleted; run commit_db_transaction to render and write to disk",
+            "note": "DB node soft-deleted and its tokens detached — source "
+                    "rendering is UNCHANGED (the tokens stay in the stream); "
+                    "commit_db_transaction is not applicable",
         }
     except Exception as exc:
         return {"error": str(exc)}
@@ -1274,6 +1308,9 @@ def _tool_add_function(args: dict, graph_dir: str) -> dict:
         # Parse function name from signature (very naive — just first identifier)
         sig_words = signature.replace("(", " ").replace("*", " ").split()
         fn_name = sig_words[1] if len(sig_words) > 1 else sig_words[-1]
+        # Real write-back tx (pre-edit snapshot) when tokens are attached
+        # to a file — a signature-only insert cannot render to disk.
+        tx_id = _begin_writeback_tx(conn, graph_dir, file_id) if file_id else None
         # Insert new function node
         cur = conn.execute(
             "INSERT INTO cgdb_nodes (kind, name, fqn, file_id, line, col, "
@@ -1306,8 +1343,14 @@ def _tool_add_function(args: dict, graph_dir: str) -> dict:
         return {
             "symbol_id": symbol_id,
             "token_ids": token_ids,
-            "transaction_id": f"add_function_{symbol_id}",
-            "note": "DB function added; run commit_db_transaction to render and write to disk",
+            "transaction_id": tx_id,
+            "note": (
+                "DB function added; run commit_db_transaction to render and "
+                "write to disk"
+                if tx_id else
+                "DB function added (metadata only — no file_id given, so "
+                "there is nothing to render to disk)"
+            ),
         }
     except Exception as exc:
         return {"error": str(exc)}

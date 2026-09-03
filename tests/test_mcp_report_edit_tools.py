@@ -218,5 +218,66 @@ class TestAddFunction(unittest.TestCase):
         self.assertEqual(res["token_ids"], [])
 
 
+class TestWritebackTxIntegration(unittest.TestCase):
+    """Edit tools must return REAL writeback transaction ids that
+    commit_db_transaction / rollback_db_transaction recognize."""
+
+    def test_edit_token_rollback_restores_previous_state(self):
+        d, db, fid = _make_graph_dir()
+        t2 = _token_ids(db, ("t1", "t2", "t3", "t4"))[1]
+        res = m._tool_edit_token({"token_id": t2, "new_text": "REPLACED"}, d)
+        self.assertNotIn("error", res, res)
+        tx_id = res["transaction_id"]
+        # real ids are uuids, not the old fake "edit_token_<id>" strings
+        self.assertFalse(tx_id.startswith("edit_token_"))
+        conn = sqlite3.connect(db)
+        self.assertEqual(
+            conn.execute("SELECT spelling FROM tokens WHERE id = ?",
+                         (t2,)).fetchone()[0], "REPLACED")
+        conn.close()
+        rb = m._tool_rollback_db_transaction({"transaction_id": tx_id}, d)
+        self.assertTrue(rb.get("rolled_back"), rb)
+        conn = sqlite3.connect(db)
+        self.assertEqual(
+            conn.execute("SELECT spelling FROM tokens WHERE id = ?",
+                         (t2,)).fetchone()[0], "t2")
+        conn.close()
+
+    def test_edit_token_tx_resolves_in_commit(self):
+        d, db, fid = _make_graph_dir()
+        t1 = _token_ids(db, ("t1", "t2", "t3", "t4"))[0]
+        res = m._tool_edit_token({"token_id": t1, "new_text": "zz"}, d)
+        tx_id = res["transaction_id"]
+        # The synthetic fixture has no usable source_root / token layout,
+        # so rendering may legitimately fail — but the tx must RESOLVE
+        # (failure_stage != begin) instead of "no such transaction_id".
+        out = m._tool_commit_db_transaction(
+            {"transaction_id": tx_id, "run_compile": False}, d)
+        self.assertNotIn("no such transaction_id", str(out), out)
+        self.assertNotEqual(out.get("failure_stage"), "begin", out)
+
+    def test_insert_and_delete_token_return_real_tx(self):
+        d, db, fid = _make_graph_dir()
+        ids = _token_ids(db, ("t1", "t2", "t3", "t4"))
+        r1 = m._tool_insert_token(
+            {"after_token_id": ids[1],
+             "tokens": [{"kind": "punct", "spelling": "+"}]}, d)
+        self.assertFalse(
+            r1["transaction_id"].startswith("insert_token_"), r1)
+        r2 = m._tool_delete_token({"token_id": ids[3]}, d)
+        self.assertFalse(
+            r2["transaction_id"].startswith("delete_token_"), r2)
+
+    def test_add_function_tx_only_with_file(self):
+        d, db, fid = _make_graph_dir()
+        r = m._tool_add_function({"signature": "int f(void)"}, d)
+        self.assertIsNone(r["transaction_id"])
+        r = m._tool_add_function(
+            {"signature": "int f(void)", "file_id": fid,
+             "body_tokens": [{"kind": "identifier", "spelling": "y"}]}, d)
+        self.assertIsNotNone(r["transaction_id"])
+        self.assertFalse(r["transaction_id"].startswith("add_function_"))
+
+
 if __name__ == "__main__":
     unittest.main()

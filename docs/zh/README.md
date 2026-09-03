@@ -8,7 +8,7 @@
 
 [![语言](https://img.shields.io/badge/语言-7%20%2B%20ASM-orange)](#语言支持)
 [![MCP工具](https://img.shields.io/badge/MCP工具-81-blueviolet)](#mcp-服务器)
-[![查询命令](https://img.shields.io/badge/查询命令-222-success)](#命令参考)
+[![查询命令](https://img.shields.io/badge/查询命令-226-success)](#命令参考)
 [![许可证: MIT](https://img.shields.io/badge/许可证-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](#安装)
 [![tree-sitter](https://img.shields.io/badge/tree--itter-AST-green?logo=tree-sitter&logoColor=white)](#工作原理)
@@ -280,7 +280,7 @@ bash scripts/setup.sh --languages c,go
                                      │
                                      ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  [Query]     micro → lite → local · 81 个 MCP (53 base + 28 design-report) 工具 · 222 CLI 命令         │
+│  [Query]     micro → lite → local · 81 个 MCP (53 base + 28 design-report) 工具 · 226 CLI 命令         │
 │              explore-flow · trace-chain · detect-races · param-flow      │
 │              value-flow · lock-coverage · path-feasible · data-dep       │
 │              extract-invariants · ffi-trace · doc-code-check · query     │
@@ -306,7 +306,7 @@ bash scripts/setup.sh --languages c,go
 | **语言** | 7 种 — C/C++、Go、Python、Java、Rust、ASM（Python + tree-sitter + ASM 正则）|
 | **存储** | JSON 输出 + 大图可选 SQLite 后端 |
 | **MCP 服务器** | stdio 传输，**81 个查询工具**（34 code2database_* + 19 cgdb_*）供 LLM 代理使用 |
-| **CLI 命令** | **222 命令** 分为 3 个子技能（`/Code2Database` 核心、`/Code2Database-analysis`、`/Code2Database-ops`）— Build、Query、Trace、Concurrency、Knowledge、Memory、Provenance、Cypher、Data Flow、Lock Analysis、Path Feasibility、Invariants、Auto-Enhance、Transactions、FFI、Web UI、Benchmark、Profile Health、Doc-Code、Daemon、cgdb（clang 后端） |
+| **CLI 命令** | **226 命令** 分为 3 个子技能（`/Code2Database` 核心、`/Code2Database-analysis`、`/Code2Database-ops`）— Build、Query、Trace、Concurrency、Knowledge、Memory、Provenance、Cypher、Data Flow、Lock Analysis、Path Feasibility、Invariants、Auto-Enhance、Transactions、FFI、Web UI、Benchmark、Profile Health、Doc-Code、Daemon、cgdb（clang 后端） |
 | **调用条件解析** | `if`/`switch`/`#ifdef` 分支 + 空节点聚合 |
 | **条件编译（`#ifdef`）** | 图谱知道哪些调用只在哪些 `CONFIG_*` 标志下存在 |
 | **数据竞争检测** | 跨线程隐患检测 — `detect-races` |
@@ -556,7 +556,7 @@ python3 scripts/code2database_scanner.py scan --source /path --extraction-backen
 
 ## 技能激活（3 个子技能）
 
-技能分为 3 个子技能以保持 LLM 上下文精简。每个子技能有自己的 `SKILL.md`，仅暴露与其层相关的命令。CLI（`scripts/code2database_builder.py`）共享——无论哪个子技能激活，全部 222 个命令都可访问。
+技能分为 3 个子技能以保持 LLM 上下文精简。每个子技能有自己的 `SKILL.md`，仅暴露与其层相关的命令。CLI（`scripts/code2database_builder.py`）共享——无论哪个子技能激活，全部 226 个命令都可访问。
 
 | 子技能 | 触发 | 用途 |
 |--------|------|------|

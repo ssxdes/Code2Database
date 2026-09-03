@@ -50,7 +50,7 @@ Capabilities:
 
 ## Skill Structure (3 sub-skills)
 
-The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 222 commands) is shared — all commands are accessible regardless of sub-skill activation.
+The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 226 commands) is shared — all commands are accessible regardless of sub-skill activation.
 
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|
@@ -123,7 +123,7 @@ Capability modules have dedicated unit tests in `tests/` covering:
 - Update command (confirmation gate, attribute parsing, backend detection)
 - Profile generation (auto-profile, project-type detection, struct_op_types)
 
-**Test suite**: 1605 tests across 88 files (1250 at v1.3.0 + 355 added since). Run with `python3 -m pytest tests/ -v`. 1604 passed, 1 skipped (libclang fallback path).
+**Test suite**: 1664 tests across 93 files (1250 at v1.3.0 + 414 added since). Run with `python3 -m pytest tests/ -v`. 1663 passed, 1 skipped (libclang fallback path).
 
 ## Language Support
 

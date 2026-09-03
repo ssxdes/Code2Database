@@ -272,6 +272,10 @@ def cmd_search_memory(args):
                 "score": score,
                 "question": entry_meta["question"],
                 "status": status,
+                # root_id is required below to resolve the root/leaf entry
+                # file for answer hydration — without it is_root is always
+                # False and root-layout entries return no answer.
+                "root_id": entry_meta.get("root_id"),
             })
 
     # Also search experience directory entries not in main index

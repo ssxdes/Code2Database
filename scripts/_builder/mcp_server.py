@@ -11,11 +11,12 @@ MCP Tools exposed (81 total):
     - 34 code2database_* tools (load, search, describe, explore, trace,
       impact, key_paths, concurrency, data_lifecycle, domain, knowledge_query,
       memory_search, semantic_status, blast_radius, field_access, etc.)
-    - 19 cgdb_* tools (query, time_travel, configs_for, ops_impls, cfg_paths,
-      data_flow, race_check, index_status, sql, views, schema_version,
-      versions, find_invokers, find_invoked, path, definition, function_body,
-      struct_layout, type_definition, nodes_under_config, path_feasible,
-      get_source, layer_summary)
+    - 19 cgdb_* tools (search_symbols, get_definition, get_function_body,
+      get_struct_layout, find_type_definition, find_invokers, find_invoked,
+      find_ops_impls, find_cfg_paths, find_data_flow, find_aliases,
+      find_lock_held_calls, check_race_condition, find_configs_for,
+      find_nodes_under_config, index_status, time_travel_query,
+      list_versions, get_source)
     - 28 design-report tools (render_source, verify_consistency, edit_token,
       insert_token, delete_token, find_macros, get_pp_branches,
       get_string_literals, commit/rollback_db_transaction, insert_node_after,
@@ -77,6 +78,30 @@ def _close_cached_graphs():
 
 
 atexit.register(_close_cached_graphs)
+
+
+def _drop_cgdb_store(graph_dir: str):
+    """Close and evict a cached cgdb store (its SQLite connection too).
+
+    Evicting via _CGDB_STORE_CACHE.pop() alone leaks the connection —
+    in WAL mode an abandoned open connection can pin the WAL and block
+    other writers.
+    """
+    store = _CGDB_STORE_CACHE.pop(graph_dir, None)
+    if store is not None:
+        try:
+            store.close()
+        except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+
+
+def _close_cached_cgdb_stores():
+    """Close all cached cgdb store connections on exit."""
+    for graph_dir in list(_CGDB_STORE_CACHE.keys()):
+        _drop_cgdb_store(graph_dir)
+
+
+atexit.register(_close_cached_cgdb_stores)
 
 
 # ---------------------------------------------------------------------------
@@ -1098,8 +1123,8 @@ def _cgdb_store(graph_dir: str):
     import sqlite3
     db_path = os.path.join(graph_dir, "code2database.db")
     if not os.path.exists(db_path):
-        # Drop any stale cache entry.
-        _CGDB_STORE_CACHE.pop(graph_dir, None)
+        # Drop any stale cache entry (closing its connection).
+        _drop_cgdb_store(graph_dir)
         return None
     cached = _CGDB_STORE_CACHE.get(graph_dir)
     if cached is not None:
@@ -1108,7 +1133,7 @@ def _cgdb_store(graph_dir: str):
             cached._ensure_conn().execute("SELECT 1").fetchone()
             return cached
         except sqlite3.Error:
-            _CGDB_STORE_CACHE.pop(graph_dir, None)
+            _drop_cgdb_store(graph_dir)
     try:
         from _builder.cgdb_store import SQLiteCGDBStore
         store = SQLiteCGDBStore(db_path)

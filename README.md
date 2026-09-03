@@ -554,6 +554,8 @@ When the clang backend is enabled, the build step populates the cgdb semantic ta
 
 These tables are queried directly via 19 `cgdb_*` MCP tools — see the `/Code2Database-analysis` sub-skill for the full tool reference.
 
+If the cgdb export fails mid-build, the graph is left missing (parts of) its semantic layer while the legacy tables look fine. The build writes a marker file `<outdir>/.code2database_cgdb_export_failed.json` (with the error and context), prints a WARNING in the stdout summary, and clears the marker on the next successful export. Check for this marker when `cgdb_*` queries return unexpectedly empty results.
+
 ---
 
 ## Skill Activation (3 sub-skills)
@@ -602,6 +604,8 @@ daemon-wait-sync --graph code2db-out/ --timeout 30
 Daemon writes state to `<graph_dir>/.daemon_status.json` and logs to `~/.code2database/daemon-<project>.log`. Configuration via profile `daemon` section (see `docs/<lang>/RUNTIME_CONFIG.md`).
 
 **Circuit breaker**: if events exceed 1000/minute (e.g., `git checkout` of a large branch), the daemon switches to "wait + bulk rebuild" mode instead of per-file incremental.
+
+**Startup grace period**: for the first 60s after start (configurable via `daemon.startup_grace_sec` or env `CALLGRAPH_DAEMON_STARTUP_GRACE_SEC`), file events are held rather than synced — a daemon started right after a build doesn't re-sync the build's own file churn. `daemon-wait-sync` and `daemon-force-refresh` end the grace early. The graph output directory itself is never watched (no self-feedback loop), unless it is the source root.
 
 ---
 

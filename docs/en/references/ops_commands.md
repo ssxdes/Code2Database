@@ -242,7 +242,7 @@ python3 scripts/code2database_builder.py daemon-stop \
 
 ### `daemon-status`
 
-Get daemon status: pid, last_sync, pending events, stale nodes, circuit breaker state.
+Get daemon status: pid, last_sync, pending events, stale nodes, circuit breaker state, and startup-grace state (`sync.startup_grace_active`, `sync.startup_grace_remaining_sec` — events seen during the grace window are held, not synced).
 
 ```bash
 python3 scripts/code2database_builder.py daemon-status \

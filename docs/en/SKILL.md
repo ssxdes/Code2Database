@@ -102,7 +102,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 - Only 7 labels: API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end
 - Edge confidence: EXTRACTED / INFERRED / AMBIGUOUS
 - DB writes require user confirmation
-- Daemon freshness: check `daemon-status` before important queries
+- Daemon freshness: check `daemon-status` before important queries; note the daemon holds (does not sync) events during its startup grace window (`startup_grace_active`)
 - `update`/`merge`/`sync` commands require in-memory nx.DiGraph. On large projects
   (>=50K functions), `_load_full_graph` returns LazySQLiteGraph (read-only SQLite view).
   These commands will print a friendly error directing to `daemon-start` or `build`.

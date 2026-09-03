@@ -141,6 +141,9 @@ Edit this file when you need to tune pipeline behavior without modifying source 
 | `idle_sleep_minutes` | int | `30` | Idle sleep before daemon enters low-power polling. |
 | `max_events_per_minute` | int | `1000` | Circuit breaker threshold; above this, bulk rebuild is triggered. |
 | `backend` | string | `"auto"` | `"inotify"` (Linux), `"polling"`, or `"auto"` (inotify if available, else polling). |
+| `startup_grace_sec` | float | `60` | Startup grace period: file events seen during this window after daemon start are held, not synced. Avoids re-syncing a flurry of events from a build that just finished or a daemon restart. `daemon-wait-sync` and `daemon-force-refresh` end the grace early. Overridable via env `CALLGRAPH_DAEMON_STARTUP_GRACE_SEC`. |
+
+**Note**: the daemon never watches its own `--graph` output directory (self-watch feedback loop) — unless graph_dir equals the source root.
 
 ---
 

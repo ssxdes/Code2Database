@@ -102,7 +102,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 - 只有 7 个标签：API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end
 - 边置信度：EXTRACTED / INFERRED / AMBIGUOUS
 - DB 写入需用户确认
-- 守护进程新鲜度：重要查询前检查 `daemon-status`
+- 守护进程新鲜度：重要查询前检查 `daemon-status`；注意守护进程在启动宽限期（`startup_grace_active`）内会持有事件而不同步
 - `update`/`merge`/`sync` 命令需要内存中的 nx.DiGraph。大型项目（>=5万函数）
   时 `_load_full_graph` 返回 LazySQLiteGraph（只读 SQLite 视图）。这些命令会打印
   友好错误提示使用 `daemon-start` 或 `build`。用 `daemon-start` 做增量同步。

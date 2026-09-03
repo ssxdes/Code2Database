@@ -141,6 +141,9 @@
 | `idle_sleep_minutes` | int | `30` | 守护进程进入低功耗轮询前的空闲睡眠时间。 |
 | `max_events_per_minute` | int | `1000` | 断路器阈值；超过此值触发整体重建。 |
 | `backend` | string | `"auto"` | `"inotify"`（Linux）、`"polling"` 或 `"auto"`（可用时使用 inotify，否则 polling）。 |
+| `startup_grace_sec` | float | `60` | 启动宽限期：守护进程启动后该窗口内观察到的文件事件会被持有、不触发同步。避免刚完成的构建或守护进程重启引发事件风暴。`daemon-wait-sync` 和 `daemon-force-refresh` 会提前结束宽限期。可通过环境变量 `CALLGRAPH_DAEMON_STARTUP_GRACE_SEC` 覆盖。 |
+
+**注意**：守护进程不会监视自己的 `--graph` 输出目录（防止自反馈循环）——除非 graph_dir 与源码根目录相同。
 
 ---
 

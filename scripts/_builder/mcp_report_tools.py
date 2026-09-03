@@ -217,10 +217,18 @@ def _tool_insert_token(args: dict, graph_dir: str) -> dict:
         file_id, anchor_seq, anchor_line, anchor_col, anchor_byte = (
             row["file_id"], row["seq"], row["line"], row["col"], row["byte_offset"]
         )
-        # Shift all tokens with seq > anchor_seq up by len(tokens)
+        # Shift all tokens with seq > anchor_seq up by len(tokens).
+        # Two-phase via negative seq space: a direct `seq = seq + N` UPDATE
+        # transiently collides with not-yet-shifted rows under the
+        # UNIQUE(file_id, seq) constraint (SQLite updates rows in scan
+        # order, not seq order).
         conn.execute(
-            "UPDATE tokens SET seq = seq + ? WHERE file_id = ? AND seq > ?",
-            (len(tokens), file_id, anchor_seq)
+            "UPDATE tokens SET seq = -seq WHERE file_id = ? AND seq > ?",
+            (file_id, anchor_seq)
+        )
+        conn.execute(
+            "UPDATE tokens SET seq = ? - seq WHERE file_id = ? AND seq < 0",
+            (len(tokens), file_id)
         )
         # Insert new tokens
         new_ids = []
@@ -273,10 +281,17 @@ def _tool_delete_token(args: dict, graph_dir: str) -> dict:
         ]
         # Delete
         conn.execute("DELETE FROM tokens WHERE id = ?", (token_id,))
-        # Shift tokens with seq > deleted_seq down by 1
+        # Shift tokens with seq > deleted_seq down by 1. Two-phase via
+        # negative seq space — same UNIQUE(file_id, seq) hazard as
+        # insert_token's shift (scan order is not guaranteed to be seq
+        # order, so a direct down-shift can transiently collide too).
         conn.execute(
-            "UPDATE tokens SET seq = seq - 1 WHERE file_id = ? AND seq > ?",
+            "UPDATE tokens SET seq = -seq WHERE file_id = ? AND seq > ?",
             (file_id, seq)
+        )
+        conn.execute(
+            "UPDATE tokens SET seq = -seq - 1 WHERE file_id = ? AND seq < 0",
+            (file_id,)
         )
         conn.commit()
         return {

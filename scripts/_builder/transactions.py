@@ -92,6 +92,45 @@ GRAPH_STATE_FILES = [
     "code2database_master.json",
 ]
 
+# SQLite WAL-mode sidecar of code2database.db. Copying the main db file
+# alone misses every commit still living in the WAL (with
+# wal_autocheckpoint=0 or a concurrent reader pinning the log, that can
+# be ALL of them — reproduced: snapshot db had neither table nor rows).
+# The -shm sidecar is NOT copied: SQLite rebuilds it from the -wal on
+# first open.
+DB_WAL_SIDECAR = "code2database.db-wal"
+DB_SHM_SIDECAR = "code2database.db-shm"
+
+
+def _checkpoint_wal(graph_dir: str) -> bool:
+    """Try to fold the live WAL into the main db before a snapshot.
+
+    Runs PRAGMA wal_checkpoint(TRUNCATE) on its own connection. On
+    success the -wal file is emptied/removed and a plain file copy of
+    the db is fully consistent. Returns False when the checkpoint
+    couldn't complete (another reader pins the log, db missing or not
+    a database) — callers then fall back to copying the -wal sidecar
+    alongside the db.
+    """
+    db_path = os.path.join(graph_dir, "code2database.db")
+    if not os.path.exists(db_path):
+        return True  # nothing to checkpoint
+    import sqlite3
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path, timeout=5.0)
+        row = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        # (busy, log_pages, checkpointed_pages); busy != 0 => incomplete
+        return bool(row) and row[0] == 0
+    except sqlite3.Error:
+        return False
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -284,6 +323,12 @@ def create_snapshot(graph_dir: str, description: str = "") -> Snapshot:
     snap_path = os.path.join(_snapshots_dir(graph_dir), snap_id)
     os.makedirs(snap_path, exist_ok=True)
 
+    # Fold the live WAL into the main db first so the plain copy below
+    # is self-contained. If the checkpoint can't complete (concurrent
+    # reader pinning the log), we fall back to copying the -wal sidecar
+    # next to the db — still consistent, just larger.
+    _checkpoint_wal(graph_dir)
+
     file_count = 0
     total_size = 0
     for fname in GRAPH_STATE_FILES:
@@ -297,6 +342,16 @@ def create_snapshot(graph_dir: str, description: str = "") -> Snapshot:
             shutil.copy2(src, dst)
         file_count += 1
         total_size += os.path.getsize(dst) if os.path.exists(dst) else 0
+
+    # Copy the -wal sidecar if it still exists after the checkpoint
+    # attempt (non-empty WAL = checkpoint was busy; snapshot must carry
+    # it or every WAL-resident commit is silently lost on restore).
+    wal_src = os.path.join(graph_dir, DB_WAL_SIDECAR)
+    if os.path.exists(wal_src) and os.path.getsize(wal_src) > 0:
+        shutil.copy2(wal_src, os.path.join(snap_path, DB_WAL_SIDECAR))
+        file_count += 1
+        total_size += os.path.getsize(
+            os.path.join(snap_path, DB_WAL_SIDECAR))
 
     snap = Snapshot(
         id=snap_id, timestamp=time.time(), description=description,
@@ -373,20 +428,42 @@ def restore_snapshot(graph_dir: str, snap_id: str) -> Dict:
         os.replace(tmp, dst)
         restored_files.append(fname)
 
-    # Delete live SQLite WAL/SHM sidecar files so they are NOT replayed
-    # onto the restored (older) DB. The snapshot may or may not have
-    # captured these files (depends on whether WAL was checkpointed
-    # before snapshot); either way, the live sidecars must be removed
-    # to prevent post-snapshot changes from being re-introduced.
-    for sidecar in ("code2database.db-wal", "code2database.db-shm"):
+    # Restore the snapshotted -wal sidecar (if the snapshot had to carry
+    # one because the checkpoint was busy). It contains commits that
+    # never made it into the copied main db; without it every such
+    # commit is lost. Order matters: this must happen AFTER the live
+    # sidecars are gone (deleted below) or we'd restore the wal only to
+    # leave a stale live one in place — so: delete first, then copy.
+    wal_errors = []
+    for sidecar in (DB_WAL_SIDECAR, DB_SHM_SIDECAR):
         sidecar_path = os.path.join(graph_dir, sidecar)
         if os.path.exists(sidecar_path):
             try:
                 os.remove(sidecar_path)
                 restored_files.append(sidecar)
-            except OSError:
-                pass
+            except OSError as exc:
+                # NOT silently ignorable: a surviving live -wal would be
+                # replayed by SQLite on top of the restored (older) db —
+                # the exact corrupt-hybrid state this restore is supposed
+                # to prevent. Surface it in the result; the caller (and
+                # tx-rollback) must know the restore is incomplete.
+                wal_errors.append(f"{sidecar}: {exc}")
 
+    snap_wal = os.path.join(snap_path, DB_WAL_SIDECAR)
+    if os.path.exists(snap_wal) and os.path.getsize(snap_wal) > 0:
+        dst_wal = os.path.join(graph_dir, DB_WAL_SIDECAR)
+        tmp_wal = dst_wal + ".restore.tmp"
+        shutil.copy2(snap_wal, tmp_wal)
+        with open(tmp_wal, "rb") as f:
+            os.fsync(f.fileno())
+        os.replace(tmp_wal, dst_wal)
+        restored_files.append(DB_WAL_SIDECAR)
+
+    if wal_errors:
+        return {"restored": False, "snapshot_id": snap_id,
+                "restored_files": restored_files,
+                "reason": "failed to delete live WAL sidecar(s): "
+                          + "; ".join(wal_errors)}
     return {"restored": True, "snapshot_id": snap_id,
             "restored_files": restored_files}
 

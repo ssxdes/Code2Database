@@ -410,6 +410,45 @@ class KnowledgeManager:
     # Knowledge file I/O
     # -----------------------------------------------------------------------
 
+    def _load_file_sources(self) -> dict:
+        """Read the recorded per-file source map from _meta.json."""
+        meta_path = os.path.join(self.knowledge_dir, "_meta.json")
+        if os.path.exists(meta_path):
+            try:
+                meta = json.loads(Path(meta_path).read_text(encoding="utf-8"))
+                if isinstance(meta, dict):
+                    return dict(meta.get("file_sources", {}))
+            except (json.JSONDecodeError, OSError):
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        return {}
+
+    def _write_knowledge_file(self, fname: str, content: str,
+                              incoming_source: str,
+                              recorded_sources: dict) -> bool:
+        """Write one knowledge file, guarding curated content.
+
+        An auto_extracted batch must NEVER overwrite a file recorded as
+        manual/llm_generated (or an unattributed non-empty file — we
+        can't prove it's ours to clobber). Previously extract-knowledge
+        silently replaced hand-curated architecture.md / glossary.md
+        with graph-inferred templates.
+
+        Returns True if written, False if skipped.
+        """
+        path = os.path.join(self.knowledge_dir, fname)
+        recorded = recorded_sources.get(fname, "")
+        if incoming_source == "auto_extracted" and os.path.exists(path) \
+                and os.path.getsize(path) > 0:
+            if recorded in ("", "manual", "llm_generated"):
+                print(f"[knowledge] Skipping {fname}: existing content is "
+                      f"{'unattributed' if recorded == '' else recorded} "
+                      f"— auto extraction will not overwrite it "
+                      f"(delete the file or use apply-knowledge)",
+                      file=sys.stderr)
+                return False
+        Path(path).write_text(content, encoding="utf-8")
+        return True
+
     def write_knowledge_files(self, knowledge: dict):
         """Write knowledge dict to files in knowledge/ directory.
 
@@ -420,9 +459,28 @@ class KnowledgeManager:
         "llm_generated", or "auto_extracted") that sets the default source
         for all files written in this batch. Individual files can override
         this via a ``_file_sources`` dict mapping filename -> source.
+        Files recorded as manual/llm_generated are never overwritten by an
+        auto_extracted batch (see _write_knowledge_file).
         """
         batch_source = knowledge.get("_source", "")
         file_source_overrides = knowledge.get("_file_sources", {})
+        # Recorded sources are needed UP FRONT now (guard decisions),
+        # not just for the _meta.json update at the end.
+        recorded_sources = self._load_file_sources()
+        # Files this batch actually wrote (drives provenance upgrade:
+        # an intentional manual/llm batch that overwrote a file must
+        # also upgrade its recorded source — otherwise the file stays
+        # 'auto_extracted' and the next extract clobbers the curation).
+        written_files = set()
+
+        def _src_for(fname: str) -> str:
+            return file_source_overrides.get(fname, batch_source)
+
+        def _write(fname: str, content: str):
+            if self._write_knowledge_file(
+                    fname, content, _src_for(fname), recorded_sources):
+                written_files.add(fname)
+
         # Clean up existing auto-generated module files (noise from previous versions)
         for fname in os.listdir(self.knowledge_dir):
             if fname.startswith("module_") and fname.endswith(".md"):
@@ -437,47 +495,39 @@ class KnowledgeManager:
 
         # Architecture
         if knowledge.get("architecture"):
-            path = os.path.join(self.knowledge_dir, "architecture.md")
-            Path(path).write_text(knowledge["architecture"], encoding="utf-8")
+            _write("architecture.md", knowledge["architecture"])
 
         # Constraints
         if knowledge.get("constraints"):
-            path = os.path.join(self.knowledge_dir, "constraints.md")
-            Path(path).write_text(knowledge["constraints"], encoding="utf-8")
+            _write("constraints.md", knowledge["constraints"])
 
         # Glossary
         if knowledge.get("glossary"):
-            path = os.path.join(self.knowledge_dir, "glossary.md")
-            Path(path).write_text(knowledge["glossary"], encoding="utf-8")
+            _write("glossary.md", knowledge["glossary"])
 
         # Patterns
         if knowledge.get("patterns"):
-            path = os.path.join(self.knowledge_dir, "patterns.md")
-            Path(path).write_text(knowledge["patterns"], encoding="utf-8")
+            _write("patterns.md", knowledge["patterns"])
 
         # Build rules
         if knowledge.get("build_rules"):
-            path = os.path.join(self.knowledge_dir, "build_rules.md")
-            Path(path).write_text(knowledge["build_rules"], encoding="utf-8")
+            _write("build_rules.md", knowledge["build_rules"])
 
         # Detail sections (from doc headings, source patterns, stale nodes)
         for detail_name, content in knowledge.get("design_details", {}).items():
             if content:
                 fname = detail_name if detail_name.endswith(".md") else f"{detail_name}.md"
-                path = os.path.join(self.knowledge_dir, fname)
-                Path(path).write_text(content, encoding="utf-8")
+                _write(fname, content)
 
         # Principles (domain principles, protocol flows, invariant rules)
         if knowledge.get("principles"):
-            path = os.path.join(self.knowledge_dir, "principles.md")
-            Path(path).write_text(knowledge["principles"], encoding="utf-8")
+            _write("principles.md", knowledge["principles"])
 
         # Custom topics (LLM/human-defined knowledge)
         for topic_name, content in knowledge.get("custom_topics", {}).items():
             if content:
                 fname = f"custom_{topic_name}.md" if not topic_name.endswith(".md") else topic_name
-                path = os.path.join(self.knowledge_dir, fname)
-                Path(path).write_text(content, encoding="utf-8")
+                _write(fname, content)
 
         # Write _meta.json tracking knowledge provenance
         existing_meta = {}
@@ -491,13 +541,25 @@ class KnowledgeManager:
         file_sources = {}
         for fname in sorted(os.listdir(self.knowledge_dir)):
             if fname.endswith(".md"):
-                # Priority: existing saved value > explicit override > batch source > filename inference
-                if fname in existing_meta.get("file_sources", {}):
+                # Provenance precedence:
+                #   1. explicit per-file override (the docstring promises
+                #      overrides work — they must beat a stale record)
+                #   2. an intentional batch (manual/llm_generated) for a
+                #      file this batch WROTE — the writer's provenance
+                #      replaces the old record, or a curated file stays
+                #      marked auto_extracted and the next extract
+                #      clobbers it (regression caught in testing)
+                #   3. existing saved value (idempotent re-runs)
+                #   4. batch source
+                #   5. filename inference
+                if fname in file_source_overrides:
+                    file_sources[fname] = file_source_overrides[fname]
+                elif (fname in written_files
+                      and batch_source in ("manual", "llm_generated")):
+                    file_sources[fname] = batch_source
+                elif fname in existing_meta.get("file_sources", {}):
                     # Preserve the existing source value on re-run
                     file_sources[fname] = existing_meta["file_sources"][fname]
-                elif fname in file_source_overrides:
-                    # Explicit per-file override from the knowledge dict
-                    file_sources[fname] = file_source_overrides[fname]
                 elif batch_source:
                     # Batch-level source (e.g. "auto_extracted" from infer_from_graph)
                     file_sources[fname] = batch_source
@@ -952,8 +1014,12 @@ def cmd_extract_knowledge(args):
         json.dumps(template, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8")
 
-    # Also write graph-inferred files (these are always useful as context)
+    # Also write graph-inferred files (these are always useful as context).
+    # _source is REQUIRED: without it the batch has no provenance and the
+    # curated-content guard in write_knowledge_files can't tell an
+    # auto regeneration from an intentional overwrite.
     mgr.write_knowledge_files({
+        "_source": "auto_extracted",
         "architecture": graph_knowledge.get("architecture", ""),
         "modules": graph_knowledge.get("modules", {}),
         "glossary": graph_knowledge.get("glossary", ""),
@@ -988,6 +1054,14 @@ def cmd_apply_knowledge(args):
         return
 
     knowledge = json.loads(Path(input_path).read_text(encoding="utf-8"))
+    if not isinstance(knowledge, dict):
+        print(f"Error: {input_path} is not a JSON object", file=sys.stderr)
+        return
+    # apply-knowledge is BY DEFINITION the intentional human/LLM curation
+    # path — mark the batch as llm_generated unless the input explicitly
+    # carries its own _source. This is what protects curated files from a
+    # later auto extract-knowledge overwrite.
+    knowledge.setdefault("_source", "llm_generated")
     mgr.write_knowledge_files(knowledge)
     mgr.build_index()
     mgr.generate_pack("lite")

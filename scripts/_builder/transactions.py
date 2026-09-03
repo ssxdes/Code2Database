@@ -784,13 +784,27 @@ def transaction(graph_dir: str, description: str = "",
             # (consistency check, snapshot pruning) must NOT trigger a
             # rollback that would discard the just-committed work.
             _restore_result = restore_snapshot(graph_dir, snap.id)
-            if not _restore_result.get("restored"):
-                print(f"[tx] WARNING: rollback failed: {_restore_result.get('reason', 'unknown')}",
+            if _restore_result.get("restored"):
+                clear_wal(graph_dir)
+                tx_state.status = "rolled_back"
+                tx_state.ended_at = time.time()
+                tx_state.error = str(exc)
+            else:
+                # Rollback FAILED: the db still carries this tx's
+                # changes. Keep status='active' (retryable via
+                # tx-rollback / a later transaction()) and keep the WAL
+                # as evidence — claiming 'rolled_back' here would tell
+                # every reader the dirty state was undone when it
+                # wasn't.
+                print(f"[tx] WARNING: rollback failed: "
+                      f"{_restore_result.get('reason', 'unknown')} — "
+                      f"transaction left ACTIVE, retry tx-rollback",
                       file=sys.stderr)
-            clear_wal(graph_dir)
-            tx_state.status = "rolled_back"
-            tx_state.ended_at = time.time()
-            tx_state.error = str(exc)
+                tx_state.status = "active"
+                tx_state.error = (
+                    f"rollback failed: "
+                    f"{_restore_result.get('reason', 'unknown')} "
+                    f"(original error: {exc})")
             _write_tx_state(graph_dir, tx_state)
             raise
 
@@ -944,8 +958,18 @@ def recover_unfinished_wal(graph_dir: str) -> Dict:
         # Crash during a transaction → rollback
         _restore_result = restore_snapshot(graph_dir, state.snapshot_id)
         if not _restore_result.get("restored"):
-            print(f"[tx] WARNING: rollback failed: {_restore_result.get('reason', 'unknown')}",
-                  file=sys.stderr)
+            # Rollback failed: keep the tx ACTIVE (retryable via
+            # tx-replay-wal / tx-rollback) and keep the WAL as evidence.
+            state.error = (f"recovery rollback failed: "
+                           f"{_restore_result.get('reason', 'unknown')}")
+            _write_tx_state(graph_dir, state)
+            print(f"[tx] WARNING: rollback failed: "
+                  f"{_restore_result.get('reason', 'unknown')} — "
+                  f"transaction left ACTIVE for retry", file=sys.stderr)
+            return {"action": "rollback_failed", "tx_id": state.tx_id,
+                    "reason": _restore_result.get("reason", "unknown"),
+                    "hint": "fix the reason and re-run tx-replay-wal "
+                            "or tx-rollback"}
         clear_wal(graph_dir)
         state.status = "rolled_back"
         state.ended_at = time.time()
@@ -1190,8 +1214,22 @@ def cmd_tx_rollback(args):
             sys.exit(1)
         _restore_result = restore_snapshot(graph_dir, state.snapshot_id)
         if not _restore_result.get("restored"):
-            print(f"WARNING: rollback failed: {_restore_result.get('reason', 'unknown')}",
+            # Rollback failed: the db still carries the tx's changes.
+            # Keep the tx ACTIVE (retryable), keep the WAL, exit nonzero
+            # — reporting 'rolled_back' would mask a dirty database.
+            state.error = (f"rollback failed: "
+                           f"{_restore_result.get('reason', 'unknown')}")
+            _write_tx_state(graph_dir, state)
+            print(json.dumps({
+                "tx_id": state.tx_id, "status": "active",
+                "error": state.error,
+                "hint": "snapshot restore failed — db is NOT rolled back; "
+                        "fix the reason above and retry tx-rollback",
+            }, ensure_ascii=False, indent=2, default=str))
+            print(f"Error: rollback failed: "
+                  f"{_restore_result.get('reason', 'unknown')}",
                   file=sys.stderr)
+            sys.exit(1)
         clear_wal(graph_dir)
         state.status = "rolled_back"
         state.ended_at = time.time()

@@ -295,5 +295,67 @@ class TestTxBeginStaleActiveGuard(unittest.TestCase):
                              'stale active tx was orphaned, not rolled back')
 
 
+class TestRollbackFailureSemantics(unittest.TestCase):
+    """A failed rollback must NOT be reported as 'rolled_back'.
+
+    All three rollback paths (tx-rollback CLI, transaction() context
+    manager, recover_unfinished_wal) used to print a WARNING, clear the
+    WAL and write status='rolled_back' even when the snapshot restore
+    FAILED — leaving a dirty database that every reader believed was
+    clean. Now the tx stays ACTIVE (retryable) with the error recorded.
+    """
+
+    def _make_tx_then_kill_snapshot(self):
+        import shutil
+        d = tempfile.mkdtemp()
+        db = os.path.join(d, 'code2database.db')
+        conn = sqlite3.connect(db)
+        conn.execute('CREATE TABLE t (x INTEGER)')
+        conn.execute('INSERT INTO t VALUES (1)')
+        conn.commit()
+        conn.close()
+        ns = Namespace(graph=d, description='tx')
+        with contextlib.redirect_stdout(io.StringIO()):
+            cmd_tx_begin(ns)
+        state = _read_tx_state(d)
+        shutil.rmtree(os.path.join(_snapshots_dir(d), state.snapshot_id))
+        # dirty write "inside" the tx
+        conn = sqlite3.connect(db)
+        conn.execute('INSERT INTO t VALUES (2)')
+        conn.commit()
+        conn.close()
+        return d, db
+
+    def test_cmd_tx_rollback_failure_keeps_active_and_exits_nonzero(self):
+        from _builder.transactions import cmd_tx_rollback
+        d, db = self._make_tx_then_kill_snapshot()
+        ns = Namespace(graph=d)
+        code = 0
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), \
+                 contextlib.redirect_stderr(io.StringIO()):
+                cmd_tx_rollback(ns)
+        except SystemExit as e:
+            code = e.code
+        self.assertEqual(code, 1)
+        state = _read_tx_state(d)
+        self.assertEqual(state.status, 'active')
+        self.assertTrue(state.error)
+
+    def test_recover_unfinished_wal_failure_keeps_active(self):
+        import time as _time
+        from _builder.transactions import (
+            _write_tx_state as _wts, TransactionState as TS,
+            recover_unfinished_wal)
+        d = tempfile.mkdtemp()
+        _wts(d, TS(tx_id='tx_x', started_at=_time.time(),
+                   description='', snapshot_id='snap_gone',
+                   status='active'))
+        res = recover_unfinished_wal(d)
+        self.assertEqual(res['action'], 'rollback_failed')
+        state = _read_tx_state(d)
+        self.assertEqual(state.status, 'active')
+
+
 if __name__ == '__main__':
     unittest.main()

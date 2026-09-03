@@ -232,7 +232,6 @@ class StreamingGraph:
                   file=sys.stderr)
         elif not enabled and self._deferred:
             # Leaving deferred mode: rebuild _edge_data.
-            self._deferred = False
             _rebuild_start = time.time()
             if getattr(self, "_deferred_flushed", False):
                 # Edge batches were flushed to SQLite during the deferred
@@ -243,16 +242,26 @@ class StreamingGraph:
                 # re-add existing edges → duplicates) and close()'s
                 # DELETE+rewrite from _edge_data would LOSE every
                 # flushed edge (>5000-edge builds kept only the tail).
+                #
+                # The deferred flag stays True until the reload SUCCEEDS:
+                # after a failed reload _edge_data is incomplete, and a
+                # subsequent close() in normal mode would DELETE FROM
+                # edges and rewrite only the tail — silent total edge
+                # loss. With the flag still set, close() takes the
+                # deferred path (no DELETE; streamed edges stay in
+                # SQLite), and the raised exception fails the build
+                # loudly instead.
                 try:
+                    _reloaded = 0
                     for row in self._store._conn.execute(
                         "SELECT invoker_id, invoked_id, call_order, "
                         "call_condition, concurrency, confidence, "
                         "confidence_score, source, evidence, relation "
-                        "FROM edges").fetchall():
+                        "FROM edges"):
                         u, v = row[0], row[1]
                         if not u or not v:
                             continue
-                        self._edge_data[(u, v)] = {
+                        attrs = {
                             "call_order": row[2],
                             "call_condition": row[3] or "",
                             "concurrency": row[4] or "",
@@ -262,10 +271,36 @@ class StreamingGraph:
                             "evidence": row[8],
                             "relation": row[9] or "INVOKES",
                         }
+                        # Merge per key (NetworkX progressive-enrichment
+                        # semantics): the same (u,v) can be flushed more
+                        # than once when later phases re-add it with
+                        # extra attributes — each DB row is a per-call
+                        # snapshot, so last-row-wins dropped the earlier
+                        # attributes (e.g. confidence from the first
+                        # add_edge). Overwrite only when the newer
+                        # snapshot carries a real value.
+                        key = (u, v)
+                        existing = self._edge_data.get(key)
+                        if existing is None:
+                            self._edge_data[key] = attrs
+                        else:
+                            for k, val in attrs.items():
+                                if (val not in (None, "")
+                                        or existing.get(k) in (None, "")):
+                                    existing[k] = val
+                        _reloaded += 1
                 except Exception:
-                    logging.getLogger(__name__).warning(
-                        "StreamingGraph: reload of flushed edges failed",
-                        exc_info=True)
+                    self._deferred = True  # keep close() on the safe path
+                    raise RuntimeError(
+                        "StreamingGraph: reload of flushed edges from "
+                        "SQLite failed — _edge_data is incomplete and "
+                        "close() would DELETE the streamed edges; "
+                        "keeping deferred mode (streamed edges preserved "
+                        "in SQLite) and aborting") from None
+                if _reloaded:
+                    print(f"[StreamingGraph] Reloaded {_reloaded} flushed "
+                          f"edges from SQLite", file=sys.stderr)
+            self._deferred = False
             for edge_dict in self._edge_batch:
                 u = edge_dict.get("caller", "")
                 v = edge_dict.get("callee", "")

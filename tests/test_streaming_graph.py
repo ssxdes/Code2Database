@@ -123,5 +123,58 @@ class TestStreamingGraphCloseIdempotent(unittest.TestCase):
                              "second close() wiped the functions table")
 
 
+class TestDeferredReloadCorrectness(unittest.TestCase):
+    """set_deferred(False) reload: attribute merge + failure safety.
+
+    - The same (u,v) flushed more than once (later phases re-add it
+      with extra attrs) must MERGE on reload, not last-row-wins.
+    - A failed reload must raise with deferred mode STILL ACTIVE, so a
+      subsequent close() takes the deferred path (no DELETE FROM
+      edges) instead of wiping every streamed edge.
+    """
+
+    def _make(self):
+        d = tempfile.mkdtemp()
+        sg = StreamingGraph(os.path.join(d, "code2database.db"))
+        sg.set_deferred(True)
+        sg.add_node("f1", name="f1")
+        sg.add_node("f2", name="f2")
+        return d, sg
+
+    def test_cross_flush_attributes_merge_on_reload(self):
+        d, sg = self._make()
+        sg.add_edge("f1", "f2", confidence="EXTRACTED")
+        sg._flush_edges()
+        sg.add_edge("f1", "f2", evidence="call site a.c:10")
+        sg._flush_edges()
+        sg.set_deferred(False)
+        attrs = sg._edge_data[("f1", "f2")]
+        self.assertEqual(attrs.get("confidence"), "EXTRACTED")
+        self.assertEqual(attrs.get("evidence"), "call site a.c:10")
+        sg.close()
+
+    def test_failed_reload_keeps_deferred_and_preserves_edges(self):
+        import sqlite3
+        d, sg = self._make()
+        sg.add_edge("f1", "f2", confidence="EXTRACTED")
+        sg._flush_edges()
+        sg._store._conn.commit()
+        # Hide the edges table: reload SELECT fails, data survives
+        sg._store._conn.execute("ALTER TABLE edges RENAME TO edges_backup")
+        with self.assertRaises(RuntimeError):
+            sg.set_deferred(False)
+        self.assertTrue(sg._deferred,
+                        "deferred flag must stay True after failed reload")
+        # close() on the deferred path must NOT delete streamed edges
+        sg.close()
+        conn = sqlite3.connect(os.path.join(d, "code2database.db"))
+        conn.execute("ALTER TABLE edges_backup RENAME TO edges")
+        rows = conn.execute(
+            "SELECT invoker_id, invoked_id, confidence FROM edges"
+        ).fetchall()
+        conn.close()
+        self.assertEqual(rows, [("f1", "f2", "EXTRACTED")])
+
+
 if __name__ == "__main__":
     unittest.main()

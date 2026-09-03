@@ -2751,6 +2751,7 @@ def cmd_field_flow(args):
     # This is the key signal from KASAN_FINAL_REPORT: all 6 writers are
     # either guarded out or in the same thread context → no race window.
     vulnerable_readers = []
+    _reader_collection_error = None
     if value_filter and _value_is_null_form(value_filter):
         try:
             from _builder.query_router import route_field_access, sqlite_available
@@ -2797,9 +2798,16 @@ def cmd_field_flow(args):
                         r_nid = _resolve_nid(r.get("function", ""))
                         r["_node_id"] = r_nid
                         vulnerable_readers.append(r)
-        except Exception:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
-            pass
+        except Exception as exc:
+            # Reader collection failed mid-way: the already-collected
+            # readers are still reported, but an incomplete
+            # vulnerable_readers list looks like a clean all-clear —
+            # record the degradation in the result instead of a
+            # debug-only log.
+            logging.getLogger(__name__).warning(
+                "field-flow reader collection failed: %s", exc,
+                exc_info=True)
+            _reader_collection_error = str(exc)
         # A writer is "concurrent" if in a different thread context.
         # A writer is "in scene" if reachable_in_scene == "unguarded".
         # race_window_exists = any writer is both concurrent AND in scene.
@@ -2833,6 +2841,12 @@ def cmd_field_flow(args):
             "total_chains": total_chains,
         },
     }
+    if _reader_collection_error is not None:
+        # Reader analysis degraded (exception mid-collection): the list
+        # above may be incomplete — flag it so an empty-looking result
+        # isn't mistaken for "no vulnerable readers".
+        result["reader_collection_error"] = _reader_collection_error
+        result["summary"]["reader_analysis_degraded"] = True
     if vulnerable_readers:
         result["vulnerable_readers"] = vulnerable_readers
         result["summary"]["vulnerable_reader_count"] = len(vulnerable_readers)
@@ -2931,9 +2945,15 @@ def cmd_reverse_trace(args):
     # branch into all predecessors to collect every distinct path.
     # A path terminates when a node has no recorded reverse_edges (entry point).
     all_paths = []
+    # Bound the enumeration: path count grows exponentially with fan-in,
+    # and only max_paths (default 20) survive the sort+truncate below —
+    # without a cap a dense subgraph enumerated millions of paths first.
+    _PATH_CAP = 10000
 
     def _collect_paths(node_id, current_path):
         """Recursively collect paths from node_id back to entry points."""
+        if len(all_paths) >= _PATH_CAP:
+            return
         preds = reverse_edges.get(node_id, [])
         if not preds:
             # This is an entry point (no callers in reverse BFS range)
@@ -3004,6 +3024,7 @@ def cmd_reverse_trace(args):
 
     # Apply max_paths limit
     total_paths_before_limit = len(annotated_paths)
+    path_enumeration_capped = total_paths_before_limit >= 10000
     annotated_paths = annotated_paths[:max_paths]
 
     # Aggregate critical conditions: count how many paths each condition appears in
@@ -3203,6 +3224,11 @@ def cmd_reverse_trace(args):
         result["macros"] = list(macro_set)
     if total_paths_before_limit > max_paths:
         result["path_limit_applied"] = max_paths
+    if path_enumeration_capped:
+        result["path_enumeration_capped"] = True
+        result["note"] = ("path enumeration capped at 10000 — the graph "
+                          "has more distinct paths than counted; tighten "
+                          "the query (labels/depth) for exact totals")
     if field_write_suspects:
         result["field_write_suspects"] = field_write_suspects
         result["field_write_suspects_summary"] = {

@@ -957,7 +957,15 @@ def _execute_varlen_match(query: Query, G, path: PathPattern) -> List[Dict]:
         return _execute_node_match(query, G, path.nodes[0])
 
     rel = path.rels[0]
+    _unbounded = rel.max_hops <= 0
     max_depth = rel.max_hops if rel.max_hops > 0 else 5  # cap at 5 for safety
+    if _unbounded:
+        # '*1..' (no upper bound) is silently clamped to 5 — say so,
+        # or an 8-hop chain query quietly misses 3 paths and looks
+        # like the graph has none.
+        print(f"[query] NOTE: unbounded *{rel.min_hops}.. clamped to depth "
+              f"{max_depth} (specify e.g. *{rel.min_hops}..10 for deeper "
+              f"traversals)", file=sys.stderr)
     min_depth = rel.min_hops
 
     start_pat = path.nodes[0]
@@ -1278,9 +1286,13 @@ def _try_cte_execution(query: Query, cgdb_store) -> Optional[List[Dict]]:
             row = _project_return(query.return_items, binding)
             results.append(row)
         return results
-    except Exception:
-        # Any error → fall back to networkx
-        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+    except Exception as exc:
+        # Any error → fall back to networkx. Logged at WARNING (not
+        # debug): a persistent SQL error (corrupt db, schema drift)
+        # silently rerouted every query through the much slower
+        # full-graph networkx path with no trace of why.
+        logging.getLogger(__name__).warning(
+            "CTE execution failed, falling back to networkx: %s", exc)
         return None
 
 

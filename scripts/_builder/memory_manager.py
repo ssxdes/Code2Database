@@ -84,6 +84,23 @@ def _locked_read(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
+def _load_json_or_default(path: str, default, warn_label: str):
+    """Load a JSON file, tolerating corruption.
+
+    A truncated/corrupt memory file (killed process, disk full, manual
+    edit) used to escape as JSONDecodeError from _load_index /
+    _load_entry and take down EVERY memory operation — add, query,
+    decay, consolidate — until someone deleted the file by hand. Now
+    the corrupt file is reported and bypassed with the given default.
+    """
+    try:
+        return json.loads(_locked_read(path))
+    except json.JSONDecodeError as exc:
+        print(f"[memory] Warning: {warn_label} at {path} is corrupt "
+              f"({exc}); treating as empty", file=sys.stderr)
+        return default
+
+
 class MemoryManager:
     """Manages persistent and temporary memory for callgraph analysis."""
 
@@ -107,7 +124,9 @@ class MemoryManager:
     def _load_index(self) -> dict:
         path = os.path.join(self.mem_dir, "index.json")
         if os.path.exists(path):
-            index = json.loads(_locked_read(path))
+            index = _load_json_or_default(
+                path, lambda: {"entries": [], "next_id": 1, "roots": []},
+                "memory index")
             # Sanitize entries: filter out non-dict items (defensive against
             # corrupt/legacy memory.json files where entries may be plain
             # strings instead of {"id": ..., "question": ...} dicts).
@@ -144,7 +163,8 @@ class MemoryManager:
     def _load_exp_index(self) -> dict:
         path = os.path.join(self.exp_dir, "index.json")
         if os.path.exists(path):
-            index = json.loads(_locked_read(path))
+            index = _load_json_or_default(
+                path, lambda: {"entries": []}, "experience index")
             # Same defensive sanitize as _load_index — experience entries
             # can also be corrupted by inline merge scripts.
             if isinstance(index, dict) and isinstance(index.get("entries"), list):
@@ -201,7 +221,13 @@ class MemoryManager:
         access_count = entry.get("access_count", 0)
         access = 1.0 + ACCESS_BONUS * access_count
 
-        weight = base * recency * importance * access
+        # Persistent promote boost (see promote()). Must live in the
+        # formula — a plain `weight += boost` in promote() was erased by
+        # the next _update_weight() (decay/consolidate recompute weight
+        # from scratch), so promotions had no lasting effect.
+        boost = entry.get("boost", 0.0)
+
+        weight = base * recency * importance * access * (1.0 + boost)
         return min(weight, 10.0)  # cap at 10.0
 
     def _update_weight(self, entry: dict) -> dict:
@@ -254,11 +280,11 @@ class MemoryManager:
     def _load_entry(self, entry_id: int, is_root: bool = False) -> dict:
         path = self._entry_path(entry_id, is_root)
         if os.path.exists(path):
-            return json.loads(_locked_read(path))
+            return _load_json_or_default(path, {}, "memory entry")
         # Fallback: check old flat location
         old_path = os.path.join(self.mem_dir, f"memory_{entry_id}.json")
         if os.path.exists(old_path):
-            return json.loads(_locked_read(old_path))
+            return _load_json_or_default(old_path, {}, "memory entry")
         return {}
 
     def _save_entry(self, entry: dict, is_root: bool = False):
@@ -303,10 +329,13 @@ class MemoryManager:
         }
         root.setdefault("versions", []).append(version)
 
-        # New answer replaces root answer if it's stronger
+        # New answer replaces root answer if it's stronger. (The trailing
+        # `or entry.get("answer")` made the weight comparison dead code —
+        # ANY non-empty answer won, so a weak late merge always overwrote
+        # a strong curated root.)
         new_weight = self._compute_weight(entry)
         old_weight = self._compute_weight(root)
-        if new_weight > old_weight or entry.get("answer", ""):
+        if new_weight > old_weight:
             root["answer"] = entry.get("answer", root.get("answer", ""))
 
         # Merge tags and node_ids
@@ -513,6 +542,10 @@ class MemoryManager:
         from datetime import datetime
         entry["last_accessed"] = datetime.now().isoformat()
         entry["access_count"] = entry.get("access_count", 0) + 1
+        # Persist the boost so the next _update_weight() (decay /
+        # consolidate recompute weight from scratch) keeps it — a bare
+        # `weight += boost` was erased by the first decay afterwards.
+        entry["boost"] = round(entry.get("boost", 0.0) + boost, 4)
         entry["weight"] = min(entry.get("weight", 1.0) + boost, 10.0)
         self._save_entry(entry, is_root=is_root)
         print(f"Promoted #{mem_id}: weight → {entry['weight']:.2f}")

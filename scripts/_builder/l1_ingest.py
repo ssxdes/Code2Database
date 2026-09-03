@@ -627,9 +627,36 @@ def ingest_l1(
     # Delete any prior L1 rows for this file so re-ingest doesn't fail
     # on UNIQUE(file_id, seq) / UNIQUE(file_id, name, line) constraints.
     # Mirrors what cgdb "wipe per file" does for L2+ tables.
-    for _tbl in ("tokens", "literals", "comments_freeform", "macros",
+    #
+    # literals / string_literals / attributes have NO file_id column —
+    # they link to the file through tokens (literals.token_id,
+    # string_literals.literal_id -> literals.id,
+    # attributes.at_token_id). Deleting them "WHERE file_id = ?" raised
+    # OperationalError, which the old except-pass swallowed — so every
+    # re-ingest of a file appended a fresh copy of its literal rows
+    # (rebuild after rebuild: +N literals / string_literals each time;
+    # measured on a 1-string test file: 3 builds -> 3 string_literals).
+    # Clean them via the file's token ids FIRST (they need the tokens
+    # rows to resolve), then the file_id-keyed tables.
+    try:
+        conn.execute(
+            "DELETE FROM string_literals WHERE literal_id IN "
+            "(SELECT id FROM literals WHERE token_id IN "
+            " (SELECT id FROM tokens WHERE file_id = ?))",
+            (file_id,))
+        conn.execute(
+            "DELETE FROM literals WHERE token_id IN "
+            "(SELECT id FROM tokens WHERE file_id = ?)",
+            (file_id,))
+        conn.execute(
+            "DELETE FROM attributes WHERE at_token_id IN "
+            "(SELECT id FROM tokens WHERE file_id = ?)",
+            (file_id,))
+    except sqlite3.OperationalError:
+        pass  # table may not exist on fresh schema
+    for _tbl in ("tokens", "comments_freeform", "macros",
                  "macro_invocations", "pp_directives", "pragmas",
-                 "attributes", "pp_branches"):
+                 "pp_branches"):
         try:
             conn.execute(f"DELETE FROM {_tbl} WHERE file_id = ?", (file_id,))
         except sqlite3.OperationalError:

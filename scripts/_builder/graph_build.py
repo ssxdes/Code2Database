@@ -77,6 +77,24 @@ _CGDB_WIPE_TABLES = (
     "config_predicates",
     "node_metadata",
     "edge_metadata",
+    # L1 tables (tokens, literals, string_literals, comments_freeform,
+    # macros, macro_invocations, pp_directives, pragmas, attributes,
+    # pp_branches, source_files_meta) are re-populated by the L1 ingest
+    # phase of the same build. Wiping them here keeps full rebuilds
+    # complete — previously rows of files REMOVED from the project
+    # lingered forever. comments_fts is trigger-maintained over
+    # comments_freeform/doc_comments and follows their DELETEs.
+    "tokens",
+    "literals",
+    "string_literals",
+    "comments_freeform",
+    "macros",
+    "macro_invocations",
+    "pp_directives",
+    "pragmas",
+    "attributes",
+    "pp_branches",
+    "source_files_meta",
 )
 
 

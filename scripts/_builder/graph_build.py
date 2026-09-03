@@ -61,7 +61,10 @@ _CGDB_WIPE_TABLES = (
     "cgdb_files",
     "cgdb_includes",
     "invoke_sites",
-    "predicates",
+    # NOTE: "predicates" was listed here since the init commit but no such
+    # table has ever existed in the schema (the real table is
+    # config_predicates, listed below) — every build paid a spurious
+    # "no such table: predicates" warning/error for it.
     "ops_bindings",
     "basic_blocks",
     "cfg_edges",

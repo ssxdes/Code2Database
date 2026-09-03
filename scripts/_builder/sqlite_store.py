@@ -44,7 +44,25 @@ class SQLiteStore:
         """Open database connection and create tables if needed."""
         os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
         self._conn = sqlite3.connect(self.db_path)
-        self._conn.execute("PRAGMA journal_mode=WAL")
+        try:
+            self._conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.DatabaseError as exc:
+            # A file that exists but is not a valid SQLite database (random
+            # bytes, truncated dump, text file) fails on the first PRAGMA
+            # with a bare "file is not a database" traceback that gives the
+            # user no clue what to do. Surface an actionable message and
+            # keep the original error chained.
+            self._conn.close()
+            self._conn = None
+            if ("not a database" in str(exc).lower()
+                    or "malformed" in str(exc).lower()):
+                raise RuntimeError(
+                    f"code2database.db at {self.db_path} is not a valid "
+                    f"SQLite database (corrupt, truncated, or written by "
+                    f"another tool — e.g. a build killed midway). Move it "
+                    f"aside or delete it, then re-run the build. "
+                    f"Original error: {exc}") from exc
+            raise
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.execute("PRAGMA cache_size=-64000")  # 64MB cache

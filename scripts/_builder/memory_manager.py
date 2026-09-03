@@ -19,6 +19,7 @@ import math
 import os
 import sys
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -99,6 +100,49 @@ def _load_json_or_default(path: str, default, warn_label: str):
         print(f"[memory] Warning: {warn_label} at {path} is corrupt "
               f"({exc}); treating as empty", file=sys.stderr)
         return default
+
+
+@contextmanager
+def _memory_lock(mem_dir: str, timeout: float = 10.0):
+    """Exclusive lock around a whole memory read-modify-write cycle.
+
+    _atomic_write_locked only guards the final rename — NOT the
+    load-index -> mutate -> save-index cycle between them. Two
+    concurrent adds both read next_id=N, both created entry N, and one
+    silently overwrote the other (lost memory + duplicate ids). The
+    daemon's auto-consolidate racing a user `save-memory` hit exactly
+    this.
+
+    Holds an flock on <mem_dir>/memory.lock for the entire critical
+    section. Works across processes AND across threads in one process
+    (flock conflicts are per open-file-description, so two threads with
+    separate fds block each other — the MCP server is threaded). On
+    non-POSIX systems degrades to no locking, matching the rest of the
+    module.
+    """
+    if not _HAS_FCNTL:
+        yield
+        return
+    lock_path = os.path.join(mem_dir, "memory.lock")
+    fd = open(lock_path, "a+")
+    try:
+        deadline = time.time() + timeout
+        while True:
+            try:
+                fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except (BlockingIOError, OSError):
+                if time.time() >= deadline:
+                    raise TimeoutError(
+                        "could not acquire memory lock within "
+                        f"{timeout}s — another memory operation holds it")
+                time.sleep(0.05)
+        try:
+            yield
+        finally:
+            fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
+    finally:
+        fd.close()
 
 
 class MemoryManager:
@@ -260,13 +304,15 @@ class MemoryManager:
         return {"L0": l0, "L1": l1, "L2": l2}
 
     def _save_layered_indexes(self, index: dict):
-        """Write L0/L1/L2 index files."""
+        """Write L0/L1/L2 index files (atomically — readers must never
+        see a torn JSON)."""
         layered = self._build_layered_index(index)
         for level, entries in layered.items():
             path = os.path.join(self.mem_dir, f"{level}_index.json")
-            Path(path).write_text(
-                json.dumps({"entries": entries}, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8")
+            _atomic_write_locked(
+                path,
+                json.dumps({"entries": entries}, ensure_ascii=False,
+                           indent=2) + "\n")
 
     # -----------------------------------------------------------------------
     # Entry I/O
@@ -367,79 +413,84 @@ class MemoryManager:
         node_ids = node_ids or []
         chains = chains or []
 
-        index = self._load_index()
-        entry_id = index["next_id"]
-        index["next_id"] += 1
+        # Hold the memory lock across load->mutate->save: a concurrent
+        # add would otherwise reuse this next_id and clobber our entry.
+        with _memory_lock(self.mem_dir):
+            index = self._load_index()
+            entry_id = index["next_id"]
+            index["next_id"] += 1
 
-        now = datetime.now().isoformat()
-        entry = {
-            "id": entry_id,
-            "question": question,
-            "answer": answer,
-            "chains": chains,
-            "node_ids": node_ids,
-            "tags": tags,
-            "status": "trusted",
-            "weight": 1.0,
-            "created": now,
-            "last_accessed": now,
-            "validated_at": now,
-            "merged_count": 0,
-            "access_count": 0,
-            "root_id": 0,
-            "knowledge_refs": [],
-        }
+            now = datetime.now().isoformat()
+            entry = {
+                "id": entry_id,
+                "question": question,
+                "answer": answer,
+                "chains": chains,
+                "node_ids": node_ids,
+                "tags": tags,
+                "status": "trusted",
+                "weight": 1.0,
+                "created": now,
+                "last_accessed": now,
+                "validated_at": now,
+                "merged_count": 0,
+                "access_count": 0,
+                "root_id": 0,
+                "knowledge_refs": [],
+            }
 
-        # Check for root memory merge
-        root_id = self._find_root_match(question, index)
-        if root_id and not no_merge:
-            entry["root_id"] = root_id
-            self._merge_to_root(root_id, entry)
-            # Still save as leaf for traceability
-            self._save_entry(entry, is_root=False)
-            index["entries"].append({
-                "id": entry_id, "question": question, "tags": tags,
-                "status": "trusted", "root_id": root_id,
-            })
-            print(f"Merged with root #{root_id} as leaf #{entry_id}")
-        else:
-            # Create new root
-            entry["root_id"] = entry_id  # self-referencing root
-            self._save_entry(entry, is_root=True)
-            index["entries"].append({
-                "id": entry_id, "question": question, "tags": tags,
-                "status": "trusted", "root_id": entry_id,
-            })
-            index.setdefault("roots", []).append({"id": entry_id, "question": question})
-            print(f"Created root #{entry_id}")
+            # Check for root memory merge
+            root_id = self._find_root_match(question, index)
+            if root_id and not no_merge:
+                entry["root_id"] = root_id
+                self._merge_to_root(root_id, entry)
+                # Still save as leaf for traceability
+                self._save_entry(entry, is_root=False)
+                index["entries"].append({
+                    "id": entry_id, "question": question, "tags": tags,
+                    "status": "trusted", "root_id": root_id,
+                })
+                print(f"Merged with root #{root_id} as leaf #{entry_id}")
+            else:
+                # Create new root
+                entry["root_id"] = entry_id  # self-referencing root
+                self._save_entry(entry, is_root=True)
+                index["entries"].append({
+                    "id": entry_id, "question": question, "tags": tags,
+                    "status": "trusted", "root_id": entry_id,
+                })
+                index.setdefault("roots", []).append(
+                    {"id": entry_id, "question": question})
+                print(f"Created root #{entry_id}")
 
-        self._save_index(index)
+            self._save_index(index)
         self._save_layered_indexes(index)
         return entry_id
 
     def correct(self, mem_id: int, field: str, value: str):
         """Correct a specific field of a memory entry."""
-        entry = self._load_entry(mem_id, is_root=True)
-        is_root = bool(entry)
-        if not entry:
-            entry = self._load_entry(mem_id, is_root=False)
-            is_root = False
+        with _memory_lock(self.mem_dir):
+            entry = self._load_entry(mem_id, is_root=True)
+            is_root = bool(entry)
+            if not entry:
+                entry = self._load_entry(mem_id, is_root=False)
+                is_root = False
 
-        if not entry:
-            print(f"Memory #{mem_id} not found", file=sys.stderr)
-            return
+            if not entry:
+                print(f"Memory #{mem_id} not found", file=sys.stderr)
+                return
 
-        # Save version before correction
-        version_num = len(entry.get("versions", [])) + 1
-        entry.setdefault("versions", []).append({
-            "field": field,
-            "old_value": entry.get(field, ""),
-            "version": version_num,
-            "corrected_at": datetime.now().isoformat(),
-        })
+            # Save version before correction
+            version_num = len(entry.get("versions", [])) + 1
+            entry.setdefault("versions", []).append({
+                "field": field,
+                "old_value": entry.get(field, ""),
+                "version": version_num,
+                "corrected_at": datetime.now().isoformat(),
+            })
 
-        entry[field] = value
-        self._save_entry(entry, is_root=is_root)
+            entry[field] = value
+            self._save_entry(entry, is_root=is_root)
         print(f"Corrected #{mem_id}.{field}")
 
     def reshape(self, root_id: int, answer: str):
@@ -465,64 +516,70 @@ class MemoryManager:
 
     def decay(self) -> int:
         """Run weight decay on all entries. Returns count of decayed entries."""
-        index = self._load_index()
         decayed = 0
         archived = 0
 
-        for entry_meta in list(index["entries"]):
-            eid = entry_meta["id"]
-            # Check root first
-            entry = self._load_entry(eid, is_root=True)
-            is_root = bool(entry)
-            if not entry:
-                entry = self._load_entry(eid, is_root=False)
-                is_root = False
-            if not entry:
-                continue
+        with _memory_lock(self.mem_dir):
+            index = self._load_index()
 
-            old_weight = entry.get("weight", 1.0)
-            self._update_weight(entry)
-            new_weight = entry["weight"]
+            for entry_meta in list(index["entries"]):
+                eid = entry_meta["id"]
+                # Check root first
+                entry = self._load_entry(eid, is_root=True)
+                is_root = bool(entry)
+                if not entry:
+                    entry = self._load_entry(eid, is_root=False)
+                    is_root = False
+                if not entry:
+                    continue
 
-            if abs(old_weight - new_weight) > 0.01:
-                self._save_entry(entry, is_root=is_root)
-                decayed += 1
+                old_weight = entry.get("weight", 1.0)
+                self._update_weight(entry)
+                new_weight = entry["weight"]
 
-            # Archive very low weight memories
-            if new_weight < 0.1 and entry_meta.get("status") != "experience":
-                entry["status"] = "experience"
-                entry["archived_reason"] = "weight decayed below 0.1"
-                entry["archived_at"] = datetime.now().isoformat()
+                if abs(old_weight - new_weight) > 0.01:
+                    self._save_entry(entry, is_root=is_root)
+                    decayed += 1
 
-                # Move to experience
-                exp_path = os.path.join(self.exp_dir, f"experience_{eid}.json")
-                Path(exp_path).write_text(
-                    json.dumps(entry, ensure_ascii=False, indent=2) + "\n",
-                    encoding="utf-8")
-                # Remove from leaf/root
-                old_path = self._entry_path(eid, is_root=False)
-                if os.path.exists(old_path):
-                    os.remove(old_path)
-                old_root_path = self._entry_path(eid, is_root=True)
-                if os.path.exists(old_root_path):
-                    os.remove(old_root_path)
+                # Archive very low weight memories
+                if new_weight < 0.1 and entry_meta.get("status") != "experience":
+                    entry["status"] = "experience"
+                    entry["archived_reason"] = "weight decayed below 0.1"
+                    entry["archived_at"] = datetime.now().isoformat()
 
-                entry_meta["status"] = "experience"
-                archived += 1
+                    # Move to experience
+                    exp_path = os.path.join(self.exp_dir,
+                                            f"experience_{eid}.json")
+                    Path(exp_path).write_text(
+                        json.dumps(entry, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8")
+                    # Remove from leaf/root
+                    old_path = self._entry_path(eid, is_root=False)
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+                    old_root_path = self._entry_path(eid, is_root=True)
+                    if os.path.exists(old_root_path):
+                        os.remove(old_root_path)
 
-                # Remove from roots list
-                index["roots"] = [r for r in index.get("roots", []) if r["id"] != eid]
+                    entry_meta["status"] = "experience"
+                    archived += 1
 
-        if archived > 0:
-            # Update experience index
-            exp_index = self._load_exp_index()
-            for em in index["entries"]:
-                if em.get("status") == "experience":
-                    if not any(e.get("id") == em["id"] for e in exp_index["entries"]):
-                        exp_index["entries"].append(em)
-            self._save_exp_index(exp_index)
+                    # Remove from roots list
+                    index["roots"] = [r for r in index.get("roots", [])
+                                      if r["id"] != eid]
 
-        self._save_index(index)
+            if archived > 0:
+                # Update experience index
+                exp_index = self._load_exp_index()
+                for em in index["entries"]:
+                    if em.get("status") == "experience":
+                        if not any(e.get("id") == em["id"]
+                                   for e in exp_index["entries"]):
+                            exp_index["entries"].append(em)
+                self._save_exp_index(exp_index)
+
+            self._save_index(index)
+
         self._save_layered_indexes(index)
 
         print(f"Decay: {decayed} updated, {archived} archived to experience")
@@ -530,24 +587,25 @@ class MemoryManager:
 
     def promote(self, mem_id: int, boost: float = 1.0):
         """Promote a memory by boosting its weight (reset decay)."""
-        entry = self._load_entry(mem_id, is_root=True)
-        is_root = bool(entry)
-        if not entry:
-            entry = self._load_entry(mem_id, is_root=False)
-            is_root = False
-        if not entry:
-            print(f"Memory #{mem_id} not found", file=sys.stderr)
-            return
+        with _memory_lock(self.mem_dir):
+            entry = self._load_entry(mem_id, is_root=True)
+            is_root = bool(entry)
+            if not entry:
+                entry = self._load_entry(mem_id, is_root=False)
+                is_root = False
+            if not entry:
+                print(f"Memory #{mem_id} not found", file=sys.stderr)
+                return
 
-        from datetime import datetime
-        entry["last_accessed"] = datetime.now().isoformat()
-        entry["access_count"] = entry.get("access_count", 0) + 1
-        # Persist the boost so the next _update_weight() (decay /
-        # consolidate recompute weight from scratch) keeps it — a bare
-        # `weight += boost` was erased by the first decay afterwards.
-        entry["boost"] = round(entry.get("boost", 0.0) + boost, 4)
-        entry["weight"] = min(entry.get("weight", 1.0) + boost, 10.0)
-        self._save_entry(entry, is_root=is_root)
+            from datetime import datetime
+            entry["last_accessed"] = datetime.now().isoformat()
+            entry["access_count"] = entry.get("access_count", 0) + 1
+            # Persist the boost so the next _update_weight() (decay /
+            # consolidate recompute weight from scratch) keeps it — a bare
+            # `weight += boost` was erased by the first decay afterwards.
+            entry["boost"] = round(entry.get("boost", 0.0) + boost, 4)
+            entry["weight"] = min(entry.get("weight", 1.0) + boost, 10.0)
+            self._save_entry(entry, is_root=is_root)
         print(f"Promoted #{mem_id}: weight → {entry['weight']:.2f}")
 
     def query(self, query_text: str, top_n: int = 5, min_weight: float = 0.3) -> list:
@@ -591,14 +649,19 @@ class MemoryManager:
 
         scored.sort(key=lambda x: -x["score"])
 
-        # Update access count for top results
-        for r in scored[:top_n]:
-            entry = self._load_entry(r["id"], is_root=(r.get("root_id") == r["id"]))
-            if entry:
-                from datetime import datetime
-                entry["access_count"] = entry.get("access_count", 0) + 1
-                entry["last_accessed"] = datetime.now().isoformat()
-                self._save_entry(entry, is_root=(r.get("root_id") == r["id"]))
+        # Update access count for top results (entry RMW — under the
+        # memory lock so a concurrent correct()/promote() on the same
+        # entry isn't lost)
+        with _memory_lock(self.mem_dir):
+            for r in scored[:top_n]:
+                entry = self._load_entry(r["id"],
+                                         is_root=(r.get("root_id") == r["id"]))
+                if entry:
+                    from datetime import datetime
+                    entry["access_count"] = entry.get("access_count", 0) + 1
+                    entry["last_accessed"] = datetime.now().isoformat()
+                    self._save_entry(entry,
+                                     is_root=(r.get("root_id") == r["id"]))
 
         return scored[:top_n]
 
@@ -1071,43 +1134,48 @@ class MemoryManager:
 
     def migrate_from_legacy(self):
         """Migrate old flat memory files to root/leaf structure."""
-        index = self._load_index()
-        migrated = 0
+        with _memory_lock(self.mem_dir):
+            index = self._load_index()
+            migrated = 0
 
-        for entry_meta in index["entries"]:
-            eid = entry_meta["id"]
-            # Check if already in new location
-            leaf_path = os.path.join(self.leaf_dir, f"mem_{eid}.json")
-            root_path = os.path.join(self.root_dir, f"root_{eid}.json")
+            for entry_meta in index["entries"]:
+                eid = entry_meta["id"]
+                # Check if already in new location
+                leaf_path = os.path.join(self.leaf_dir, f"mem_{eid}.json")
+                root_path = os.path.join(self.root_dir, f"root_{eid}.json")
 
-            if os.path.exists(leaf_path) or os.path.exists(root_path):
-                continue
+                if os.path.exists(leaf_path) or os.path.exists(root_path):
+                    continue
 
-            # Load from old location
-            old_path = os.path.join(self.mem_dir, f"memory_{eid}.json")
-            if not os.path.exists(old_path):
-                continue
+                # Load from old location
+                old_path = os.path.join(self.mem_dir, f"memory_{eid}.json")
+                if not os.path.exists(old_path):
+                    continue
 
-            entry = json.loads(Path(old_path).read_text(encoding="utf-8"))
-            self._update_weight(entry)
+                entry = _load_json_or_default(old_path, {}, "legacy entry")
+                if not entry:
+                    continue
+                self._update_weight(entry)
 
-            # Determine if this is a root
-            root_id = entry_meta.get("root_id", 0)
-            is_root = (root_id == eid or root_id == 0)
+                # Determine if this is a root
+                root_id = entry_meta.get("root_id", 0)
+                is_root = (root_id == eid or root_id == 0)
 
-            if is_root:
-                entry["root_id"] = eid
-                self._save_entry(entry, is_root=True)
-                if not any(r["id"] == eid for r in index.get("roots", [])):
-                    index.setdefault("roots", []).append({"id": eid, "question": entry_meta.get("question", "")})
-                entry_meta["root_id"] = eid
-            else:
-                entry["root_id"] = root_id
-                self._save_entry(entry, is_root=False)
+                if is_root:
+                    entry["root_id"] = eid
+                    self._save_entry(entry, is_root=True)
+                    if not any(r["id"] == eid for r in index.get("roots", [])):
+                        index.setdefault("roots", []).append(
+                            {"id": eid,
+                             "question": entry_meta.get("question", "")})
+                    entry_meta["root_id"] = eid
+                else:
+                    entry["root_id"] = root_id
+                    self._save_entry(entry, is_root=False)
 
-            migrated += 1
+                migrated += 1
 
-        self._save_index(index)
+            self._save_index(index)
         self._save_layered_indexes(index)
         print(f"Migrated {migrated} entries to root/leaf structure")
 

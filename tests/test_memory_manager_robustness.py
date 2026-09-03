@@ -114,5 +114,61 @@ class TestPromoteBoostPersists(_TmpMgr):
         self.assertAlmostEqual(entry["boost"], 1.5)
 
 
+class TestConcurrentAdd(_TmpMgr):
+    """add() must hold a lock across load->mutate->save of the index.
+
+    Without it, concurrent adds both read next_id=N and silently
+    clobbered each other's entry (lost memories / duplicate ids). The
+    daemon's auto-consolidate racing a user save-memory hit this.
+    """
+
+    def test_threaded_adds_get_unique_ids(self):
+        import threading
+        errs = []
+
+        def worker(i):
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.mgr.add(f"question {i}", f"answer {i}")
+            except Exception as exc:  # pragma: no cover
+                errs.append(exc)
+
+        threads = [threading.Thread(target=worker, args=(i,))
+                   for i in range(12)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(errs, [])
+        idx = self.mgr._load_index()
+        ids = [e["id"] for e in idx["entries"]]
+        self.assertEqual(len(ids), 12)
+        self.assertEqual(len(set(ids)), 12)
+        self.assertEqual(idx["next_id"], 13)
+
+    def test_multiprocess_adds_get_unique_ids(self):
+        import subprocess
+        code = (
+            "import sys, io, contextlib\n"
+            "sys.path.insert(0, 'scripts')\n"
+            "from _builder.memory_manager import MemoryManager\n"
+            f"mgr = MemoryManager({self.tmpdir!r})\n"
+            "with contextlib.redirect_stdout(io.StringIO()):\n"
+            "    mgr.add('proc q', 'a')\n"
+        )
+        procs = [subprocess.Popen(
+            [sys.executable, "-c", code],
+            cwd=os.path.join(os.path.dirname(__file__), ".."),
+            env={**os.environ, "PYTHONPATH": "scripts"})
+            for _ in range(4)]
+        for p in procs:
+            p.wait(timeout=30)
+        idx = self.mgr._load_index()
+        ids = [e["id"] for e in idx["entries"]]
+        self.assertEqual(len(ids), 4)
+        self.assertEqual(len(set(ids)), 4)
+        self.assertEqual(idx["next_id"], 5)
+
+
 if __name__ == "__main__":
     unittest.main()

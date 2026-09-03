@@ -5,6 +5,40 @@ All notable changes to Code2Database will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-09-03
+
+### Deep Audit Round 16 — MCP design-report write path, query engine robustness, build-flow DB resilience
+
+**P0 Critical Bug Fixes:**
+- Fix `insert_token`/`delete_token` (MCP design-report) — direct `seq = seq ± N` UPDATEs transiently collided with not-yet-shifted rows under `UNIQUE(file_id, seq)` (SQLite updates in rowid order, not seq order); insert-after-any-anchor always failed with `UNIQUE constraint failed`. Both now shift through negative seq space (order-independent).
+- Fix `alias_set` (MCP) — every call on a populated DB failed `no such column: a.analysis`: the query selected `a.analysis`/`a.function_id` which `alias_sets` never had. The `scope` param (a function *name*) was compared against the fabricated integer column. Scope now resolves to the function's node id and matches the OTHER alias endpoint's `enclosing_symbol_id`.
+- Fix `add_function` (MCP) — inserted body tokens with `file_id NULL`, violating NOT NULL; any call with `body_tokens` failed wholesale. Tokens now require/validate a `file_id` and append after the file's MAX(seq).
+- Fix MCP edit tools returned FAKE transaction ids (`edit_token_5`) — `commit_db_transaction` resolves ids via the `writeback_tx_file:{tx_id}` meta key these tools never wrote, so every commit failed "no such transaction_id" and rollback had no snapshot. Tools now open a real `WritebackPipeline` transaction before applying the edit; verified end-to-end (edit → rollback restores previous token).
+- Fix rebuild duplication: `ingest_l1`'s per-file cleanup ran `DELETE ... WHERE file_id = ?` on `literals`/`attributes` (no such column — OperationalError swallowed by except-pass) and never touched `string_literals`: every rebuild appended a fresh copy of each file's literal rows (measured: 3 builds → 3× string_literals). Token-linked tables now cleaned via the file's token ids.
+- Fix `delete_file_records` (cgdb_store) — rolled back `FOREIGN KEY constraint failed` for ANY L1-ingested file (cgdb_files delete cascades tokens → trips literals' NO ACTION FK), in both the main path and the no-nodes early-exit branch. L1 rows now deleted explicitly first; the method also never cleaned L1 tables at all.
+- Fix `_CGDB_WIPE_TABLES` listed `predicates` — a table that never existed in any schema version (real table: `config_predicates`); every build since the init commit paid a spurious "no such table: predicates" warning/error.
+- Fix `SQLiteStore.connect()` on a corrupt/non-SQLite `code2database.db` — bare `sqlite3.DatabaseError: file is not a database` traceback with no hint what to do. Now an actionable RuntimeError naming the file and remedy (original error chained). Regression tests pin connect() on fresh dir / 0-byte file / partial DB without `meta` (the exact "no such table: meta" crash) and the guarded wipe.
+
+**P1 Query Engine Fixes:**
+- Fix `LIMIT abc`/`LIMIT 2.5` crashed the parser with a bare ValueError (CLI only catches SyntaxError) — now a proper SyntaxError.
+- Fix LIMIT 0 returned ALL rows on the networkx path (truthiness check) but 500 on the SQLite CTE path; LIMIT -1 returned 0 rows vs unlimited on the two paths. Canonical semantics now (both engines): negative = no limit, 0 = zero rows.
+- Fix deep `WHERE ((((...))))` nesting (3000 levels) crashed with RecursionError — parser now caps paren depth at 100 with a SyntaxError.
+- Fix `WHERE n.line < 'abc'` (int vs str) crashed with TypeError — ordering comparisons on mismatched types now follow SQL NULL semantics (row doesn't match).
+
+**P2 Housekeeping:**
+- Docs: CLI command count 222 → 226 everywhere (README badge en/zh, SKILL.md en/zh, skill*.json, AGENTS.md); AGENTS.md test counts updated (1664 tests / 93 files).
+- Docs: daemon `startup_grace_sec` (env `CALLGRAPH_DAEMON_STARTUP_GRACE_SEC`), graph_dir self-exclusion, `daemon-status` grace keys, and the cgdb export-failure marker `.code2database_cgdb_export_failed.json` documented (README, RUNTIME_CONFIG en/zh, ops_commands en/zh, SKILL.md en/zh).
+
+## [Unreleased] - 2026-09-02
+
+### Deep Audit Rounds 13–15 — spawn pools, daemon feedback loops, cgdb export visibility
+
+- Fix daemon FileWatcher reacted to its own graph_dir writes — perpetual sync loop via `.daemon_status.json` (a MONITORED `.json`); graph_dir subtree now excluded from watching.
+- Fix daemon had no startup grace — restart after build/crash immediately re-synced the event flurry; `startup_grace_sec` (default 60, env `CALLGRAPH_DAEMON_STARTUP_GRACE_SEC`) holds events during the window; `wait-sync`/`force-refresh` end grace early.
+- Fix three process pools forked the caller's whole state into workers (`run_l1_ingest`, `_extract_state_access_all` + pre-strip, `parallel.map_nodes`) — spawn context with initializer-based state injection; `map_nodes` gained a `BrokenExecutor` serial fallback.
+- Fix cgdb export failure was a stderr-only WARNING — silent semantic-data loss; now ERROR + `<outdir>/.code2database_cgdb_export_failed.json` marker (cleared on success) + stdout summary warning.
+- Fix graph_build read the scenarios file before the same build wrote it (SCENARIOS_SUMMARY.md); sqlite storage built the entire index/doc pipeline twice; web_ui/value_flow 500s on bad depth input (now 400).
+
 ## [Unreleased] - 2026-08-31
 
 ### Deep Audit Round 3 — Architecture, Implementation Logic, Crash Safety, Protocol Compliance

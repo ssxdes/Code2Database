@@ -1018,6 +1018,23 @@ def cmd_tx_begin(args):
         sys.exit(1)
 
     try:
+        # Guard: refuse to silently orphan an active transaction. The
+        # context-manager path (transaction()) rolls a stale active tx
+        # back before beginning; the CLI path used to just overwrite
+        # tx_state.json, destroying the previous tx's snapshot_id — its
+        # changes were then permanently committed with no rollback path.
+        existing = _read_tx_state(graph_dir)
+        if existing and existing.status == "active":
+            print(f"[tx-begin] WARNING: rolling back stale active "
+                  f"transaction {existing.tx_id} first", file=sys.stderr)
+            _restore_result = restore_snapshot(graph_dir,
+                                               existing.snapshot_id)
+            if not _restore_result.get("restored"):
+                print(f"[tx-begin] WARNING: stale-tx rollback failed: "
+                      f"{_restore_result.get('reason', 'unknown')}",
+                      file=sys.stderr)
+            clear_wal(graph_dir)
+
         snap = create_snapshot(graph_dir, description=description or "manual tx_begin")
         tx_state = TransactionState(
             tx_id=f"tx_{int(time.time() * 1000)}",

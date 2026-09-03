@@ -6,6 +6,8 @@ mark_file_dirty) is exercised together with the begin/commit cycle to
 validate the full write-back loop closure (per AGENTS.md "Transactional
 writes" claim).
 """
+import contextlib
+import io
 import json
 import os
 import sqlite3
@@ -241,6 +243,56 @@ class TestTransactionContextManager(unittest.TestCase):
         state = _read_tx_state(self.tmpdir)
         self.assertIsNotNone(state)
         self.assertEqual(state.status, 'rolled_back')
+
+
+class TestTxBeginStaleActiveGuard(unittest.TestCase):
+    """tx-begin must not silently orphan an active transaction.
+
+    The CLI handler used to overwrite tx_state.json without reading the
+    old one: the first tx's snapshot_id was destroyed, permanently
+    committing its uncommitted changes. It now rolls the stale active
+    tx back first (same semantics as the transaction() context
+    manager).
+    """
+
+    def test_tx_begin_rolls_back_stale_active_tx(self):
+        import sqlite3
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            db = os.path.join(d, 'code2database.db')
+            conn = sqlite3.connect(db)
+            conn.execute('CREATE TABLE t (x INTEGER)')
+            conn.execute('INSERT INTO t VALUES (1)')
+            conn.commit()
+            conn.close()
+
+            ns = Namespace(graph=d, description='first')
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                cmd_tx_begin(ns)
+            first = _read_tx_state(d)
+            self.assertEqual(first.status, 'active')
+
+            # dirty write "inside" the first tx
+            conn = sqlite3.connect(db)
+            conn.execute('INSERT INTO t VALUES (2)')
+            conn.commit()
+            conn.close()
+
+            ns = Namespace(graph=d, description='second')
+            with contextlib.redirect_stdout(io.StringIO()), \
+                 contextlib.redirect_stderr(io.StringIO()):
+                cmd_tx_begin(ns)
+            second = _read_tx_state(d)
+            self.assertEqual(second.status, 'active')
+            self.assertNotEqual(second.tx_id, first.tx_id)
+
+            # the stale tx's dirty write must have been rolled back
+            conn = sqlite3.connect(db)
+            n = conn.execute('SELECT COUNT(*) FROM t').fetchone()[0]
+            conn.close()
+            self.assertEqual(n, 1,
+                             'stale active tx was orphaned, not rolled back')
 
 
 if __name__ == '__main__':

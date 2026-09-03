@@ -8288,6 +8288,16 @@ def cmd_build(args):
         report = tracker.write_report(outdir)
         report["stats_reconciliation"] = reconciliation
         stats_path = os.path.join(outdir, ".code2database_pipeline_stats.json")
+        if not reconciliation.get("matches"):
+            # This used to be written into .code2database_pipeline_stats.json
+            # and nothing else — a build that silently dropped nodes in the
+            # SQLite export still printed a healthy-looking summary.
+            print(f"WARNING: stats mismatch between pipeline and SQLite: "
+                  f"pipeline={reconciliation['pipeline_count']} nodes, "
+                  f"sqlite={reconciliation['sqlite_count']} nodes "
+                  f"(delta={reconciliation['delta']}, "
+                  f"{reconciliation['delta_pct']}%). "
+                  f"Details: {stats_path}", file=sys.stderr)
         Path(stats_path).write_text(
             json.dumps(report, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",

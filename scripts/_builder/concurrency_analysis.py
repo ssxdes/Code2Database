@@ -279,11 +279,18 @@ def _detect_toctou_patterns(G, target_func=None, profile=None):
         # heuristic: a writer with no detectable lock might actually
         # have had one (false positive risk).
         locks = _detect_locks_held(nd, profile=profile, G=G, nid=nid)
-        # Writer role: collect fields_written
+        # Writer role: collect fields_written. Key by (struct_chain,
+        # field_name) — keying by bare field_name paired `dev->state`
+        # with `conn->state` (same-name fields of DIFFERENT structs are
+        # ubiquitous in C), producing cross-struct TOCTOU false
+        # positives. Mirrors detect_data_races' struct_field:<sc>.<fn>
+        # resource key.
         for fw in (nd.get("fields_written") or []):
             fname = fw.get("field_name", "")
             if fname:
-                field_writers[fname].append((nid, set(locks), nd.get("name", nid)))
+                fkey = (fw.get("struct_chain", ""), fname)
+                field_writers[fkey].append(
+                    (nid, set(locks), nd.get("name", nid)))
         # Reader role: defer to second pass (needs field_writers complete)
         if not target_func or nd.get("name", "") == target_func:
             _reader_data.append((nid, nd, body, set(locks)))
@@ -295,8 +302,16 @@ def _detect_toctou_patterns(G, target_func=None, profile=None):
             fname = fr.get("field_name", "")
             if not fname:
                 continue
-            for (writer_id, writer_locks, writer_name) in field_writers.get(fname, []):
+            fsc = fr.get("struct_chain", "")
+            for (writer_id, writer_locks, writer_name) in \
+                    field_writers.get((fsc, fname), []):
                 if writer_id == nid:
+                    continue
+                # Same-thread-context reader/writer pairs are not TOCTOU
+                # races (matches detect_data_races' context check; the
+                # old loop skipped it and flagged single-threaded
+                # check-then-act patterns as high-severity races).
+                if _same_thread_context(nd, G.nodes[writer_id]):
                     continue
                 if reader_locks and not (reader_locks & writer_locks):
                     toctou.append({
@@ -305,8 +320,8 @@ def _detect_toctou_patterns(G, target_func=None, profile=None):
                         "confidence": "medium",
                         "shared_resource": {
                             "type": "struct_field",
-                            "name": fname,
-                            "struct_chain": fr.get("struct_chain", ""),
+                            "name": f"{fsc}.{fname}" if fsc else fname,
+                            "struct_chain": fsc,
                         },
                         "reader": {
                             "function": nd.get("name", nid),
@@ -320,8 +335,9 @@ def _detect_toctou_patterns(G, target_func=None, profile=None):
                         },
                         "description": (
                             f"TOCTOU: {nd.get('name', nid)} reads "
-                            f"{fname} under lock {sorted(reader_locks)} "
-                            f"but {writer_name} writes {fname} without "
+                            f"{fsc + '.' if fsc else ''}{fname} under lock "
+                            f"{sorted(reader_locks)} "
+                            f"but {writer_name} writes it without "
                             f"that lock"
                         ),
                     })

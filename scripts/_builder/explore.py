@@ -902,15 +902,18 @@ def cmd_explore_flow(args):
                 (query_lower,)).fetchone()
             if row:
                 exact_match = row[0]
-        if not exact_match:
-            # Fallback for non-ASCII names: SQLite's lower() is ASCII-only,
-            # so non-ASCII uppercase names won't match. Fall through to
-            # Python iteration which uses Unicode-aware .lower().
-            for nid, nd in G.nodes(data=True):
-                name = (nd.get("name") or "").lower()
-                if name == query_lower:
-                    exact_match = nid
-                    break
+    if not exact_match:
+        # Unicode-aware Python fallback. This also covers regular
+        # (non-lazy) NetworkX graphs, where the SQL index doesn't exist —
+        # without it the #10 exact-match fix only ever fired on
+        # LazySQLiteGraph and JSON-graph queries always fell through to
+        # the BM25 scoring path. SQLite's lower() is ASCII-only, so
+        # non-ASCII uppercase names need this loop regardless of backend.
+        for nid, nd in G.nodes(data=True):
+            name = (nd.get("name") or "").lower()
+            if name == query_lower:
+                exact_match = nid
+                break
     if exact_match:
         # Return the exact match + its 2-hop neighborhood
         from collections import deque

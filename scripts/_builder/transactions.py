@@ -5,20 +5,29 @@ Provides ACID-like guarantees for incremental graph updates:
 
 1. **Snapshot**: before any update, copy the code2database.db (and key JSON
    files) to a timestamped snapshot directory. If the update fails or
-   produces inconsistent state, restore from snapshot.
+   produces inconsistent state, restore from snapshot. This is the
+   actual rollback mechanism: snapshots are checkpointed (or carry the
+   -wal sidecar) so a restore returns the exact pre-transaction state.
 
-2. **WAL (Write-Ahead Log)**: every write is logged BEFORE it's applied.
-   If the process crashes mid-update, the WAL can be replayed (to finish
-   the commit) or rolled back (to undo partial writes).
-
-3. **Two-phase commit**: writes go to WAL first (phase 1), then are
-   applied to the live db (phase 2), then WAL is checkpointed. A
-   crash in phase 1 = clean rollback; a crash in phase 2 = replay WAL
-   on next start.
-
-4. **Read-write lock**: multiple readers, single writer. Uses a file
+2. **Write-read lock**: multiple readers, single writer. Uses a file
    lock (fcntl on Linux, msvcrt on Windows) so concurrent processes
    cooperate. Writers wait for readers; readers wait for writers.
+
+3. **Transaction state**: tx_state.json records the active transaction
+   (tx_id, snapshot_id, status). tx-begin refuses to silently orphan an
+   active transaction; a rollback that cannot restore its snapshot
+   leaves the transaction ACTIVE and retryable instead of claiming it
+   was rolled back.
+
+4. **WAL (Write-Ahead Log) — currently dormant on the write side**:
+   append_wal_entry / mark_wal_entry_applied are infrastructure for
+   per-operation redo logging but have no callers yet; no DB write
+   path logs to the WAL. Atomicity today comes from snapshots + locks,
+   NOT from WAL replay. `tx-replay-wal` therefore performs
+   snapshot-based crash recovery by policy (active tx → rollback;
+   rolled-back/failed → clear stray entries; committed → warn about
+   never-applied entries) — it does not (and cannot) replay individual
+   writes onto the database.
 
 5. **Auto-commit/rollback context manager**: `with transaction(graph_dir):`
    commits if the block completes, rolls back on exception.

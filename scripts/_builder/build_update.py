@@ -108,6 +108,47 @@ def detect_db_changes(source_root: str, db_path: str) -> dict:
             "deleted_stored": sorted(deleted_stored)}
 
 
+def _compute_ast_hash(result: dict) -> str:
+    """Structural digest of a scan result — positions excluded.
+
+    Format-only edits (reindentation, comment/blank-line changes)
+    alter byte offsets and line numbers but not the code graph:
+    same functions (id/name/signature), same call pairs, same cgdb
+    node/edge identity. Comment content is deliberately excluded
+    (same policy as the daemon's format-only filter) — doc-comment
+    rows refresh on the next structural change or full build.
+    """
+    import hashlib
+    payload = {
+        "functions": sorted(
+            (f.get("id", ""), f.get("name", ""), f.get("signature", ""))
+            for f in result.get("functions") or []),
+        "edges": sorted(
+            ((e.get("invoker") or e.get("caller") or e.get("source") or ""),
+             (e.get("invoked") or e.get("callee") or e.get("target") or ""),
+             e.get("relation") or "INVOKES")
+            for e in result.get("edges") or []),
+        "cgdb_nodes": sorted(
+            (str(n.get("id", "")), n.get("kind", ""), n.get("fqn", ""))
+            for n in result.get("cgdb_nodes") or []),
+        "cgdb_edges": sorted(
+            (str(e.get("src_id", "")), str(e.get("dst_id", "")),
+             e.get("kind", ""))
+            for e in result.get("cgdb_edges") or []),
+        "counts": {k: len(result.get(k) or [])
+                   for k in ("cgdb_types", "cgdb_invoke_sites",
+                             "cgdb_predicates", "cgdb_ops_bindings",
+                             "cgdb_basic_blocks", "cgdb_cfg_edges",
+                             "cgdb_data_flow", "cgdb_sync_primitives",
+                             "cgdb_happens_before", "cgdb_alias_sets",
+                             "cgdb_metadata", "cgdb_includes",
+                             "conditions")},
+    }
+    blob = json.dumps(payload, sort_keys=True, ensure_ascii=False,
+                      separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
 def _stored_forms(file_path: str, source_root: str):
     """Both path forms a file may be recorded under (scanner emits
     source-root-relative paths; some rows are absolute)."""
@@ -289,7 +330,8 @@ def build_update(source_root: str, graph_dir: str,
               "deleted_files": len(deleted),
               "affected_tus": sorted(affected),
               "updated_files": 0, "removed_functions": 0,
-              "written_functions": 0, "written_edges": 0}
+              "written_functions": 0, "written_edges": 0,
+              "format_only_skipped": 0}
     if dry_run:
         report["dry_run"] = True
         report["updated_files"] = len(affected)
@@ -316,6 +358,12 @@ def build_update(source_root: str, graph_dir: str,
                 raise
             _time.sleep(1.0 + attempt)
     conn = store._conn
+    # ast_hash column (structural-skip support): present in fresh
+    # schemas; migrate older graphs in place.
+    try:
+        conn.execute("ALTER TABLE cgdb_files ADD COLUMN ast_hash TEXT")
+    except sqlite3.OperationalError:
+        pass
     cgdb_store = SQLiteCGDBStore(db_path, conn=conn)
     commit = _commit_hash(source_root)
     bulk_ok = False
@@ -332,6 +380,26 @@ def build_update(source_root: str, graph_dir: str,
             # whenever the build CWD differed from the source root
             # (empty hashes make files look perpetually changed).
             result["file"] = fp
+            # Structural skip: format-only edits (reindent, comments)
+            # keep the same code graph — refresh the stored hashes but
+            # write nothing.
+            new_ast = _compute_ast_hash(result)
+            prev_ast = None
+            for form in _stored_forms(fp, source_root):
+                row = conn.execute(
+                    "SELECT ast_hash FROM cgdb_files WHERE path = ?",
+                    (form,)).fetchone()
+                if row and row[0]:
+                    prev_ast = row[0]
+                    break
+            if prev_ast == new_ast:
+                disk_hash = _content_hash(fp)
+                conn.execute(
+                    "UPDATE cgdb_files SET content_hash = ?, sha256 = ?, "
+                    "ast_hash = ? WHERE path = ?",
+                    (disk_hash, disk_hash, new_ast, fp))
+                report["format_only_skipped"] += 1
+                continue
             report["removed_functions"] += _delete_legacy_rows(
                 conn, fp, source_root)
             _cgdb_delete_file(cgdb_store, conn, fp, source_root)
@@ -347,6 +415,9 @@ def build_update(source_root: str, graph_dir: str,
             batch = extract_cgdb_batch(result, commit_hash=commit)
             if batch.file and batch.file.path:
                 cgdb_store.write_batch(batch)
+                conn.execute(
+                    "UPDATE cgdb_files SET ast_hash = ? WHERE path = ?",
+                    (new_ast, batch.file.path))
             report["updated_files"] += 1
         for fp in deleted:
             report["removed_functions"] += _delete_legacy_rows(

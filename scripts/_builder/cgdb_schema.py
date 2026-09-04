@@ -125,7 +125,8 @@ CREATE TABLE IF NOT EXISTS cgdb_files (
   byte_count INTEGER,
   commit_hash TEXT NOT NULL DEFAULT 'unknown',
   last_modified INTEGER,
-  content_hash TEXT
+  content_hash TEXT,
+  ast_hash TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_cgdb_files_path ON cgdb_files(path);
 CREATE INDEX IF NOT EXISTS idx_cgdb_files_hash ON cgdb_files(content_hash);

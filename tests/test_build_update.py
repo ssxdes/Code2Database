@@ -219,5 +219,56 @@ class TestBuildUpdate(unittest.TestCase):
             self.assertIn("build", (proc.stderr + proc.stdout).lower())
 
 
+    def test_format_only_change_skips_db_writes(self):
+        # Prime: heal this file's baseline (abs path + ast_hash).
+        proc = self._run_update()
+        self.assertEqual(proc.returncode, 0, proc.stderr[-1500:])
+        before_f = self._query("SELECT COUNT(*) FROM functions")[0][0]
+        before_e = self._query("SELECT COUNT(*) FROM edges")[0][0]
+        # Comment + blank-line insertion: same code graph, new layout.
+        math_c = os.path.join(self.source, "src/util/math.c")
+        with open(math_c) as f:
+            content = f.read()
+        with open(math_c, "w") as f:
+            f.write("// just a comment\n\n" + content)
+        proc = self._run_update()
+        self.assertEqual(proc.returncode, 0, proc.stderr[-1500:])
+        report = self._report(proc)
+        self.assertGreaterEqual(report["format_only_skipped"], 1,
+                                "format-only edit must skip DB writes")
+        self.assertEqual(report["updated_files"], 0)
+        self.assertEqual(
+            self._query("SELECT COUNT(*) FROM functions")[0][0], before_f,
+            "functions rows must be untouched by a format-only edit")
+        self.assertEqual(
+            self._query("SELECT COUNT(*) FROM edges")[0][0], before_e,
+            "edge rows must be untouched by a format-only edit")
+        # Hash was refreshed — next run sees a clean tree.
+        proc = self._run_update()
+        report = self._report(proc)
+        self.assertEqual(report["changed_files"], 0)
+        self.assertEqual(report["added_files"], 0)
+
+    def test_daemon_stale_mark_persists(self):
+        """Regression: _mark_file_stale's first UPDATE hit a nonexistent
+        `stale` column; the except swallowed it and skipped the
+        extra_json update + commit — stale-marking was fully dead."""
+        from _builder.daemon import Daemon
+
+        class _D:
+            graph_dir = self.graph
+            _log = staticmethod(lambda msg: None)
+
+        math_c = os.path.join(self.source, "src/util/math.c")
+        Daemon._mark_file_stale(_D(), math_c)
+        stale = self._query(
+            "SELECT COUNT(*) FROM functions WHERE extra_json "
+            "LIKE '%\"stale\"%1%' AND source_file LIKE '%math.c'"
+        )[0][0]
+        self.assertGreater(
+            stale, 0,
+            "extra_json.$.stale must be set after daemon stale-mark")
+
+
 if __name__ == "__main__":
     unittest.main()

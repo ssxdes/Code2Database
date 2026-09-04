@@ -1524,15 +1524,13 @@ class Daemon:
                 import sqlite3
                 conn = sqlite3.connect(str(db_path))
                 try:
-                    conn.execute(
-                        "UPDATE functions SET stale = 1 "
-                        "WHERE source_file = ? OR source_file LIKE ?",
-                        (norm_file, f"%/{base_name}")
-                    )
-                    # Keep extra_json in sync — consumers that read
-                    # extra_json.stale (validate.py _load_all_functions)
-                    # would otherwise see stale=false despite the column
-                    # being set. Same pattern as update_cmd's sync fix.
+                    # NOTE: there is no `stale` COLUMN on functions — an
+                    # earlier "UPDATE functions SET stale = 1" raised
+                    # OperationalError here, and the except below skipped
+                    # the extra_json update AND the commit, so stale-
+                    # marking was entirely dead for SQLite graphs. The
+                    # consumed format is extra_json.$.stale (validate.py
+                    # _load_all_functions); keep only that.
                     conn.execute(
                         "UPDATE functions SET extra_json = json_set("
                         "extra_json, '$.stale', json('1')) "

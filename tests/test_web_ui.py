@@ -261,6 +261,31 @@ class TestWebUIProjectContext(unittest.TestCase):
         self.assertIn('id="memory-lineage-btn"', body)
         self.assertIn("/api/memory/lineage", body)
 
+    def test_memory_authors_endpoint(self):
+        status, data = self._request_json("/api/memory/authors")
+        self.assertEqual(status, 200)
+        by_author = {a["author"]: a for a in data["authors"]}
+        self.assertIn("alice", by_author)
+        self.assertEqual(by_author["alice"]["entries"], 1)
+        self.assertEqual(by_author["alice"]["active"], 1)
+        # split parent tombstone + its 2 children carry no author
+        self.assertEqual(by_author["(unattributed)"]["entries"], 3)
+
+    def test_memory_search_author_filter(self):
+        status, data = self._request_json(
+            "/api/memory/search?q=&author=alice")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(data["results"]), 1)
+        self.assertEqual(data["results"][0]["author"], "alice")
+        self.assertEqual(data["results"][0]["question"],
+                         "how does bdev register")
+
+    def test_html_contains_author_filter(self):
+        status, body = self._request("/")
+        self.assertEqual(status, 200)
+        self.assertIn('id="memory-author-select"', body)
+        self.assertIn("/api/memory/authors", body)
+
 
 class TestWebUIArchitecture(unittest.TestCase):
     """Round 23: /api/architecture serves ARCHITECTURE_FLOWS.md."""

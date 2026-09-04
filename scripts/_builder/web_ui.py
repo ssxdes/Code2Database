@@ -474,18 +474,24 @@ class GraphCache:
                 "rendered": render_brief_prompt(self.graph_dir, brief),
                 "missing": False}
 
-    def memory_search(self, query: str, top: int = 10) -> Dict:
+    def memory_search(self, query: str, top: int = 10,
+                      author: str = "") -> Dict:
         """Search the shared memory store (veteran Q&A).
 
         Empty query returns the weight-ranked digest — what a newcomer
-        should read first.
+        should read first. Read-only: the UI never mutates the shared
+        store (no access-counter bumps, no dir/db creation).
         """
         from _builder.memory_store import MemoryStore
-        store = MemoryStore(self.graph_dir)
+        if not os.path.exists(os.path.join(self.graph_dir, "memory",
+                                           "memory.db")):
+            return {"results": [], "stats": {}}
+        store = MemoryStore(self.graph_dir, read_only=True)
         if query and query.strip():
-            results = store.search(query, top_n=top)
+            results = store.search(query, top_n=top,
+                                   author=author or None)
         else:
-            results = store.digest(limit=top)
+            results = store.digest(limit=top, author=author or None)
         try:
             stats = store.stats()
         except Exception:
@@ -495,7 +501,19 @@ class GraphCache:
     def memory_lineage(self) -> Dict:
         """The memory governance lineage graph (split/merge/variant)."""
         from _builder.memory_store import MemoryStore
-        return MemoryStore(self.graph_dir).lineage()
+        if not os.path.exists(os.path.join(self.graph_dir, "memory",
+                                           "memory.db")):
+            return {"nodes": [], "edges": []}
+        return MemoryStore(self.graph_dir, read_only=True).lineage()
+
+    def memory_authors(self) -> Dict:
+        """Contributors to the shared memory store (author filter)."""
+        from _builder.memory_store import MemoryStore
+        if not os.path.exists(os.path.join(self.graph_dir, "memory",
+                                           "memory.db")):
+            return {"authors": []}
+        return {"authors": MemoryStore(
+            self.graph_dir, read_only=True).authors()}
 
     def architecture(self) -> Dict:
         """The ARCHITECTURE_FLOWS.md narrative (written at build time).
@@ -727,14 +745,15 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/memory/search":
                 q = query.get("q", [""])[0]
+                author = query.get("author", [""])[0]
                 try:
                     top = int(query.get("top", ["10"])[0])
                 except ValueError:
                     top = 10
                 top = max(1, min(top, 50))
                 try:
-                    self._send_json(200,
-                                    self.cache.memory_search(q, top))
+                    self._send_json(200, self.cache.memory_search(
+                        q, top, author))
                 except Exception as exc:
                     logging.getLogger(__name__).warning(
                         "memory search failed", exc_info=True)
@@ -759,6 +778,16 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     logging.getLogger(__name__).warning(
                         "memory lineage failed", exc_info=True)
                     self._send_json(500, {"nodes": [], "edges": [],
+                                          "error": "internal error"})
+                return
+            # --- Round 23: memory contributors (author filter) ---
+            if path == "/api/memory/authors":
+                try:
+                    self._send_json(200, self.cache.memory_authors())
+                except Exception as exc:
+                    logging.getLogger(__name__).warning(
+                        "memory authors failed", exc_info=True)
+                    self._send_json(500, {"authors": [],
                                           "error": "internal error"})
                 return
             self._send_json(404, {"error": f"unknown path {path}"})
@@ -1076,6 +1105,9 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
     <h2>Memory — Veteran Q&amp;A</h2>
     <div id="memory-search-row">
       <input id="memory-search-input" placeholder="Search Q&A (empty = top by weight)" aria-label="Search memory" />
+      <select id="memory-author-select" aria-label="Filter by author">
+        <option value="">All authors</option>
+      </select>
       <button id="memory-search-btn" class="action-btn">Search</button>
       <button id="memory-lineage-btn" class="action-btn" aria-label="Show split/merge lineage">Lineage</button>
     </div>
@@ -1636,13 +1668,34 @@ function renderMemoryResults(data) {
 
 async function searchMemory() {
   const q = document.getElementById('memory-search-input').value;
+  const author = document.getElementById('memory-author-select').value;
+  let url = '/api/memory/search?q=' + encodeURIComponent(q) + '&top=20';
+  if (author) url += '&author=' + encodeURIComponent(author);
   try {
-    const resp = await fetch('/api/memory/search?q=' + encodeURIComponent(q) + '&top=20');
+    const resp = await fetch(url);
     renderMemoryResults(await resp.json());
   } catch (e) {
     document.getElementById('memory-results').innerHTML =
       '<div class="mem-item">Error searching memory: ' + escapeHtml(String(e)) + '</div>';
   }
+}
+
+// Round 23: author filter — multi-user read-only view
+async function loadMemoryAuthors() {
+  const select = document.getElementById('memory-author-select');
+  try {
+    const resp = await fetch('/api/memory/authors');
+    const data = await resp.json();
+    const current = select.value;
+    select.innerHTML = '<option value="">All authors</option>';
+    for (const a of (data.authors || [])) {
+      const opt = document.createElement('option');
+      opt.value = a.author === '(unattributed)' ? '' : a.author;
+      opt.textContent = a.author + ' (' + (a.active || 0) + ' active)';
+      select.appendChild(opt);
+    }
+    select.value = current;
+  } catch (e) { /* filter stays on 'All authors' */ }
 }
 
 // Round 23: architecture narrative (ARCHITECTURE_FLOWS.md from the build)
@@ -1729,9 +1782,10 @@ document.getElementById('arch-btn').addEventListener('click', loadArchitecture);
 document.getElementById('memory-btn').addEventListener('click', () => {
   const m = document.getElementById('memory-modal');
   m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
-  if (m.style.display === 'flex') searchMemory();  // initial digest
+  if (m.style.display === 'flex') { searchMemory(); loadMemoryAuthors(); }
 });
 document.getElementById('memory-search-btn').addEventListener('click', searchMemory);
+document.getElementById('memory-author-select').addEventListener('change', searchMemory);
 document.getElementById('memory-lineage-btn').addEventListener('click', loadMemoryLineage);
 document.getElementById('memory-search-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') searchMemory();

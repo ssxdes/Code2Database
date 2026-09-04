@@ -181,11 +181,19 @@ def _fts5_escape(query: str) -> str:
 class MemoryStore:
     """SQLite-backed persistent memory with a hierarchical category tree."""
 
-    def __init__(self, graph_dir: str):
+    def __init__(self, graph_dir: str, read_only: bool = False):
         self.graph_dir = graph_dir
         self.mem_dir = os.path.join(graph_dir, "memory")
         self.db_path = os.path.join(self.mem_dir, "memory.db")
         self.scratch_dir = os.path.join(graph_dir, ".scratch")
+        self.read_only = read_only
+        if read_only:
+            # Read-only sharing (multi-user viewing): never create
+            # directories, never init/patch the schema, never bump
+            # access counters. Connections open mode=ro where possible
+            # so a viewer on a read-only mount still gets full query
+            # access without any risk of mutating the shared store.
+            return
         os.makedirs(self.mem_dir, exist_ok=True)
         os.makedirs(self.scratch_dir, exist_ok=True)
         self._init_schema()
@@ -195,6 +203,19 @@ class MemoryStore:
     # ------------------------------------------------------------------
 
     def _connect(self) -> sqlite3.Connection:
+        if self.read_only:
+            try:
+                conn = sqlite3.connect(
+                    f"file:{self.db_path}?mode=ro", uri=True,
+                    timeout=10.0)
+            except sqlite3.OperationalError:
+                # e.g. WAL leftovers the reader cannot mmap — degrade
+                # to a normal connection; the API layer still never
+                # issues writes in read_only mode.
+                conn = sqlite3.connect(self.db_path, timeout=10.0)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout=5000")
+            return conn
         conn = sqlite3.connect(self.db_path, timeout=10.0)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
@@ -665,7 +686,7 @@ class MemoryStore:
                 break
 
         # --- bump access counters for returned rows (best-effort) ---
-        if results:
+        if results and not self.read_only:
             now = datetime.now().isoformat()
             try:
                 with _memory_lock(self.mem_dir):
@@ -1323,27 +1344,34 @@ class MemoryStore:
     # Public API: memory packs (L0/L1/L2 tiers, unchanged shapes)
     # ------------------------------------------------------------------
 
-    def _active_entries(self, limit: int = 0) -> List[dict]:
+    def _active_entries(self, limit: int = 0,
+                        author: str = None) -> List[dict]:
         conn = self._connect()
         try:
-            sql = ("SELECT * FROM memories WHERE status = 'active' "
-                   "ORDER BY weight DESC")
+            sql = "SELECT * FROM memories WHERE status = 'active'"
+            params: list = []
+            if author:
+                sql += " AND author = ?"
+                params.append(author)
+            sql += " ORDER BY weight DESC"
             if limit:
                 sql += f" LIMIT {int(limit)}"
             return [self._row_to_dict(r) for r in
-                    conn.execute(sql).fetchall()]
+                    conn.execute(sql, params).fetchall()]
         finally:
             conn.close()
 
-    def digest(self, limit: int = 10) -> List[dict]:
+    def digest(self, limit: int = 10,
+               author: str = None) -> List[dict]:
         """Top active memories by weight — the session-start digest.
 
         This is what a newcomer (or a fresh agent session) sees first:
-        the questions veterans keep asking, with answers.
+        the questions veterans keep asking, with answers. author=
+        restricts to one contributor (multi-user read-only view).
         """
         cat_paths = self._category_paths()
         entries = []
-        for e in self._active_entries(limit=limit):
+        for e in self._active_entries(limit=limit, author=author):
             entries.append({
                 "id": e["id"],
                 "question": e["question"],
@@ -1355,6 +1383,26 @@ class MemoryStore:
                 "tags": e.get("tags", [])[:5],
             })
         return entries
+
+    def authors(self) -> List[dict]:
+        """Contributors with entry counts — the multi-user index.
+
+        Groups by author (empty attributed as '(unattributed)'):
+        [{author, entries, active}] ordered by total entries. Pure
+        read; used by the read-only web UI author filter.
+        """
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT COALESCE(NULLIF(author, ''), '(unattributed)') "
+                "AS author, COUNT(*) AS entries, "
+                "SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) "
+                "AS active FROM memories GROUP BY author "
+                "ORDER BY entries DESC").fetchall()
+        finally:
+            conn.close()
+        return [{"author": r["author"], "entries": r["entries"],
+                 "active": r["active"] or 0} for r in rows]
 
     def generate_pack(self, tier: str = "lite") -> dict:
         """Generate a memory pack for LLM consumption.

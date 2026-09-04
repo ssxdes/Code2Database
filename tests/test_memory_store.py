@@ -475,6 +475,65 @@ class TestLineage(MemoryStoreTestBase):
         self.assertIn("weight", node)
 
 
+class TestReadOnlyAndAuthors(MemoryStoreTestBase):
+    """read_only mode (multi-user viewing) + authors() index."""
+
+    def _populate(self):
+        self.store.add("q one", "a1", author="alice", no_merge=True)
+        self.store.add("q two", "a2", author="bob", no_merge=True)
+        self.store.add("q three", "a3", no_merge=True)  # unattributed
+
+    def test_read_only_never_creates_anything(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            bare = os.path.join(tmp, "no_graph")
+            MemoryStore(bare, read_only=True)
+            self.assertFalse(os.path.exists(
+                os.path.join(bare, "memory")))
+
+    def test_read_only_search_skips_access_bump(self):
+        self._populate()
+        before = self.store.get(1)["access_count"]
+        reader = MemoryStore(self.graph_dir, read_only=True)
+        hits = reader.search("q one")
+        self.assertTrue(hits)
+        self.assertEqual(self.store.get(1)["access_count"], before)
+
+    def test_read_only_digest_and_stats(self):
+        self._populate()
+        reader = MemoryStore(self.graph_dir, read_only=True)
+        self.assertEqual(len(reader.digest()), 3)
+        self.assertEqual(reader.stats()["active_entries"], 3)
+
+    def test_read_only_rejects_writes(self):
+        self._populate()
+        reader = MemoryStore(self.graph_dir, read_only=True)
+        with self.assertRaises(sqlite3.OperationalError):
+            reader.add("q four", "a4")
+
+    def test_authors_index(self):
+        self._populate()
+        authors = {a["author"]: a for a in self.store.authors()}
+        self.assertEqual(authors["alice"]["entries"], 1)
+        self.assertEqual(authors["bob"]["entries"], 1)
+        self.assertEqual(authors["(unattributed)"]["entries"], 1)
+        self.assertEqual(authors["alice"]["active"], 1)
+
+    def test_digest_author_filter(self):
+        self._populate()
+        reader = MemoryStore(self.graph_dir, read_only=True)
+        only_alice = reader.digest(author="alice")
+        self.assertEqual(len(only_alice), 1)
+        self.assertEqual(only_alice[0]["author"], "alice")
+
+    def test_search_author_filter_read_only(self):
+        self._populate()
+        reader = MemoryStore(self.graph_dir, read_only=True)
+        hits = reader.search("q", author="bob")
+        self.assertTrue(hits)
+        self.assertTrue(all(h["author"] == "bob" for h in hits))
+
+
 class TestMerge(MemoryStoreTestBase):
     def setUp(self):
         super().setUp()

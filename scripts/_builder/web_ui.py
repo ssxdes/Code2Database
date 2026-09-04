@@ -492,6 +492,24 @@ class GraphCache:
             stats = {}
         return {"results": results, "stats": stats}
 
+    def architecture(self) -> Dict:
+        """The ARCHITECTURE_FLOWS.md narrative (written at build time).
+
+        The build already generates a human-readable narrative of the
+        core execution flows (API entry → endpoint chains with
+        conditions/concurrency/domain crossings); this serves it to the
+        UI so a newcomer can read the architecture story without
+        opening the output directory.
+        """
+        path = os.path.join(self.graph_dir, "ARCHITECTURE_FLOWS.md")
+        if not os.path.exists(path):
+            return {"content": "", "missing": True}
+        try:
+            with open(path, encoding="utf-8") as f:
+                return {"content": f.read(), "missing": False}
+        except OSError:
+            return {"content": "", "missing": True}
+
     def get_all_degrees(self) -> Dict[str, int]:
         """Compute degree for all nodes (for node sizing)."""
         with self._lock:
@@ -716,6 +734,16 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     logging.getLogger(__name__).warning(
                         "memory search failed", exc_info=True)
                     self._send_json(500, {"results": [], "stats": {},
+                                          "error": "internal error"})
+                return
+            # --- Round 23: architecture narrative (ARCHITECTURE_FLOWS.md) ---
+            if path == "/api/architecture":
+                try:
+                    self._send_json(200, self.cache.architecture())
+                except Exception as exc:
+                    logging.getLogger(__name__).warning(
+                        "architecture failed", exc_info=True)
+                    self._send_json(500, {"content": "", "missing": True,
                                           "error": "internal error"})
                 return
             self._send_json(404, {"error": f"unknown path {path}"})
@@ -981,6 +1009,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
   <button id="reload-btn" aria-label="Reload graph">Reload</button>
   <button id="brief-btn" aria-label="Show project brief">Brief</button>
   <button id="memory-btn" aria-label="Search veteran Q&A memory">Memory</button>
+  <button id="arch-btn" aria-label="Show architecture narrative">Arch</button>
   <button id="help-btn" aria-label="Help">?</button>
   <button id="dark-btn" aria-pressed="true">Dark</button>
 </div>
@@ -1037,6 +1066,14 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
     <div id="memory-stats" class="memory-stats"></div>
     <div id="memory-results"></div>
     <p style="text-align:center;margin-top:12px"><button class="action-btn" onclick="document.getElementById('memory-modal').style.display='none'">Close</button></p>
+  </div>
+</div>
+<!-- Round 23: architecture narrative modal (ARCHITECTURE_FLOWS.md) -->
+<div id="arch-modal" role="dialog" aria-label="Architecture narrative" aria-modal="true">
+  <div id="arch-content">
+    <h2>Architecture — Core Execution Flows</h2>
+    <pre id="arch-body" class="ctx-body">Loading…</pre>
+    <p style="text-align:center;margin-top:12px"><button class="action-btn" onclick="document.getElementById('arch-modal').style.display='none'">Close</button></p>
   </div>
 </div>
 <!-- Cytoscape.js 3.28.1 — served locally for offline/air-gapped use.
@@ -1592,7 +1629,24 @@ async function searchMemory() {
   }
 }
 
+// Round 23: architecture narrative (ARCHITECTURE_FLOWS.md from the build)
+async function loadArchitecture() {
+  const modal = document.getElementById('arch-modal');
+  const body = document.getElementById('arch-body');
+  modal.style.display = 'flex';
+  body.textContent = 'Loading…';
+  try {
+    const resp = await fetch('/api/architecture');
+    const data = await resp.json();
+    if (data.error) { body.textContent = 'Error loading architecture.'; return; }
+    body.textContent = data.missing
+      ? 'No ARCHITECTURE_FLOWS.md in this graph directory.\n\nIt is generated at build time (graph build / sqlite postprocess).\nRebuild the graph to produce it.'
+      : data.content;
+  } catch (e) { body.textContent = 'Error loading architecture: ' + e; }
+}
+
 document.getElementById('brief-btn').addEventListener('click', loadBrief);
+document.getElementById('arch-btn').addEventListener('click', loadArchitecture);
 document.getElementById('memory-btn').addEventListener('click', () => {
   const m = document.getElementById('memory-modal');
   m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
@@ -1629,6 +1683,7 @@ document.addEventListener('keydown', e => {
       document.getElementById('help-modal').style.display = 'none';
       document.getElementById('brief-modal').style.display = 'none';
       document.getElementById('memory-modal').style.display = 'none';
+      document.getElementById('arch-modal').style.display = 'none';
       document.getElementById('ctx-menu').style.display = 'none';
       document.getElementById('filter-panel').style.display = 'none';
       break;

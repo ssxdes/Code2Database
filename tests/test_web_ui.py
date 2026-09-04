@@ -230,5 +230,100 @@ class TestWebUIProjectContext(unittest.TestCase):
         self.assertIn("/api/memory/search", body)
 
 
+class TestWebUIArchitecture(unittest.TestCase):
+    """Round 23: /api/architecture serves ARCHITECTURE_FLOWS.md."""
+
+    @classmethod
+    def setUpClass(cls):
+        import json as _json
+        import tempfile as _tempfile
+        cls.tmpdir = _tempfile.mkdtemp(prefix="c2d_webui_arch_")
+        cls.graph_dir = os.path.join(cls.tmpdir, "graph")
+        os.makedirs(cls.graph_dir, exist_ok=True)
+        nodes = [{"id": "a", "name": "a", "source_file": "/tmp/x.c",
+                  "line": 1, "domain": "test", "labels": [],
+                  "is_empty": False}]
+        with open(os.path.join(cls.graph_dir, "domain_test.json"), "w") as f:
+            _json.dump({"nodes": nodes, "edges": []}, f)
+        with open(os.path.join(cls.graph_dir,
+                               "code2database_master.json"), "w") as f:
+            _json.dump({"source_root": "/tmp",
+                        "domains": {"test": "domain_test.json"}}, f)
+        # The narrative the build normally writes
+        cls.flows_text = (
+            "# Architecture Flows — test\n\n"
+            "## Flow 1: nvme_submit_io → doorbell\n\n"
+            "条件: 已持有 q_lock (条件调用)\n")
+        with open(os.path.join(cls.graph_dir, "ARCHITECTURE_FLOWS.md"),
+                  "w", encoding="utf-8") as f:
+            f.write(cls.flows_text)
+
+        from _builder.web_ui import GraphCache, _make_handler_class
+        from http.server import HTTPServer
+        cls.port = _find_free_port()
+        cls.server = HTTPServer(
+            ("localhost", cls.port), _make_handler_class(
+                GraphCache(cls.graph_dir)))
+        cls.server_thread = threading.Thread(
+            target=cls.server.serve_forever, daemon=True)
+        cls.server_thread.start()
+        time.sleep(0.3)
+
+    @classmethod
+    def tearDownClass(cls):
+        if getattr(cls, "server", None) is not None:
+            try:
+                cls.server.shutdown()
+            except Exception:
+                pass
+        import shutil
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
+
+    def _request_json(self, path: str) -> tuple[int, dict]:
+        conn = http.client.HTTPConnection("localhost", self.port, timeout=10)
+        try:
+            conn.request("GET", path)
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8", errors="replace")
+            import json as _json
+            return resp.status, _json.loads(body)
+        finally:
+            conn.close()
+
+    def test_architecture_endpoint_serves_file(self):
+        status, data = self._request_json("/api/architecture")
+        self.assertEqual(status, 200)
+        self.assertFalse(data["missing"])
+        self.assertEqual(data["content"], self.flows_text)
+        # CJK content survives the JSON round-trip
+        self.assertIn("条件调用", data["content"])
+
+    def test_architecture_missing_degrades(self):
+        os.rename(os.path.join(self.graph_dir, "ARCHITECTURE_FLOWS.md"),
+                  os.path.join(self.graph_dir, "ARCHITECTURE_FLOWS.md.bak"))
+        try:
+            status, data = self._request_json("/api/architecture")
+            self.assertEqual(status, 200)
+            self.assertTrue(data["missing"])
+            self.assertEqual(data["content"], "")
+        finally:
+            os.rename(os.path.join(self.graph_dir,
+                                   "ARCHITECTURE_FLOWS.md.bak"),
+                      os.path.join(self.graph_dir, "ARCHITECTURE_FLOWS.md"))
+
+    def test_html_contains_arch_button(self):
+        conn = http.client.HTTPConnection("localhost", self.port, timeout=10)
+        try:
+            conn.request("GET", "/")
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8", errors="replace")
+        finally:
+            conn.close()
+        self.assertEqual(resp.status, 200)
+        self.assertIn('id="arch-btn"', body)
+        self.assertIn('id="arch-modal"', body)
+        self.assertIn("/api/architecture", body)
+
+
 if __name__ == "__main__":
     unittest.main()

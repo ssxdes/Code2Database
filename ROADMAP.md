@@ -92,7 +92,7 @@ Round 21 结论仍成立：无"必须删除"的模块。本轮复查两点：
 
 1. **本文档**（差距分析+方案）
 2. **G2 中文检索修复**：memory 双通道合并 + kb CJK fallback（含中文查询测试）
-3. **G3 新鲜度闭环**：session_init + /api/graph/summary + MCP 自动获得
+3. ~~**G3 新鲜度闭环**：session_init + /api/graph/summary + MCP 自动获得~~ ✅（并修复 cgdb-freshness 存量 ImportError）
 4. **G4 记忆↔符号关联**：schema 迁移 + CLI/UI/MCP 三面 + related_memories
 5. **G1 MCP save-memory**：82→83 工具
 6. **G6 记忆检索零结果入日志**（并入 5 或独立小项）

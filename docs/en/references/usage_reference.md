@@ -955,7 +955,7 @@ All 222 CLI subparsers across `code2database_builder.py` (214) and `code2databas
 | `key-paths` | Extract key execution paths from entry points automatically |
 | `knowledge-brief` | Render the project brief (session-start load) |
 | `brief-validate` | Validate the brief (schema, size budget, graph drift) |
-| `session-init` | One-shot session context: brief + memory digest + graph + known-unknowns |
+| `session-init` | One-shot session context: brief + memory digest + graph (+staleness check) + known-unknowns |
 | `light-scan` | Lightweight scan of changed files (no LLM) |
 | `load` | Load and summarize the invocation graph |
 | `lock-coverage` | Analyze lock-held regions and per-access locksets (replaces over-approximation) |

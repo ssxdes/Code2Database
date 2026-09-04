@@ -66,7 +66,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP serve
 | `context` | Get context around a location | Graph |
 | `build` | Scan + build graph | — |
 | `update` | Incremental re-scan | — |
-| `session-init` | One-shot session context: brief + memory digest + graph + known-unknowns (alias: `init`) | Memory+Knowledge |
+| `session-init` | One-shot session context: brief + memory digest + graph (+staleness check) + known-unknowns (alias: `init`) | Memory+Knowledge |
 | `save-memory` | Save Q&A to memory, `--category bdev/nvme/pcie` `--author` (alias: `save`) | Memory |
 | `search-memory` | Search memory: FTS5 + `--category/--tags/--author` filters (alias: `recall`) | Memory |
 | `knowledge-brief` | Render project brief — load at session start (alias: `brief`) | Knowledge |
@@ -103,7 +103,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 
 ## Constraints
 
-- **Session start**: run `session-init` (alias `init`) FIRST — brief (mandatory rules/modes/pitfalls) + memory digest (veteran experience) + graph state + known-unknowns, in one prompt-ready output
+- **Session start**: run `session-init` (alias `init`) FIRST — brief (mandatory rules/modes/pitfalls) + memory digest (veteran experience) + graph state with source-freshness warning (rebuild before trusting a STALE graph) + known-unknowns, in one prompt-ready output
 - **Correction protocol**: before answering a project question, `search-memory` first; if an answer is WRONG use `save-memory --correct` (reshapes the most similar entry in place — no duplicate variant); if MISSING use `save-memory --category ... --author ...`; if a query repeatedly misses (known-unknowns in session-init), capture the answer into memory
 - Run `kb-rebuild-index` after `build`/`update` or after memory/brief edits
 - Memory is a shared accumulating store (memory.db): save with `--category path/to/topic` + `--author`; govern with `manage-memory --action split/merge/move/categories`

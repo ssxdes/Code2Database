@@ -11,6 +11,7 @@ Tests:
 """
 import os
 import sys
+import json
 import socket
 import threading
 import time
@@ -280,11 +281,101 @@ class TestWebUIProjectContext(unittest.TestCase):
         self.assertEqual(data["results"][0]["question"],
                          "how does bdev register")
 
+    def test_graph_summary_includes_freshness(self):
+        # No scan manifest in this fixture → degraded "not fresh"
+        status, data = self._request_json("/api/graph/summary")
+        self.assertEqual(status, 200)
+        self.assertIn("freshness", data)
+        self.assertFalse(data["freshness"]["is_fresh"])
+        self.assertIn("manifest", data["freshness"]["recommendation"])
+
+    def test_html_contains_staleness_badge_js(self):
+        status, body = self._request("/")
+        self.assertEqual(status, 200)
+        self.assertIn("STALE", body)
+        self.assertIn("fresh", body)
+
     def test_html_contains_author_filter(self):
         status, body = self._request("/")
         self.assertEqual(status, 200)
         self.assertIn('id="memory-author-select"', body)
         self.assertIn("/api/memory/authors", body)
+
+
+class TestWebUIFreshnessBadge(unittest.TestCase):
+    """Round 24: /api/graph/summary carries source-vs-graph freshness."""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile as _tempfile
+        cls.tmpdir = _tempfile.mkdtemp(prefix="c2d_webui_fresh_")
+        cls.graph_dir = os.path.join(cls.tmpdir, "graph")
+        os.makedirs(cls.graph_dir, exist_ok=True)
+        src = os.path.join(cls.tmpdir, "main.c")
+        with open(src, "w") as f:
+            f.write("int main(void) { return 0; }\n")
+        import json as _json
+        st = os.stat(src)
+        with open(os.path.join(cls.graph_dir,
+                               ".code2database_manifest.json"), "w") as f:
+            _json.dump({"files": {"main.c": f"{st.st_mtime_ns}:{st.st_size}"}},
+                       f)
+        with open(os.path.join(cls.graph_dir, "domain_test.json"), "w") as f:
+            _json.dump({"nodes": [], "edges": []}, f)
+        with open(os.path.join(cls.graph_dir,
+                               "code2database_master.json"), "w") as f:
+            _json.dump({"source_root": cls.tmpdir,
+                        "domains": {"test": "domain_test.json"}}, f)
+        from _builder.web_ui import GraphCache, _make_handler_class
+        from http.server import HTTPServer
+        cls.port = _find_free_port()
+        cls.server = HTTPServer(
+            ("localhost", cls.port), _make_handler_class(
+                GraphCache(cls.graph_dir)))
+        cls.server_thread = threading.Thread(
+            target=cls.server.serve_forever, daemon=True)
+        cls.server_thread.start()
+        time.sleep(0.3)
+
+    @classmethod
+    def tearDownClass(cls):
+        if getattr(cls, "server", None) is not None:
+            try:
+                cls.server.shutdown()
+            except Exception:
+                pass
+        import shutil
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
+
+    def _request_json(self, path):
+        conn = http.client.HTTPConnection("localhost", self.port, timeout=5)
+        try:
+            conn.request("GET", path)
+            resp = conn.getresponse()
+            return resp.status, json.loads(resp.read().decode("utf-8"))
+        finally:
+            conn.close()
+
+    def test_summary_reports_fresh_graph(self):
+        status, data = self._request_json("/api/graph/summary")
+        self.assertEqual(status, 200)
+        fr = data["freshness"]
+        self.assertTrue(fr["is_fresh"])
+        self.assertEqual(fr["changed_count"], 0)
+        self.assertEqual(fr["recommendation"], "Graph is up to date.")
+
+    def test_summary_reports_stale_after_edit(self):
+        src = os.path.join(self.tmpdir, "main.c")
+        with open(src, "a") as f:
+            f.write("\nint extra(void) { return 1; }\n")
+        # bust the 10s freshness cache
+        cache = self.__class__.server.RequestHandlerClass.cache
+        cache._freshness = None
+        status, data = self._request_json("/api/graph/summary")
+        fr = data["freshness"]
+        self.assertFalse(fr["is_fresh"])
+        self.assertEqual(fr["changed_count"], 1)
+        self.assertIn("changed", fr["recommendation"])
 
 
 class TestWebUIArchitecture(unittest.TestCase):

@@ -68,7 +68,42 @@ class GraphCache:
         self._communities: Dict[str, List[str]] = defaultdict(list)
         self._name_to_id: Dict[str, str] = {}
         self._lock = threading.RLock()
+        self._freshness = None
+        self._freshness_ts = 0.0
         self.reload()
+
+    def freshness(self) -> Optional[Dict]:
+        """Source-vs-graph freshness (staleness badge).
+
+        Walks the source tree, so cached 10s — enough for a page load
+        or two, cheap enough not to matter. None when the check itself
+        is unavailable (degrades silently in the UI).
+        """
+        import time
+        now = time.time()
+        with self._lock:
+            if (self._freshness is not None
+                    and now - self._freshness_ts < 10.0):
+                return self._freshness
+        try:
+            from _builder.cgdb_freshness import check_freshness
+            src_root = os.path.dirname(os.path.abspath(self.graph_dir))
+            fr = check_freshness(self.graph_dir, src_root)
+            slim = {
+                "is_fresh": fr.get("is_fresh", True),
+                "staleness_ratio": fr.get("staleness_ratio", 0.0),
+                "changed_count": fr.get("changed_count", 0),
+                "new_count": fr.get("new_count", 0),
+                "deleted_count": fr.get("deleted_count", 0),
+                "git_head_changed": fr.get("git_head_changed", False),
+                "recommendation": fr.get("recommendation", ""),
+            }
+        except Exception:
+            slim = None
+        with self._lock:
+            self._freshness = slim
+            self._freshness_ts = now
+        return slim
 
     def reload(self):
         """Reload the graph from disk (e.g., after a daemon update)."""
@@ -83,6 +118,8 @@ class GraphCache:
             self._community_of = {}
             self._communities = defaultdict(list)
             self._name_to_id = {}
+            self._freshness = None
+            self._freshness_ts = 0.0
             for nid, nd in self.G.nodes(data=True):
                 if nd.get("is_empty", False) or nd.get("node_type") == "file":
                     continue
@@ -621,7 +658,11 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             if path == "/api/graph/summary":
-                self._send_json(200, self.cache.summary())
+                s = self.cache.summary()
+                fr = self.cache.freshness()
+                if fr is not None:
+                    s["freshness"] = fr
+                self._send_json(200, s)
                 return
             if path.startswith("/api/node/"):
                 node_id = urllib.parse.unquote(path[len("/api/node/"):])
@@ -1169,7 +1210,17 @@ function jsAttr(s) { return escapeHtml(JSON.stringify(String(s == null ? '' : s)
 
 async function loadSummary() {
   const s = await api('/api/graph/summary');
-  document.getElementById('stats').innerHTML = s.node_count + ' nodes · ' + s.edge_count + ' edges';
+  let statsHtml = s.node_count + ' nodes · ' + s.edge_count + ' edges';
+  // Staleness badge: source files vs scan manifest
+  if (s.freshness) {
+    if (s.freshness.is_fresh) {
+      statsHtml += ' · <span style="color:#4a4">fresh</span>';
+    } else {
+      const changed = (s.freshness.changed_count || 0) + (s.freshness.new_count || 0) + (s.freshness.deleted_count || 0);
+      statsHtml += ' · <span style="color:#c33;font-weight:bold" title="' + escapeHtml(s.freshness.recommendation || '') + '">STALE (' + changed + ' files)</span>';
+    }
+  }
+  document.getElementById('stats').innerHTML = statsHtml;
   // Build community legend
   const legend = document.getElementById('legend');
   let lh = '';

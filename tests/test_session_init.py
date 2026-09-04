@@ -187,6 +187,79 @@ class TestSessionContextFull(unittest.TestCase):
         self.assertIn("asked 3×", rendered)
 
 
+class TestSessionFreshness(unittest.TestCase):
+    """Layer 3b: source-vs-graph staleness must surface at session start."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        # source tree with one file; graph dir beside it (dirname is
+        # the source root, as check_freshness expects)
+        src = os.path.join(self.tmp.name, "src")
+        os.makedirs(src, exist_ok=True)
+        self.src_file = os.path.join(src, "main.c")
+        with open(self.src_file, "w") as f:
+            f.write("int main(void) { return 0; }\n")
+        self.graph_dir = os.path.join(self.tmp.name, "src", "graph")
+        os.makedirs(self.graph_dir, exist_ok=True)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _write_manifest(self, fingerprint):
+        st = os.stat(self.src_file)
+        fp = fingerprint or f"{st.st_mtime_ns}:{st.st_size}"
+        manifest = {"files": {"main.c": fp}}
+        with open(os.path.join(self.graph_dir,
+                               ".code2database_manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+    def test_fresh_graph_reported_clean(self):
+        self._write_manifest(None)
+        ctx = build_session_context(self.graph_dir)
+        fr = ctx["freshness"]
+        self.assertIsNotNone(fr)
+        self.assertTrue(fr["is_fresh"])
+        self.assertEqual(fr["changed_files"], 0)
+        self.assertNotIn("STALE", render_session_context(ctx))
+        self.assertFalse(any("STALE" in h for h in ctx["hints"]))
+
+    def test_stale_graph_warned(self):
+        self._write_manifest("1:1")  # mismatched fingerprint
+        ctx = build_session_context(self.graph_dir)
+        fr = ctx["freshness"]
+        self.assertIsNotNone(fr)
+        self.assertFalse(fr["is_fresh"])
+        self.assertEqual(fr["changed_files"], 1)
+        self.assertEqual(fr["samples"], ["main.c"])
+        rendered = render_session_context(ctx)
+        self.assertIn("graph STALE", rendered)
+        self.assertIn("main.c", rendered)
+        self.assertTrue(any("STALE" in h for h in ctx["hints"]))
+
+    def test_new_file_counts_as_stale(self):
+        self._write_manifest(None)
+        with open(os.path.join(self.tmp.name, "src", "extra.c"), "w") as f:
+            f.write("int extra(void) { return 1; }\n")
+        ctx = build_session_context(self.graph_dir)
+        self.assertFalse(ctx["freshness"]["is_fresh"])
+        self.assertEqual(ctx["freshness"]["new_files"], 1)
+
+    def test_no_manifest_degrades_to_not_fresh(self):
+        ctx = build_session_context(self.graph_dir)
+        self.assertIsNotNone(ctx["freshness"])
+        self.assertFalse(ctx["freshness"]["is_fresh"])
+        # recommendation guides the agent to scan
+        self.assertTrue(any("STALE" in h for h in ctx["hints"]))
+
+    def test_mcp_tool_passes_freshness_through(self):
+        self._write_manifest("1:1")
+        from _builder.mcp_server import _tool_session_init
+        out = _tool_session_init({}, self.graph_dir)
+        self.assertIn("freshness", out)
+        self.assertFalse(out["freshness"]["is_fresh"])
+        self.assertIn("graph STALE", out["rendered"])
+
+
 class TestContextPackSummaries(unittest.TestCase):
     """context_pack must embed brief + fresh memory summaries."""
 

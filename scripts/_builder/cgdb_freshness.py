@@ -88,7 +88,13 @@ def check_freshness(graph_dir: str, source_root: str = "") -> Dict:
         except (OSError, json.JSONDecodeError):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-    from _scanner.changes import _ALL_SOURCE_EXTENSIONS, _SKIP_DIRS
+    from _scanner.utils import LANG_EXTENSIONS
+    from _scanner.changes import _SKIP_DIRS
+    # _ALL_SOURCE_EXTENSIONS no longer exists in _scanner.changes —
+    # derive the set the same way build_manifest does.
+    all_source_extensions = set()
+    for _exts in LANG_EXTENSIONS.values():
+        all_source_extensions |= _exts
     from pathlib import Path
 
     current_files = {}
@@ -99,7 +105,7 @@ def check_freshness(graph_dir: str, source_root: str = "") -> Dict:
             for fname in filenames:
                 dot = fname.rfind('.')
                 ext = fname[dot:].lower() if dot >= 0 else ''
-                if ext in _ALL_SOURCE_EXTENSIONS:
+                if ext in all_source_extensions:
                     fpath = os.path.join(dirpath, fname)
                     rel = os.path.relpath(fpath, source_root)
                     try:

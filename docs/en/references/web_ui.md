@@ -13,7 +13,7 @@ python3 scripts/code2database_builder.py web-ui --graph <dir> [--port 8765]
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/` | GET | Serve the single-file HTML UI |
-| `/api/graph/summary` | GET | Node/edge/community counts |
+| `/api/graph/summary` | GET | Node/edge/community counts + source-freshness (staleness badge) |
 | `/api/initial-view` | GET | Top communities' representative nodes + inter-community edges |
 | `/api/neighbors/<id>?depth=<n>` | GET | BFS neighborhood of a node |
 | `/api/node/<id>` | GET | Single node details |

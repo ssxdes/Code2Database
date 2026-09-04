@@ -13,7 +13,7 @@ python3 scripts/code2database_builder.py web-ui --graph <dir> [--port 8765]
 | 端点 | 方法 | 描述 |
 |------|------|------|
 | `/` | GET | 提供单文件 HTML UI |
-| `/api/graph/summary` | GET | 节点/边/社区计数 |
+| `/api/graph/summary` | GET | 节点/边/社区计数 + 源码新鲜度（过期徽标） |
 | `/api/initial-view` | GET | 顶级社区代表节点 + 社区间边 |
 | `/api/neighbors/<id>?depth=<n>` | GET | 节点的 BFS 邻域 |
 | `/api/node/<id>` | GET | 单节点详情 |

@@ -13,6 +13,8 @@ Six gaps where the "AI knowledge system" goal had broken links (ROADMAP.md Round
 
 - **CJK-aware retrieval (G2)** — two search defects fixed. ① `MemoryStore.search`: the FTS5 pass only sees Latin tokens (`_fts5_escape` strips CJK), so a mixed query like "nvme 初始化" silently dropped its Chinese semantics — pure-Chinese queries fell to an unranked full scan. Queries containing CJK now always run the token-set similarity pass (chars + bigrams) alongside FTS5 and merge by entry id (best score wins). ② `kb_index.query_kb`: a pure-CJK query escaped to an empty FTS phrase and returned **zero results** with no fallback (kb-query CLI + knowledge_query/kb_query MCP affected) — now falls back to similarity over candidates. New `_has_cjk()` helper in `utils.py`.
 
+- **Source-freshness loop (G3)** — `check_freshness()` existed (manifest mtime/size + git-HEAD comparison) but nothing at the session entry consumed it, so agents answered from stale graphs and saved the wrong experience. `session-init` Layer 3 now includes a freshness summary (changed/new/deleted counts, staleness ratio, samples, rebuild recommendation) + a STALE hint; the MCP `session_init` tool passes it through; `GET /api/graph/summary` carries a `freshness` field and the UI header shows a `fresh` / `STALE (N files)` badge (10s cache). Also fixed a latent `ImportError` that had broken the `cgdb-freshness` CLI itself (`_ALL_SOURCE_EXTENSIONS` no longer exists in `_scanner.changes`; the set is now derived from `LANG_EXTENSIONS`).
+
 ### Round 23 — ROADMAP follow-ups: architecture UI, correct-first save, memory lineage, multi-user views
 
 All four remaining ROADMAP items, closing the gap analysis from Round 21.

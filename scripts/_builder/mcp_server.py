@@ -1650,7 +1650,7 @@ TOOLS = {
         "handler": _tool_kb_query,
     },
     "code2database_session_init": {
-        "description": "One-shot session context: project brief (mandatory rules/modes/pitfalls), memory digest (veteran Q&A ranked by weight), graph state with brief-drift warning, and known-unknowns (repeatedly unanswered queries worth capturing into memory). Call this FIRST at session start, before search/describe/trace. Every layer degrades to a hint when absent.",
+        "description": "One-shot session context: project brief (mandatory rules/modes/pitfalls), memory digest (veteran Q&A ranked by weight), graph state with brief-drift + source-freshness (stale graph) warnings, and known-unknowns (repeatedly unanswered queries worth capturing into memory). Call this FIRST at session start, before search/describe/trace. Every layer degrades to a hint when absent.",
         "inputSchema": {
             "type": "object",
             "properties": {

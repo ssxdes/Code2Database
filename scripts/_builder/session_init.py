@@ -19,7 +19,7 @@ layers in a stable, prompt-ready form.
 import json
 import os
 import sys
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 import logging
 
@@ -60,6 +60,29 @@ def build_session_context(graph_dir: str, memory_top: int = 10) -> dict:
                          f"since last brief refresh")
                 break
 
+    # --- Layer 3b: source-vs-graph freshness ---
+    # A stale graph silently produces wrong answers (and wrong saved
+    # memories) — surface it at session start so the agent rebuilds
+    # before trusting the graph.
+    freshness: Optional[Dict[str, Any]] = None
+    try:
+        from _builder.cgdb_freshness import check_freshness
+        src_root = os.path.dirname(os.path.abspath(graph_dir))
+        fr = check_freshness(graph_dir, src_root)
+        freshness = {
+            "is_fresh": fr.get("is_fresh", True),
+            "staleness_ratio": fr.get("staleness_ratio", 0.0),
+            "changed_files": fr.get("changed_count", 0),
+            "new_files": fr.get("new_count", 0),
+            "deleted_files": fr.get("deleted_count", 0),
+            "git_head_changed": fr.get("git_head_changed", False),
+            "recommendation": fr.get("recommendation", ""),
+            "samples": (fr.get("changed_files") or [])[:3],
+        }
+    except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        freshness = None
+
     # --- Layer 4: known unknowns (unanswered recurring queries) ---
     known_unknowns: List[dict] = []
     db_path = os.path.join(graph_dir, "code2database.db")
@@ -90,6 +113,16 @@ def build_session_context(graph_dir: str, memory_top: int = 10) -> dict:
     if drift:
         hints.append(drift + " — run `brief-update --refresh-stats` "
                      "after reviewing")
+    if freshness is not None and not freshness.get("is_fresh", True):
+        detail = (f"{freshness['changed_files']} changed / "
+                  f"{freshness['new_files']} new / "
+                  f"{freshness['deleted_files']} deleted")
+        samples = ", ".join(freshness.get("samples") or [])
+        hint = (f"Graph is STALE ({detail}"
+                + (f"; e.g. {samples}" if samples else "")
+                + f") — {freshness.get('recommendation', 'rebuild')} "
+                "before trusting graph answers")
+        hints.append(hint)
     for ku in known_unknowns[:3]:
         hints.append(f"Unanswered (asked {ku['occurrences']}×): "
                      f"\"{ku['query']}\" — know the answer? save-memory it")
@@ -100,6 +133,7 @@ def build_session_context(graph_dir: str, memory_top: int = 10) -> dict:
         "memory": memory,
         "graph": graph,
         "brief_drift": drift,
+        "freshness": freshness,
         "known_unknowns": known_unknowns,
         "hints": hints,
     }
@@ -148,6 +182,19 @@ def render_session_context(ctx: dict) -> str:
                  f"{g.get('domains', 0)} domains")
     if ctx.get("brief_drift"):
         lines.append(f"⚠ {ctx['brief_drift']}")
+    fr = ctx.get("freshness")
+    if fr is not None:
+        if fr.get("is_fresh"):
+            lines.append("✓ graph fresh (source files match manifest)")
+        else:
+            samples = ", ".join(fr.get("samples") or [])
+            lines.append(
+                f"⚠ graph STALE: {fr['changed_files']} changed / "
+                f"{fr['new_files']} new / {fr['deleted_files']} deleted "
+                f"(staleness {int(fr['staleness_ratio'] * 100)}%)"
+                + (f" — e.g. {samples}" if samples else ""))
+            if fr.get("recommendation"):
+                lines.append(f"  → {fr['recommendation']}")
 
     # Known unknowns
     ku = ctx.get("known_unknowns") or []

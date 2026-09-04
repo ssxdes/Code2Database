@@ -66,7 +66,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP 服�
 | `context` | 获取位置周围上下文 | Graph |
 | `build` | 扫描 + 构建图 | — |
 | `update` | 增量重扫 | — |
-| `session-init` | 一站式会话上下文：简报 + 记忆摘要 + 图状态 + 未解答问题（别名：`init`） | Memory+Knowledge |
+| `session-init` | 一站式会话上下文：简报 + 记忆摘要 + 图状态（含过期检查）+ 未解答问题（别名：`init`） | Memory+Knowledge |
 | `save-memory` | 保存 Q&A 到记忆，支持 `--category bdev/nvme/pcie` `--author`（别名：`save`） | Memory |
 | `search-memory` | 搜索记忆：FTS5 + `--category/--tags/--author` 过滤（别名：`recall`） | Memory |
 | `knowledge-brief` | 渲染项目简报 — 会话启动必载（别名：`brief`） | Knowledge |

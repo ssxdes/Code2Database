@@ -403,8 +403,12 @@ class GraphCache:
             results = []
             exact_id = self._name_to_id.get(query_lower)
             if exact_id:
+                nd = self.G.nodes[exact_id]
                 results.append({"id": exact_id,
-                                "name": self.G.nodes[exact_id].get("name", ""),
+                                "name": nd.get("name", ""),
+                                "domain": nd.get("domain", ""),
+                                "source_file": nd.get("source_file", ""),
+                                "line": nd.get("line", 0),
                                 "score": 100})
             for nid, nd in self.G.nodes(data=True):
                 if nd.get("is_empty", False) or nd.get("node_type") == "file":
@@ -414,7 +418,11 @@ class GraphCache:
                     continue
                 if query_lower in name.lower() and nid != exact_id:
                     score = 50 if name.lower().startswith(query_lower) else 30
-                    results.append({"id": nid, "name": name, "score": score})
+                    results.append({"id": nid, "name": name,
+                                    "domain": nd.get("domain", ""),
+                                    "source_file": nd.get("source_file", ""),
+                                    "line": nd.get("line", 0),
+                                    "score": score})
                     if len(results) >= limit:
                         break
             results.sort(key=lambda r: -r["score"])
@@ -1201,14 +1209,29 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
   background: var(--card); padding: 8px; border-radius: 6px; border: 1px solid var(--border);
   z-index: var(--z-toolbar); }
 #filter-panel label { display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer; }
+#search-results { display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 60;
+  background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+  margin-top: 2px; max-height: 260px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+#search-results .sr-item { padding: 6px 10px; cursor: pointer; font-size: 12px;
+  display: flex; justify-content: space-between; gap: 10px; }
+#search-results .sr-item:hover, #search-results .sr-item.active { background: var(--primary); color: #fff; }
+#search-results .sr-loc { color: #6b7280; font-size: 10px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
+#search-results .sr-item:hover .sr-loc, #search-results .sr-item.active .sr-loc { color: #dbeafe; }
+.call-loc { font-size: 10px; color: #6b7280; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; max-width: 180px; }
 </style>
 </head>
 <body>
 <a href="#cy" class="skip-link">Skip to graph</a>
 <div id="topbar">
   <h1>Code2Database</h1>
-  <input id="search" placeholder="Search function..." aria-label="Search functions" />
-  <button id="search-btn" aria-label="Search">Search</button>
+  <div id="search-wrap" style="position:relative; flex:1; display:flex; gap:4px;">
+    <input id="search" placeholder="Search function..." aria-label="Search functions"
+      autocomplete="off" style="flex:1; min-width:180px;" />
+    <button id="search-btn" aria-label="Search">Search</button>
+    <div id="search-results" role="listbox" aria-label="Search results"></div>
+  </div>
   <select id="layout-select" aria-label="Layout algorithm">
     <option value="breadthfirst">Flow</option>
     <option value="cose">Force</option>
@@ -1647,6 +1670,9 @@ async function loadNodeDetails(nodeId) {
         html += '<div class="call-item" onclick="focusNode(' + jsAttr(c.id) + ',' +
           (document.getElementById('depth-slider').value) + ')">' +
           '<span class="call-name mono">' + escapeHtml(c.name) + '</span>' +
+          (c.source_file ? '<span class="call-loc" title="' +
+            escapeHtml(c.source_file + ':' + (c.line || 0)) + '">' +
+            escapeHtml(shortLoc(c.source_file, c.line)) + '</span>' : '') +
           (c.call_condition ? '<span class="call-cond">' + escapeHtml(c.call_condition.substring(0,20)) + '</span>' : '') +
           (c.confidence !== 'EXTRACTED' ? '<span class="call-conf" style="color:#f59e0b">' + escapeHtml(String(c.confidence || '').substring(0,3)) + '</span>' : '') +
           '</div>';
@@ -1660,6 +1686,9 @@ async function loadNodeDetails(nodeId) {
         html += '<div class="call-item" onclick="focusNode(' + jsAttr(c.id) + ',' +
           (document.getElementById('depth-slider').value) + ')">' +
           '<span class="call-name mono">' + escapeHtml(c.name) + '</span>' +
+          (c.source_file ? '<span class="call-loc" title="' +
+            escapeHtml(c.source_file + ':' + (c.line || 0)) + '">' +
+            escapeHtml(shortLoc(c.source_file, c.line)) + '</span>' : '') +
           (c.call_condition ? '<span class="call-cond">' + escapeHtml(c.call_condition.substring(0,20)) + '</span>' : '') +
           (c.confidence !== 'EXTRACTED' ? '<span class="call-conf" style="color:#f59e0b">' + escapeHtml(String(c.confidence || '').substring(0,3)) + '</span>' : '') +
           '</div>';
@@ -1827,15 +1856,52 @@ function applyFilters() {
   });
 }
 
+function shortLoc(sourceFile, line) {
+  if (!sourceFile) return '';
+  const base = String(sourceFile).split('/').pop();
+  return line ? base + ':' + line : base;
+}
+
+function hideSearchResults() {
+  const el = document.getElementById('search-results');
+  if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+}
+
 async function search() {
   const q = document.getElementById('search').value.trim();
   if (!q) return;
   const data = await api('/api/search?q=' + encodeURIComponent(q));
-  if (data.results && data.results.length > 0) {
-    focusNode(data.results[0].id, 2);
-  } else {
+  const results = data.results || [];
+  if (!results.length) {
+    hideSearchResults();
     document.getElementById('stats').textContent = 'No matches for: ' + q;
+    return;
   }
+  if (results.length === 1) {
+    hideSearchResults();
+    focusNode(results[0].id, 2);
+    return;
+  }
+  // Disambiguation list: same-named functions in different files used
+  // to be indistinguishable (the UI auto-jumped to the first match).
+  const resEl = document.getElementById('search-results');
+  resEl.innerHTML = '';
+  results.slice(0, 10).forEach((r, i) => {
+    const div = document.createElement('div');
+    div.className = 'sr-item' + (i === 0 ? ' active' : '');
+    div.setAttribute('role', 'option');
+    const nm = document.createElement('span');
+    nm.className = 'mono';
+    nm.textContent = r.name;
+    const loc = document.createElement('span');
+    loc.className = 'sr-loc';
+    loc.textContent = shortLoc(r.source_file, r.line);
+    div.appendChild(nm);
+    if (loc.textContent) div.appendChild(loc);
+    div.onclick = () => { hideSearchResults(); focusNode(r.id, 2); };
+    resEl.appendChild(div);
+  });
+  resEl.style.display = 'block';
 }
 
 // Event listeners
@@ -2059,6 +2125,7 @@ document.addEventListener('keydown', e => {
     case '-': if (cy) cy.zoom(cy.zoom() / 1.3); break;
     case 'Escape':
       if (cy) cy.elements().removeClass('faded');
+      hideSearchResults();
       document.getElementById('help-modal').style.display = 'none';
       document.getElementById('brief-modal').style.display = 'none';
       document.getElementById('memory-modal').style.display = 'none';
@@ -2077,9 +2144,10 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// Close context menu on click anywhere
-document.addEventListener('click', () => {
+// Close context menu + search dropdown on click anywhere
+document.addEventListener('click', (e) => {
   document.getElementById('ctx-menu').style.display = 'none';
+  if (!e.target.closest || !e.target.closest('#search-wrap')) hideSearchResults();
 });
 
 loadSummary();

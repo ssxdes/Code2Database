@@ -436,5 +436,38 @@ class TestRealCommunities(unittest.TestCase):
         self.assertIn('lib.b', ids)
 
 
+class TestSearchResultsLocation(unittest.TestCase):
+    """search() results carry location info for disambiguation."""
+
+    def setUp(self):
+        from _builder.web_ui import GraphCache
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(self._cleanup)
+        nodes = [
+            {'id': 'a1', 'name': 'helper', 'source_file': '/src/lib_a/util.c',
+             'line': 10, 'domain': 'lib.a', 'labels': [], 'signature': ''},
+            {'id': 'a2', 'name': 'helper', 'source_file': '/src/lib_b/util.c',
+             'line': 77, 'domain': 'lib.b', 'labels': [], 'signature': ''},
+        ]
+        master = {'version': 't', 'stats': {'total_functions': 2},
+                  'total_nodes': 2, 'domains': {'test': 'code2database_test.json'}}
+        with open(os.path.join(self.tmpdir, 'code2database_master.json'), 'w') as f:
+            json.dump(master, f)
+        with open(os.path.join(self.tmpdir, 'code2database_test.json'), 'w') as f:
+            json.dump({'domain': 'test', 'nodes': nodes, 'edges': []}, f)
+        self.cache = GraphCache(self.tmpdir)
+
+    def _cleanup(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_results_include_location_for_disambiguation(self):
+        results = self.cache.search('helper')
+        self.assertEqual(len(results), 2)
+        locs = {(r['source_file'], r['line']) for r in results}
+        self.assertIn(('/src/lib_a/util.c', 10), locs)
+        self.assertIn(('/src/lib_b/util.c', 77), locs)
+
+
 if __name__ == '__main__':
     unittest.main()

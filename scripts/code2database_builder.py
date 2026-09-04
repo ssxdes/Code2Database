@@ -1009,6 +1009,8 @@ def main():
     p_save_mem.add_argument("--category", default="", help="Category path (e.g. bdev/nvme/pcie; auto-created)")
     p_save_mem.add_argument("--author", default="", help="Author attribution for shared memory stores")
     p_save_mem.add_argument("--no-merge", action="store_true", help="Don't merge with similar existing entry")
+    p_save_mem.add_argument("--correct", action="store_true",
+                            help="Correct-first: reshape the most similar existing entry instead of creating a new variant (use when a previous answer was WRONG)")
 
     # search-memory
     p_search_mem = sub.add_parser("search-memory", help="Search memory for similar questions (FTS5 + filters)")

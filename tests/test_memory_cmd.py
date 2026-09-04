@@ -132,6 +132,32 @@ class TestSaveMemory(unittest.TestCase):
         self.assertIn("Saved memory #1", out)
         self.assertIn("bdev/nvme", out)
 
+    def test_save_correct_reshapes_similar(self):
+        """--correct: similar question reshapes, no new variant."""
+        _run(cmd_save_memory, _ns(
+            graph=self.graph_dir, question="how does bdev register",
+            answer="wrong answer", chains="", tags="", node_ids="",
+            category="", author="", no_merge=False))
+        _, out, _ = _run(cmd_save_memory, _ns(
+            graph=self.graph_dir, question="how does bdev register",
+            answer="right answer", chains="", tags="", node_ids="",
+            category="", author="alice", no_merge=False, correct=True))
+        self.assertIn("Corrected memory #1", out)
+        self.assertIn("no new variant", out)
+        rows = _db_rows(self.graph_dir)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["answer"], "right answer")
+
+    def test_save_correct_no_match_creates_new(self):
+        _, out, _ = _run(cmd_save_memory, _ns(
+            graph=self.graph_dir, question="what color is the sky",
+            answer="blue", chains="", tags="", node_ids="",
+            category="", author="", no_merge=False, correct=True))
+        self.assertIn("saved as new", out)
+        rows = _db_rows(self.graph_dir)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["answer"], "blue")
+
 
 class TestSearchMemory(unittest.TestCase):
     def setUp(self):

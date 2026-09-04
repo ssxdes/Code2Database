@@ -40,6 +40,23 @@ def cmd_save_memory(args):
 
     from _builder.memory_store import MemoryStore
     store = MemoryStore(graph_dir)
+
+    # Correct-first path: reshape the similar existing entry instead of
+    # saving a duplicate variant of a wrong answer.
+    if getattr(args, "correct", False):
+        result = store.correct_similar(
+            question=question, answer=answer,
+            author=getattr(args, "author", ""))
+        if result["action"] == "corrected":
+            print(f"Corrected memory #{result['id']} "
+                  f"(was: {result['matched_question']!r}, "
+                  f"similarity {result['score']:.2f}) — "
+                  "no new variant created")
+        else:
+            print(f"No similar memory found — saved as new "
+                  f"#{result['id']}")
+        return
+
     entry_id = store.add(
         question=question,
         answer=answer,

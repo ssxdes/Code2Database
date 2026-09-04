@@ -447,14 +447,26 @@ class MemoryStore:
     def _find_root_match(self, conn: sqlite3.Connection,
                          question: str) -> int:
         """Find the cluster root for a similar question. 0 = no match."""
+        return self._best_match(conn, question)[0]
+
+    def _best_match(self, conn: sqlite3.Connection,
+                    question: str) -> tuple:
+        """Best active match for a question.
+
+        Returns (root_id, score, matched_question); root_id 0 / score
+        0.0 when nothing clears MERGE_SIMILARITY_THRESHOLD. Shared by
+        the merge-on-add path and correct_similar (correction needs
+        the score + matched text to report what it corrected).
+        """
         q_tokens = _simple_tokenize(question)
         if not q_tokens:
-            return 0
+            return 0, 0.0, None
         rows = conn.execute(
             "SELECT id, root_id, question, tags FROM memories "
             "WHERE status = 'active'").fetchall()
         best_id = 0
         best_score = 0.0
+        best_q = None
         for r in rows:
             e_tokens = _simple_tokenize(r["question"])
             try:
@@ -467,7 +479,8 @@ class MemoryStore:
             if score > best_score and score >= MERGE_SIMILARITY_THRESHOLD:
                 best_score = score
                 best_id = r["root_id"] or r["id"]
-        return best_id
+                best_q = r["question"]
+        return best_id, best_score, best_q
 
     def _merge_into_root(self, conn: sqlite3.Connection, root_id: int,
                          variant_id: int, variant: dict, tags: list,
@@ -742,7 +755,7 @@ class MemoryStore:
                 conn.close()
         print(f"Corrected #{mem_id}.{field}")
 
-    def reshape(self, root_id: int, answer: str):
+    def reshape(self, root_id: int, answer: str, corrected_by: str = ""):
         """Replace a root memory's answer with a stronger one."""
         with _memory_lock(self.mem_dir):
             conn = self._connect()
@@ -752,10 +765,13 @@ class MemoryStore:
                     print(f"Memory #{root_id} not found", file=sys.stderr)
                     return
                 versions = json.loads(entry["versions_json"] or "[]")
-                versions.append({
+                version_record = {
                     "answer": entry["answer"], "version": len(versions) + 1,
                     "reshaped_at": datetime.now().isoformat(),
-                })
+                }
+                if corrected_by:
+                    version_record["corrected_by"] = corrected_by
+                versions.append(version_record)
                 updated = dict(entry)
                 updated["answer"] = answer
                 updated["merged_count"] = entry["merged_count"]
@@ -797,6 +813,36 @@ class MemoryStore:
             finally:
                 conn.close()
         print(f"Promoted #{mem_id}")
+
+    def correct_similar(self, question: str, answer: str,
+                        author: str = "") -> dict:
+        """Correct-first save: reshape the best match, don't add a variant.
+
+        The correction half of the correction protocol: when the answer
+        to a question was WRONG, re-saving it verbatim would create a
+        variant of the wrong root (and the merge path keeps the
+        higher-weight — i.e. the wrong — answer on top). This finds
+        the most similar active entry and reshapes it in place (old
+        answer preserved in the version history), falling back to a
+        normal add() when nothing is similar enough.
+
+        Returns {"action": "corrected"|"created", "id", "score",
+                 "matched_question"}.
+        """
+        with _memory_lock(self.mem_dir):
+            conn = self._connect()
+            try:
+                root_id, score, matched_q = self._best_match(conn, question)
+            finally:
+                conn.close()
+        if root_id:
+            self.reshape(root_id, answer, corrected_by=author)
+            return {"action": "corrected", "id": root_id,
+                    "score": round(score, 4),
+                    "matched_question": matched_q}
+        new_id = self.add(question, answer, author=author)
+        return {"action": "created", "id": new_id, "score": 0.0,
+                "matched_question": None}
 
     # ------------------------------------------------------------------
     # Public API: governance — split / merge / move

@@ -306,6 +306,58 @@ class TestCorrectReshapePromote(MemoryStoreTestBase):
         self.assertAlmostEqual(after, boosted, delta=0.01)
 
 
+class TestCorrectSimilar(MemoryStoreTestBase):
+    """correct_similar — the correct-first save (correction protocol)."""
+
+    def test_similar_question_reshapes_existing(self):
+        self.store.add("how does nvme submit io", "wrong answer",
+                       no_merge=True)
+        result = self.store.correct_similar(
+            "how does nvme submit io?", "right answer", author="alice")
+        self.assertEqual(result["action"], "corrected")
+        self.assertEqual(result["id"], 1)
+        self.assertGreaterEqual(result["score"],
+                                MERGE_SIMILARITY_THRESHOLD)
+        # No new entry created — the wrong one was fixed in place
+        self.assertEqual(len(self._raw(
+            "SELECT id FROM memories WHERE status = 'active'")), 1)
+        entry = self.store.get(1)
+        self.assertEqual(entry["answer"], "right answer")
+        # Old answer preserved in history + corrector attributed
+        versions = entry["versions"]
+        self.assertTrue(any(v.get("answer") == "wrong answer"
+                            for v in versions))
+        self.assertTrue(any(v.get("corrected_by") == "alice"
+                            for v in versions))
+
+    def test_dissimilar_question_creates_new(self):
+        self.store.add("how does nvme submit io", "a", no_merge=True)
+        result = self.store.correct_similar(
+            "what color is the sky", "blue")
+        self.assertEqual(result["action"], "created")
+        self.assertIsNone(result["matched_question"])
+        self.assertEqual(result["score"], 0.0)
+        self.assertEqual(self.store.get(result["id"])["answer"], "blue")
+
+    def test_correction_targets_cluster_root(self):
+        # Variant cluster: both entries share root 1
+        self.store.add("how does rpc dispatch work", "wrong",
+                       no_merge=True)
+        self.store.add("how does rpc dispatch work exactly", "wrong too")
+        result = self.store.correct_similar(
+            "how does rpc dispatch work these days", "right")
+        self.assertEqual(result["action"], "corrected")
+        self.assertEqual(result["id"], 1)  # the root, not the variant
+        self.assertEqual(self.store.get(1)["answer"], "right")
+
+    def test_search_finds_corrected_answer(self):
+        self.store.add("how does bdev register", "wrong", no_merge=True)
+        self.store.correct_similar("how does bdev register", "call the api")
+        hits = self.store.search("bdev register")
+        self.assertTrue(hits)
+        self.assertEqual(hits[0]["answer"], "call the api")
+
+
 class TestSplit(MemoryStoreTestBase):
     def setUp(self):
         super().setUp()

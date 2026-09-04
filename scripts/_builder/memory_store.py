@@ -764,7 +764,40 @@ class MemoryStore:
             except TimeoutError:
                 pass  # counter bump is best-effort
 
+        # --- record zero-result searches as known-unknowns ---
+        if not results and not self.read_only and query.strip():
+            self._log_memory_miss(query)
         return results
+
+    def _log_memory_miss(self, query: str):
+        """Record a zero-result memory search into kb_query_log.
+
+        session-init aggregates kb_query_log misses into its
+        known-unknowns layer ("questions worth capturing next") —
+        without this, misses at the memory layer were invisible to
+        that signal. Never creates code2database.db just to log; a
+        missing KB db simply means no feedback loop yet.
+        """
+        db_path = os.path.join(self.graph_dir, "code2database.db")
+        if not os.path.exists(db_path):
+            return
+        try:
+            from _builder.kb_index import _kb_connect
+            conn = _kb_connect(self.graph_dir)
+            if conn is None:
+                return
+            try:
+                conn.execute(
+                    "INSERT INTO kb_query_log (query, matched, "
+                    "match_count, top_score, queried_at) "
+                    "VALUES (?, 0, 0, 0.0, ?)",
+                    (query.strip(), datetime.now().isoformat()))
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            logging.getLogger(__name__).debug("silent exception",
+                                              exc_info=True)
 
     def entries_for_symbol(self, symbol: str, top: int = 3) -> List[dict]:
         """Active memories grounded to a graph symbol, by weight.

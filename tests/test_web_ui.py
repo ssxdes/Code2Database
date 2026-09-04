@@ -154,6 +154,13 @@ class TestWebUIProjectContext(unittest.TestCase):
         store = MemoryStore(cls.graph_dir)
         store.add("how does bdev register", "call register api",
                   category="bdev", author="alice", no_merge=True)
+        # Governance lineage: split the entry into focused children
+        cls.parent_id = store.add("broad bdev question", "mixed answer",
+                                  category="bdev", no_merge=True)
+        cls.child_ids = store.split(cls.parent_id, [
+            {"question": "bdev registration flow", "answer": "reg flow"},
+            {"question": "bdev io submission flow", "answer": "io flow"},
+        ])
 
         from _builder.web_ui import GraphCache, _make_handler_class
         from http.server import HTTPServer
@@ -213,7 +220,11 @@ class TestWebUIProjectContext(unittest.TestCase):
     def test_memory_search_empty_query_returns_digest(self):
         status, data = self._request_json("/api/memory/search?q=")
         self.assertEqual(status, 200)
-        self.assertEqual(len(data["results"]), 1)
+        # 3 active entries in the fixture: the original Q&A + the two
+        # split children (the parent became a 'split' tombstone)
+        self.assertEqual(len(data["results"]), 3)
+        questions = {r["question"] for r in data["results"]}
+        self.assertIn("how does bdev register", questions)
 
     def test_memory_search_top_clamped(self):
         status, data = self._request_json("/api/memory/search?q=&top=9999")
@@ -228,6 +239,27 @@ class TestWebUIProjectContext(unittest.TestCase):
         self.assertIn('id="memory-modal"', body)
         self.assertIn("/api/brief", body)
         self.assertIn("/api/memory/search", body)
+
+    def test_memory_lineage_endpoint(self):
+        status, data = self._request_json("/api/memory/lineage")
+        self.assertEqual(status, 200)
+        node_ids = {n["id"] for n in data["nodes"]}
+        self.assertIn(self.parent_id, node_ids)
+        self.assertIn(self.child_ids[0], node_ids)
+        split_edges = [e for e in data["edges"] if e["type"] == "split"]
+        self.assertEqual(len(split_edges), 2)
+        self.assertTrue(all(e["from"] == self.parent_id
+                            for e in split_edges))
+        # node carries context for rendering
+        by_id = {n["id"]: n for n in data["nodes"]}
+        self.assertEqual(by_id[self.parent_id]["status"], "split")
+        self.assertEqual(by_id[self.child_ids[0]]["category"], "bdev")
+
+    def test_html_contains_lineage_button(self):
+        status, body = self._request("/")
+        self.assertEqual(status, 200)
+        self.assertIn('id="memory-lineage-btn"', body)
+        self.assertIn("/api/memory/lineage", body)
 
 
 class TestWebUIArchitecture(unittest.TestCase):

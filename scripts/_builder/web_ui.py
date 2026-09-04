@@ -492,6 +492,11 @@ class GraphCache:
             stats = {}
         return {"results": results, "stats": stats}
 
+    def memory_lineage(self) -> Dict:
+        """The memory governance lineage graph (split/merge/variant)."""
+        from _builder.memory_store import MemoryStore
+        return MemoryStore(self.graph_dir).lineage()
+
     def architecture(self) -> Dict:
         """The ARCHITECTURE_FLOWS.md narrative (written at build time).
 
@@ -744,6 +749,16 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     logging.getLogger(__name__).warning(
                         "architecture failed", exc_info=True)
                     self._send_json(500, {"content": "", "missing": True,
+                                          "error": "internal error"})
+                return
+            # --- Round 23: memory governance lineage ---
+            if path == "/api/memory/lineage":
+                try:
+                    self._send_json(200, self.cache.memory_lineage())
+                except Exception as exc:
+                    logging.getLogger(__name__).warning(
+                        "memory lineage failed", exc_info=True)
+                    self._send_json(500, {"nodes": [], "edges": [],
                                           "error": "internal error"})
                 return
             self._send_json(404, {"error": f"unknown path {path}"})
@@ -1062,6 +1077,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
     <div id="memory-search-row">
       <input id="memory-search-input" placeholder="Search Q&A (empty = top by weight)" aria-label="Search memory" />
       <button id="memory-search-btn" class="action-btn">Search</button>
+      <button id="memory-lineage-btn" class="action-btn" aria-label="Show split/merge lineage">Lineage</button>
     </div>
     <div id="memory-stats" class="memory-stats"></div>
     <div id="memory-results"></div>
@@ -1645,6 +1661,69 @@ async function loadArchitecture() {
   } catch (e) { body.textContent = 'Error loading architecture: ' + e; }
 }
 
+// Round 23: memory lineage tree (split / merge / variant relations)
+function renderMemoryLineage(data) {
+  const statsEl = document.getElementById('memory-stats');
+  const resEl = document.getElementById('memory-results');
+  const byId = {};
+  for (const n of (data.nodes || [])) byId[n.id] = n;
+  // children[from] = [{to, type}]
+  const children = {};
+  for (const e of (data.edges || [])) {
+    (children[e.from] = children[e.from] || []).push(e);
+  }
+  const EDGE_LABEL = {split: 'split', merged_into: 'merged into',
+                      variant: 'variant'};
+  statsEl.textContent = (data.nodes || []).length + ' entries · '
+    + (data.edges || []).length + ' lineage links';
+  resEl.innerHTML = '';
+  const hasParent = new Set((data.edges || []).map(e => e.to));
+  const roots = (data.nodes || []).filter(n => !hasParent.has(n.id));
+  if (!roots.length && (data.nodes || []).length) {
+    // cyclic safety: fall back to all nodes as roots
+    roots.push(...data.nodes);
+  }
+  const addLine = (indent, text) => {
+    const div = document.createElement('div');
+    div.className = 'mem-item';
+    div.textContent = indent + text;
+    resEl.appendChild(div);
+  };
+  const seen = new Set();
+  const walk = (node, indent) => {
+    if (seen.has(node.id)) return;  // cycle guard
+    seen.add(node.id);
+    const meta = [];
+    if (node.category) meta.push(node.category);
+    if (node.author) meta.push(node.author);
+    meta.push('w=' + node.weight);
+    addLine(indent, '#' + node.id + ' [' + node.status + '] '
+            + node.question + '  (' + meta.join(' · ') + ')');
+    for (const e of (children[node.id] || [])) {
+      const child = byId[e.to];
+      if (!child) continue;
+      addLine(indent + '  ', '└─' + EDGE_LABEL[e.type] + '→ #' + child.id);
+      walk(child, indent + '    ');
+    }
+  };
+  for (const n of roots) walk(n, '');
+  if (!(data.nodes || []).length) {
+    addLine('', 'No memories yet — lineage appears once entries are '
+            + 'split / merged / saved as variants.');
+  }
+}
+
+async function loadMemoryLineage() {
+  try {
+    const resp = await fetch('/api/memory/lineage');
+    renderMemoryLineage(await resp.json());
+  } catch (e) {
+    document.getElementById('memory-results').innerHTML =
+      '<div class="mem-item">Error loading lineage: '
+      + escapeHtml(String(e)) + '</div>';
+  }
+}
+
 document.getElementById('brief-btn').addEventListener('click', loadBrief);
 document.getElementById('arch-btn').addEventListener('click', loadArchitecture);
 document.getElementById('memory-btn').addEventListener('click', () => {
@@ -1653,6 +1732,7 @@ document.getElementById('memory-btn').addEventListener('click', () => {
   if (m.style.display === 'flex') searchMemory();  // initial digest
 });
 document.getElementById('memory-search-btn').addEventListener('click', searchMemory);
+document.getElementById('memory-lineage-btn').addEventListener('click', loadMemoryLineage);
 document.getElementById('memory-search-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') searchMemory();
 });

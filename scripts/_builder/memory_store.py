@@ -1215,6 +1215,47 @@ class MemoryStore:
         return {"schema_version": MEMORY_SCHEMA_VERSION,
                 "categories": categories, "memories": memories}
 
+    def lineage(self) -> dict:
+        """The governance lineage graph: who split from whom / merged
+        into whom / which entries are variants of which root.
+
+        Returns {"nodes": [...], "edges": [...]} where every memory is
+        a node (id, question, status, category, author, weight) and
+        lineage relations are edges:
+          split        parent --split--> child   (child.split_from)
+          merged_into  canonical <--merge-- absorbed tombstone
+          variant      root --variant--> variant (active, root_id != id)
+        Pure read — safe for the read-only web UI.
+        """
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT m.id, m.question, m.status, m.author, m.weight, "
+                "m.split_from, m.merged_into, m.root_id, ca.path AS "
+                "category FROM memories m LEFT JOIN categories ca ON "
+                "ca.id = m.category_id ORDER BY m.id").fetchall()
+        finally:
+            conn.close()
+        nodes = []
+        edges = []
+        for r in rows:
+            nodes.append({
+                "id": r["id"], "question": r["question"],
+                "status": r["status"], "author": r["author"] or "",
+                "weight": r["weight"], "category": r["category"] or "",
+            })
+            if r["split_from"]:
+                edges.append({"from": r["split_from"], "to": r["id"],
+                              "type": "split"})
+            if r["merged_into"]:
+                edges.append({"from": r["merged_into"], "to": r["id"],
+                              "type": "merged_into"})
+            if (r["root_id"] and r["root_id"] != r["id"]
+                    and r["status"] == "active"):
+                edges.append({"from": r["root_id"], "to": r["id"],
+                              "type": "variant"})
+        return {"nodes": nodes, "edges": edges}
+
     def export_for_debug(self, output_path: str) -> str:
         Path(output_path).write_text(
             json.dumps(self.export_all(), ensure_ascii=False, indent=2)

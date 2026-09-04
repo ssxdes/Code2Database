@@ -416,6 +416,65 @@ class TestSplit(MemoryStoreTestBase):
         self.assertEqual(len(results), 1)
 
 
+class TestLineage(MemoryStoreTestBase):
+    """lineage() — the split/merge/variant governance graph."""
+
+    def test_empty_store(self):
+        data = self.store.lineage()
+        self.assertEqual(data["nodes"], [])
+        self.assertEqual(data["edges"], [])
+
+    def test_variant_edges_from_cluster(self):
+        self.store.add("how does rpc dispatch work", "a", no_merge=True)
+        self.store.add("how does rpc dispatch work exactly", "b")
+        data = self.store.lineage()
+        variant_edges = [e for e in data["edges"]
+                         if e["type"] == "variant"]
+        self.assertEqual(variant_edges,
+                         [{"from": 1, "to": 2, "type": "variant"}])
+        ids = {n["id"] for n in data["nodes"]}
+        self.assertEqual(ids, {1, 2})
+
+    def test_split_edges(self):
+        parent = self.store.add("broad question", "a", no_merge=True)
+        children = self.store.split(parent, [
+            {"question": "focused one", "answer": "a1"},
+            {"question": "focused two", "answer": "a2"},
+        ])
+        data = self.store.lineage()
+        split_edges = {e["from"] for e in data["edges"]
+                       if e["type"] == "split"}
+        self.assertEqual(split_edges, {parent})
+        targets = {e["to"] for e in data["edges"] if e["type"] == "split"}
+        self.assertEqual(targets, set(children))
+        # tombstone node carries 'split' status for distinct rendering
+        by_id = {n["id"]: n for n in data["nodes"]}
+        self.assertEqual(by_id[parent]["status"], "split")
+
+    def test_merge_edges(self):
+        a = self.store.add("how does x work", "a1", no_merge=True)
+        b = self.store.add("completely different topic", "b1",
+                           no_merge=True)
+        canonical = self.store.merge([a, b], canonical_id=a)
+        data = self.store.lineage()
+        merge_edges = [e for e in data["edges"]
+                       if e["type"] == "merged_into"]
+        self.assertEqual(merge_edges,
+                         [{"from": canonical, "to": b,
+                           "type": "merged_into"}])
+
+    def test_nodes_carry_context(self):
+        self.store.add("how does bdev register", "a",
+                       category="bdev", author="alice", no_merge=True)
+        data = self.store.lineage()
+        node = data["nodes"][0]
+        self.assertEqual(node["question"], "how does bdev register")
+        self.assertEqual(node["status"], "active")
+        self.assertEqual(node["category"], "bdev")
+        self.assertEqual(node["author"], "alice")
+        self.assertIn("weight", node)
+
+
 class TestMerge(MemoryStoreTestBase):
     def setUp(self):
         super().setUp()

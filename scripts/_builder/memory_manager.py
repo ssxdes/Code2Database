@@ -37,18 +37,36 @@ class MemoryManager:
         self.scratch_dir = os.path.join(graph_dir, ".scratch")
         self.store = MemoryStore(graph_dir)
 
+    def _sync_kb(self, ids) -> None:
+        """Incrementally sync memory entries into the kb_paragraphs
+        FTS index so edits are searchable immediately, without a full
+        kb-rebuild-index. Best-effort: the kb index is optional (no
+        code2database.db yet → no-op)."""
+        unique = {i for i in ids if isinstance(i, int) and i > 0}
+        if not unique:
+            return
+        try:
+            from _builder.kb_index import sync_memory_entries
+            sync_memory_entries(self.graph_dir, sorted(unique))
+        except Exception as exc:  # kb sync must never break memory writes
+            print(f"[memory] kb index sync skipped: {exc}", file=sys.stderr)
+
     # ------------------------------------------------------------------
-    # Persistent memory — delegated to MemoryStore
+    # Persistent memory — delegated to MemoryStore (+ kb index sync)
     # ------------------------------------------------------------------
 
     def add(self, question: str, answer: str = "", tags: list = None,
             node_ids: list = None, chains: list = None,
             category: str = None, author: str = "",
             no_merge: bool = False) -> int:
-        return self.store.add(
+        new_id = self.store.add(
             question=question, answer=answer, tags=tags,
             node_ids=node_ids, chains=chains, category=category,
             author=author, no_merge=no_merge)
+        entry = self.store.get(new_id) or {}
+        # The cluster root may also have absorbed the new answer.
+        self._sync_kb([new_id, entry.get("root_id")])
+        return new_id
 
     def query(self, query_text: str, top_n: int = 5,
               min_weight: float = 0.3) -> list:
@@ -68,24 +86,34 @@ class MemoryManager:
         return self.store.get(mem_id)
 
     def correct(self, mem_id: int, field: str, value: str):
-        return self.store.correct(mem_id, field, value)
+        result = self.store.correct(mem_id, field, value)
+        self._sync_kb([mem_id])
+        return result
 
     def reshape(self, root_id: int, answer: str):
-        return self.store.reshape(root_id, answer)
+        result = self.store.reshape(root_id, answer)
+        self._sync_kb([root_id])
+        return result
 
     def decay(self) -> int:
         return self.store.decay()
 
     def promote(self, mem_id: int, boost: float = 1.0):
-        return self.store.promote(mem_id, boost)
+        result = self.store.promote(mem_id, boost)
+        self._sync_kb([mem_id])
+        return result
 
     def split(self, mem_id: int, parts: List[dict]) -> List[int]:
-        return self.store.split(mem_id, parts)
+        children = self.store.split(mem_id, parts)
+        self._sync_kb([mem_id] + list(children))
+        return children
 
     def merge(self, mem_ids: List[int], canonical_id: int = None,
               question: str = None, answer: str = None) -> int:
-        return self.store.merge(mem_ids, canonical_id=canonical_id,
-                                question=question, answer=answer)
+        canon = self.store.merge(mem_ids, canonical_id=canonical_id,
+                                 question=question, answer=answer)
+        self._sync_kb(list(mem_ids) + [canon])
+        return canon
 
     def move(self, mem_id: int, new_category: str):
         return self.store.move(mem_id, new_category)
@@ -103,7 +131,11 @@ class MemoryManager:
         return self.store.validate_against_graph(current_nodes)
 
     def consolidate(self) -> dict:
-        return self.store.consolidate()
+        summary = self.store.consolidate()
+        compact = summary.get("compact") or {}
+        self._sync_kb(compact.get("merged_ids", [])
+                      + compact.get("canonical_ids", []))
+        return summary
 
     def stats(self) -> dict:
         return self.store.stats()

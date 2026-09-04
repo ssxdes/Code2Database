@@ -775,7 +775,9 @@ def cmd_update(args):
 
     # Validate memory after graph update (nodes may have been removed)
     mem_dir = os.path.join(graph_dir, "memory")
-    if os.path.exists(os.path.join(mem_dir, "index.json")):
+    # Round 20 moved memory to memory/memory.db — the legacy
+    # memory/index.json check made this validation dead code.
+    if os.path.exists(os.path.join(mem_dir, "memory.db")):
         _auto_validate_memory(merged, mem_dir, graph_dir)
 
 

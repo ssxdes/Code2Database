@@ -1361,6 +1361,7 @@ class MemoryStore:
         """
         merged_groups = 0
         merged_ids: List[int] = []
+        canonical_ids: List[int] = []
         repointed = 0
         with _memory_lock(self.mem_dir):
             conn = self._connect()
@@ -1409,6 +1410,7 @@ class MemoryStore:
                         continue
                     self._merge_entries_locked(conn, entries, canon_id)
                     merged_groups += 1
+                    canonical_ids.append(canon_id)
                     merged_ids.extend(mid for mid in entries if mid != canon_id)
 
                 # --- 2. re-point orphaned variants ---
@@ -1444,6 +1446,7 @@ class MemoryStore:
             print(f"Compact: re-pointed {repointed} orphaned variant(s)")
         return {"merged_groups": merged_groups,
                 "merged_ids": merged_ids,
+                "canonical_ids": canonical_ids,
                 "repointed_variants": repointed}
 
     def consolidate(self) -> dict:

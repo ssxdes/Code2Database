@@ -657,6 +657,71 @@ def delete_kb_paragraphs_by_source(graph_dir: str, source_file: str) -> int:
         conn.close()
 
 
+def sync_memory_entries(graph_dir: str, mem_ids: List[int]) -> int:
+    """Incrementally sync memory entries into kb_paragraphs.
+
+    For each id: drop its indexed rows, then re-insert from
+    memory/memory.db while the entry is still active/experience
+    (tombstoned 'merged' entries simply lose their rows). Uses the
+    exact field mapping of rebuild_kb_index, so a synced entry is
+    indistinguishable from a full-rebuild row. Keeps memory edits
+    searchable between full rebuilds. Returns the number of entries
+    re-inserted.
+    """
+    conn = _kb_connect(graph_dir, create_if_missing=False)
+    if conn is None:
+        return 0
+    db_path = os.path.join(graph_dir, "memory", "memory.db")
+    if not os.path.exists(db_path):
+        conn.close()
+        return 0
+    mem = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    mem.row_factory = sqlite3.Row
+    synced = 0
+    try:
+        for mid in mem_ids:
+            source_file = f"db/mem_{mid}.json"
+            conn.execute(
+                "DELETE FROM kb_paragraphs WHERE source_kind = 'memory' "
+                "AND source_file = ?", (source_file,))
+            r = mem.execute(
+                "SELECT * FROM memories WHERE id = ?", (mid,)).fetchone()
+            if r is None or r["status"] not in ("active", "experience"):
+                continue
+            q = r["question"] or ""
+            a = r["answer"] or ""
+            if not q and not a:
+                continue
+            try:
+                tags = json.loads(r["tags"] or "[]")
+            except (json.JSONDecodeError, TypeError):
+                tags = []
+            try:
+                node_ids = json.loads(r["node_ids"] or "[]")
+            except (json.JSONDecodeError, TypeError):
+                node_ids = []
+            kind = ("memory_qa" if r["status"] == "active"
+                    else "memory_experience")
+            created = (r["created"] or r["validated_at"]
+                       or datetime.now().isoformat())
+            conn.execute(
+                "INSERT INTO kb_paragraphs "
+                "(source_kind, source_file, para_index, title, body, "
+                " tags, node_ids, weight, confidence, kind, "
+                " graph_version, created_at, accessed_at, access_count) "
+                "VALUES (?, ?, 0, ?, ?, ?, ?, ?, 1.0, ?, NULL, ?, NULL, 0)",
+                ("memory", source_file, q[:500], a,
+                 json.dumps(tags, ensure_ascii=False) if tags else None,
+                 json.dumps(node_ids, ensure_ascii=False) if node_ids else None,
+                 float(r["weight"] or 1.0), kind, created))
+            synced += 1
+        conn.commit()
+    finally:
+        mem.close()
+        conn.close()
+    return synced
+
+
 def query_kb(graph_dir: str, query: str, top_n: int = 10,
              kinds: Optional[List[str]] = None,
              min_weight: float = 0.0,

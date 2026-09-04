@@ -1083,11 +1083,11 @@ def main():
     p_plugins.add_argument("--plugin", action="append", default=[], help="Additional plugin path to check")
 
     # manage-memory
-    p_mgmt = sub.add_parser("manage-memory", help="Manage persistent memory (add/correct/reshape/decay/promote/refine/query/search/get/categories/split/merge/move/pack/consolidate/export/import/scratch-*)")
+    p_mgmt = sub.add_parser("manage-memory", help="Manage persistent memory (add/correct/reshape/decay/promote/refine/query/search/get/categories/split/merge/move/lineage/authors/pack/consolidate/export/import/scratch-*)")
     p_mgmt.add_argument("--graph", required=True, help="Call graph output directory")
     p_mgmt.add_argument("--action", required=True,
                          choices=["add", "correct", "reshape", "decay", "promote", "refine", "query", "search",
-                                  "get", "categories", "split", "merge", "move", "pack",
+                                  "get", "categories", "split", "merge", "move", "lineage", "authors", "pack",
                                   "consolidate", "export", "import", "scratch-save", "scratch-restore",
                                   "scratch-list", "scratch-cleanup"],
                          help="Action to perform")

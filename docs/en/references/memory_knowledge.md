@@ -58,6 +58,20 @@ python3 scripts/code2database_builder.py search-memory --graph code2db-out/ \
 
 When FTS5 has no token overlap, a token-set similarity fallback still finds near-matches.
 
+### Correction (correct-first save)
+
+When a stored answer turns out to be WRONG, re-saving the corrected text would create a duplicate variant (and the merge path keeps the higher-weight — i.e. still wrong — answer on top). `--correct` finds the most similar active entry and reshapes it in place, preserving the old answer in the version history with corrector attribution:
+
+```bash
+python3 scripts/code2database_builder.py save-memory --graph code2db-out/ \
+  --question "How does nvme submit IO?" --answer "corrected answer" \
+  --correct --author alice
+# → Corrected memory #12 (was: 'How does nvme submit IO?', similarity 0.95)
+#   — no new variant created
+```
+
+Nothing similar? It degrades to a normal save (`saved as new`).
+
 ### Governance
 
 Big shared stores accumulate over-broad and duplicate entries. `manage-memory` provides the governance operations:
@@ -75,7 +89,22 @@ python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
 # Recategorize
 python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
   --action move --id 12 --category bdev/nvme/rdma
+
+# View the lineage tree (who split from whom / merged into whom / variants)
+python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
+  --action lineage
+
+# Contributor index (multi-user stores)
+python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
+  --action authors
 ```
+
+The same lineage graph is rendered interactively in the web UI Memory panel (Lineage button).
+
+### Read-only sharing
+
+The web UI serves memory read-only (`MemoryStore(read_only=True)`): viewers on a shared mount get full search/digest/lineage/author access — no directory creation, no schema writes, no access-counter bumps — while write operations (save/split/merge/...) stay with the store owner. Author-filtered views (`/api/memory/authors` + the dropdown) answer "what did alice learn about this project".
+
 
 ### Weight model (unchanged)
 

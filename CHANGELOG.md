@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-09-04
 
+### Round 23 — ROADMAP follow-ups: architecture UI, correct-first save, memory lineage, multi-user views
+
+All four remaining ROADMAP items, closing the gap analysis from Round 21.
+
+- **Web UI: Architecture panel** — the build already wrote ARCHITECTURE_FLOWS.md (core execution-flow narrative: API entry → endpoint chains with conditions/concurrency/domain crossings) but it was file-only. `GET /api/architecture` + topbar Arch button render it in the UI; a missing file degrades to a hint.
+- **`save-memory --correct`** — correction as a first-class save: finds the most similar active entry (same threshold as merge-on-add, targeting the cluster root) and reshapes it in place — old answer preserved in version history with corrector attribution — instead of creating a duplicate variant of the wrong answer. Falls back to a normal save when nothing is similar. `MemoryStore.correct_similar()`; `reshape(corrected_by=...)`.
+- **Memory lineage graph** — `MemoryStore.lineage()` exposes the split/merged_into/variant relations (pure read); CLI `manage-memory --action lineage` renders the tree; `GET /api/memory/lineage` + the Memory-panel Lineage button render it interactively (tombstones visible, cycle-guarded).
+- **Multi-user read-only sharing + author views** — `MemoryStore(read_only=True)`: mode=ro connections (WAL-safe fallback), no dir/schema creation, no access-counter bumps, loud failure on writes; the web UI memory endpoints all serve read-only now (GETs no longer create `memory/` dirs) and degrade to empty when no store exists. `manage-memory --action authors` + `GET /api/memory/authors` (contributor index) and an author dropdown filtering search/digest (`digest(author=)` filter added).
+
+Tests: +29 (memory_store: TestCorrectSimilar 4, TestLineage 5, TestReadOnlyAndAuthors 7; memory_cmd: --correct 2 + lineage/authors actions 3; web UI: architecture 3, lineage 2, authors/filter 3). Suite: 2114 tests / 111 files. Docs: SKILL.md correction protocol (en/zh), memory_knowledge.md (en/zh) correction/lineage/authors/read-only sections, AGENTS.md, CHANGELOG.
+
 ### Round 22 — MCP `session_init` tool
 
 ROADMAP follow-up (lowest-hanging): the one-shot session context from Round 21 is now available where agents actually work — the MCP tool surface.

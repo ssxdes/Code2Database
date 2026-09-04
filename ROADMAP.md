@@ -51,13 +51,13 @@ SKILL.md（en/zh）Step 0 改为 session-init；memory_knowledge.md / usage_refe
 
 **结论**：无"必须删除"的冗余 —— 重叠命令都有层次差异且已由 Tier-1/路由文档分层；真正的缺口不在命令数量，而在**入口整合**（session-init）与**人类界面**（UI 面板）。
 
-## 四、后续路线（本轮不做，按优先级）
+## 四、后续路线（按优先级）
 
-1. **MCP `session_init` 工具**（低垂果实）：让 MCP 客户端会话自动拉取同一上下文
-2. **UI 架构叙事页**：把 ARCHITECTURE_FLOWS.md 的 API→endpoint 执行流叙事嵌入 UI（当前只有文件，无界面）
-3. **纠错闭环强化**：`save-memory --correct`（搜索相似→自动 reshape 而非新建变体），把"纠正"变成一等公民操作
-4. **记忆血缘图谱**：split/merge 谱系可视化（谁从谁拆出来/合并进谁）
-5. **多人协作**：memory.db 只读共享 + 按 author 过滤的 UI 视图
+1. ~~**MCP `session_init` 工具**（低垂果实）：让 MCP 客户端会话自动拉取同一上下文~~ ✅ Round 22
+2. ~~**UI 架构叙事页**：把 ARCHITECTURE_FLOWS.md 的 API→endpoint 执行流叙事嵌入 UI（当前只有文件，无界面）~~ ✅ Round 23（Arch 面板 + /api/architecture）
+3. ~~**纠错闭环强化**：`save-memory --correct`（搜索相似→自动 reshape 而非新建变体），把"纠正"变成一等公民操作~~ ✅ Round 23（correct_similar + --correct）
+4. ~~**记忆血缘图谱**：split/merge 谱系可视化（谁从谁拆出来/合并进谁）~~ ✅ Round 23（lineage() + CLI/UI 渲染）
+5. ~~**多人协作**：memory.db 只读共享 + 按 author 过滤的 UI 视图~~ ✅ Round 23（read_only MemoryStore + authors 索引 + UI 过滤）
 
 ## 五、验证与回归约定
 

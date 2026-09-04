@@ -331,6 +331,28 @@ class TestManageMemory(unittest.TestCase):
         self.assertIn("nvme", out)
         self.assertIn("1 subtree", out)
 
+    def test_lineage_action(self):
+        self._mgmt("add", question="broad q", answer="a")
+        parts = json.dumps([{"question": "narrow q1", "answer": "a1"}])
+        self._mgmt("split", id="1", parts=parts)
+        _, out, _ = self._mgmt("lineage")
+        # tree renders the split parent and its child
+        self.assertIn("#1", out)
+        self.assertIn("broad q", out)
+        self.assertIn("split→", out)
+        self.assertIn("narrow q1", out)
+
+    def test_lineage_action_empty(self):
+        _, out, _ = self._mgmt("lineage")
+        self.assertIn("No memories yet", out)
+
+    def test_authors_action(self):
+        self._mgmt("add", question="q1", answer="a", author="alice")
+        self._mgmt("add", question="q2", answer="a", author="bob")
+        _, out, _ = self._mgmt("authors")
+        self.assertIn("alice: 1 entries (1 active)", out)
+        self.assertIn("bob: 1 entries (1 active)", out)
+
     def test_split_merge_move_actions(self):
         self._mgmt("add", question="broad q", answer="a", tags="t")
         parts = json.dumps([{"question": "narrow q1", "answer": "a1"},

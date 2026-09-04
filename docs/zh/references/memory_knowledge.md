@@ -58,6 +58,20 @@ python3 scripts/code2database_builder.py search-memory --graph code2db-out/ \
 
 FTS5 无 token 交叠时，token 集相似度回退仍能找到近似项。
 
+### 纠错（correct-first 保存）
+
+当已存的答案被证明是**错的**，直接重存修正文本只会产生重复变体（且合并路径保留权重更高——也就是仍然错误——的答案）。`--correct` 找到最相似的活跃条目并原地重塑，旧答案保留在版本历史中并记录纠正者：
+
+```bash
+python3 scripts/code2database_builder.py save-memory --graph code2db-out/ \
+  --question "nvme 如何提交 IO？" --answer "修正后的答案" \
+  --correct --author alice
+# → Corrected memory #12 (was: 'nvme 如何提交 IO？', similarity 0.95)
+#   — no new variant created
+```
+
+没有相似条目时退化为普通保存（`saved as new`）。
+
 ### 治理
 
 大型共享库会积累过泛与重复条目。`manage-memory` 提供治理操作：
@@ -75,7 +89,22 @@ python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
 # 重新归类
 python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
   --action move --id 12 --category bdev/nvme/rdma
+
+# 查看血缘树（谁从谁拆出 / 合并进谁 / 谁是谁的变体）
+python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
+  --action lineage
+
+# 贡献者索引（多人共享库）
+python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
+  --action authors
 ```
+
+同一张血缘图也在 Web UI Memory 面板中交互渲染（Lineage 按钮）。
+
+### 只读共享
+
+Web UI 以只读方式服务 memory（`MemoryStore(read_only=True)`）：共享挂载上的查看者获得完整的检索/摘要/血缘/作者访问——不创建目录、不写 schema、不累加阅读计数——而写操作（save/split/merge/…）仍由库 owner 执行。按 author 过滤的视图（`/api/memory/authors` + 下拉框）回答"alice 在这个项目上沉淀了什么"。
+
 
 ### 权重模型（未变）
 

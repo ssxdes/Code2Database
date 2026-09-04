@@ -90,6 +90,12 @@ class MemoryManager:
     def move(self, mem_id: int, new_category: str):
         return self.store.move(mem_id, new_category)
 
+    def lineage(self) -> dict:
+        return self.store.lineage()
+
+    def authors(self) -> list:
+        return self.store.authors()
+
     def categories(self) -> list:
         return self.store.categories()
 
@@ -438,6 +444,45 @@ def cmd_manage_memory(args):
             sys.exit(1)
     elif action == "move":
         mgr.move(int(args.id), args.category)
+    elif action == "lineage":
+        data = mgr.lineage()
+        by_id = {n["id"]: n for n in data["nodes"]}
+        children = {}
+        for e in data["edges"]:
+            children.setdefault(e["from"], []).append(e)
+        labels = {"split": "split", "merged_into": "merged into",
+                  "variant": "variant"}
+        if not data["nodes"]:
+            print("No memories yet.")
+        else:
+            has_parent = {e["to"] for e in data["edges"]}
+            seen = set()
+
+            def _walk(node, indent):
+                if node["id"] in seen:
+                    return
+                seen.add(node["id"])
+                meta = [node["status"]]
+                if node["category"]:
+                    meta.append(node["category"])
+                if node["author"]:
+                    meta.append(node["author"])
+                print(f"{'  ' * indent}#{node['id']} "
+                      f"{node['question']}  ({', '.join(meta)})")
+                for e in children.get(node["id"], []):
+                    child = by_id.get(e["to"])
+                    if child is None:
+                        continue
+                    print(f"{'  ' * (indent + 1)}└─{labels[e['type']]}→")
+                    _walk(child, indent + 2)
+
+            for n in data["nodes"]:
+                if n["id"] not in has_parent:
+                    _walk(n, 0)
+    elif action == "authors":
+        for a in mgr.authors():
+            print(f"{a['author']}: {a['entries']} entries "
+                  f"({a['active']} active)")
     elif action == "pack":
         tier = getattr(args, "tier", "lite")
         pack = mgr.generate_pack(tier=tier)

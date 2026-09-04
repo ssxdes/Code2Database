@@ -104,7 +104,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 ## Constraints
 
 - **Session start**: run `session-init` (alias `init`) FIRST — brief (mandatory rules/modes/pitfalls) + memory digest (veteran experience) + graph state + known-unknowns, in one prompt-ready output
-- **Correction protocol**: before answering a project question, `search-memory` first; if an answer is WRONG use `manage-memory --action correct/reshape` (don't save a duplicate); if MISSING use `save-memory --category ... --author ...`; if a query repeatedly misses (known-unknowns in session-init), capture the answer into memory
+- **Correction protocol**: before answering a project question, `search-memory` first; if an answer is WRONG use `save-memory --correct` (reshapes the most similar entry in place — no duplicate variant); if MISSING use `save-memory --category ... --author ...`; if a query repeatedly misses (known-unknowns in session-init), capture the answer into memory
 - Run `kb-rebuild-index` after `build`/`update` or after memory/brief edits
 - Memory is a shared accumulating store (memory.db): save with `--category path/to/topic` + `--author`; govern with `manage-memory --action split/merge/move/categories`
 - Knowledge (brief.json) must stay lean: `brief-validate` warns above 3000 chars; move overflow into memory instead

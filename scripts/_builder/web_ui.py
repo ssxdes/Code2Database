@@ -439,18 +439,22 @@ class GraphCache:
                 return {"error": "node not found"}
             affected = []
             visited = {node_id}
-            queue = [(node_id, 0)]
+            queue = deque([(node_id, 0)])
             while queue:
-                cur, depth = queue.pop(0)
+                # popleft: list.pop(0) made wide BFS O(V^2)
+                cur, depth = queue.popleft()
                 if depth >= max_depth:
                     continue
                 for pred in self.G.predecessors(cur):
                     if pred in visited:
                         continue
-                    visited.add(pred)
                     ed = self.G.get_edge_data(pred, cur) or {}
                     if ed.get("relation") in ("CONTAINS", "IMPORTS"):
+                        # Do NOT mark visited here — the caller may also
+                        # reach this node through a call edge on another
+                        # path, and must still be reported then.
                         continue
+                    visited.add(pred)
                     nd = self.G.nodes[pred]
                     affected.append({
                         "id": pred,
@@ -464,6 +468,8 @@ class GraphCache:
                 "node_id": node_id,
                 "affected_count": len(affected),
                 "affected": affected[:200],
+                "truncated": len(affected) > 200,
+                "max_depth": max_depth,
             }
 
     # --- callers/callees, cycle detection, degree ---
@@ -1568,6 +1574,11 @@ async function focusNode(nodeId, depth) {
     for (const e of (data.edges || [])) {
       allEdges[e.source + '->' + e.target] = e;
     }
+    // Surface the 200-node view cap instead of failing silently.
+    if (data.truncated) {
+      document.getElementById('stats').textContent =
+        'View truncated at 200 nodes — lower the depth for detail';
+    }
     syncCyFromModel();
     loadNodeDetails(nodeId);
     applyFocusContext(nodeId);
@@ -1661,9 +1672,19 @@ async function loadImpact(nodeId) {
         if (!affectedIds.has(n.id())) n.addClass('faded');
       });
     }
+    // Replace (not append to) the impact line — the old innerHTML +=
+    // stacked one "N affected" row per click.
     const sidebar = document.getElementById('node-details');
-    sidebar.innerHTML += '<div class="call-list"><div class="call-list-title">Impact: ' +
-      (data.affected_count||0) + ' affected</div></div>';
+    const old = document.getElementById('impact-line');
+    if (old) old.remove();
+    const div = document.createElement('div');
+    div.id = 'impact-line';
+    div.className = 'call-list';
+    let title = 'Impact: ' + (data.affected_count||0) + ' affected';
+    if (data.truncated) title += ' (showing first 200)';
+    if (data.max_depth) title += ' · depth ≤ ' + data.max_depth;
+    div.innerHTML = '<div class="call-list-title">' + escapeHtml(title) + '</div>';
+    sidebar.appendChild(div);
   } finally { hideLoading(); }
 }
 

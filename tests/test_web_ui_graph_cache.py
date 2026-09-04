@@ -322,5 +322,52 @@ class TestGraphCacheDegrees(unittest.TestCase):
                          {'in_degree': 0, 'out_degree': 1, 'total': 1})
 
 
+class TestImpactAnalysis(unittest.TestCase):
+    """impact_analysis correctness + truncation surfacing."""
+
+    def setUp(self):
+        from _builder.web_ui import GraphCache
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(self._cleanup)
+        nodes = [
+            {'id': p, 'name': p, 'source_file': '/tmp/t.c', 'line': i + 1,
+             'domain': 'test', 'labels': [], 'signature': ''}
+            for i, p in enumerate(['t', 'm', 'n', 'x'])
+        ]
+        edges = [
+            {'source': 'm', 'target': 't', 'relation': 'INVOKES'},
+            # x reaches m via CONTAINS (must NOT poison BFS visited-set)
+            {'source': 'x', 'target': 'm', 'relation': 'CONTAINS'},
+            {'source': 'n', 'target': 't', 'relation': 'INVOKES'},
+            {'source': 'x', 'target': 'n', 'relation': 'INVOKES'},
+        ]
+        master = {'version': 't', 'stats': {'total_functions': 4},
+                  'total_nodes': 4, 'domains': {'test': 'code2database_test.json'}}
+        with open(os.path.join(self.tmpdir, 'code2database_master.json'), 'w') as f:
+            json.dump(master, f)
+        with open(os.path.join(self.tmpdir, 'code2database_test.json'), 'w') as f:
+            json.dump({'domain': 'test', 'nodes': nodes, 'edges': edges}, f)
+        self.cache = GraphCache(self.tmpdir)
+
+    def _cleanup(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_structural_edges_do_not_poison_visited(self):
+        """x reaches t via n (INVOKES) but is first encountered via a
+        CONTAINS edge into m — the old code added x to the visited set
+        on the CONTAINS path, silently dropping it from the blast
+        radius."""
+        res = self.cache.impact_analysis('t')
+        ids = {a['id'] for a in res['affected']}
+        self.assertEqual(ids, {'m', 'n', 'x'})
+
+    def test_response_reports_truncation_and_depth(self):
+        res = self.cache.impact_analysis('t')
+        self.assertIn('truncated', res)
+        self.assertFalse(res['truncated'])
+        self.assertEqual(res['max_depth'], 5)
+
+
 if __name__ == '__main__':
     unittest.main()

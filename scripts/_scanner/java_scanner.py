@@ -200,11 +200,11 @@ class JavaTreeSitterScanner(BaseScanner):
             elif child.type == 'class_body':
                 # class_declaration > class_body contains method/constructor declarations
                 self._walk_java(child, source_bytes, filepath, source_root,
-                                domain, functions, import_edges, class_name)
+                                domain, functions, edges, import_edges, class_name)
             elif child.type == 'interface_body':
                 # interface_body can contain abstract method declarations
                 self._walk_java(child, source_bytes, filepath, source_root,
-                                domain, functions, import_edges, class_name)
+                                domain, functions, edges, import_edges, class_name)
 
     def _process_java_method(self, node, source_bytes, filepath, source_root,
                              domain, functions, edges, class_name):

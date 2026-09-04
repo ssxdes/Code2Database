@@ -125,7 +125,7 @@ Capability modules have dedicated unit tests in `tests/` covering:
 - Update command (confirmation gate, attribute parsing, backend detection)
 - Profile generation (auto-profile, project-type detection, struct_op_types)
 
-**Test suite**: 2202 tests across 114 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails.)
+**Test suite**: 2218 tests across 116 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails. Tests that drive a real scanner subprocess must pin `--memory-limit 9999` (and raised `--memory-warn/crit-threshold`) — MemoryGuard reads SYSTEM memory, so its auto cap (total RAM × 0.8) can cancel even a tiny scan on a busy machine, and make now fails fast on the leftover checkpoint.)
 
 ## Language Support
 

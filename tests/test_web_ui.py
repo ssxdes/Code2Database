@@ -122,5 +122,113 @@ class TestWebUIModuleImport(unittest.TestCase):
             self.fail(f"web_ui import failed: {exc}")
 
 
+class TestWebUIProjectContext(unittest.TestCase):
+    """Round 21: /api/brief + /api/memory/search serve the project
+    context (knowledge brief + veteran Q&A memory)."""
+
+    @classmethod
+    def setUpClass(cls):
+        import json as _json
+        import tempfile as _tempfile
+        cls.tmpdir = _tempfile.mkdtemp(prefix="c2d_webui_ctx_")
+        cls.graph_dir = os.path.join(cls.tmpdir, "graph")
+        os.makedirs(cls.graph_dir, exist_ok=True)
+        # Small graph
+        nodes = [{"id": "a", "name": "a", "source_file": "/tmp/x.c",
+                  "line": 1, "domain": "test", "labels": [],
+                  "is_empty": False}]
+        with open(os.path.join(cls.graph_dir, "domain_test.json"), "w") as f:
+            _json.dump({"nodes": nodes, "edges": []}, f)
+        with open(os.path.join(cls.graph_dir,
+                               "code2database_master.json"), "w") as f:
+            _json.dump({"source_root": "/tmp",
+                        "domains": {"test": "domain_test.json"}}, f)
+        # Brief
+        from _builder.brief import brief_update, brief_extract
+        brief_extract(cls.graph_dir)
+        brief_update(cls.graph_dir, set_field="project", set_value="WP")
+        brief_update(cls.graph_dir, add_section="hard_rules",
+                     add_value='{"rule": "开启宏 Z", "type": "macro"}')
+        # Memory
+        from _builder.memory_store import MemoryStore
+        store = MemoryStore(cls.graph_dir)
+        store.add("how does bdev register", "call register api",
+                  category="bdev", author="alice", no_merge=True)
+
+        from _builder.web_ui import GraphCache, _make_handler_class
+        from http.server import HTTPServer
+        cls.port = _find_free_port()
+        cls.server = HTTPServer(
+            ("localhost", cls.port), _make_handler_class(
+                GraphCache(cls.graph_dir)))
+        cls.server_thread = threading.Thread(
+            target=cls.server.serve_forever, daemon=True)
+        cls.server_thread.start()
+        time.sleep(0.3)
+
+    @classmethod
+    def tearDownClass(cls):
+        if getattr(cls, "server", None) is not None:
+            try:
+                cls.server.shutdown()
+            except Exception:
+                pass
+        import shutil
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
+
+    def _request(self, path: str) -> tuple[int, str]:
+        conn = http.client.HTTPConnection("localhost", self.port, timeout=10)
+        try:
+            conn.request("GET", path)
+            resp = conn.getresponse()
+            return resp.status, resp.read().decode("utf-8",
+                                                   errors="replace")
+        finally:
+            conn.close()
+
+    def _request_json(self, path: str) -> tuple[int, dict]:
+        import json as _json
+        status, body = self._request(path)
+        return status, _json.loads(body)
+
+    def test_brief_endpoint(self):
+        status, data = self._request_json("/api/brief")
+        self.assertEqual(status, 200)
+        self.assertFalse(data.get("missing"))
+        self.assertEqual(data["brief"]["project"], "WP")
+        self.assertIn("开启宏 Z", data["rendered"])
+        self.assertIn("Hard Rules", data["rendered"])
+
+    def test_memory_search_with_query(self):
+        status, data = self._request_json(
+            "/api/memory/search?q=" + "bdev register".replace(" ", "%20"))
+        self.assertEqual(status, 200)
+        self.assertEqual(len(data["results"]), 1)
+        r = data["results"][0]
+        self.assertEqual(r["question"], "how does bdev register")
+        self.assertEqual(r["category"], "bdev")
+        self.assertEqual(r["author"], "alice")
+        self.assertGreater(data["stats"]["active_entries"], 0)
+
+    def test_memory_search_empty_query_returns_digest(self):
+        status, data = self._request_json("/api/memory/search?q=")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(data["results"]), 1)
+
+    def test_memory_search_top_clamped(self):
+        status, data = self._request_json("/api/memory/search?q=&top=9999")
+        self.assertEqual(status, 200)
+
+    def test_html_contains_context_buttons(self):
+        status, body = self._request("/")
+        self.assertEqual(status, 200)
+        self.assertIn('id="brief-btn"', body)
+        self.assertIn('id="memory-btn"', body)
+        self.assertIn('id="brief-modal"', body)
+        self.assertIn('id="memory-modal"', body)
+        self.assertIn("/api/brief", body)
+        self.assertIn("/api/memory/search", body)
+
+
 if __name__ == "__main__":
     unittest.main()

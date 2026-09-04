@@ -462,6 +462,36 @@ class GraphCache:
                 count += 1
         return cycles
 
+    # --- Round 21: project context (brief + memory) for humans ---
+
+    def brief(self) -> Dict:
+        """The project brief: rendered prompt form + structured JSON."""
+        from _builder.brief import load_brief, render_brief_prompt
+        brief = load_brief(self.graph_dir)
+        if brief is None:
+            return {"brief": None, "rendered": "", "missing": True}
+        return {"brief": brief,
+                "rendered": render_brief_prompt(self.graph_dir, brief),
+                "missing": False}
+
+    def memory_search(self, query: str, top: int = 10) -> Dict:
+        """Search the shared memory store (veteran Q&A).
+
+        Empty query returns the weight-ranked digest — what a newcomer
+        should read first.
+        """
+        from _builder.memory_store import MemoryStore
+        store = MemoryStore(self.graph_dir)
+        if query and query.strip():
+            results = store.search(query, top_n=top)
+        else:
+            results = store.digest(limit=top)
+        try:
+            stats = store.stats()
+        except Exception:
+            stats = {}
+        return {"results": results, "stats": stats}
+
     def get_all_degrees(self) -> Dict[str, int]:
         """Compute degree for all nodes (for node sizing)."""
         with self._lock:
@@ -662,6 +692,32 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     logging.getLogger(__name__).warning("tour generation failed", exc_info=True)
                     self._send_json(500, {"tour": "", "error": "internal error"})
                 return
+            # --- Round 21: project context (brief + memory) ---
+            if path == "/api/brief":
+                try:
+                    self._send_json(200, self.cache.brief())
+                except Exception as exc:
+                    logging.getLogger(__name__).warning("brief failed",
+                                                        exc_info=True)
+                    self._send_json(500, {"brief": None, "rendered": "",
+                                          "error": "internal error"})
+                return
+            if path == "/api/memory/search":
+                q = query.get("q", [""])[0]
+                try:
+                    top = int(query.get("top", ["10"])[0])
+                except ValueError:
+                    top = 10
+                top = max(1, min(top, 50))
+                try:
+                    self._send_json(200,
+                                    self.cache.memory_search(q, top))
+                except Exception as exc:
+                    logging.getLogger(__name__).warning(
+                        "memory search failed", exc_info=True)
+                    self._send_json(500, {"results": [], "stats": {},
+                                          "error": "internal error"})
+                return
             self._send_json(404, {"error": f"unknown path {path}"})
         except Exception as exc:
             logging.getLogger(__name__).warning("web_ui handler error", exc_info=True); self._send_json(500, {"error": "internal error"})
@@ -861,6 +917,32 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 #help-content kbd { background: var(--bg); padding: 1px 5px; border-radius: 3px;
   border: 1px solid var(--border); font-size: 11px; font-family: monospace; }
 
+/* Round 21: project context modals */
+#brief-modal, #memory-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center;
+  z-index: var(--z-modal); }
+#brief-content { background: var(--card); padding: 20px; border-radius: 12px;
+  max-width: 640px; max-height: 80vh; border: 1px solid var(--border);
+  display: flex; flex-direction: column; }
+#memory-content { background: var(--card); padding: 20px; border-radius: 12px;
+  max-width: 640px; max-height: 80vh; border: 1px solid var(--border);
+  display: flex; flex-direction: column; }
+.ctx-body { white-space: pre-wrap; word-break: break-word; overflow-y: auto;
+  font-size: 12px; line-height: 1.5; margin: 0; flex: 1; text-align: left; }
+#memory-search-row { display: flex; gap: 6px; margin-bottom: 8px; }
+#memory-search-input { flex: 1; padding: 4px 8px; border-radius: 4px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+  font-size: 12px; }
+.memory-stats { font-size: 11px; color: var(--muted-fg); margin-bottom: 8px; }
+#memory-results { overflow-y: auto; flex: 1; text-align: left; }
+.mem-item { padding: 8px; border: 1px solid var(--border); border-radius: 6px;
+  margin-bottom: 6px; font-size: 12px; }
+.mem-q { font-weight: 600; margin-bottom: 2px; }
+.mem-a { color: var(--muted-fg); margin-bottom: 4px; white-space: pre-wrap;
+  word-break: break-word; }
+.mem-meta { font-size: 10px; color: var(--muted-fg); text-transform: uppercase;
+  letter-spacing: 0.5px; }
+
 /* P0: Right-click context menu */
 #ctx-menu { position: fixed; display: none; background: var(--card); border: 1px solid var(--border);
   border-radius: 6px; padding: 4px 0; z-index: var(--z-modal); min-width: 140px; }
@@ -897,6 +979,8 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
   <button id="filter-btn" aria-pressed="false">Filter</button>
   <button id="cycle-btn" aria-pressed="false">Cycles</button>
   <button id="reload-btn" aria-label="Reload graph">Reload</button>
+  <button id="brief-btn" aria-label="Show project brief">Brief</button>
+  <button id="memory-btn" aria-label="Search veteran Q&A memory">Memory</button>
   <button id="help-btn" aria-label="Help">?</button>
   <button id="dark-btn" aria-pressed="true">Dark</button>
 </div>
@@ -933,6 +1017,26 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
       <tr><td>Right-click node</td><td>Context menu (Focus/Impact/Copy)</td></tr>
     </table>
     <p style="text-align:center;margin-top:12px"><button class="action-btn" onclick="document.getElementById('help-modal').style.display='none'">Close</button></p>
+  </div>
+</div>
+<!-- Round 21: project context modals (brief + veteran memory) -->
+<div id="brief-modal" role="dialog" aria-label="Project brief" aria-modal="true">
+  <div id="brief-content">
+    <h2>Project Brief</h2>
+    <pre id="brief-body" class="ctx-body">Loading…</pre>
+    <p style="text-align:center;margin-top:12px"><button class="action-btn" onclick="document.getElementById('brief-modal').style.display='none'">Close</button></p>
+  </div>
+</div>
+<div id="memory-modal" role="dialog" aria-label="Memory search" aria-modal="true">
+  <div id="memory-content">
+    <h2>Memory — Veteran Q&amp;A</h2>
+    <div id="memory-search-row">
+      <input id="memory-search-input" placeholder="Search Q&A (empty = top by weight)" aria-label="Search memory" />
+      <button id="memory-search-btn" class="action-btn">Search</button>
+    </div>
+    <div id="memory-stats" class="memory-stats"></div>
+    <div id="memory-results"></div>
+    <p style="text-align:center;margin-top:12px"><button class="action-btn" onclick="document.getElementById('memory-modal').style.display='none'">Close</button></p>
   </div>
 </div>
 <!-- Cytoscape.js 3.28.1 — served locally for offline/air-gapped use.
@@ -1428,6 +1532,76 @@ document.getElementById('help-btn').addEventListener('click', () => {
   const m = document.getElementById('help-modal');
   m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
 });
+
+// Round 21: project context panels
+async function loadBrief() {
+  const modal = document.getElementById('brief-modal');
+  const body = document.getElementById('brief-body');
+  modal.style.display = 'flex';
+  body.textContent = 'Loading…';
+  try {
+    const resp = await fetch('/api/brief');
+    const data = await resp.json();
+    if (data.error) { body.textContent = 'Error loading brief.'; return; }
+    body.textContent = data.missing
+      ? 'No project brief yet.\n\nInitialize one with:\n  brief-extract --graph <graph-dir>\nthen curate with brief-update.'
+      : data.rendered;
+  } catch (e) { body.textContent = 'Error loading brief: ' + e; }
+}
+
+function renderMemoryResults(data) {
+  const statsEl = document.getElementById('memory-stats');
+  const resEl = document.getElementById('memory-results');
+  const s = data.stats || {};
+  statsEl.textContent = (s.active_entries || 0) + ' active · '
+    + (s.categories || 0) + ' categories'
+    + (s.experience_entries ? ' · ' + s.experience_entries + ' archived' : '');
+  resEl.innerHTML = '';
+  if (!data.results || !data.results.length) {
+    resEl.innerHTML = '<div class="mem-item">No memories found.</div>';
+    return;
+  }
+  for (const r of data.results) {
+    const item = document.createElement('div');
+    item.className = 'mem-item';
+    const q = document.createElement('div'); q.className = 'mem-q';
+    q.textContent = r.question;
+    const a = document.createElement('div'); a.className = 'mem-a';
+    a.textContent = r.answer || '(no answer)';
+    const meta = document.createElement('div'); meta.className = 'mem-meta';
+    const parts = [];
+    if (r.category) parts.push(r.category);
+    if (r.author) parts.push(r.author);
+    parts.push('w=' + r.weight);
+    if (r.access_count) parts.push(r.access_count + ' reads');
+    if (r.variant_count) parts.push('+' + r.variant_count + ' variants');
+    meta.textContent = parts.join(' · ');
+    item.appendChild(q); item.appendChild(a); item.appendChild(meta);
+    resEl.appendChild(item);
+  }
+}
+
+async function searchMemory() {
+  const q = document.getElementById('memory-search-input').value;
+  try {
+    const resp = await fetch('/api/memory/search?q=' + encodeURIComponent(q) + '&top=20');
+    renderMemoryResults(await resp.json());
+  } catch (e) {
+    document.getElementById('memory-results').innerHTML =
+      '<div class="mem-item">Error searching memory: ' + escapeHtml(String(e)) + '</div>';
+  }
+}
+
+document.getElementById('brief-btn').addEventListener('click', loadBrief);
+document.getElementById('memory-btn').addEventListener('click', () => {
+  const m = document.getElementById('memory-modal');
+  m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
+  if (m.style.display === 'flex') searchMemory();  // initial digest
+});
+document.getElementById('memory-search-btn').addEventListener('click', searchMemory);
+document.getElementById('memory-search-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') searchMemory();
+});
 document.getElementById('dark-btn').addEventListener('click', toggleDark);
 document.getElementById('filter-btn').addEventListener('click', () => {
   const btn = document.getElementById('filter-btn');
@@ -1453,6 +1627,8 @@ document.addEventListener('keydown', e => {
     case 'Escape':
       if (cy) cy.elements().removeClass('faded');
       document.getElementById('help-modal').style.display = 'none';
+      document.getElementById('brief-modal').style.display = 'none';
+      document.getElementById('memory-modal').style.display = 'none';
       document.getElementById('ctx-menu').style.display = 'none';
       document.getElementById('filter-panel').style.display = 'none';
       break;

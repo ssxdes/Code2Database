@@ -123,16 +123,47 @@ class GraphCache:
             self._name_to_id = {}
             self._freshness = None
             self._freshness_ts = 0.0
+            comm_of, comm_labels = self._load_community_map()
+            self._comm_labels = comm_labels
             for nid, nd in self.G.nodes(data=True):
                 if nd.get("is_empty", False) or nd.get("node_type") == "file":
                     continue
-                comm = nd.get("domain", "root")
+                # Prefer build-time community detection (Leiden merges
+                # related domains); fall back to the source domain.
+                comm = comm_of.get(nid) or nd.get("domain", "root")
                 self._community_of[nid] = comm
                 self._communities[comm].append(nid)
                 name = nd.get("name", "")
                 if name:
                     self._name_to_id[name.lower()] = nid
             self._compute_degrees()
+
+    def _load_community_map(self):
+        """Load .code2database_communities.json (Leiden output).
+
+        The build pipeline computes cross-domain communities and writes
+        this file — nothing ever read it; the UI presented source-file
+        domains as "communities" instead. Returns (node_community,
+        community_labels); ({}, {}) when the file is absent/corrupt,
+        which restores the domain fallback.
+        """
+        path = os.path.join(self.graph_dir, ".code2database_communities.json")
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            return {}, {}
+        nc = data.get("node_community")
+        if nc is None and data.get("node_community_list"):
+            # >100K-node stream variant: [nid, comm_id] pairs
+            nc = {nid: cid for nid, cid in data["node_community_list"]}
+        labels = {}
+        for c in data.get("communities", []):
+            cid = c.get("id")
+            if cid:
+                labels[cid] = (c.get("label") or c.get("heuristic_label")
+                               or str(cid))
+        return (nc or {}), labels
 
     def _compute_degrees(self):
         """Precompute the degree maps once per reload.
@@ -213,6 +244,7 @@ class GraphCache:
             for comm, nodes in self._communities.items():
                 communities.append({
                     "id": comm, "node_count": len(nodes),
+                    "label": self._comm_labels.get(comm, ""),
                     "sample_names": [
                         self.G.nodes[n].get("name", n) for n in nodes[:5]
                     ],
@@ -268,6 +300,7 @@ class GraphCache:
                 nodes.append({
                     "id": cur, "name": cur_nd.get("name", cur),
                     "domain": cur_nd.get("domain", ""),
+                    "community": self._community_of.get(cur, ""),
                     "labels": cur_nd.get("labels", []),
                     "is_focused": cur == node_id,
                     "depth": d,
@@ -1328,9 +1361,10 @@ async function loadSummary() {
   let lh = '';
   s.communities.forEach((c, i) => {
     const color = COMMUNITY_COLORS[i % COMMUNITY_COLORS.length];
-    lh += '<div class="legend-item" onclick="toggleCommunity(' + jsAttr(c.id) + ')">' +
+    lh += '<div class="legend-item" onclick="toggleCommunity(' + jsAttr(c.id) + ')"' +
+      ' title="' + escapeHtml(c.label || c.id) + '">' +
       '<div class="legend-color" style="background:' + color + '"></div>' +
-      '<span class="legend-label">' + escapeHtml(c.id) + ' (' + c.node_count + ')</span></div>';
+      '<span class="legend-label">' + escapeHtml(c.label || c.id) + ' (' + c.node_count + ')</span></div>';
   });
   legend.innerHTML = lh;
   legend.style.display = lh ? 'block' : 'none';
@@ -1569,7 +1603,8 @@ async function focusNode(nodeId, depth) {
     try { degreeMap = (await api('/api/degrees')).degrees || {}; } catch (e) { console.warn(e); }
     for (const n of (data.nodes || [])) {
       const deg = degreeMap[n.id] || 0;
-      allNodes[n.id] = { ...n, degree: deg, community: n.domain || '' };
+      allNodes[n.id] = { ...n, degree: deg,
+        community: n.community || n.domain || '' };
     }
     for (const e of (data.edges || [])) {
       allEdges[e.source + '->' + e.target] = e;

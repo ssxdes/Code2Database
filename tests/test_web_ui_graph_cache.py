@@ -369,5 +369,72 @@ class TestImpactAnalysis(unittest.TestCase):
         self.assertEqual(res['max_depth'], 5)
 
 
+class TestRealCommunities(unittest.TestCase):
+    """Build-time community detection (Leiden) results are loaded and
+    used — the UI used to present source-file domains AS communities;
+    the precomputed .code2database_communities.json was never read."""
+
+    def setUp(self):
+        from _builder.web_ui import GraphCache
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(self._cleanup)
+        self.GraphCache = GraphCache
+
+    def _cleanup(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _write_dir(self, with_communities=True):
+        nodes = [
+            {'id': 'n1', 'name': 'foo', 'source_file': '/tmp/t.c', 'line': 1,
+             'domain': 'lib.a', 'labels': [], 'signature': ''},
+            {'id': 'n2', 'name': 'bar', 'source_file': '/tmp/t.c', 'line': 2,
+             'domain': 'lib.b', 'labels': [], 'signature': ''},
+        ]
+        edges = [{'source': 'n1', 'target': 'n2', 'relation': 'INVOKES'}]
+        master = {'version': 't', 'stats': {'total_functions': 2},
+                  'total_nodes': 2, 'domains': {'test': 'code2database_test.json'}}
+        with open(os.path.join(self.tmpdir, 'code2database_master.json'), 'w') as f:
+            json.dump(master, f)
+        with open(os.path.join(self.tmpdir, 'code2database_test.json'), 'w') as f:
+            json.dump({'domain': 'test', 'nodes': nodes, 'edges': edges}, f)
+        if with_communities:
+            # Cross-domain community: n1 (lib.a) and n2 (lib.b) merged.
+            with open(os.path.join(self.tmpdir,
+                                   '.code2database_communities.json'), 'w') as f:
+                json.dump({
+                    'total_communities': 1,
+                    'communities': [{'id': 'c_x', 'label': 'hot path cluster',
+                                     'heuristic_label': 'lib.a → lib.b'}],
+                    'node_community': {'n1': 'c_x', 'n2': 'c_x'},
+                    'domain_overlap': {},
+                }, f)
+
+    def test_summary_uses_real_communities_with_labels(self):
+        self._write_dir(with_communities=True)
+        cache = self.GraphCache(self.tmpdir)
+        s = cache.summary()
+        self.assertEqual(s['community_count'], 1)
+        comm = s['communities'][0]
+        self.assertEqual(comm['id'], 'c_x')
+        self.assertEqual(comm['label'], 'hot path cluster')
+
+    def test_neighbors_carry_community(self):
+        self._write_dir(with_communities=True)
+        cache = self.GraphCache(self.tmpdir)
+        nb = cache.neighbors('n1', depth=2)
+        by_id = {n['id']: n for n in nb['nodes']}
+        self.assertEqual(by_id['n1'].get('community'), 'c_x')
+        self.assertEqual(by_id['n2'].get('community'), 'c_x')
+
+    def test_falls_back_to_domains_without_communities_file(self):
+        self._write_dir(with_communities=False)
+        cache = self.GraphCache(self.tmpdir)
+        s = cache.summary()
+        ids = {c['id'] for c in s['communities']}
+        self.assertIn('lib.a', ids)
+        self.assertIn('lib.b', ids)
+
+
 if __name__ == '__main__':
     unittest.main()

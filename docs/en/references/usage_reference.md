@@ -925,6 +925,12 @@ All 222 CLI subparsers across `code2database_builder.py` (214) and `code2databas
 | `field-flow` | Trace field writes + their call chains (combines field-access + reverse-trace) |
 | `fill-request` | List empty fields on a node that the LLM should fill (auto-fill request) |
 | `find-commits` | Find commits that recently modified a function |
+| `federate-register` | Register a graph in the federation (pluggable cross-project registry) |
+| `federate-list` | List registered federated graphs |
+| `federate-remove` | Remove a graph from the federation |
+| `fed-search` | Search node names across all registered graphs (results annotated with source graph) |
+| `fed-neighbors` | Neighbors of a node in every graph containing it |
+| `fed-path` | Shortest call path per graph containing both endpoints |
 | `find-invariants` | Find functions guaranteeing a given invariant (e.g., 'ctx->state == READY' after return) |
 | `find-macros` | Find macro definitions and invocations |
 | `get-code-snippet` | Extract source code snippet around a node |

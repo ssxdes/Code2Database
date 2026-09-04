@@ -924,6 +924,12 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `field-flow` | Trace field writes + their call chains (combines field-access + reverse-trace) |
 | `fill-request` | List empty fields on a node that the LLM should fill (auto-fill request) |
 | `find-commits` | Find commits that recently modified a function |
+| `federate-register` | 在联邦中注册图谱（可插拔跨项目注册表） |
+| `federate-list` | 列出已注册的联邦图谱 |
+| `federate-remove` | 从联邦移除图谱 |
+| `fed-search` | 跨全部已注册图谱搜索节点名（结果标注来源图） |
+| `fed-neighbors` | 节点在所有包含它的图中的邻居 |
+| `fed-path` | 每个同时包含两端点的图中的最短调用路径 |
 | `find-invariants` | Find functions guaranteeing a given invariant (e.g., 'ctx->state == READY' after return) |
 | `find-macros` | Find macro definitions and invocations |
 | `get-code-snippet` | Extract source code snippet around a node |

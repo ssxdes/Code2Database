@@ -677,6 +677,40 @@ def main():
                        help="Report what would change without writing")
     p_bu2.add_argument("--json", action="store_true", help="Output JSON report")
 
+    # Federated queries (cross-project, pluggable graph registry)
+    p_fr = sub.add_parser("federate-register",
+                          help="Register a graph in the federation (fed-* queries)")
+    p_fr.add_argument("--name", required=True, help="Federation name for the graph")
+    p_fr.add_argument("--graph", required=True, help="Call graph output directory")
+    p_fr.add_argument("--registry", default=None, help="Registry JSON path (default ~/.code2database_federated.json)")
+
+    p_fl = sub.add_parser("federate-list", help="List registered federated graphs")
+    p_fl.add_argument("--registry", default=None, help="Registry JSON path")
+
+    p_fx = sub.add_parser("federate-remove", help="Remove a graph from the federation")
+    p_fx.add_argument("--name", required=True, help="Federation name to remove")
+    p_fx.add_argument("--registry", default=None, help="Registry JSON path")
+
+    p_fs = sub.add_parser("fed-search", help="Search across all registered graphs")
+    p_fs.add_argument("--query", required=True, help="Name substring to search")
+    p_fs.add_argument("--top", default="20", help="Max results (default 20)")
+    p_fs.add_argument("--registry", default=None, help="Registry JSON path")
+    p_fs.add_argument("--json", action="store_true", help="Output JSON")
+
+    p_fn = sub.add_parser("fed-neighbors", help="Neighbors of a node across all registered graphs")
+    p_fn.add_argument("--node", required=True, help="Node id (or name with --by-name)")
+    p_fn.add_argument("--depth", default="1", help="BFS depth (default 1)")
+    p_fn.add_argument("--by-name", action="store_true", help="Resolve the node by name in each graph")
+    p_fn.add_argument("--registry", default=None, help="Registry JSON path")
+    p_fn.add_argument("--json", action="store_true", help="Output JSON")
+
+    p_fp = sub.add_parser("fed-path", help="Shortest call path per graph containing both endpoints")
+    p_fp.add_argument("--from", dest="from_node", required=True, help="Start node id (or name with --by-name)")
+    p_fp.add_argument("--to", dest="to_node", required=True, help="End node id (or name with --by-name)")
+    p_fp.add_argument("--by-name", action="store_true", help="Resolve endpoints by name in each graph")
+    p_fp.add_argument("--registry", default=None, help="Registry JSON path")
+    p_fp.add_argument("--json", action="store_true", help="Output JSON")
+
     p_build = sub.add_parser("build", help="Build invocation graph from extraction JSON")
     p_build.add_argument("--extraction", required=True, help="Extraction JSON from code2database_scanner.py")
     p_build.add_argument("--outdir", required=True, help="Output directory for domain-split JSON files")
@@ -2663,6 +2697,12 @@ def main():
     commands = {
         "build": cmd_build,
         "build-update": _lazy("_builder.build_update", "cmd_build_update"),
+        "federate-register": _lazy("_builder.federated", "cmd_federate_register"),
+        "federate-list": _lazy("_builder.federated", "cmd_federate_list"),
+        "federate-remove": _lazy("_builder.federated", "cmd_federate_remove"),
+        "fed-search": _lazy("_builder.federated", "cmd_fed_search"),
+        "fed-neighbors": _lazy("_builder.federated", "cmd_fed_neighbors"),
+        "fed-path": _lazy("_builder.federated", "cmd_fed_path"),
         "make": _lazy("_builder.make_cmd", "cmd_make"),
         "load": cmd_load,
         "search": cmd_search,

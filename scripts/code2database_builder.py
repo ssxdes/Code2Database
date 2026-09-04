@@ -60,7 +60,7 @@ from _builder.graph_history import (
 from _builder.memory_manager import cmd_manage_memory, cmd_memory_health
 from _builder.brief import (
     cmd_knowledge_brief, cmd_brief_update, cmd_brief_extract,
-    cmd_brief_validate,
+    cmd_brief_validate, cmd_brief_suggest,
 )
 from _builder.session_init import cmd_session_init
 from _builder.kb_index import rebuild_kb_index as cmd_kb_rebuild_index_impl
@@ -1121,6 +1121,15 @@ def main():
     p_bv = sub.add_parser("brief-validate",
                           help="Validate the brief (schema, size budget, graph drift)")
     p_bv.add_argument("--graph", required=True, help="Call graph output directory")
+
+    # brief-suggest
+    p_bs = sub.add_parser("brief-suggest",
+                          help="Suggest brief additions from high-value memories (no writes)")
+    p_bs.add_argument("--graph", required=True, help="Call graph output directory")
+    p_bs.add_argument("--top", default="10", help="Max suggestions (default 10)")
+    p_bs.add_argument("--min-weight", dest="min_weight", default="1.5",
+                      help="Weight threshold for candidacy (default 1.5)")
+    p_bs.add_argument("--json", action="store_true", help="Output JSON")
 
     # export-html
     p_html = sub.add_parser("export-html", help="Export invocation graph as interactive HTML")
@@ -2703,6 +2712,7 @@ def main():
         "brief-update": cmd_brief_update,
         "brief-extract": cmd_brief_extract,
         "brief-validate": cmd_brief_validate,
+        "brief-suggest": cmd_brief_suggest,
         "kb-rebuild-index": cmd_kb_rebuild_index,
         "kb-query": cmd_kb_query,
         "kb-cluster": cmd_kb_cluster,

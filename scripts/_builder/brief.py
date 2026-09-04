@@ -402,6 +402,165 @@ def validate_brief(graph_dir: str) -> dict:
 # CLI command handlers
 # ---------------------------------------------------------------------------
 
+def brief_suggest(graph_dir: str, top_n: int = 10,
+                  min_weight: float = 1.5) -> dict:
+    """Mine high-value memories and propose brief additions.
+
+    The graduation gate from memory (fine-grained accumulating recall)
+    to knowledge (the brief every session loads): memories that proved
+    durable — weight above min_weight or with absorbed variants — are
+    candidates for promotion. SUGGESTIVE ONLY: this never writes
+    brief.json; it returns patch proposals plus ready-to-run
+    brief-update commands for human/AI curation (the brief is
+    deliberately hand-curated and size-budgeted; overflow belongs in
+    memory).
+
+    Returns {suggestions, covered, candidates_considered}.
+    """
+    import re
+    import sqlite3
+    from _builder.utils import _simple_tokenize, _similarity_score
+
+    result: Dict[str, Any] = {"suggestions": [], "covered": [],
+                              "candidates_considered": 0}
+    db_path = os.path.join(graph_dir, "memory", "memory.db")
+    if not os.path.exists(db_path):
+        return result
+
+    candidates = []
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT id, question, answer, weight, merged_count, author, "
+            "category_id FROM memories WHERE status = 'active' "
+            "AND root_id = id").fetchall()
+        cat_rows = conn.execute(
+            "SELECT id, name FROM categories").fetchall()
+    except sqlite3.Error:
+        return result
+    finally:
+        conn.close()
+    cat_names = {r["id"]: r["name"] for r in cat_rows}
+
+    for r in rows:
+        weight = float(r["weight"] or 0.0)
+        if weight >= min_weight or (r["merged_count"] or 0) >= 2:
+            candidates.append(dict(r))
+    candidates.sort(key=lambda c: (-float(c["weight"] or 0.0),
+                                   c["id"]))
+    candidates = candidates[:top_n]
+    result["candidates_considered"] = len(candidates)
+
+    brief = load_brief(graph_dir) or {}
+    brief_tokens: set = set()
+    for key in ("description", "must_know", "one_liner"):
+        brief_tokens |= _simple_tokenize(str(brief.get(key) or ""))
+    for section in _ITEM_SECTIONS:
+        for item in brief.get(section) or []:
+            if isinstance(item, dict):
+                brief_tokens |= _simple_tokenize(
+                    " ".join(str(v) for v in item.values()))
+            else:
+                brief_tokens |= _simple_tokenize(str(item))
+
+    _HARD = {"must", "always", "never", "required", "only", "forbidden",
+             "必须", "一定", "永远", "禁止", "才能"}
+    _PITFALL = {"pitfall", "trap", "bug", "beware", "careful", "crash",
+                "leak", "deadlock", "坑", "注意", "小心", "崩溃", "泄漏",
+                "死锁"}
+
+    def _route(question: str) -> str:
+        q = question.lower()
+        tokens = _simple_tokenize(question)
+        if tokens & _HARD:
+            return "hard_rules"
+        if tokens & _PITFALL:
+            return "pitfalls"
+        if re.match(r"^(where|which file|在哪|哪里)", q):
+            return "query_paths"
+        if re.match(r"^(how does|how do|what is|如何|是什么|是什么意思)", q):
+            return "key_abstractions"
+        return "conventions"
+
+    for c in candidates:
+        q = (c["question"] or "").strip()
+        a = (c["answer"] or "").strip()
+        if not q:
+            continue
+        cand_tokens = _simple_tokenize(q) | _simple_tokenize(a)
+        if cand_tokens and _similarity_score(cand_tokens, brief_tokens) >= 0.34:
+            result["covered"].append({
+                "memory_id": c["id"], "question": q,
+                "reason": "already represented in the brief",
+            })
+            continue
+        section = _route(q)
+        if section == "hard_rules":
+            item: Any = {"rule": q, "type": "api", "detail": a[:200],
+                         "evidence": (f"memory #{c['id']} "
+                                      f"(w={float(c['weight'] or 0):.2f}, "
+                                      f"author={c['author'] or 'unknown'})")}
+            command = (f"brief-update --graph {graph_dir} "
+                       f"--add hard_rules --json "
+                       f"'{json.dumps(item, ensure_ascii=False)}'")
+        elif section == "key_abstractions":
+            name = re.sub(r"^(how does|how do|what is)\s+", "", q,
+                          flags=re.I).strip()
+            name = re.sub(r"\s+(work|works)$", "", name, flags=re.I) or q
+            item = {"name": name[:120], "role": a[:200]}
+            command = (f"brief-update --graph {graph_dir} "
+                       f"--add key_abstractions --json "
+                       f"'{json.dumps(item, ensure_ascii=False)}'")
+        else:
+            item = f"{q} — {a[:200]}"
+            command = (f"brief-update --graph {graph_dir} "
+                       f"--add {section} "
+                       f"--value {json.dumps(item, ensure_ascii=False)}")
+        result["suggestions"].append({
+            "memory_id": c["id"],
+            "question": q,
+            "answer_excerpt": a[:160],
+            "weight": float(c["weight"] or 0.0),
+            "merged_count": c["merged_count"] or 0,
+            "author": c["author"] or "",
+            "category": cat_names.get(c["category_id"], ""),
+            "section": section,
+            "item": item,
+            "reason": (f"weight {float(c['weight'] or 0):.2f} >= "
+                       f"{min_weight}" if float(c["weight"] or 0) >= min_weight
+                       else "absorbed >= 2 variants"),
+            "command": command,
+        })
+    return result
+
+
+def cmd_brief_suggest(args):
+    """Suggest brief additions from high-value memories (no writes)."""
+    graph_dir = args.graph
+    result = brief_suggest(
+        graph_dir,
+        top_n=int(getattr(args, "top", "10")),
+        min_weight=float(getattr(args, "min_weight", "1.5")),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    print(f"Considered {result['candidates_considered']} high-value "
+          f"memor(ies); {len(result['suggestions'])} suggestion(s), "
+          f"{len(result['covered'])} already covered.")
+    for s in result["suggestions"]:
+        print(f"\n[{s['section']}] (w={s['weight']:.2f}, "
+              f"merged={s['merged_count']}, author={s['author'] or '?'})")
+        print(f"  Q: {s['question']}")
+        print(f"  A: {s['answer_excerpt']}")
+        print(f"  apply: {s['command']}")
+    if result["covered"]:
+        print(f"\nAlready covered (no action needed):")
+        for c in result["covered"]:
+            print(f"  #{c['memory_id']}: {c['question'][:80]}")
+
+
 def cmd_knowledge_brief(args):
     """Render the project brief as prompt text (session-start load)."""
     graph_dir = args.graph

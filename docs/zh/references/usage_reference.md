@@ -960,6 +960,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `key-paths` | Extract key execution paths from entry points automatically |
 | `knowledge-brief` | 渲染项目简报（会话启动加载） |
 | `brief-validate` | 校验简报（schema、体积预算、图漂移） |
+| `brief-suggest` | 从高价值记忆挖掘简报候选（只建议不写入） |
 | `session-init` | 一站式会话上下文：简报 + 记忆摘要 + 图状态（含过期检查）+ 未解答问题 |
 | `light-scan` | Lightweight scan of changed files (no LLM) |
 | `load` | Load and summarize the invocation graph |

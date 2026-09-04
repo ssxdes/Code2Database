@@ -4,3 +4,4 @@ __pycache__/
 .pytest_cache/
 ROADMAP.md
 CHANGELOG.md
+code2db-out/

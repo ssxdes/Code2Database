@@ -366,6 +366,11 @@ def _build_steps(rep, args):
         scan_cmd += ["-j", str(args.workers)]
     if getattr(args, "large_project", False):
         scan_cmd += ["--large-project"]
+    if getattr(args, "memory_limit", 0):
+        # 0 (default) = scanner auto-derives a GB cap from total RAM;
+        # on a busy machine that cap can cancel the scan mid-way, so an
+        # explicit value (e.g. 9999 to disable) keeps the pipeline going.
+        scan_cmd += ["--memory-limit", str(args.memory_limit)]
 
     build_cmd = [py, _BUILDER, "build",
                  "--extraction", rep["extraction_path"],
@@ -420,6 +425,57 @@ def _build_steps(rep, args):
     ]
 
 
+def _verify_scan_completed(source, graph_dir, extraction_path):
+    """Post-scan sanity check. Returns (errors, warnings) string lists.
+
+    The scanner exits 0 even when MemoryGuard cancels the remaining
+    files under system memory pressure (observed: a 4-file scan cancelled
+    at 82% RAM on a busy machine), silently producing a PARTIAL graph.
+    The only durable evidence is the resume checkpoint the scanner
+    leaves next to its output — it is removed on clean completion, so a
+    leftover checkpoint (matching this source) is treated as fatal.
+
+    A missing or empty extraction alone is NOT proof of failure
+    (header-only projects are legitimately empty; mocked runs don't
+    write one), so it only warrants a warning.
+    """
+    errors, warnings = [], []
+    checkpoint = os.path.join(graph_dir, "_scan_checkpoint.json")
+    if os.path.exists(checkpoint):
+        stale = False
+        try:
+            with open(checkpoint, encoding="utf-8") as f:
+                cp = json.load(f)
+            # Ignore checkpoints left by a scan of a DIFFERENT source.
+            stale = cp.get("source_root", "") != os.path.abspath(source)
+        except (OSError, ValueError):
+            stale = False  # unreadable — assume it's ours, fail loud
+        if not stale:
+            errors.append(
+                "scan exited 0 but a resume checkpoint remains (%s): the "
+                "scan was interrupted (memory pressure / limits) and the "
+                "extraction is PARTIAL. Free memory or re-run with "
+                "--large-project / -j 1; the checkpoint resumes the "
+                "remaining files" % checkpoint)
+    if not os.path.isfile(extraction_path):
+        warnings.append(
+            "scan produced no extraction at %s — the build step will "
+            "decide whether this is fatal" % extraction_path)
+    else:
+        try:
+            with open(extraction_path, encoding="utf-8") as f:
+                data = json.load(f)
+            if not data.get("functions") and not data.get("edges"):
+                warnings.append(
+                    "extraction is empty (0 functions, 0 edges) — if the "
+                    "source has implementation files, check the scan "
+                    "output above (backend / compile_commands issues)")
+        except (OSError, ValueError):
+            warnings.append(
+                "extraction at %s is unreadable" % extraction_path)
+    return errors, warnings
+
+
 def _do_make(rep, args):
     """Phase 2: run the full pipeline with per-step failure policy."""
     steps = _build_steps(rep, args)
@@ -435,6 +491,18 @@ def _do_make(rep, args):
             continue
         print("  $ %s" % " ".join(cmd))
         rc = subprocess.run(cmd).returncode
+        if rc == 0 and name == "scan":
+            # The scanner exits 0 even when MemoryGuard cancels the
+            # remaining files — catch the partial scan before building.
+            _errs, _warns = _verify_scan_completed(
+                rep["source"], rep["graph"], rep["extraction_path"])
+            for _w in _warns:
+                print("[make] WARN: %s" % _w, file=sys.stderr)
+            if _errs:
+                for _e in _errs:
+                    print("\n[make] FAILED after step %d/%d (scan): %s"
+                          % (i, total, _e), file=sys.stderr)
+                sys.exit(1)
         if rc != 0:
             if fatal:
                 print("\n[make] FAILED at step %d/%d (%s, exit %d) — "

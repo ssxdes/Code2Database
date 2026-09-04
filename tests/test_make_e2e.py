@@ -50,7 +50,12 @@ class TestMakeEndToEnd(unittest.TestCase):
             [sys.executable, BUILDER, "make",
              "--source", cls.source,
              "--graph", cls.graph,
-             "--extraction-backend", "tree-sitter"],
+             "--extraction-backend", "tree-sitter",
+             # MemoryGuard's auto cap (total RAM * 0.8) can cancel even a
+             # tiny scan on a busy machine; make now fails fast on the
+             # leftover checkpoint in that case. Disable the cap so the
+             # e2e run is hermetic.
+             "--memory-limit", "9999"],
             capture_output=True, text=True, timeout=600,
         )
         cls.proc = proc

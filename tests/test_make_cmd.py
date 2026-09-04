@@ -388,6 +388,20 @@ class TestCmdMake(unittest.TestCase):
         i = calls[0].index("--compile-commands")
         self.assertEqual(calls[0][i + 1], cc)
 
+    def test_memory_limit_forwarded_to_scan(self):
+        """--memory-limit must reach the scanner: on busy machines the
+        auto cap (total RAM * 0.8) cancels scans mid-way, and make now
+        fails fast on the leftover checkpoint."""
+        self._patch_env()
+        calls = []
+        with mock.patch.object(
+                make_cmd.subprocess, "run",
+                side_effect=lambda c: calls.append(c)
+                or SimpleNamespace(returncode=0)):
+            self._run({"memory_limit": 9999})
+        self.assertIn("--memory-limit", calls[0])
+        self.assertIn("9999", " ".join(calls[0]))
+
     def test_core_step_failure_aborts_pipeline(self):
         """scan or build failing is fatal: nothing later runs."""
         self._patch_env()
@@ -406,6 +420,111 @@ class TestCmdMake(unittest.TestCase):
                 self.assertEqual(cm.exception.code, 1)
             self.assertEqual(len(calls), fail_at)
 
+    def test_partial_scan_checkpoint_aborts_make(self):
+        """MemoryGuard-canceled scan: scanner exits 0 but leaves a resume
+        checkpoint — make must abort before build instead of happily
+        building a partial graph and reporting 12/12 OK."""
+        import json
+        self._patch_env()
+        os.makedirs(self.graph, exist_ok=True)
+        with open(os.path.join(self.graph, "_scan_checkpoint.json"),
+                  "w") as f:
+            json.dump({"source_root": self.source, "completed_files": [],
+                       "stats": {"functions": 1, "edges": 0,
+                                 "stopped_early": True}}, f)
+        calls = []
+        with mock.patch.object(
+                make_cmd.subprocess, "run",
+                side_effect=lambda c: calls.append(c)
+                or SimpleNamespace(returncode=0)):
+            with self.assertRaises(SystemExit) as cm:
+                self._run()
+            self.assertEqual(cm.exception.code, 1)
+        # Only the scan step ran; build and enrichment never started.
+        self.assertEqual(len(calls), 1)
+        self.assertIn("scan", " ".join(calls[0]))
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestScanVerification(unittest.TestCase):
+    """Post-scan sanity check: the scanner exits 0 even when MemoryGuard
+    cancels remaining files under system memory pressure (observed on a
+    busy WSL1 box: 4-file scan cancelled at 82% RAM). The only durable
+    evidence is the resume checkpoint left next to the extraction output
+    (removed on clean completion); a partial/empty extraction alone is
+    not proof of failure (header-only projects are legitimately empty),
+    so it only warrants a warning."""
+
+    def _write_checkpoint(self, graph_dir, stopped_early=True,
+                          source_root="/proj"):
+        import json
+        cp = {"source_root": source_root, "completed_files": [],
+              "stats": {"functions": 1, "edges": 0,
+                        "stopped_early": stopped_early}}
+        path = os.path.join(graph_dir, "_scan_checkpoint.json")
+        with open(path, "w") as f:
+            json.dump(cp, f)
+        return path
+
+    def _write_extraction(self, graph_dir, functions):
+        import json
+        path = os.path.join(graph_dir, "extraction.json")
+        with open(path, "w") as f:
+            json.dump({"functions": functions, "edges": []}, f)
+        return path
+
+    def _verify(self, source, graph_dir):
+        return make_cmd._verify_scan_completed(
+            source, graph_dir,
+            os.path.join(graph_dir, "extraction.json"))
+
+    def test_checkpoint_left_behind_is_fatal_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "src"); os.makedirs(src)
+            self._write_checkpoint(d, source_root=src)
+            self._write_extraction(d, functions=[])
+            errors, warnings = self._verify(src, d)
+            self.assertTrue(errors,
+                            "leftover checkpoint must be a fatal signal")
+            self.assertIn("checkpoint", " ".join(errors).lower())
+
+    def test_checkpoint_from_other_source_ignored(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "src"); os.makedirs(src)
+            self._write_checkpoint(d, source_root="/somewhere/else")
+            self._write_extraction(d, functions=[{"id": "a"}])
+            errors, _ = self._verify(src, d)
+            self.assertFalse(errors,
+                             "stale checkpoint for another source must not "
+                             "poison this run: %r" % errors)
+
+    def test_clean_scan_no_errors_no_warnings(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "src"); os.makedirs(src)
+            self._write_extraction(d, functions=[{"id": "a"}, {"id": "b"}])
+            errors, warnings = self._verify(src, d)
+            self.assertFalse(errors)
+            self.assertFalse(warnings)
+
+    def test_empty_extraction_only_warns(self):
+        """Header-only projects legitimately produce empty extractions:
+        must warn (surfaces silent no-op scans) but never fail."""
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "src"); os.makedirs(src)
+            self._write_extraction(d, functions=[])
+            errors, warnings = self._verify(src, d)
+            self.assertFalse(errors)
+            self.assertTrue(warnings)
+
+    def test_missing_extraction_only_warns(self):
+        """Compatibility contract: mocked-scan tests and unusual scan
+        backends may not write the extraction where make expects it —
+        warn loudly, don't abort (that's the next step's job)."""
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "src"); os.makedirs(src)
+            errors, warnings = self._verify(src, d)
+            self.assertFalse(errors)
+            self.assertTrue(warnings)

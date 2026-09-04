@@ -921,6 +921,11 @@ def main():
                       help="Existing profile JSON (default: generate one via scanner --auto-profile)")
     p_mk.add_argument("-j", "--workers", type=int, default=0,
                       help="Scan worker count (default: scanner's own default)")
+    p_mk.add_argument("--memory-limit", type=float, default=0,
+                      help="Scan memory cap in GB (default: 0 = auto from total RAM). "
+                           "On busy/low-memory machines the auto cap can cancel the scan "
+                           "mid-way; pass a high value (e.g. 9999) to disable, or lower it "
+                           "with --large-project for graceful partial stops")
     p_mk.add_argument("--large-project", action="store_true",
                       help="Large-project scan mode (split output, lower memory)")
     p_mk.add_argument("--check", action="store_true",

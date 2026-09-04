@@ -342,6 +342,43 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
 # Main entry point
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Joint-extraction merge
+# ---------------------------------------------------------------------------
+
+def _merge_project_data(joint_extraction: Dict[str, Any],
+                        project_data: Dict[str, Any],
+                        project_name: str) -> None:
+    """Merge one project's scan output into the joint extraction dict.
+
+    Handles the 5 legacy keys (functions/edges/globals/vtables/imports)
+    plus every ``cgdb_*`` list key the scanner emits — the AST 13-layer
+    records the builder writes into the cgdb schema tables. Merging
+    only the legacy keys silently produced multi-project builds with
+    EMPTY cgdb tables (graph_build gates the cgdb layer on
+    cgdb_nodes/cgdb_types/cgdb_edges being non-empty), so every
+    ``cgdb_*`` key must survive the merge.
+    """
+    joint_extraction["functions"].extend(project_data.get("functions", []))
+    joint_extraction["edges"].extend(project_data.get("edges", []))
+    for k, v in (project_data.get("globals") or {}).items():
+        joint_extraction["globals"][f"{project_name}.{k}"] = v
+    if project_data.get("vtables"):
+        joint_extraction["vtables"].extend(project_data["vtables"])
+    if project_data.get("imports"):
+        joint_extraction["imports"].extend(project_data["imports"])
+    # cgdb_* AST-level records (nodes, types, edges, invoke_sites,
+    # predicates, ops_bindings, basic_blocks, cfg_edges, data_flow,
+    # sync_primitives, happens_before, alias_sets, doc_comments,
+    # metadata, includes, ...). Generic on purpose: any NEW cgdb_* key
+    # the scanner starts emitting gets merged without another fix here.
+    for k, v in project_data.items():
+        if not k.startswith("cgdb_") or not isinstance(v, list):
+            continue
+        if v:
+            joint_extraction.setdefault(k, []).extend(v)
+
+
 def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                 max_workers: int = 0,
                 force_rescan: Optional[List[str]] = None,
@@ -512,15 +549,8 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                 project_data = result["data"]
                 # Force project-name domain prefix
                 _prefix_domain_with_project(project_data, _pn)
-                # Merge into joint extraction
-                joint_extraction["functions"].extend(project_data.get("functions", []))
-                joint_extraction["edges"].extend(project_data.get("edges", []))
-                for k, v in (project_data.get("globals") or {}).items():
-                    joint_extraction["globals"][f"{_pn}.{k}"] = v
-                if project_data.get("vtables"):
-                    joint_extraction["vtables"].extend(project_data["vtables"])
-                if project_data.get("imports"):
-                    joint_extraction["imports"].extend(project_data["imports"])
+                # Merge into joint extraction (legacy keys + cgdb_* records)
+                _merge_project_data(joint_extraction, project_data, _pn)
                 summary["projects"].append({
                     "name": _pn, "mode": "scan",
                     "functions": len(project_data.get("functions", [])),
@@ -542,14 +572,7 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                 continue
             project_data = result["data"]
             _prefix_domain_with_project(project_data, _pn)
-            joint_extraction["functions"].extend(project_data.get("functions", []))
-            joint_extraction["edges"].extend(project_data.get("edges", []))
-            for k, v in (project_data.get("globals") or {}).items():
-                joint_extraction["globals"][f"{_pn}.{k}"] = v
-            if project_data.get("vtables"):
-                joint_extraction["vtables"].extend(project_data["vtables"])
-            if project_data.get("imports"):
-                joint_extraction["imports"].extend(project_data["imports"])
+            _merge_project_data(joint_extraction, project_data, _pn)
             summary["projects"].append({
                 "name": _pn, "mode": "scan",
                 "functions": len(project_data.get("functions", [])),

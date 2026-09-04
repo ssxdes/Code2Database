@@ -315,6 +315,101 @@ class TestCjkSearch(MemoryStoreTestBase):
         self.assertEqual(results[0]["author"], "alice")
 
 
+class TestSymbolGrounding(MemoryStoreTestBase):
+    """Round 24: memories grounded to graph symbols (memory ↔ code)."""
+
+    def test_add_with_symbols_roundtrip(self):
+        mid = self.store.add("nvme 提交流程", "doorbell",
+                             symbols=["nvme_submit_cmd", "spdk_nvme_q"],
+                             no_merge=True)
+        results = self.store.search("提交", symbol="nvme_submit_cmd")
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], mid)
+        self.assertEqual(results[0]["symbols"],
+                         ["nvme_submit_cmd", "spdk_nvme_q"])
+
+    def test_symbol_filter_case_insensitive_exact(self):
+        self.store.add("How does submit work", "a",
+                       symbols=["nvme_submit_cmd"], no_merge=True)
+        self.store.add("How does submit work extra", "b",
+                       symbols=["nvme_submit_cmd_ex"], no_merge=True)
+        # exact match, not substring: _ex must not match
+        results = self.store.search("submit", symbol="NVME_SUBMIT_CMD")
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["question"], "How does submit work")
+
+    def test_symbol_in_similarity_channel(self):
+        # entry grounded to a symbol but question/answer don't name it
+        self.store.add("如何提交流程", "写 doorbell 寄存器",
+                       symbols=["nvme_submit_cmd"], no_merge=True)
+        results = self.store.search("nvme_submit_cmd")
+        self.assertTrue(results)
+
+    def test_entries_for_symbol(self):
+        self.store.add("q about submit", "a1", symbols=["nvme_submit_cmd"],
+                       no_merge=True)
+        self.store.add("q about submit 2", "a2", symbols=["nvme_submit_cmd"],
+                       no_merge=True)
+        self.store.add("other", "a3", no_merge=True)
+        hits = self.store.entries_for_symbol("nvme_submit_cmd")
+        self.assertEqual(len(hits), 2)
+        self.assertTrue(all(h["symbols"] == ["nvme_submit_cmd"]
+                            for h in hits))
+        self.assertEqual(self.store.entries_for_symbol("nope"), [])
+
+    def test_merge_absorbs_symbols(self):
+        self.store.add("How does nvme submit IO?", "v1",
+                       symbols=["nvme_submit_cmd"], no_merge=True)
+        # similar question merges into the root; symbols absorb
+        self.store.add("How does nvme submit IO requests?", "v2",
+                       symbols=["spdk_nvme_q"])
+        hits = self.store.entries_for_symbol("spdk_nvme_q")
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0]["symbols"],
+                         ["nvme_submit_cmd", "spdk_nvme_q"])
+
+    def test_correct_similar_regrounds_symbols(self):
+        self.store.add("how does submit work", "wrong answer",
+                       symbols=["wrong_fn"], no_merge=True)
+        result = self.store.correct_similar(
+            "how does submit work", "right answer", author="me",
+            symbols=["nvme_submit_cmd"])
+        self.assertEqual(result["action"], "corrected")
+        hits = self.store.entries_for_symbol("nvme_submit_cmd")
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0]["answer"], "right answer")
+        self.assertEqual(self.store.entries_for_symbol("wrong_fn"), [])
+
+    def test_digest_includes_symbols(self):
+        self.store.add("q", "a", symbols=["fn_a"], no_merge=True)
+        digest = self.store.digest()
+        self.assertEqual(digest[0]["symbols"], ["fn_a"])
+
+    def test_old_schema_migrates(self):
+        # simulate a pre-Round-24 db: drop the column, reopen (rw)
+        conn = sqlite3.connect(self.store.db_path)
+        conn.execute("ALTER TABLE memories DROP COLUMN symbols")
+        conn.commit()
+        conn.close()
+        store2 = type(self.store)(self.store.graph_dir)
+        cols = {r[1] for r in sqlite3.connect(
+            store2.db_path).execute("PRAGMA table_info(memories)")}
+        self.assertIn("symbols", cols)
+        # existing rows readable, symbols default to []
+        results = store2.search("anything")
+        self.assertEqual(results, [])
+
+    def test_old_schema_read_only_degrades(self):
+        conn = sqlite3.connect(self.store.db_path)
+        conn.execute("ALTER TABLE memories DROP COLUMN symbols")
+        conn.commit()
+        conn.close()
+        ro = type(self.store)(self.store.graph_dir, read_only=True)
+        # no crash, symbol views degrade to empty
+        self.assertEqual(ro.entries_for_symbol("x"), [])
+        self.assertEqual(ro.search("q", symbol="x"), [])
+
+
 class TestCorrectReshapePromote(MemoryStoreTestBase):
     def test_correct_updates_and_versions(self):
         self.store.add("q", "old answer")

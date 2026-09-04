@@ -67,8 +67,8 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP 服�
 | `build` | 扫描 + 构建图 | — |
 | `update` | 增量重扫 | — |
 | `session-init` | 一站式会话上下文：简报 + 记忆摘要 + 图状态（含过期检查）+ 未解答问题（别名：`init`） | Memory+Knowledge |
-| `save-memory` | 保存 Q&A 到记忆，支持 `--category bdev/nvme/pcie` `--author`（别名：`save`） | Memory |
-| `search-memory` | 搜索记忆：FTS5 + `--category/--tags/--author` 过滤（别名：`recall`） | Memory |
+| `save-memory` | 保存 Q&A 到记忆，支持 `--category bdev/nvme/pcie` `--author` `--symbol fn`（可重复，把记忆锚定到代码符号）（别名：`save`） | Memory |
+| `search-memory` | 搜索记忆：FTS5 + `--category/--tags/--author/--symbol` 过滤，中文感知（别名：`recall`） | Memory |
 | `knowledge-brief` | 渲染项目简报 — 会话启动必载（别名：`brief`） | Knowledge |
 | `kb-rebuild-index` | 从 memory.db + brief.json 重建 FTS5 索引 | Memory+Knowledge |
 | `kb-cluster` | 聚类相似项 + 链接 principle | Memory+Knowledge |
@@ -104,7 +104,8 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 ## 约束
 
 - **会话启动**：先运行 `session-init`（别名 `init`）— 简报（强制规则/模式/坑）+ 记忆摘要（前辈经验）+ 图状态 + 未解答问题，一次输出
-- **纠错协议**：回答项目问题前先 `search-memory`；答案错了用 `save-memory --correct`（原地重塑最相似条目——不产生重复变体）；缺答案用 `save-memory --category ... --author ...`；查询反复未命中（session-init 的 known-unknowns）时把答案沉淀进记忆
+- **纠错协议**：回答项目问题前先 `search-memory`；答案错了用 `save-memory --correct`（原地重塑最相似条目——不产生重复变体）；缺答案用 `save-memory --category ... --author ... --symbol fn`；查询反复未命中（session-init 的 known-unknowns）时把答案沉淀进记忆
+- **符号锚定**：记忆关于某个具体函数/类型时，传 `--symbol <name>`（可重复）——Web UI 会在该符号的节点页展示这条问答，`search-memory --symbol` / `code2database_memory_search(symbol=)` 可按符号过滤。合并时记忆吸收符号，`--correct` 时可重新锚定
 - `build`/`update` 或修改 memory/brief 后运行 `kb-rebuild-index`
 - Memory 是共享积累库（memory.db）：保存时带 `--category 路径/主题` + `--author`；治理用 `manage-memory --action split/merge/move/categories`
 - Knowledge（brief.json）必须精简：`brief-validate` 超过 3000 字符告警；溢出内容放入 memory

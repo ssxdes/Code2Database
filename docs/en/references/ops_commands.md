@@ -537,8 +537,13 @@ python3 scripts/code2database_builder.py save-memory \
   --graph code2db-out/ \
   --question "..." --answer "..." \
   --tags tag1,tag2 \
+  [--symbol nvme_submit_cmd]... \
   [--yes]
 ```
+
+`--symbol` (repeatable) grounds the memory to graph symbols: the web UI
+shows it on that symbol's node page, and `search-memory --symbol`
+filters by it.
 
 ### `search-memory`
 
@@ -549,6 +554,7 @@ python3 scripts/code2database_builder.py search-memory \
   --graph code2db-out/ \
   --query "..." \
   [--tags tag1,tag2] \
+  [--symbol nvme_submit_cmd] \
   [--limit N]
 ```
 

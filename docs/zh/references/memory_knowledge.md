@@ -58,6 +58,21 @@ python3 scripts/code2database_builder.py search-memory --graph code2db-out/ \
 
 FTS5 无 token 交叠时，token 集相似度回退仍能找到近似项。**中文感知**：unicode61 分词器把整段连续汉字当作单个 token，因此查询包含中文时相似度通道（单字 + 二元组）始终与 FTS5 并行运行并按最高分合并——中文语义不会被静默丢弃。
 
+### 符号锚定（记忆 ↔ 代码）
+
+关于某个具体函数/类型的记忆可以携带它所属的图谱符号名（`--symbol`，可重复），把经验锚定到代码：
+
+- `save-memory ... --symbol nvme_submit_cmd` 把符号名存入 `symbols` 列；合并时吸收进簇根，`--correct` 时传 `--symbol` 可重新锚定。
+- `search-memory --symbol nvme_submit_cmd` 按符号精确过滤（大小写不敏感）；MCP `code2database_memory_search` 接受 `symbol` 参数。
+- Web UI 在该符号的节点页展示锚定的问答（"Veteran Memories"）——新人读代码时就地看到这个函数的坑。
+- `MemoryStore.entries_for_symbol(name)` 是编程接口（按簇去重、按权重排序）。
+
+```bash
+python3 scripts/code2database_builder.py save-memory --graph code2db-out/ \
+  --question "nvme submit 有什么坑?" --answer "doorbell 写错寄存器会 hang" \
+  --category bdev/nvme/pcie --author alice --symbol nvme_submit_cmd
+```
+
 ### 纠错（correct-first 保存）
 
 当已存的答案被证明是**错的**，直接重存修正文本只会产生重复变体（且合并路径保留权重更高——也就是仍然错误——的答案）。`--correct` 找到最相似的活跃条目并原地重塑，旧答案保留在版本历史中并记录纠正者：

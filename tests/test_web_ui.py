@@ -295,6 +295,48 @@ class TestWebUIProjectContext(unittest.TestCase):
         self.assertIn("STALE", body)
         self.assertIn("fresh", body)
 
+    def test_node_endpoint_returns_related_memories(self):
+        # Round 24: symbol-grounded veteran Q&A on the node page
+        from _builder.memory_store import MemoryStore
+        store = MemoryStore(self.graph_dir)
+        store.add("what does a do", "it calls b — beware reentrancy",
+                  category="bdev", author="alice", no_merge=True,
+                  symbols=["a"])
+        status, data = self._request_json("/api/node/a")
+        self.assertEqual(status, 200)
+        self.assertIn("related_memories", data)
+        # shared class fixture: other tests may ground more memories
+        # to "a" — assert ours is present and every hit is grounded
+        self.assertTrue(any(m["question"] == "what does a do"
+                            for m in data["related_memories"]))
+        for m in data["related_memories"]:
+            self.assertIn("a", m["symbols"])
+        mem = next(m for m in data["related_memories"]
+                   if m["question"] == "what does a do")
+        self.assertIn("reentrancy", mem["answer"])
+
+    def test_memory_search_symbol_filter(self):
+        from _builder.memory_store import MemoryStore
+        store = MemoryStore(self.graph_dir)
+        store.add("how does a work", "via b", category="bdev",
+                  author="alice", no_merge=True, symbols=["a"])
+        status, data = self._request_json(
+            "/api/memory/search?q=work&symbol=a")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(r["question"] == "how does a work"
+                            for r in data["results"]))
+        for r in data["results"]:
+            self.assertEqual(r["symbols"], ["a"])
+        status2, data2 = self._request_json(
+            "/api/memory/search?q=work&symbol=missing_fn")
+        self.assertEqual(data2["results"], [])
+
+    def test_html_contains_symbol_filter(self):
+        status, body = self._request("/")
+        self.assertEqual(status, 200)
+        self.assertIn("memory-symbol-input", body)
+        self.assertIn("Veteran Memories", body)
+
     def test_html_contains_author_filter(self):
         status, body = self._request("/")
         self.assertEqual(status, 200)

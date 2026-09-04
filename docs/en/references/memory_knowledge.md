@@ -58,6 +58,21 @@ python3 scripts/code2database_builder.py search-memory --graph code2db-out/ \
 
 When FTS5 has no token overlap, a token-set similarity fallback still finds near-matches. **CJK-aware**: the unicode61 tokenizer folds each Chinese run into one token, so for queries containing CJK the similarity pass (chars + bigrams) always runs alongside FTS5 and both passes merge by best score — Chinese semantics are never silently dropped.
 
+### Symbol grounding (memory ↔ code)
+
+A memory about a specific function/type can carry the graph symbol names it's about (`--symbol`, repeatable). This grounds experience to code:
+
+- `save-memory ... --symbol nvme_submit_cmd` stores the names in a `symbols` column; merges absorb them into the cluster root, `--correct` re-grounds (pass `--symbol` with the correction).
+- `search-memory --symbol nvme_submit_cmd` filters by exact symbol (case-insensitive); MCP `code2database_memory_search` takes a `symbol` argument.
+- The web UI shows symbol-grounded Q&A ("Veteran Memories") on the symbol's node page — a newcomer reading the code sees its pitfalls in place.
+- `MemoryStore.entries_for_symbol(name)` is the programmatic view (cluster-deduped, weight-ranked).
+
+```bash
+python3 scripts/code2database_builder.py save-memory --graph code2db-out/ \
+  --question "nvme submit 有什么坑?" --answer "doorbell 写错寄存器会 hang" \
+  --category bdev/nvme/pcie --author alice --symbol nvme_submit_cmd
+```
+
 ### Correction (correct-first save)
 
 When a stored answer turns out to be WRONG, re-saving the corrected text would create a duplicate variant (and the merge path keeps the higher-weight — i.e. still wrong — answer on top). `--correct` finds the most similar active entry and reshapes it in place, preserving the old answer in the version history with corrector attribution:

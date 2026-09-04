@@ -537,8 +537,12 @@ python3 scripts/code2database_builder.py save-memory \
   --graph code2db-out/ \
   --question "..." --answer "..." \
   --tags tag1,tag2 \
+  [--symbol nvme_submit_cmd]... \
   [--yes]
 ```
+
+`--symbol`（可重复）把记忆锚定到代码符号：Web UI 会在该符号的节点页
+展示这条问答，`search-memory --symbol` 可按符号过滤。
 
 ### `search-memory`
 
@@ -549,6 +553,7 @@ python3 scripts/code2database_builder.py search-memory \
   --graph code2db-out/ \
   --query "..." \
   [--tags tag1,tag2] \
+  [--symbol nvme_submit_cmd] \
   [--limit N]
 ```
 

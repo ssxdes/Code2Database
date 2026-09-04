@@ -67,8 +67,8 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP serve
 | `build` | Scan + build graph | — |
 | `update` | Incremental re-scan | — |
 | `session-init` | One-shot session context: brief + memory digest + graph (+staleness check) + known-unknowns (alias: `init`) | Memory+Knowledge |
-| `save-memory` | Save Q&A to memory, `--category bdev/nvme/pcie` `--author` (alias: `save`) | Memory |
-| `search-memory` | Search memory: FTS5 + `--category/--tags/--author` filters (alias: `recall`) | Memory |
+| `save-memory` | Save Q&A to memory, `--category bdev/nvme/pcie` `--author` `--symbol fn` repeatable — grounds the memory to code (alias: `save`) | Memory |
+| `search-memory` | Search memory: FTS5 + `--category/--tags/--author/--symbol` filters, CJK-aware (alias: `recall`) | Memory |
 | `knowledge-brief` | Render project brief — load at session start (alias: `brief`) | Knowledge |
 | `kb-rebuild-index` | Rebuild FTS5 index from memory.db + brief.json | Memory+Knowledge |
 | `kb-cluster` | Cluster similar items + link principles | Memory+Knowledge |
@@ -104,7 +104,8 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 ## Constraints
 
 - **Session start**: run `session-init` (alias `init`) FIRST — brief (mandatory rules/modes/pitfalls) + memory digest (veteran experience) + graph state with source-freshness warning (rebuild before trusting a STALE graph) + known-unknowns, in one prompt-ready output
-- **Correction protocol**: before answering a project question, `search-memory` first; if an answer is WRONG use `save-memory --correct` (reshapes the most similar entry in place — no duplicate variant); if MISSING use `save-memory --category ... --author ...`; if a query repeatedly misses (known-unknowns in session-init), capture the answer into memory
+- **Correction protocol**: before answering a project question, `search-memory` first; if an answer is WRONG use `save-memory --correct` (reshapes the most similar entry in place — no duplicate variant); if MISSING use `save-memory --category ... --author ... --symbol fn`; if a query repeatedly misses (known-unknowns in session-init), capture the answer into memory
+- **Symbol grounding**: when a memory is about a specific function/type, pass `--symbol <name>` (repeatable) — the web UI shows that Q&A on the symbol's node page, and `search-memory --symbol` / `code2database_memory_search(symbol=)` filter by it. Memories absorb symbols on merge and re-ground on `--correct`
 - Run `kb-rebuild-index` after `build`/`update` or after memory/brief edits
 - Memory is a shared accumulating store (memory.db): save with `--category path/to/topic` + `--author`; govern with `manage-memory --action split/merge/move/categories`
 - Knowledge (brief.json) must stay lean: `brief-validate` warns above 3000 chars; move overflow into memory instead

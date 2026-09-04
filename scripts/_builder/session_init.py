@@ -167,7 +167,9 @@ def render_session_context(ctx: dict) -> str:
                 if e["author"]:
                     meta += f", {e['author']}"
                 cat = f"[{e['category']}] " if e["category"] else ""
-                lines.append(f"{i}. {cat}({meta}) {e['question']}")
+                syms = e.get("symbols") or []
+                sym_note = f" ⟨{', '.join(syms)}⟩" if syms else ""
+                lines.append(f"{i}. {cat}({meta}) {e['question']}{sym_note}")
                 if e["answer"]:
                     lines.append(f"   → {e['answer']}")
         else:

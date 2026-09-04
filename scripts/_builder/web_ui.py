@@ -512,7 +512,7 @@ class GraphCache:
                 "missing": False}
 
     def memory_search(self, query: str, top: int = 10,
-                      author: str = "") -> Dict:
+                      author: str = "", symbol: str = "") -> Dict:
         """Search the shared memory store (veteran Q&A).
 
         Empty query returns the weight-ranked digest — what a newcomer
@@ -524,7 +524,11 @@ class GraphCache:
                                            "memory.db")):
             return {"results": [], "stats": {}}
         store = MemoryStore(self.graph_dir, read_only=True)
-        if query and query.strip():
+        if symbol:
+            # symbol grounding: exact match against the symbols column
+            results = store.search(query or symbol, top_n=top,
+                                   author=author or None, symbol=symbol)
+        elif query and query.strip():
             results = store.search(query, top_n=top,
                                    author=author or None)
         else:
@@ -534,6 +538,28 @@ class GraphCache:
         except Exception:
             stats = {}
         return {"results": results, "stats": stats}
+
+    def memories_for_node(self, node: Dict) -> list:
+        """Veteran Q&A grounded to this node's symbol (top 3).
+
+        The "pitfalls of this function" view: memories whose symbols
+        list contains the node name, ranked by weight. Read-only,
+        degrades to [] when no store/column exists.
+        """
+        from _builder.memory_store import MemoryStore
+        name = (node or {}).get("name") or ""
+        if not name:
+            return []
+        if not os.path.exists(os.path.join(self.graph_dir, "memory",
+                                           "memory.db")):
+            return []
+        try:
+            store = MemoryStore(self.graph_dir, read_only=True)
+            return store.entries_for_symbol(name, top=3)
+        except Exception:
+            logging.getLogger(__name__).debug("silent exception",
+                                              exc_info=True)
+            return []
 
     def memory_lineage(self) -> Dict:
         """The memory governance lineage graph (split/merge/variant)."""
@@ -668,6 +694,12 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 node_id = urllib.parse.unquote(path[len("/api/node/"):])
                 node = self.cache.get_node(node_id)
                 if node:
+                    # Round 24: veteran Q&A grounded to this symbol
+                    try:
+                        node["related_memories"] = \
+                            self.cache.memories_for_node(node)
+                    except Exception:
+                        node["related_memories"] = []
                     self._send_json(200, node)
                 else:
                     self._send_json(404, {"error": "node not found"})
@@ -787,6 +819,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
             if path == "/api/memory/search":
                 q = query.get("q", [""])[0]
                 author = query.get("author", [""])[0]
+                symbol = query.get("symbol", [""])[0]
                 try:
                     top = int(query.get("top", ["10"])[0])
                 except ValueError:
@@ -794,7 +827,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 top = max(1, min(top, 50))
                 try:
                     self._send_json(200, self.cache.memory_search(
-                        q, top, author))
+                        q, top, author, symbol))
                 except Exception as exc:
                     logging.getLogger(__name__).warning(
                         "memory search failed", exc_info=True)
@@ -1146,6 +1179,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
     <h2>Memory — Veteran Q&amp;A</h2>
     <div id="memory-search-row">
       <input id="memory-search-input" placeholder="Search Q&A (empty = top by weight)" aria-label="Search memory" />
+      <input id="memory-symbol-input" placeholder="symbol (e.g. nvme_submit_cmd)" aria-label="Filter by symbol" style="max-width:180px" />
       <select id="memory-author-select" aria-label="Filter by author">
         <option value="">All authors</option>
       </select>
@@ -1499,6 +1533,20 @@ async function loadNodeDetails(nodeId) {
       });
       html += '</div>';
     }
+    // Round 24: veteran Q&A grounded to this symbol (memory ↔ code)
+    if (node.related_memories && node.related_memories.length > 0) {
+      html += '<div class="call-list"><div class="call-list-title">Veteran Memories (' + node.related_memories.length + ')</div>';
+      node.related_memories.forEach(m => {
+        const meta = [m.author, 'w=' + m.weight, m.category]
+          .filter(Boolean).join(' · ');
+        html += '<div class="call-item" style="flex-direction:column;align-items:flex-start;gap:2px">' +
+          '<span class="call-name">' + escapeHtml(m.question) + '</span>' +
+          '<span style="font-size:11px;color:#9ca3af">' + escapeHtml(m.answer.substring(0,160)) + '</span>' +
+          (meta ? '<span style="font-size:10px;color:#6b7280">' + escapeHtml(meta) + '</span>' : '') +
+          '</div>';
+      });
+      html += '</div>';
+    }
     // Action buttons
     html += '<div class="action-btns">' +
       '<button class="action-btn" onclick="loadCode(' + jsAttr(nodeId) + ')">View Code</button>' +
@@ -1711,6 +1759,7 @@ function renderMemoryResults(data) {
     parts.push('w=' + r.weight);
     if (r.access_count) parts.push(r.access_count + ' reads');
     if (r.variant_count) parts.push('+' + r.variant_count + ' variants');
+    if (r.symbols && r.symbols.length) parts.push('⟨' + r.symbols.join(', ') + '⟩');
     meta.textContent = parts.join(' · ');
     item.appendChild(q); item.appendChild(a); item.appendChild(meta);
     resEl.appendChild(item);
@@ -1720,8 +1769,10 @@ function renderMemoryResults(data) {
 async function searchMemory() {
   const q = document.getElementById('memory-search-input').value;
   const author = document.getElementById('memory-author-select').value;
+  const symbol = document.getElementById('memory-symbol-input').value;
   let url = '/api/memory/search?q=' + encodeURIComponent(q) + '&top=20';
   if (author) url += '&author=' + encodeURIComponent(author);
+  if (symbol) url += '&symbol=' + encodeURIComponent(symbol);
   try {
     const resp = await fetch(url);
     renderMemoryResults(await resp.json());

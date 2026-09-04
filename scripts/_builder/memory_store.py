@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS memories (
     node_ids TEXT DEFAULT '[]',
     chains TEXT DEFAULT '[]',
     knowledge_refs TEXT DEFAULT '[]',
+    symbols TEXT DEFAULT '[]',
     author TEXT DEFAULT '',
     root_id INTEGER DEFAULT 0,
     merged_into INTEGER DEFAULT 0,
@@ -228,6 +229,15 @@ class MemoryStore:
             conn = self._connect()
             try:
                 conn.executescript(_SCHEMA)
+                # Migration: pre-Round-24 stores lack the symbols
+                # column (memory↔symbol grounding). ALTER is cheap and
+                # idempotent-guarded via table_info.
+                cols = {r[1] for r in
+                        conn.execute("PRAGMA table_info(memories)")}
+                if "symbols" not in cols:
+                    conn.execute(
+                        "ALTER TABLE memories "
+                        "ADD COLUMN symbols TEXT DEFAULT '[]'")
                 conn.execute(f"PRAGMA user_version = {MEMORY_SCHEMA_VERSION}")
                 conn.commit()
             finally:
@@ -237,18 +247,25 @@ class MemoryStore:
     # Row <-> dict conversion
     # ------------------------------------------------------------------
 
-    _JSON_COLUMNS = ("tags", "node_ids", "chains", "knowledge_refs")
+    _JSON_COLUMNS = ("tags", "node_ids", "chains", "knowledge_refs",
+                     "symbols")
 
     @staticmethod
     def _row_to_dict(row: sqlite3.Row) -> dict:
         d = dict(row)
         for col in MemoryStore._JSON_COLUMNS:
             val = d.get(col, "[]")
-            if isinstance(val, str):
+            if val is None:
+                # pre-Round-24 read-only DBs lack the symbols column —
+                # every JSON list column degrades to []
+                d[col] = []
+            elif isinstance(val, str):
                 try:
                     d[col] = json.loads(val)
                 except (json.JSONDecodeError, TypeError):
                     d[col] = []
+            elif not isinstance(val, list):
+                d[col] = []
         if isinstance(d.get("versions_json"), str):
             try:
                 d["versions"] = json.loads(d["versions_json"])
@@ -406,19 +423,25 @@ class MemoryStore:
     def add(self, question: str, answer: str = "", tags: list = None,
             node_ids: list = None, chains: list = None,
             category: str = None, author: str = "",
-            no_merge: bool = False) -> int:
+            no_merge: bool = False, symbols: list = None) -> int:
         """Add a memory entry. Returns the new entry id.
 
         Similarity merge: if an existing active memory's question is
         >= MERGE_SIMILARITY_THRESHOLD similar, the new entry is stored
         as a variant (root_id points at the cluster root) and the root
-        absorbs tags/node_ids; a strictly stronger answer replaces the
-        root's (with a version record) — same semantics as the old
-        JSON root/leaf merge.
+        absorbs tags/node_ids/symbols; a strictly stronger answer
+        replaces the root's (with a version record) — same semantics
+        as the old JSON root/leaf merge.
+
+        symbols: graph symbol names this experience is about (e.g.
+        ["nvme_submit_cmd"]) — grounds memories to code so the UI can
+        show veteran Q&A on the symbol's page.
         """
         tags = sorted(set(tags or []))
         node_ids = list(node_ids or [])
         chains = list(chains or [])
+        symbols = sorted({str(s).strip() for s in (symbols or [])
+                          if str(s).strip()})
         now = datetime.now().isoformat()
 
         with _memory_lock(self.mem_dir):
@@ -439,21 +462,23 @@ class MemoryStore:
 
                 cur = conn.execute(
                     "INSERT INTO memories (question, answer, category_id, "
-                    "status, tags, node_ids, chains, knowledge_refs, author, "
+                    "status, tags, node_ids, chains, knowledge_refs, "
+                    "symbols, author, "
                     "root_id, merged_count, access_count, weight, boost, "
                     "versions_json, created, last_accessed, validated_at) "
-                    "VALUES (?, ?, ?, 'active', ?, ?, ?, '[]', ?, ?, 0, 0, "
-                    "?, 0.0, '[]', ?, ?, ?)",
+                    "VALUES (?, ?, ?, 'active', ?, ?, ?, '[]', ?, ?, "
+                    "?, 0, 0, ?, 0.0, '[]', ?, ?, ?)",
                     (question, answer, cat_id,
                      json.dumps(tags, ensure_ascii=False),
                      json.dumps(node_ids, ensure_ascii=False),
                      json.dumps(chains, ensure_ascii=False),
+                     json.dumps(symbols, ensure_ascii=False),
                      author, root_id, entry["weight"], now, now, now))
                 new_id = cur.lastrowid
 
                 if root_id:
                     self._merge_into_root(conn, root_id, new_id, entry,
-                                          tags, node_ids, chains)
+                                          tags, node_ids, chains, symbols)
                     print(f"Merged with root #{root_id} as variant #{new_id}")
                 else:
                     conn.execute(
@@ -505,7 +530,7 @@ class MemoryStore:
 
     def _merge_into_root(self, conn: sqlite3.Connection, root_id: int,
                          variant_id: int, variant: dict, tags: list,
-                         node_ids: list, chains: list):
+                         node_ids: list, chains: list, symbols: list = None):
         root = self._get_row(conn, root_id)
         if root is None or root["status"] != "active":
             return
@@ -518,6 +543,8 @@ class MemoryStore:
         new_tags = sorted(set(root["tags_list"]) | set(tags))
         new_nodes = sorted(set(root["node_ids_list"]) | set(node_ids))
         new_chains = list(root["chains_list"]) + list(chains)
+        new_symbols = sorted(set(root.get("symbols_list") or []) |
+                             set(symbols or []))
 
         # Stronger answer replaces the root's (weight comparison, not
         # "any non-empty answer wins").
@@ -536,12 +563,13 @@ class MemoryStore:
         new_weight = round(self._compute_weight(merged_entry), 4)
         conn.execute(
             "UPDATE memories SET answer = ?, tags = ?, node_ids = ?, "
-            "chains = ?, merged_count = ?, weight = ?, versions_json = ? "
-            "WHERE id = ?",
+            "chains = ?, symbols = ?, merged_count = ?, weight = ?, "
+            "versions_json = ? WHERE id = ?",
             (answer,
              json.dumps(new_tags, ensure_ascii=False),
              json.dumps(new_nodes, ensure_ascii=False),
              json.dumps(new_chains, ensure_ascii=False),
+             json.dumps(new_symbols, ensure_ascii=False),
              root["merged_count"] + 1, new_weight,
              json.dumps(root_versions, ensure_ascii=False), root_id))
 
@@ -551,7 +579,7 @@ class MemoryStore:
         if row is None:
             return None
         d = dict(row)
-        for col in ("tags", "node_ids", "chains"):
+        for col in ("tags", "node_ids", "chains", "symbols"):
             try:
                 d[col + "_list"] = json.loads(d.get(col) or "[]")
             except (json.JSONDecodeError, TypeError):
@@ -565,7 +593,8 @@ class MemoryStore:
     def search(self, query: str, top_n: int = 10,
                category: str = None, tags: List[str] = None,
                author: str = None, include_experience: bool = False,
-               min_weight: float = 0.0) -> List[dict]:
+               min_weight: float = 0.0,
+               symbol: str = None) -> List[dict]:
         """Search memories via FTS5 BM25 × weight, with filters.
 
         Results are grouped by similarity cluster (root_id): the
@@ -647,6 +676,13 @@ class MemoryStore:
                     rtags = []
                 for tag in rtags:
                     e_tokens |= _simple_tokenize(tag)
+                try:
+                    rsyms = json.loads(r["symbols"] or "[]") \
+                        if "symbols" in r.keys() else []
+                except (json.JSONDecodeError, TypeError):
+                    rsyms = []
+                for sym in rsyms:
+                    e_tokens |= _simple_tokenize(sym)
                 sim = _similarity_score(q_tokens, e_tokens)
                 if sim > 0:
                     combined = sim * (0.5 + 0.5 * min(r["weight"] / 2.0, 1.0))
@@ -666,6 +702,15 @@ class MemoryStore:
             scored = [
                 (s, e) for s, e in scored
                 if wanted.issubset({t.lower() for t in e.get("tags", [])})
+            ]
+
+        # --- symbol post-filter (exact, case-insensitive) ---
+        if symbol:
+            wanted_sym = symbol.strip().lower()
+            scored = [
+                (s, e) for s, e in scored
+                if wanted_sym in {str(x).lower()
+                                  for x in e.get("symbols") or []}
             ]
 
         scored.sort(key=lambda x: -x[0])
@@ -692,6 +737,7 @@ class MemoryStore:
                 "question": entry["question"],
                 "answer": entry.get("answer", ""),
                 "tags": entry.get("tags", []),
+                "symbols": entry.get("symbols") or [],
                 "category": cat_paths.get(entry.get("category_id"), ""),
                 "author": entry.get("author", ""),
                 "status": entry.get("status", "active"),
@@ -719,6 +765,67 @@ class MemoryStore:
                 pass  # counter bump is best-effort
 
         return results
+
+    def entries_for_symbol(self, symbol: str, top: int = 3) -> List[dict]:
+        """Active memories grounded to a graph symbol, by weight.
+
+        The symbol-page view of veteran experience: what the UI shows
+        next to a function so a newcomer sees its pitfalls while
+        reading the code. Pure read; degrades to [] when the column
+        is absent (pre-Round-24 read-only DBs).
+        """
+        if not symbol or not symbol.strip():
+            return []
+        wanted = symbol.strip().lower()
+        conn = self._connect()
+        try:
+            if "symbols" in {r[1] for r in
+                             conn.execute("PRAGMA table_info(memories)")}:
+                rows = conn.execute(
+                    "SELECT id, question, answer, author, weight, "
+                    "category_id, symbols, root_id FROM memories "
+                    "WHERE status = 'active' AND symbols LIKE ? "
+                    "ORDER BY weight DESC LIMIT ?",
+                    (f'%"{symbol.strip()}"%', top * 5)).fetchall()
+            else:
+                rows = []
+        finally:
+            conn.close()
+        cat_paths = self._category_paths()
+        # group by cluster root (like search): a variant and its root
+        # may both carry the symbol — return the root once
+        out = []
+        seen_roots = set()
+        for r in rows:
+            try:
+                syms = json.loads(r["symbols"] or "[]")
+            except (json.JSONDecodeError, TypeError):
+                syms = []
+            if wanted not in {str(x).lower() for x in syms}:
+                continue  # LIKE over-matched (e.g. substring of another)
+            entry = {
+                "id": r["id"],
+                "root_id": r["root_id"] or r["id"],
+                "question": r["question"],
+                "answer": (r["answer"] or "")[:300],
+                "author": r["author"] or "",
+                "weight": round(r["weight"], 2),
+                "category": cat_paths.get(r["category_id"], ""),
+                "symbols": syms,
+                "variant_count": 0,
+            }
+            root = entry["root_id"]
+            if root in seen_roots:
+                for existing in out:
+                    if existing["root_id"] == root:
+                        existing["variant_count"] += 1
+                        break
+                continue
+            seen_roots.add(root)
+            out.append(entry)
+            if len(out) >= top:
+                break
+        return out
 
     def _category_paths(self) -> Dict[int, str]:
         conn = self._connect()
@@ -791,8 +898,14 @@ class MemoryStore:
                 conn.close()
         print(f"Corrected #{mem_id}.{field}")
 
-    def reshape(self, root_id: int, answer: str, corrected_by: str = ""):
-        """Replace a root memory's answer with a stronger one."""
+    def reshape(self, root_id: int, answer: str, corrected_by: str = "",
+                symbols: list = None):
+        """Replace a root memory's answer with a stronger one.
+
+        symbols: when given (including []), also replace the entry's
+        symbol list — a correction may re-ground the memory to the
+        right function. None leaves symbols untouched.
+        """
         with _memory_lock(self.mem_dir):
             conn = self._connect()
             try:
@@ -813,11 +926,22 @@ class MemoryStore:
                 updated["merged_count"] = entry["merged_count"]
                 updated["reshaped_count"] = entry.get("reshaped_count", 0) + 1
                 new_weight = round(self._compute_weight(updated), 4)
-                conn.execute(
-                    "UPDATE memories SET answer = ?, reshaped_count = ?, "
-                    "weight = ?, versions_json = ? WHERE id = ?",
-                    (answer, updated["reshaped_count"], new_weight,
-                     json.dumps(versions, ensure_ascii=False), root_id))
+                if symbols is None:
+                    conn.execute(
+                        "UPDATE memories SET answer = ?, reshaped_count = ?, "
+                        "weight = ?, versions_json = ? WHERE id = ?",
+                        (answer, updated["reshaped_count"], new_weight,
+                         json.dumps(versions, ensure_ascii=False), root_id))
+                else:
+                    norm = sorted({str(s).strip() for s in symbols
+                                   if str(s).strip()})
+                    conn.execute(
+                        "UPDATE memories SET answer = ?, reshaped_count = ?, "
+                        "weight = ?, symbols = ?, versions_json = ? "
+                        "WHERE id = ?",
+                        (answer, updated["reshaped_count"], new_weight,
+                         json.dumps(norm, ensure_ascii=False),
+                         json.dumps(versions, ensure_ascii=False), root_id))
                 conn.commit()
             finally:
                 conn.close()
@@ -851,7 +975,7 @@ class MemoryStore:
         print(f"Promoted #{mem_id}")
 
     def correct_similar(self, question: str, answer: str,
-                        author: str = "") -> dict:
+                        author: str = "", symbols: list = None) -> dict:
         """Correct-first save: reshape the best match, don't add a variant.
 
         The correction half of the correction protocol: when the answer
@@ -872,11 +996,12 @@ class MemoryStore:
             finally:
                 conn.close()
         if root_id:
-            self.reshape(root_id, answer, corrected_by=author)
+            self.reshape(root_id, answer, corrected_by=author,
+                         symbols=symbols)
             return {"action": "corrected", "id": root_id,
                     "score": round(score, 4),
                     "matched_question": matched_q}
-        new_id = self.add(question, answer, author=author)
+        new_id = self.add(question, answer, author=author, symbols=symbols)
         return {"action": "created", "id": new_id, "score": 0.0,
                 "matched_question": None}
 
@@ -924,14 +1049,17 @@ class MemoryStore:
                     cur = conn.execute(
                         "INSERT INTO memories (question, answer, category_id, "
                         "status, tags, node_ids, chains, knowledge_refs, "
-                        "author, root_id, split_from, weight, created, "
-                        "last_accessed, validated_at) VALUES "
-                        "(?, ?, ?, 'active', ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)",
+                        "symbols, author, root_id, split_from, weight, "
+                        "created, last_accessed, validated_at) VALUES "
+                        "(?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, 0, ?, ?, "
+                        "?, ?, ?)",
                         (q, part.get("answer", ""), cat_id,
                          json.dumps(sorted(set(part_tags)),
                                     ensure_ascii=False),
                          parent["node_ids"], parent["chains"],
-                         parent["knowledge_refs"], parent["author"],
+                         parent["knowledge_refs"],
+                         parent.get("symbols") or "[]",
+                         parent["author"],
                          mem_id, child["weight"], now, now, now))
                     cid = cur.lastrowid
                     conn.execute(
@@ -1396,6 +1524,7 @@ class MemoryStore:
                 "weight": round(e.get("weight", 1.0), 2),
                 "access_count": e.get("access_count", 0),
                 "tags": e.get("tags", [])[:5],
+                "symbols": (e.get("symbols") or [])[:5],
             })
         return entries
 

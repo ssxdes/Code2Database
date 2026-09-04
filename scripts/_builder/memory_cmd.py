@@ -46,7 +46,8 @@ def cmd_save_memory(args):
     if getattr(args, "correct", False):
         result = store.correct_similar(
             question=question, answer=answer,
-            author=getattr(args, "author", ""))
+            author=getattr(args, "author", ""),
+            symbols=getattr(args, "symbol", None))
         if result["action"] == "corrected":
             print(f"Corrected memory #{result['id']} "
                   f"(was: {result['matched_question']!r}, "
@@ -67,10 +68,13 @@ def cmd_save_memory(args):
         category=getattr(args, "category", "") or None,
         author=getattr(args, "author", ""),
         no_merge=(args.no_merge is True),
+        symbols=getattr(args, "symbol", None),
     )
     category = getattr(args, "category", "") or "uncategorized"
+    syms = getattr(args, "symbol", None) or []
     print(f"Saved memory #{entry_id} (category: {category}, "
-          f"{len(node_ids)} nodes tracked)")
+          f"{len(node_ids)} nodes tracked"
+          + (f", symbols: {', '.join(syms)}" if syms else "") + ")")
 
 
 def cmd_search_memory(args):
@@ -88,6 +92,7 @@ def cmd_search_memory(args):
         tags=args.tags.split(",") if getattr(args, "tags", "") else None,
         author=getattr(args, "author", "") or None,
         include_experience=bool(getattr(args, "include_experience", False)),
+        symbol=getattr(args, "symbol", "") or None,
     )
 
     if not results:

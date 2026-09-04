@@ -991,11 +991,11 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `rollback-db-transaction` | Roll back a write-back transaction |
 | `runtime-guards` | Detect runtime guard patterns in path conditions |
 | `sarif-export` | Export analysis results to SARIF 2.1.0 format for CI/IDE |
-| `save-memory` | Save Q&A memory with call chains |
+| `save-memory` | Save Q&A memory with call chains; `--symbol` (repeatable) grounds it to graph symbols |
 | `scan` | Scan source files for invocation graph extraction |
 | `scan-rpc` | Scan source for RPC client calls (HTTP/gRPC) + create stub edges |
 | `search` | Search nodes by keywords |
-| `search-memory` | Search memory for similar questions |
+| `search-memory` | Search memory for similar questions; `--symbol` filters by grounded symbol |
 | `semantic-search` | Neural semantic search: FTS5 BM25 + neural embedding + RRF fusion |
 | `semantic-status` | Check if semantic update is recommended |
 | `serve` | Start MCP server for LLM agent queries (stdio transport) |

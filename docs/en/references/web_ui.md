@@ -16,7 +16,7 @@ python3 scripts/code2database_builder.py web-ui --graph <dir> [--port 8765]
 | `/api/graph/summary` | GET | Node/edge/community counts + source-freshness (staleness badge) |
 | `/api/initial-view` | GET | Top communities' representative nodes + inter-community edges |
 | `/api/neighbors/<id>?depth=<n>` | GET | BFS neighborhood of a node |
-| `/api/node/<id>` | GET | Single node details |
+| `/api/node/<id>` | GET | Single node details + `related_memories` (symbol-grounded veteran Q&A) |
 | `/api/search?q=<query>` | GET | FTS5-powered full-text search |
 | `/api/search-nodes?q=<query>` | GET | Search with pre-loaded neighbor edges |
 | `/api/path?from=<id>&to=<id>` | GET | Shortest path between two nodes |

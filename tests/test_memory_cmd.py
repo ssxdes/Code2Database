@@ -158,6 +158,32 @@ class TestSaveMemory(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["answer"], "blue")
 
+    def test_save_with_symbols(self):
+        _, out, _ = _run(cmd_save_memory, _ns(
+            graph=self.graph_dir, question="nvme submit flow",
+            answer="doorbell", chains="", tags="", node_ids="",
+            category="", author="", no_merge=True,
+            symbol=["nvme_submit_cmd", "spdk_nvme_q"]))
+        self.assertIn("symbols: nvme_submit_cmd, spdk_nvme_q", out)
+        rows = _db_rows(self.graph_dir)
+        self.assertEqual(json.loads(rows[0]["symbols"]),
+                         ["nvme_submit_cmd", "spdk_nvme_q"])
+
+    def test_save_correct_with_symbols_regrounds(self):
+        _run(cmd_save_memory, _ns(
+            graph=self.graph_dir, question="how does bdev register",
+            answer="wrong", chains="", tags="", node_ids="",
+            category="", author="", no_merge=False, symbol=["wrong_fn"]))
+        _, out, _ = _run(cmd_save_memory, _ns(
+            graph=self.graph_dir, question="how does bdev register",
+            answer="right", chains="", tags="", node_ids="",
+            category="", author="me", no_merge=False, correct=True,
+            symbol=["bdev_register"]))
+        self.assertIn("Corrected memory #1", out)
+        rows = _db_rows(self.graph_dir)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(json.loads(rows[0]["symbols"]), ["bdev_register"])
+
 
 class TestSearchMemory(unittest.TestCase):
     def setUp(self):
@@ -215,6 +241,26 @@ class TestSearchMemory(unittest.TestCase):
             category="", tags="", author="",
             include_experience=False))
         self.assertIn("No similar memories found.", out)
+
+    def test_search_symbol_filter(self):
+        _run(cmd_save_memory, _ns(
+            graph=self.graph_dir, question="poller runs how often",
+            answer="each reactor iteration", chains="", tags="",
+            node_ids="", category="", author="", no_merge=True,
+            symbol=["spdk_reactor_poll"]))
+        _, out, _ = _run(cmd_search_memory, _ns(
+            graph=self.graph_dir, query="how", top=5,
+            category="", tags="", author="",
+            include_experience=False, symbol="SPDK_REACTOR_POLL"))
+        results = json.loads(out)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["question"], "poller runs how often")
+        # symbol that grounds nothing filters everything out
+        _, out2, _ = _run(cmd_search_memory, _ns(
+            graph=self.graph_dir, query="how", top=5,
+            category="", tags="", author="",
+            include_experience=False, symbol="nope_fn"))
+        self.assertIn("No similar memories found.", out2)
 
 
 class TestValidateMemory(unittest.TestCase):

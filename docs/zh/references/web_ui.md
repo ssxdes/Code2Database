@@ -16,7 +16,7 @@ python3 scripts/code2database_builder.py web-ui --graph <dir> [--port 8765]
 | `/api/graph/summary` | GET | 节点/边/社区计数 + 源码新鲜度（过期徽标） |
 | `/api/initial-view` | GET | 顶级社区代表节点 + 社区间边 |
 | `/api/neighbors/<id>?depth=<n>` | GET | 节点的 BFS 邻域 |
-| `/api/node/<id>` | GET | 单节点详情 |
+| `/api/node/<id>` | GET | 单节点详情 + `related_memories`（按符号关联的前辈问答） |
 | `/api/search?q=<query>` | GET | FTS5 全文搜索 |
 | `/api/search-nodes?q=<query>` | GET | 搜索 + 预加载邻居边 |
 | `/api/path?from=<id>&to=<id>` | GET | 两节点间最短路径 |

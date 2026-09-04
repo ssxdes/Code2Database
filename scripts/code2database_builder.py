@@ -1008,6 +1008,8 @@ def main():
     p_save_mem.add_argument("--node-ids", default="", help="Comma-separated node IDs this memory depends on")
     p_save_mem.add_argument("--category", default="", help="Category path (e.g. bdev/nvme/pcie; auto-created)")
     p_save_mem.add_argument("--author", default="", help="Author attribution for shared memory stores")
+    p_save_mem.add_argument("--symbol", action="append", default=None, metavar="SYM",
+                            help="Graph symbol name this memory is about (repeatable) — grounds the memory to code; the web UI shows it on the symbol's page")
     p_save_mem.add_argument("--no-merge", action="store_true", help="Don't merge with similar existing entry")
     p_save_mem.add_argument("--correct", action="store_true",
                             help="Correct-first: reshape the most similar existing entry instead of creating a new variant (use when a previous answer was WRONG)")
@@ -1020,6 +1022,7 @@ def main():
     p_search_mem.add_argument("--category", default="", help="Category prefix filter (includes subcategories)")
     p_search_mem.add_argument("--tags", default="", help="Comma-separated tags (ALL must match)")
     p_search_mem.add_argument("--author", default="", help="Filter by author")
+    p_search_mem.add_argument("--symbol", default="", help="Filter by grounded symbol name (exact, case-insensitive)")
     p_search_mem.add_argument("--include-experience", action="store_true", help="Include archived experience entries")
 
     # validate-memory

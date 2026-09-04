@@ -315,3 +315,52 @@ class TestMcpSessionInitTool(unittest.TestCase):
             store.add(f"q{i}", f"a{i}", category="cat", no_merge=True)
         result = _tool_session_init({"top": 1}, graph_dir)
         self.assertEqual(len(result["memory"]["digest"]), 1)
+
+    def test_session_init_digest_shows_symbols(self):
+        """Symbol-grounded digest entries render with ⟨symbols⟩."""
+        from _builder.mcp_server import _tool_session_init
+        from _builder.memory_store import MemoryStore
+        graph_dir = self._make_graph_dir()
+        store = MemoryStore(graph_dir)
+        store.add("how to submit", "doorbell", category="nvme",
+                  no_merge=True, symbols=["nvme_submit_cmd"])
+        result = _tool_session_init({}, graph_dir)
+        self.assertIn("⟨nvme_submit_cmd⟩", result["rendered"])
+
+
+class TestMcpMemorySearchSymbol(unittest.TestCase):
+    """Round 24: memory_search symbol filter (memory↔code grounding)."""
+
+    def test_symbol_filter_routes_to_store(self):
+        from _builder.mcp_server import _tool_memory_search
+        from _builder.memory_store import MemoryStore
+        import tempfile
+        import shutil
+        tmp = tempfile.mkdtemp(prefix="c2d_mcp_sym_")
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        store = MemoryStore(tmp)
+        store.add("how does submit work", "doorbell", no_merge=True,
+                  symbols=["nvme_submit_cmd"])
+        store.add("unrelated thing", "x", no_merge=True)
+        out = _tool_memory_search(
+            {"query": "submit", "symbol": "NVME_SUBMIT_CMD"}, tmp)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["question"], "how does submit work")
+        self.assertEqual(out[0]["symbols"], ["nvme_submit_cmd"])
+
+    def test_symbol_no_match_returns_empty_list(self):
+        from _builder.mcp_server import _tool_memory_search
+        from _builder.memory_store import MemoryStore
+        import tempfile
+        import shutil
+        tmp = tempfile.mkdtemp(prefix="c2d_mcp_sym2_")
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        MemoryStore(tmp).add("q", "a", no_merge=True)
+        out = _tool_memory_search({"query": "q", "symbol": "nope"}, tmp)
+        self.assertEqual(out, [])
+
+    def test_registry_schema_has_symbol_param(self):
+        from _builder.mcp_server import TOOLS
+        props = TOOLS["code2database_memory_search"]["inputSchema"][
+            "properties"]
+        self.assertIn("symbol", props)

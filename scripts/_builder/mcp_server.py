@@ -677,9 +677,24 @@ def _tool_memory_search(args: dict, graph_dir: str) -> list:
 
     Prefers the unified FTS5+BM25 path (kb_paragraphs) when the
     project has code2database.db; falls back to the legacy Jaccard
-    search via MemoryManager otherwise.
+    search via MemoryManager otherwise. A symbol filter bypasses the
+    KB path (kb_paragraphs doesn't carry symbol grounding) and goes
+    straight to the memory store's exact symbol matching.
     """
     query = args.get("query", "")
+    symbol = args.get("symbol", "")
+    if not query and not symbol:
+        return [{"error": "Missing required parameter: query"}]
+    if symbol:
+        try:
+            from _builder.memory_store import MemoryStore
+            store = MemoryStore(graph_dir)
+            return store.search(query or symbol, top_n=int(args.get("top", 5)),
+                                symbol=symbol)
+        except Exception:
+            logging.getLogger(__name__).debug("silent exception",
+                                              exc_info=True)
+            return [{"error": f"symbol search failed for {symbol!r}"}]
     if not query:
         return [{"error": "Missing required parameter: query"}]
     try:
@@ -1623,12 +1638,13 @@ TOOLS = {
         "handler": _tool_knowledge_query,
     },
     "code2database_memory_search": {
-        "description": "Search memory for similar questions. Returns Q&A pairs with relevance scores.",
+        "description": "Search memory for similar questions. Returns Q&A pairs with relevance scores. Optional symbol filter restricts to memories grounded to a specific graph symbol (function/type).",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Search query"},
                 "top": {"type": "integer", "description": "Max results (default 5)"},
+                "symbol": {"type": "string", "description": "Filter by grounded symbol name (exact, case-insensitive)"},
             },
             "required": ["query"],
         },

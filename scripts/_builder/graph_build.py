@@ -5084,11 +5084,77 @@ def build_graph(extraction: dict, profile: dict = None,
     # Phase 29: prune isolated file nodes (file containers with no edges)
     _prune_isolated_file_nodes(G, file_nodes)
 
+    # Phase 30: Go interface dynamic dispatch (INFERRED). The Go
+    # scanner records interface_calls — calls through receivers whose
+    # STATIC type is known (params / `var x T`) — and interface nodes
+    # with their method sets. Resolve against the whole graph: any
+    # type whose method set satisfies the interface's (Go structural
+    # satisfaction) is a dispatch target.
+    try:
+        _dispatch_added = _add_go_interface_dispatch(G)
+        if _dispatch_added:
+            print(f"[build] Go interface dispatch: {_dispatch_added} "
+                  f"INFERRED edge(s)", file=sys.stderr)
+    except Exception as _dispatch_err:
+        print(f"[build] Go interface dispatch skipped: {_dispatch_err}",
+              file=sys.stderr)
+
     _build_elapsed = time.time() - _build_start
     print(f"[build] Graph built in {_build_elapsed:.0f}s ({G.number_of_nodes()} nodes, {G.number_of_edges()} edges)",
           file=sys.stderr)
 
     return G, file_nodes
+
+
+def _add_go_interface_dispatch(G) -> int:
+    """INFERRED DISPATCH edges for Go interface-typed call sites.
+
+    Interface nodes carry node_type='interface' + methods=[...]; the
+    scanner's interface_calls records {iface, method} from receivers
+    with a statically-known type. An edge is emitted to EVERY type
+    implementing the method (structural satisfaction — Go interfaces
+    are implicit), annotated INFERRED with the interface in
+    call_condition so consumers can tell dispatch from direct calls.
+    Returns the number of edges added.
+    """
+    interface_methods = {}   # iface name -> set(methods)
+    methods_by_type = {}     # Type name -> {method: node_id}
+    for nid, nd in G.nodes(data=True):
+        name = nd.get("name", "")
+        if not name:
+            continue
+        if nd.get("node_type") == "interface":
+            methods = set(nd.get("methods") or [])
+            if methods:
+                interface_methods[name] = methods
+        elif "." in name and nd.get("node_type") != "file":
+            tname, mname = name.rsplit(".", 1)
+            methods_by_type.setdefault(tname, {})[mname] = nid
+    if not interface_methods or not methods_by_type:
+        return 0
+    added = 0
+    for nid, nd in G.nodes(data=True):
+        for call in nd.get("interface_calls") or []:
+            iface = call.get("iface", "")
+            method = call.get("method", "")
+            if iface not in interface_methods:
+                continue
+            if method not in interface_methods[iface]:
+                continue
+            for tname, meths in methods_by_type.items():
+                target = meths.get(method)
+                if (target and target != nid
+                        and not G.has_edge(nid, target)):
+                    G.add_edge(
+                        nid, target,
+                        relation="DISPATCH",
+                        call_order=None,
+                        call_condition=f"via {iface} (dynamic dispatch)",
+                        confidence="INFERRED",
+                        confidence_score=0.5,
+                    )
+                    added += 1
+    return added
 
 
 

@@ -147,6 +147,10 @@ def _build_id_registry(functions: list, G, project_name: str) -> dict:
             thread_entry=func.get("thread_entry", False),
             thread_model_inherited=func.get("thread_model_inherited"),
             node_type=func.get("node_type", ""),
+            # Go type-system records: interface method sets + statically
+            # typed interface call sites (feed the dispatch phase).
+            methods=func.get("methods", []),
+            interface_calls=func.get("interface_calls", []),
         )
     return id_registry
 

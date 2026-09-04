@@ -31,8 +31,24 @@ class GoTreeSitterScanner(BaseScanner):
                  source_root: str, domain: str):
         functions = []
         edges = []
+        import_edges = []
+        # iface name -> [method names] declared in THIS file; feeds
+        # receiver-type inference in pass 2 and lands on the interface
+        # node record for the builder's global dispatch resolution.
+        interface_methods = {}
 
         root = tree.root_node
+        # Pass 1: types + imports (type registry must exist before
+        # function bodies are walked for interface-typed receivers).
+        for node in root.children:
+            if node.type == 'type_declaration':
+                self._process_type_decl(node, source_bytes, filepath,
+                                        source_root, domain, functions,
+                                        edges, interface_methods)
+            elif node.type == 'import_declaration':
+                self._process_import(node, source_bytes, filepath,
+                                     source_root, domain, import_edges)
+        # Pass 2: functions/methods.
         for node in root.children:
             if node.type == 'function_declaration':
                 self._process_func(node, source_bytes, filepath, source_root,
@@ -41,7 +57,126 @@ class GoTreeSitterScanner(BaseScanner):
                 self._process_func(node, source_bytes, filepath, source_root,
                                    domain, functions, edges, is_method=True)
 
-        return functions, edges
+        return functions, edges, import_edges
+
+    def _process_type_decl(self, node, source_bytes, filepath, source_root,
+                           domain, functions, edges, interface_methods):
+        """type_declaration: interface/struct nodes + IMPLEMENTS edges
+        for struct embedding (Go's structural inheritance)."""
+        rel_path = os.path.relpath(filepath, source_root)
+        for spec in node.children:
+            if spec.type != 'type_spec':
+                continue
+            name_node = spec.child_by_field_name('name')
+            type_node = spec.child_by_field_name('type')
+            if name_node is None or type_node is None:
+                continue
+            name = self._node_text(name_node, source_bytes)
+            if not name:
+                continue
+            type_id = self._make_func_id(domain, name)
+            if type_node.type == 'interface_type':
+                methods = []
+                for elem in type_node.children:
+                    if elem.type not in ('method_elem', 'method_spec'):
+                        continue
+                    mname = (elem.child_by_field_name('name')
+                             or next((c for c in elem.children
+                                      if c.type == 'field_identifier'), None))
+                    if mname is not None:
+                        methods.append(
+                            self._node_text(mname, source_bytes))
+                interface_methods[name] = methods
+                functions.append({
+                    "id": type_id, "name": name,
+                    "source_file": rel_path,
+                    "line": spec.start_point[0] + 1, "domain": domain,
+                    "labels": [], "is_empty": False,
+                    "api_constraints": "",
+                    "body_text": "",
+                    "signature": (f"interface {name}: "
+                                  + ", ".join(m + "()" for m in methods)),
+                    "params": [], "local_vars": [], "callee_args": [],
+                    "condition_vars": [],
+                    "node_type": "interface",
+                    "methods": methods,
+                    "start_byte": int(spec.start_byte),
+                    "end_byte": int(spec.end_byte),
+                })
+            elif type_node.type == 'struct_type':
+                # Embedded fields (a field_declaration that is only a
+                # type, no name) are Go's structural inheritance.
+                embedded = []
+                fl = next((c for c in type_node.children
+                           if c.type == 'field_declaration_list'), None)
+                for elem in (fl.children if fl is not None else ()):
+                    if elem.type != 'field_declaration':
+                        continue
+                    has_name = any(c.type in ('field_identifier',)
+                                   for c in elem.children)
+                    if has_name:
+                        continue
+                    for c in elem.children:
+                        if c.type in ('type_identifier', 'qualified_type'):
+                            embedded.append(
+                                self._node_text(c, source_bytes))
+                            break
+                functions.append({
+                    "id": type_id, "name": name,
+                    "source_file": rel_path,
+                    "line": spec.start_point[0] + 1, "domain": domain,
+                    "labels": [], "is_empty": False,
+                    "api_constraints": "",
+                    "body_text": "",
+                    "signature": f"struct {name}",
+                    "params": [], "local_vars": [], "callee_args": [],
+                    "condition_vars": [],
+                    "node_type": "struct",
+                    "embedded": embedded,
+                    "start_byte": int(spec.start_byte),
+                    "end_byte": int(spec.end_byte),
+                })
+                for base in embedded:
+                    edges.append({
+                        "source": type_id,
+                        "target": base.lower(),
+                        "relation": "IMPLEMENTS",
+                        "source_file": rel_path,
+                    })
+
+    def _process_import(self, node, source_bytes, filepath, source_root,
+                        domain, import_edges):
+        """import_declaration → IMPORTS edge (package name). Handles both
+        single imports (`import "io"`) and grouped import lists."""
+        rel_path = os.path.relpath(filepath, source_root)
+        source_id = "file_" + domain.replace(".", "_")
+
+        def _emit_spec(spec):
+            path_node = spec.child_by_field_name('path')
+            if path_node is None:
+                return
+            raw = self._node_text(path_node, source_bytes).strip('"')
+            if not raw:
+                return
+            # The package name is conventionally the last path
+            # element unless an alias is given.
+            alias = spec.child_by_field_name('name')
+            pkg = (self._node_text(alias, source_bytes)
+                   if alias is not None else raw.rsplit('/', 1)[-1])
+            import_edges.append({
+                "source": source_id,
+                "target": pkg.lower(),
+                "relation": "IMPORTS",
+                "source_file": rel_path,
+            })
+
+        for child in node.children:
+            if child.type == 'import_spec':
+                _emit_spec(child)
+            elif child.type == 'import_spec_list':
+                for spec in child.children:
+                    if spec.type == 'import_spec':
+                        _emit_spec(spec)
 
     def _process_func(self, node, source_bytes, filepath, source_root,
                       domain, functions, edges, is_method=False):
@@ -105,6 +240,49 @@ class GoTreeSitterScanner(BaseScanner):
                 functions[-1]["goto_jumps"] = goto_jumps_list
             if goto_labels_list:
                 functions[-1]["goto_labels"] = goto_labels_list
+            # Interface-typed receiver inference: params and explicit
+            # `var x T` declarations give the receiver's STATIC type.
+            # The builder resolves the type against the global
+            # interface registry (cross-file) and emits INFERRED
+            # DISPATCH edges to the implementors.
+            typed_vars = {}
+            for p in params_list:
+                if p.get("name") and p.get("type"):
+                    t = str(p["type"]).lstrip('*').strip()
+                    if re.fullmatch(r'[A-Za-z_][\w.]*', t):
+                        typed_vars[p["name"]] = t
+
+            def _collect_var_types(vnode):
+                if vnode.type == 'var_declaration':
+                    for spec in vnode.children:
+                        if spec.type == 'var_spec':
+                            vn = spec.child_by_field_name('name')
+                            vt = spec.child_by_field_name('type')
+                            if vn is not None and vt is not None:
+                                tn = self._node_text(vt, source_bytes)
+                                tn = tn.lstrip('*').strip()
+                                if re.fullmatch(r'[A-Za-z_][\w.]*', tn):
+                                    typed_vars[self._node_text(
+                                        vn, source_bytes)] = tn
+                for c in vnode.children:
+                    _collect_var_types(c)
+            _collect_var_types(body_node)
+
+            interface_calls = []
+            for a in callee_args_list:
+                fc = a.get("full_callee", "")
+                if "." not in fc:
+                    continue
+                recv, method = fc.rsplit(".", 1)
+                if recv in typed_vars:
+                    interface_calls.append({
+                        "line": a.get("line", 0),
+                        "iface": typed_vars[recv],
+                        "method": method,
+                        "receiver": recv,
+                    })
+            if interface_calls:
+                functions[-1]["interface_calls"] = interface_calls
 
     def _detect_go_labels(self, func_name: str, body_text: str) -> list:
         labels = []
@@ -229,6 +407,7 @@ class GoTreeSitterScanner(BaseScanner):
                     # Capture call arguments
                     args_text = self._extract_callee_args(node, source_bytes)
                     args_structured = self._extract_callee_args_structured(node, source_bytes)
+                    full_callee = self._extract_full_callee(node, source_bytes)
 
                     # Check if this is a goroutine launch
                     is_goroutine = (node.parent and node.parent.type == 'go_statement')
@@ -243,6 +422,7 @@ class GoTreeSitterScanner(BaseScanner):
                     callee_args_list.append({
                         "call_order": call_order[0],
                         "callee": callee,
+                        "full_callee": full_callee,
                         "args_snippet": args_text,
                         "args": args_structured,
                         "concurrency_info": concurrency_info,
@@ -374,6 +554,17 @@ class GoTreeSitterScanner(BaseScanner):
         # package.Func or struct.Method or just func
         parts = text.rsplit('.', 1)
         return parts[-1] if parts else text
+
+    def _extract_full_callee(self, call_node, source_bytes: bytes) -> str:
+        """Callee text WITH the receiver/qualifier (w.Write, pkg.Func).
+
+        The edge target keeps the bare method name (existing resolution
+        convention); the full form feeds interface-typed receiver
+        inference and dispatch analysis."""
+        func_node = call_node.child_by_field_name('function')
+        if func_node is None:
+            return ""
+        return self._node_text(func_node, source_bytes)
 
 
 # ---------------------------------------------------------------------------

@@ -5401,12 +5401,15 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
         if u_domain == v_domain:
             domain_edges[u_domain].append(edge_record)
         else:
-            # Skip edges with unresolved targets (no dot in target ID).
-            # These are callee names that couldn't be resolved to any
-            # function in the codebase — they're noise in cross-domain
-            # analysis (e.g., va_copy, dma_sg_size, cpl, register_ioengine).
-            if '.' not in v:
-                continue
+            # NOTE: do NOT filter cross-domain edges by id shape here.
+            # Real scanner node ids never contain dots (_make_func_id
+            # builds domain.replace('.', '_') + '_' + name), so a
+            # historical `'.' not in v` check silently dropped EVERY
+            # cross-domain call edge (70% of a real project's edges).
+            # Both endpoints of a G edge are always nodes (unresolved
+            # callees get auto-created external-domain nodes during
+            # edge processing), and dangling edges are removed by the
+            # membership filter below (all_node_ids) before writing.
             cross_domain_edges.append({
                 **edge_record,
                 "source_domain": u_domain,

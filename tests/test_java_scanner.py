@@ -39,12 +39,13 @@ public class Service {
     int helper(int x) { return x + 1; }
 }
 """)
-        pairs = {(e.get("source"), e.get("target"), e.get("relation"))
+        # Raw scanner edges carry (source, target) without relation —
+        # the builder assigns INVOKES during resolution.
+        pairs = {(e.get("source"), e.get("target"))
                  for e in result["edges"]}
-        self.assertTrue(
-            any(s.endswith("Service.compute") and t.endswith("Service.helper")
-                and r == "INVOKES" for s, t, r in pairs),
-            f"compute -> helper INVOKES edge missing: {pairs}")
+        self.assertIn(
+            ("root_service_compute", "helper"), pairs,
+            f"compute -> helper call edge missing: {pairs}")
 
     def test_methods_are_class_qualified(self):
         result = _scan_java("""\

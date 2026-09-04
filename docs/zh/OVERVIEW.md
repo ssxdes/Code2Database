@@ -526,7 +526,7 @@ scripts/
 │   ├── semantic_edges.py         ← who-allocates、who-frees、unbalanced-alloc-free、who-locks、
 │   │                                add-semantic-edges
 │   ├── logging_utils.py          ← 结构化日志（configure_logging、get_logger）
-│   ├── mcp_server.py             ← MCP 服务器（stdio 传输，82 个工具 (54 base + 28 design-report)：35 code2database_* + 19 cgdb_*）
+│   ├── mcp_server.py             ← MCP 服务器（stdio 传输，83 个工具 (55 base + 28 design-report)：36 code2database_* + 19 cgdb_*）
 │   ├── kb_index.py               ← 统一 KB FTS5+BM25 索引（kb_paragraphs 表，跨 memory+knowledge 查询）
 │   ├── kb_cluster.py             ← KB 聚类（union-find on FTS5 similarity，scope_id/canonical_id/principle_ref）
 │   ├── kb_global.py              ← 跨项目全局 KB（~/.code2database_global_kb/global.db，跨项目复用知识）
@@ -634,7 +634,7 @@ ASM（.s .S .asm）用正则扫描——无需 tree-sitter 语法。
 
 | 组件 | 用途 |
 |------|------|
-| **MCP（Model Context Protocol）stdio 传输** | `serve` 命令通过 JSON-RPC 暴露 82 个工具 (54 base + 28 design-report)（35 个 `code2database_*` + 19 个 `cgdb_*`），带 Content-Length 帧 |
+| **MCP（Model Context Protocol）stdio 传输** | `serve` 命令通过 JSON-RPC 暴露 83 个工具 (55 base + 28 design-report)（36 个 `code2database_*` + 19 个 `cgdb_*`），带 Content-Length 帧 |
 | **分层上下文包** | micro（~200 token） → lite（~500） → standard（~1500） → full——最小化 LLM token 成本 |
 | **懒加载模块导入** | `_builder/__init__.py` 延迟模块加载到首次访问，降低启动时间 |
 
@@ -786,9 +786,9 @@ inotify 等待 → debounce 500ms → 批窗口 1000ms → transaction() {
 
 ### MCP 服务器
 
-`serve` 通过 stdio JSON-RPC 暴露 82 个工具 (54 base + 28 design-report)，带 Content-Length 帧：
+`serve` 通过 stdio JSON-RPC 暴露 83 个工具 (55 base + 28 design-report)，带 Content-Length 帧：
 
-- 35 个 `code2database_*` 工具（load、search、describe、explore、trace、impact、key_paths、concurrency、data_lifecycle、domain、knowledge_query、memory_search、semantic_status、session_init 等）
+- 36 个 `code2database_*` 工具（load、search、describe、explore、trace、impact、key_paths、concurrency、data_lifecycle、domain、knowledge_query、memory_search、semantic_status、session_init、save_memory 等）
 - 19 个 `cgdb_*` 工具（cgdb_search_symbols、cgdb_find_invokers、cgdb_find_invoked、cgdb_get_definition、cgdb_get_function_body、cgdb_get_struct_layout、cgdb_find_type_definition、cgdb_find_ops_impls、cgdb_find_cfg_paths、cgdb_find_data_flow、cgdb_find_aliases、cgdb_find_lock_held_calls、cgdb_check_race_condition、cgdb_find_configs_for、cgdb_find_nodes_under_config、cgdb_index_status、cgdb_time_travel_query、cgdb_list_versions）
 
 MCP 服务器无论哪个子 skill 激活都可访问；子 skill 纯粹是 LLM 上下文经济机制。
@@ -831,7 +831,7 @@ Code2Database 当前能力，按类别组织：
 
 ### 查询与分析
 - 222 个 CLI 命令（3 个子 skill：核心 24、分析 13、运维 23 个 Tier-1）
-- 82 个 MCP (54 base + 28 design-report) 工具（35 code2database_* + 19 cgdb_*）
+- 83 个 MCP (55 base + 28 design-report) 工具（36 code2database_* + 19 cgdb_*）
 - Cypher 子集查询语言（MATCH/WHERE/RETURN）
 - Z3 SMT 路径可行性（启发式回退）
 - 分层上下文包（micro/lite/standard/full）

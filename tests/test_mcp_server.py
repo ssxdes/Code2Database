@@ -364,3 +364,56 @@ class TestMcpMemorySearchSymbol(unittest.TestCase):
         props = TOOLS["code2database_memory_search"]["inputSchema"][
             "properties"]
         self.assertIn("symbol", props)
+
+
+class TestMcpSaveMemory(unittest.TestCase):
+    """Round 24: code2database_save_memory — MCP-side accumulation."""
+
+    def _tmp_graph(self):
+        import tempfile
+        import shutil
+        tmp = tempfile.mkdtemp(prefix="c2d_mcp_save_")
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        return tmp
+
+    def test_registry_contains_save_memory(self):
+        from _builder.mcp_server import TOOLS
+        self.assertIn("code2database_save_memory", TOOLS)
+        spec = TOOLS["code2database_save_memory"]
+        self.assertEqual(spec["inputSchema"]["required"], ["question"])
+        self.assertEqual(spec["handler"].__name__, "_tool_save_memory")
+
+    def test_save_creates_entry(self):
+        from _builder.mcp_server import _tool_save_memory
+        from _builder.memory_store import MemoryStore
+        tmp = self._tmp_graph()
+        out = _tool_save_memory(
+            {"question": "how does nvme submit", "answer": "doorbell",
+             "category": "bdev/nvme", "author": "alice",
+             "tags": "nvme,io", "symbol": "nvme_submit_cmd"}, tmp)
+        self.assertEqual(out["action"], "created")
+        store = MemoryStore(tmp)
+        results = store.search("nvme", symbol="nvme_submit_cmd")
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["author"], "alice")
+        self.assertEqual(results[0]["tags"], ["io", "nvme"])
+
+    def test_correct_reshapes_similar(self):
+        from _builder.mcp_server import _tool_save_memory
+        from _builder.memory_store import MemoryStore
+        tmp = self._tmp_graph()
+        _tool_save_memory(
+            {"question": "how does bdev register", "answer": "wrong"}, tmp)
+        out = _tool_save_memory(
+            {"question": "how does bdev register", "answer": "right",
+             "author": "bob", "correct": True}, tmp)
+        self.assertEqual(out["action"], "corrected")
+        store = MemoryStore(tmp)
+        self.assertEqual(len(store.search("bdev")), 1)
+        self.assertEqual(store.search("bdev")[0]["answer"], "right")
+
+    def test_missing_question_errors(self):
+        from _builder.mcp_server import _tool_save_memory
+        tmp = self._tmp_graph()
+        out = _tool_save_memory({"answer": "orphan"}, tmp)
+        self.assertIn("error", out)

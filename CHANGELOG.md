@@ -17,6 +17,8 @@ Six gaps where the "AI knowledge system" goal had broken links (ROADMAP.md Round
 
 - **Memory↔symbol grounding (G4)** — memories were free-floating text: nothing linked a veteran Q&A to the function it was about, so a newcomer reading code never saw its pitfalls. New `symbols` JSON column on `memories` (auto-migrated via ALTER on open; read-only stores degrade to empty): `save-memory --symbol fn` (repeatable; absorbed into the cluster root on merge, re-grounded by `--correct`), `search-memory --symbol` exact case-insensitive filter (also on `code2database_memory_search` and `/api/memory/search`), `MemoryStore.entries_for_symbol()` (cluster-deduped, weight-ranked), and `/api/node/<id>` now returns `related_memories` — the web UI node panel shows a "Veteran Memories" section and the Memory modal gained a symbol filter input. Session digest entries render with `⟨symbols⟩`.
 
+- **MCP `code2database_save_memory` (G1)** — agents connected via MCP could search veteran Q&A but never add to it: the accumulation half of the memory protocol was CLI-only, so MCP-only sessions learned nothing. New tool (82→83; 36 `code2database_*`): question/answer/category/author/tags/symbol params, `correct=true` takes the correction path (reshape the most similar entry in place). Also fixed the en README badge/counts that had been left two rounds behind (81/53/34 → 83/55/36).
+
 ### Round 23 — ROADMAP follow-ups: architecture UI, correct-first save, memory lineage, multi-user views
 
 All four remaining ROADMAP items, closing the gap analysis from Round 21.

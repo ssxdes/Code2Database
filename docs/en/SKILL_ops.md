@@ -91,7 +91,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 | `doc-mark-stale` | Mark a node's doc as stale (**requires user confirmation**) |
 | `update-node` | LLM-driven incremental node attribute supplement (**requires user confirmation**, non-destructive) |
 | `update-edge` | LLM-driven incremental edge attribute supplement (**requires user confirmation**, non-destructive) |
-| `serve` | MCP server mode (stdio, 82 tools: 35 code2database_* + 19 cgdb_* + 28 design-report) |
+| `serve` | MCP server mode (stdio, 83 tools: 36 code2database_* + 19 cgdb_* + 28 design-report) |
 | `kb-rebuild-index` | Rebuild unified FTS5 index from memory.db + brief.json (run after build/update) |
 | `kb-cluster` | Cluster similar kb items + link principle refs |
 | `kb-audit` | KB audit: counts by kind / stale / low-confidence / citations |
@@ -141,7 +141,7 @@ When you detect a question about **simple browsing, scanning, building, or gener
 - **Doc-code alignment**: `describe-node` (parent skill) surfaces `doc_code_mismatches` — if non-empty, `semantic_desc` may be unreliable; consult `body_text` and consider `doc-mark-stale` until docs are re-extracted
 - **Profile evolution**: `profile-evolve --apply` only applies EXTRACTED-confidence suggestions; INFERRED **require user confirmation**. Run `profile-bind-version` after evolution to bind to git/svn HEAD
 - **Memory management**: `manage-memory` write actions (add/correct/reshape/promote/refine/split/merge/move) and `save-memory` require user confirmation; `brief-update` edits the mandatory-load knowledge brief
-- **MCP server**: `serve` exposes 82 tools (35 `code2database_*` + 19 `cgdb_*` + 28 design-report); all accessible regardless of sub-skill activation
+- **MCP server**: `serve` exposes 83 tools (36 `code2database_*` + 19 `cgdb_*` + 28 design-report); all accessible regardless of sub-skill activation
 - **Do not pre-load** `references/ops_commands.md` — read on demand only when you need detailed syntax for a specific command
 - **Daemon logs** at `~/.code2database/daemon-<project>.log`; daemon state at `<graph_dir>/.daemon_status.json`
 

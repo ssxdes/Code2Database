@@ -27,7 +27,7 @@ Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/
 - Static fn-ptr dispatch array resolution (dispatch_op)
 - LLM context packs (micro/lite/standard/full tiers)
 - Dual knowledge/memory stores — knowledge = lean per-project brief (`knowledge/brief.json`, size-budgeted); memory = shared SQLite accumulating store (`memory/memory.db`, hierarchical categories `bdev/nvme/pcie`, FTS5 BM25 retrieval, split/merge/move governance). `session-init` is the one-shot entry (brief + memory digest + graph state incl. source-freshness warning + known-unknowns); the web UI renders brief, architecture-narrative, veteran Q&A (author-filtered, read-only), and lineage panels; `save-memory --correct` is the correct-first save; memories ground to graph symbols (`--symbol`, shown on the symbol's node page)
-- MCP server mode for real-time agent queries (82 tools: 35 `code2database_*` + 19 `cgdb_*` + 28 design-report)
+- MCP server mode for real-time agent queries (83 tools: 36 `code2database_*` + 19 `cgdb_*` + 28 design-report)
 
 Capabilities:
 - **Dual extraction backend** — `auto` (default, uses clang when libclang is installed, falls back to tree-sitter), `clang` (force clang, enables cgdb layer; libclang 17+), `tree-sitter` (force tree-sitter, no libclang dep). Selected via `--extraction-backend` flag at scan time. **libclang is recommended, NOT required** — tree-sitter-only mode is fully functional.
@@ -124,7 +124,7 @@ Capability modules have dedicated unit tests in `tests/` covering:
 - Update command (confirmation gate, attribute parsing, backend detection)
 - Profile generation (auto-profile, project-type detection, struct_op_types)
 
-**Test suite**: 2149 tests across 111 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails.)
+**Test suite**: 2153 tests across 111 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails.)
 
 ## Language Support
 

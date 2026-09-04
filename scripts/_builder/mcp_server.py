@@ -749,6 +749,44 @@ def _tool_kb_query(args: dict, graph_dir: str) -> dict:
     }
 
 
+def _tool_save_memory(args: dict, graph_dir: str) -> dict:
+    """Save (or correct) a Q&A memory — the accumulation half of the
+    memory protocol.
+
+    MCP-side counterpart of the save-memory CLI: without it, agents
+    connected via MCP could search veteran Q&A but never add to it.
+    correct=True takes the correction path (reshape the most similar
+    entry in place instead of adding a variant of a wrong answer).
+    """
+    question = (args.get("question") or "").strip()
+    answer = args.get("answer", "")
+    if not question:
+        return {"error": "question is required"}
+    author = args.get("author", "")
+    category = args.get("category", "")
+    tags = [t.strip() for t in args.get("tags", "").split(",")
+            if t.strip()] if args.get("tags") else []
+    sym_arg = args.get("symbol", "")
+    if isinstance(sym_arg, list):
+        symbols = [str(s).strip() for s in sym_arg if str(s).strip()]
+    else:
+        symbols = [s.strip() for s in sym_arg.split(",") if s.strip()]
+    from _builder.memory_store import MemoryStore
+    store = MemoryStore(graph_dir)
+    if args.get("correct"):
+        result = store.correct_similar(
+            question=question, answer=answer, author=author,
+            symbols=symbols or None)
+    else:
+        new_id = store.add(
+            question=question, answer=answer, tags=tags,
+            category=category or None, author=author,
+            symbols=symbols)
+        result = {"action": "created", "id": new_id}
+    result["question"] = question
+    return result
+
+
 def _tool_session_init(args: dict, graph_dir: str) -> dict:
     """One-shot session context: brief + memory digest + graph +
     known-unknowns.
@@ -1664,6 +1702,23 @@ TOOLS = {
             "required": ["query"],
         },
         "handler": _tool_kb_query,
+    },
+    "code2database_save_memory": {
+        "description": "Save a Q&A to the project memory store (veteran experience accumulation). Use after answering a project question worth remembering, or with correct=true when a previously stored answer was WRONG (reshapes the most similar entry in place — no duplicate variant). symbol (comma-separated) grounds the memory to graph symbols.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string", "description": "The question asked"},
+                "answer": {"type": "string", "description": "The answer given"},
+                "category": {"type": "string", "description": "Category path (e.g. bdev/nvme/pcie; auto-created)"},
+                "author": {"type": "string", "description": "Author attribution"},
+                "tags": {"type": "string", "description": "Comma-separated tags"},
+                "symbol": {"type": "string", "description": "Comma-separated graph symbol names this memory is about"},
+                "correct": {"type": "boolean", "description": "Correction path: reshape the most similar existing entry instead of adding a variant (default false)"},
+            },
+            "required": ["question"],
+        },
+        "handler": _tool_save_memory,
     },
     "code2database_session_init": {
         "description": "One-shot session context: project brief (mandatory rules/modes/pitfalls), memory digest (veteran Q&A ranked by weight), graph state with brief-drift + source-freshness (stale graph) warnings, and known-unknowns (repeatedly unanswered queries worth capturing into memory). Call this FIRST at session start, before search/describe/trace. Every layer degrades to a hint when absent.",

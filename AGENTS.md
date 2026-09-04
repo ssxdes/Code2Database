@@ -51,7 +51,7 @@ Capabilities:
 
 ## Skill Structure (3 sub-skills)
 
-The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 226 commands) is shared — all commands are accessible regardless of sub-skill activation.
+The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 227 commands) is shared — all commands are accessible regardless of sub-skill activation.
 
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|
@@ -62,6 +62,7 @@ The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts
 ## Pipeline Architecture
 
 ```
+make (one-click: env-check → scan → build → derived artifacts → exports)
 Profile → Scan (AST extraction) → Build (graph construction) → Query
                                   ↓
                             Daemon auto-refresh loop
@@ -124,7 +125,7 @@ Capability modules have dedicated unit tests in `tests/` covering:
 - Update command (confirmation gate, attribute parsing, backend detection)
 - Profile generation (auto-profile, project-type detection, struct_op_types)
 
-**Test suite**: 2153 tests across 111 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails.)
+**Test suite**: 2202 tests across 114 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails.)
 
 ## Language Support
 

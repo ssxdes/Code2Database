@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "将代码库转为可查询的代码数据库。扫描一次，永久查询——不再需要 grep/glob/Read。支持 C/C++/Go/Python/Java/Rust/ASM，调用图、条件路径、并发分析、数据流、FFI 追踪、19 个 cgdb 语义表。83 个 MCP (55 base + 28 design-report) 工具 + 226 个 CLI 命令。当代码问题涉及结构、调用链、影响面、并发或数据流时使用 /Code2Database。"
+description: "将代码库转为可查询的代码数据库。扫描一次，永久查询——不再需要 grep/glob/Read。支持 C/C++/Go/Python/Java/Rust/ASM，调用图、条件路径、并发分析、数据流、FFI 追踪、19 个 cgdb 语义表。83 个 MCP (55 base + 28 design-report) 工具 + 227 个 CLI 命令。当代码问题涉及结构、调用链、影响面、并发或数据流时使用 /Code2Database。"
 trigger: /Code2Database
 ---
 
@@ -32,26 +32,29 @@ trigger: /Code2Database
 ## 快速开始
 
 ```bash
-# 0. 会话启动（必须）：加载完整项目上下文
-python3 scripts/code2database_builder.py session-init --graph code2db-out/
+# 0. 首次接入项目：一键建库（env-check 前置校验，缺件立即报出）
+python3 scripts/code2database_builder.py make --source /path/to/project
+#   → 阶段 1 env-check 在任何构建步骤之前：缺 compile_commands.json /
+#     libclang / tree-sitter 语法包都会预先报出（绝不中途失败）
+#   → 阶段 2：扫描 -> 构建 -> 派生产物（value-flow、data-dep、
+#     #ifdef 信号、FFI、简报、kb 索引、embeddings）-> 导出
+#     （Obsidian 库、HTML）-> profile 健康报告
+#   → make --check：只做环境校验，不构建
+#   → 重复执行安全：图产物重建，memory/knowledge 保留
+
+# 1. 会话启动（必须）：加载完整项目上下文
+python3 scripts/code2database_builder.py session-init    # --graph 自动发现 code2db-out/
 #   → 简报 + 前辈记忆摘要 + 图状态 + 未解答问题
 #   → 若无简报：brief-extract 自举模板，再用 brief-update 精炼
 
-# 1. 扫描 + 构建（一次性）
-python3 scripts/code2database_scanner.py scan --source /path --output ext.json
-python3 scripts/code2database_builder.py build --extraction ext.json --outdir code2db-out/
-
-# 2. 构建统一 KB 索引（首次构建后或 memory/brief 变更后）
-python3 scripts/code2database_builder.py kb-rebuild-index --graph code2db-out/
-
-# 3. 查询（可重复）
-python3 scripts/code2database_builder.py describe --graph code2db-out/ --node bdev_start
-python3 scripts/code2database_builder.py kb-query --graph code2db-out/ --query "bdev register"
-python3 scripts/code2database_builder.py trace --graph code2db-out/ --from bdev_start --to spdk_app_start
-python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP 服务器（83 工具 (55 base + 28 design-report)）
+# 2. 查询（可重复）
+python3 scripts/code2database_builder.py describe --node bdev_start
+python3 scripts/code2database_builder.py kb-query --query "bdev register"
+python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_start
+python3 scripts/code2database_builder.py serve    # MCP 服务器（83 工具）
 ```
 
-## 核心命令（24 个）
+## 核心命令（25 个）
 
 | 命令 | 用途 | 查询层 |
 |------|------|--------|
@@ -64,7 +67,8 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP 服�
 | `flow` | 数据/值/参数流 | Graph |
 | `concurrency` | 竞争/死锁检测 | Graph |
 | `context` | 获取位置周围上下文 | Graph |
-| `build` | 扫描 + 构建图 | — |
+| `make` | 一键建库：env-check（缺件前置报出）+ 扫描构建 + 全部派生产物与导出 | — |
+| `build` | 扫描 + 构建图（手动，make 已封装） | — |
 | `update` | 增量重扫 | — |
 | `session-init` | 一站式会话上下文：简报 + 记忆摘要 + 图状态（含过期检查）+ 未解答问题（别名：`init`） | Memory+Knowledge |
 | `save-memory` | 保存 Q&A 到记忆，支持 `--category bdev/nvme/pcie` `--author` `--symbol fn`（可重复，把记忆锚定到代码符号）（别名：`save`） | Memory |
@@ -81,7 +85,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP 服�
 | `daemon` | 后台自动同步 | Ops |
 | `health` | 图谱新鲜度 + profile 健康 | — |
 
-全部 226 个 CLI 命令仍可访问；上述 24 个覆盖 ~95% 的 agent 工作流。
+全部 227 个 CLI 命令仍可访问；上述 25 个覆盖 ~95% 的 agent 工作流。
 
 ## 支持语言
 

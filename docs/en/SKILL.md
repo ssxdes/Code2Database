@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, and 19 cgdb semantic tables. 83 MCP tools (55 base + 28 design-report) + 226 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
+description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, and 19 cgdb semantic tables. 83 MCP tools (55 base + 28 design-report) + 227 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
 trigger: /Code2Database
 ---
 
@@ -32,26 +32,29 @@ top kb hits as a `_hints` field alongside graph rows.
 ## Quick Start
 
 ```bash
-# 0. Session start (MANDATORY): load the full project context
-python3 scripts/code2database_builder.py session-init --graph code2db-out/
+# 0. First time on a project: one-click ingestion (env-check fails fast)
+python3 scripts/code2database_builder.py make --source /path/to/project
+#   → phase 1 env-check BEFORE any build step: missing compile_commands.json /
+#     libclang / tree-sitter grammars are reported up front (never mid-build)
+#   → phase 2: scan -> build -> derived artifacts (value-flow, data-dep,
+#     #ifdef signals, FFI, brief, kb index, embeddings) -> exports
+#     (Obsidian vault, HTML) -> profile-health report
+#   → make --check: env-check only, no build
+#   → re-runs are safe: graph artifacts rebuilt, memory/knowledge preserved
+
+# 1. Session start (MANDATORY): load the full project context
+python3 scripts/code2database_builder.py session-init    # --graph auto-discovers code2db-out/
 #   → brief + veteran memory digest + graph state + unanswered questions
 #   → if no brief yet: brief-extract to bootstrap, then curate with brief-update
 
-# 1. Scan + build (one-time)
-python3 scripts/code2database_scanner.py scan --source /path --output ext.json
-python3 scripts/code2database_builder.py build --extraction ext.json --outdir code2db-out/
-
-# 2. Build unified KB index (after first build, or after memory/brief changes)
-python3 scripts/code2database_builder.py kb-rebuild-index --graph code2db-out/
-
-# 3. Query (repeatable)
-python3 scripts/code2database_builder.py describe --graph code2db-out/ --node bdev_start
-python3 scripts/code2database_builder.py kb-query --graph code2db-out/ --query "bdev register"
-python3 scripts/code2database_builder.py trace --graph code2db-out/ --from bdev_start --to spdk_app_start
-python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP server (83 tools)
+# 2. Query (repeatable)
+python3 scripts/code2database_builder.py describe --node bdev_start
+python3 scripts/code2database_builder.py kb-query --query "bdev register"
+python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_start
+python3 scripts/code2database_builder.py serve    # MCP server (83 tools)
 ```
 
-## Core Commands (24)
+## Core Commands (25)
 
 | Command | Purpose | Query Layer |
 |---------|---------|-------------|
@@ -64,7 +67,8 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP serve
 | `flow` | Data/value/param flow | Graph |
 | `concurrency` | Race/deadlock detection | Graph |
 | `context` | Get context around a location | Graph |
-| `build` | Scan + build graph | — |
+| `make` | One-click ingestion: env-check (fail fast) then scan + build + all derived artifacts + exports | — |
+| `build` | Scan + build graph (manual, make wraps it) | — |
 | `update` | Incremental re-scan | — |
 | `session-init` | One-shot session context: brief + memory digest + graph (+staleness check) + known-unknowns (alias: `init`) | Memory+Knowledge |
 | `save-memory` | Save Q&A to memory, `--category bdev/nvme/pcie` `--author` `--symbol fn` repeatable — grounds the memory to code (alias: `save`) | Memory |
@@ -81,7 +85,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP serve
 | `daemon` | Background auto-sync | Ops |
 | `health` | Graph freshness + profile health | — |
 
-All 226 CLI commands remain accessible; the 24 above cover ~95% of agent workflows.
+All 227 CLI commands remain accessible; the 25 above cover ~95% of agent workflows.
 
 ## Supported Languages
 

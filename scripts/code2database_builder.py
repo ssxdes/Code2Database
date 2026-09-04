@@ -630,6 +630,27 @@ def cmd_install_hook(args):
     print("Set CALLGRAPH_DIR env var to change the graph directory name (default: .callgraph)")
 
 
+def _resolve_graph_dir() -> str:
+    """Locate the graph directory when --graph is omitted.
+
+    Walks up from the working directory: prefers a code2db-out/ containing
+    code2database.db, then a directory that is itself a graph dir. Falls
+    back to the conventional code2db-out so the command reports its normal
+    not-found error.
+    """
+    d = os.getcwd()
+    while True:
+        cand = os.path.join(d, "code2db-out")
+        if os.path.isfile(os.path.join(cand, "code2database.db")):
+            return cand
+        if os.path.isfile(os.path.join(d, "code2database.db")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return "code2db-out"
+        d = parent
+
+
 def main():
     parser = argparse.ArgumentParser(description="Call graph builder and query tool")
     # Global logging flags — accepted before the subcommand.
@@ -878,6 +899,32 @@ def main():
     p_update.add_argument("--parallel-mode", choices=["thread", "process"], default=None,
                          help="Parallelism model for re-scan: 'thread' (default) or 'process' "
                               "(true multi-core via fork). Forwarded to the scanner subprocess.")
+
+    # make — one-click project ingestion: env-check (fail fast) then scan/build/brief/kb
+    p_mk = sub.add_parser("make",
+                          help="One-click: env-check -> auto-profile+scan -> build -> brief-extract -> kb-rebuild-index. "
+                               "Fails before any build step if prerequisites are missing (--check: env-check only)")
+    p_mk.add_argument("--source", required=True, help="Source root directory to scan")
+    p_mk.add_argument("--graph", default="code2db-out",
+                      help="Graph output directory (default: code2db-out)")
+    p_mk.add_argument("--lang", default="auto",
+                      choices=["auto", "c", "cpp", "go", "python", "java", "rust", "asm"],
+                      help="Language filter (default: auto-detect per file)")
+    p_mk.add_argument("--extraction-backend", default="auto",
+                      choices=["auto", "clang", "tree-sitter"],
+                      help="C/C++ extraction backend (default: auto = clang when libclang is available)")
+    p_mk.add_argument("--compile-commands", default="",
+                      help="Path to compile_commands.json (default: auto-discover <source>/ and <source>/build/)")
+    p_mk.add_argument("--clang-args", default="",
+                      help="Extra clang args for the clang backend (e.g. '-I/path -DFOO=1')")
+    p_mk.add_argument("--profile", default="",
+                      help="Existing profile JSON (default: generate one via scanner --auto-profile)")
+    p_mk.add_argument("-j", "--workers", type=int, default=0,
+                      help="Scan worker count (default: scanner's own default)")
+    p_mk.add_argument("--large-project", action="store_true",
+                      help="Large-project scan mode (split output, lower memory)")
+    p_mk.add_argument("--check", action="store_true",
+                      help="Run the environment check only; do not build")
 
     # sync
     p_sync = sub.add_parser("sync", help="Sync local code2db-out with git-tracked version (local wins)")
@@ -2529,6 +2576,7 @@ def main():
         "health": "profile-health",
         "daemon": "daemon-status",
         "export": "export-mermaid",
+        "init": "session-init",
     }
     for _alias, _canonical in _SKILL_ALIASES.items():
         _cp = sub.choices.get(_canonical)
@@ -2538,6 +2586,30 @@ def main():
             )
         sub.add_parser(_alias, parents=[_cp], add_help=False,
                        help="Alias for " + _canonical)
+
+    # --- --graph auto-discovery for read/query commands ---
+    # On these commands, omitting --graph resolves to the nearest
+    # code2db-out/ (walking up from the working directory); see
+    # _resolve_graph_dir. Creation commands (build/make) keep their own
+    # explicit output-dir defaults.
+    _GRAPH_AUTO_COMMANDS = (
+        "describe-node", "query", "kb-query", "trace-chain", "impact",
+        "find-invariants", "value-flow", "concurrency-risks", "update",
+        "session-init", "save-memory", "search-memory", "knowledge-brief",
+        "kb-rebuild-index", "kb-cluster", "kb-known-unknowns", "kb-audit",
+        "kb-forget", "serve", "web-ui", "tx-begin", "daemon-status",
+        "profile-health",
+    )
+    for _name in _GRAPH_AUTO_COMMANDS:
+        _sp = sub.choices.get(_name)
+        if _sp is None:
+            continue
+        for _act in _sp._actions:
+            if _act.dest == "graph" and _act.required:
+                _act.required = False
+                _act.default = None
+                _act.help = ((_act.help or "Call graph output directory")
+                             + " (default: auto-discover code2db-out/)")
 
     try:
         args = parser.parse_args()
@@ -2557,8 +2629,14 @@ def main():
         log_file=getattr(args, "log_file", None),
     )
 
+    # Resolve an omitted --graph (auto-discovery) before dispatch.
+    if "graph" in vars(args) and vars(args)["graph"] is None:
+        args.graph = _resolve_graph_dir()
+        print(f"[graph] --graph not given; using {args.graph}", file=sys.stderr)
+
     commands = {
         "build": cmd_build,
+        "make": _lazy("_builder.make_cmd", "cmd_make"),
         "load": cmd_load,
         "search": cmd_search,
         "describe-node": cmd_describe_node,

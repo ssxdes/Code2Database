@@ -509,6 +509,8 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 
 通过 stdio 传输暴露 **83 个 MCP (55 base + 28 design-report) 工具**：36 个 `code2database_*` 工具（包括 `code2database_explore`、`code2database_trace`、`code2database_describe`、`code2database_blast_radius`、`code2database_concurrency`、`code2database_data_lifecycle`）+ 19 个 `cgdb_*` 工具（启用 clang 提取后端时直接查询 cgdb 层——类型化 vtable 派发、CFG、数据流、同步原语、配置谓词、时间旅行版本）。代理可以直接查询图谱，无需重读源文件——一次工具调用获得精准上下文。
 
+若 cgdb 导出在构建中途失败，图会缺失（部分）语义层而旧表看起来正常。构建会写标记文件 `<outdir>/.code2database_cgdb_export_failed.json`（含错误与上下文），在 stdout 汇总中打印 WARNING，并在下次导出成功时清除标记。当 `cgdb_*` 查询意外返回空结果时，请检查该标记。
+
 ---
 
 ## 提取后端（双 clang + tree-sitter）

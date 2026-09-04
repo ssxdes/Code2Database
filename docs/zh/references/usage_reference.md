@@ -562,6 +562,11 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
 python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
   --graph code2db-out/ --action decay
 
+# 压实：合并近似重复的根记忆（多作者漂移、no_merge 残留），
+# 带完整审计轨迹 + 重指向孤儿变体。build 后的 consolidate() 自动执行。
+python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
+  --graph code2db-out/ --action compact
+
 # 提升记忆权重
 python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
   --graph code2db-out/ --action promote --id 5 --boost 2.0
@@ -960,7 +965,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `load` | Load and summarize the invocation graph |
 | `lock-coverage` | Analyze lock-held regions and per-access locksets (replaces over-approximation) |
 | `lsp-server` | Start Code2Database as a read-only LSP server on stdio  |
-| `manage-memory` | Manage persistent memory (add/correct/reshape/decay/promote/refine/query/pack/consolidate/export/import/scratch-*) |
+| `manage-memory` | Manage persistent memory (add/correct/reshape/decay/compact/promote/refine/query/pack/consolidate/export/import/scratch-*) |
 | `manifest` | Save file fingerprint manifest |
 | `memory-health` | Report memory system health statistics |
 | `memory-ordering` | Show RCU/memory-barrier/atomic primitives used by a function |

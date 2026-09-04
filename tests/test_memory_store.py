@@ -938,5 +938,95 @@ class TestFtsTriggers(MemoryStoreTestBase):
         self.assertEqual(len(rows), 1)
 
 
+class TestCompact(MemoryStoreTestBase):
+    """compact(): deterministic compaction pass.
+
+    merge-on-add only catches NEW entries; pre-existing near-duplicate
+    roots (created via no_merge, threshold misses, or multi-author
+    duplication) otherwise persist forever. compact() merges them
+    (highest weight wins, full versions_json audit trail) and
+    re-points orphaned variants. consolidate() runs it after decay.
+    """
+
+    def _root(self, q, a, **kw):
+        return self.store.add(q, a, no_merge=True, **kw)
+
+    def test_merges_similar_roots_with_audit_trail(self):
+        # Decisively longer answer → higher importance → canonical.
+        a = self._root("how does the bdev reset flow work", "short")
+        b = self._root("how does the bdev reset flow work",
+                       "much longer answer " * 5)
+        report = self.store.compact()
+        self.assertEqual(report["merged_groups"], 1)
+        self.assertEqual(report["merged_ids"], [a])
+        rows = {r[0]: r for r in self._raw(
+            "SELECT id, status, merged_into FROM memories")}
+        self.assertEqual(rows[a][1], "merged")
+        self.assertEqual(rows[a][2], b)
+        self.assertEqual(rows[b][1], "active")
+        versions = json.loads(self._raw(
+            "SELECT versions_json FROM memories WHERE id = ?", (b,))[0][0])
+        self.assertTrue(any(v.get("merged_ids") == [a] for v in versions))
+
+    def test_dissimilar_roots_untouched(self):
+        a = self._root("how does the bdev reset flow work", "x")
+        b = self._root("where is the nvme queue depth configured", "y")
+        report = self.store.compact()
+        self.assertEqual(report["merged_groups"], 0)
+        statuses = {r[0] for r in self._raw("SELECT status FROM memories")}
+        self.assertEqual(statuses, {"active"})
+
+    def test_compact_is_idempotent(self):
+        self._root("how does the bdev reset flow work", "x")
+        self._root("how does the bdev reset flow work", "y")
+        first = self.store.compact()
+        second = self.store.compact()
+        self.assertEqual(first["merged_groups"], 1)
+        self.assertEqual(second["merged_groups"], 0)
+
+    def test_variants_follow_absorbed_root(self):
+        a = self._root("how does the bdev reset flow work", "x")
+        # variant of a (add() auto-merge path)
+        v = self.store.add("how does the bdev reset flow work",
+                           "variant answer", author="bob")
+        b = self._root("how does the bdev reset flow work",
+                       "canonical answer " * 10)
+        report = self.store.compact()
+        self.assertEqual(report["merged_groups"], 1)
+        # Whichever root lost the merge, v must follow the winner.
+        canonical = a if report["merged_ids"] == [b] else b
+        root_of_v = self._raw(
+            "SELECT root_id FROM memories WHERE id = ?", (v,))[0][0]
+        self.assertEqual(root_of_v, canonical)
+        v_status = self._raw(
+            "SELECT status FROM memories WHERE id = ?", (v,))[0][0]
+        self.assertEqual(v_status, "active")
+
+    def test_orphan_variant_repoints_via_merged_into_chain(self):
+        c = self._root("what does the poller thread do", "z")
+        a = self._root("how does the bdev reset flow work", "x")
+        v = self.store.add("how does the bdev reset flow work",
+                           "variant answer")
+        # Simulate a root that was merged elsewhere outside compact()
+        # (e.g. manual manage-memory merge): a is a tombstone into c.
+        conn = sqlite3.connect(self.store.db_path)
+        conn.execute("UPDATE memories SET status = 'merged', "
+                     "merged_into = ? WHERE id = ?", (c, a))
+        conn.commit()
+        conn.close()
+        report = self.store.compact()
+        self.assertGreaterEqual(report["repointed_variants"], 1)
+        root_of_v = self._raw(
+            "SELECT root_id FROM memories WHERE id = ?", (v,))[0][0]
+        self.assertEqual(root_of_v, c)
+
+    def test_consolidate_runs_compact(self):
+        self._root("how does the bdev reset flow work", "x")
+        self._root("how does the bdev reset flow work", "y")
+        summary = self.store.consolidate()
+        self.assertIn("compact", summary)
+        self.assertEqual(summary["compact"]["merged_groups"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

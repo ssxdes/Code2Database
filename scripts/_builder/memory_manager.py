@@ -364,6 +364,9 @@ def cmd_manage_memory(args):
         )
     elif action == "decay":
         mgr.decay()
+    elif action == "compact":
+        report = mgr.store.compact()
+        print(json.dumps(report, ensure_ascii=False, indent=2))
     elif action == "promote":
         mgr.promote(
             mem_id=int(args.id),

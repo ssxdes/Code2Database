@@ -1124,13 +1124,71 @@ class MemoryStore:
             "SELECT path FROM categories WHERE id = ?", (cat_id,)).fetchone()
         return row["path"] if row else "uncategorized"
 
+    def _merge_entries_locked(self, conn: sqlite3.Connection,
+                              entries: dict, canon_id: int,
+                              question: str = None, answer: str = None) -> int:
+        """Core merge over an OPEN connection (caller holds the flock).
+
+        Shared by merge() (user-driven) and compact() (deterministic
+        dedup) so both leave identical audit trails: canonical absorbs
+        tags/node_ids/chains/symbols, absorbed entries become 'merged'
+        tombstones, their variants re-point at the canonical.
+        """
+        others = [mid for mid in entries if mid != canon_id]
+        now = datetime.now().isoformat()
+        c = entries[canon_id]
+        all_tags = set(c["tags_list"])
+        all_nodes = set(c["node_ids_list"])
+        all_chains = list(c["chains_list"])
+        all_symbols = set(c.get("symbols_list", []))
+        for mid in others:
+            all_tags |= set(entries[mid]["tags_list"])
+            all_nodes |= set(entries[mid]["node_ids_list"])
+            all_chains += entries[mid]["chains_list"]
+            all_symbols |= set(entries[mid].get("symbols_list", []))
+        versions = json.loads(c["versions_json"] or "[]")
+        versions.append({
+            "merged_ids": others,
+            "version": len(versions) + 1,
+            "merged_at": now,
+        })
+        updated = dict(c)
+        updated["question"] = question or c["question"]
+        updated["answer"] = answer if answer is not None else c["answer"]
+        updated["merged_count"] = c["merged_count"] + len(others)
+        updated["answer_len"] = len(updated["answer"])
+        new_weight = round(self._compute_weight(updated), 4)
+
+        conn.execute(
+            "UPDATE memories SET question = ?, answer = ?, tags = ?, "
+            "node_ids = ?, chains = ?, symbols = ?, merged_count = ?, "
+            "weight = ?, versions_json = ?, last_accessed = ? WHERE id = ?",
+            (updated["question"], updated["answer"],
+             json.dumps(sorted(all_tags), ensure_ascii=False),
+             json.dumps(sorted(all_nodes), ensure_ascii=False),
+             json.dumps(all_chains, ensure_ascii=False),
+             json.dumps(sorted(all_symbols), ensure_ascii=False),
+             updated["merged_count"], new_weight,
+             json.dumps(versions, ensure_ascii=False), now, canon_id))
+        for mid in others:
+            conn.execute(
+                "UPDATE memories SET status = 'merged', "
+                "merged_into = ? WHERE id = ?", (canon_id, mid))
+        # Variants of absorbed entries re-point at the canonical.
+        for mid in others:
+            conn.execute(
+                "UPDATE memories SET root_id = ? WHERE root_id = ? "
+                "AND id != ? AND status = 'active'",
+                (canon_id, mid, mid))
+        return canon_id
+
     def merge(self, mem_ids: List[int], canonical_id: int = None,
               question: str = None, answer: str = None) -> int:
         """Merge duplicate memories into one canonical entry.
 
         All other entries become 'merged' tombstones with merged_into =
-        canonical id. The canonical absorbs tags/node_ids/chains and
-        gains merged_count. Returns the canonical id.
+        canonical id. The canonical absorbs tags/node_ids/chains/symbols
+        and gains merged_count. Returns the canonical id.
         """
         if len(mem_ids) < 2:
             raise ValueError("merge requires at least two ids")
@@ -1151,51 +1209,10 @@ class MemoryStore:
                 if canon not in entries:
                     raise ValueError(
                         f"canonical id {canon} not among merged ids")
-                others = [mid for mid in mem_ids if mid != canon]
-                now = datetime.now().isoformat()
-
-                c = entries[canon]
-                all_tags = set(c["tags_list"])
-                all_nodes = set(c["node_ids_list"])
-                all_chains = list(c["chains_list"])
-                for mid in others:
-                    all_tags |= set(entries[mid]["tags_list"])
-                    all_nodes |= set(entries[mid]["node_ids_list"])
-                    all_chains += entries[mid]["chains_list"]
-                versions = json.loads(c["versions_json"] or "[]")
-                versions.append({
-                    "merged_ids": others,
-                    "version": len(versions) + 1,
-                    "merged_at": now,
-                })
-                updated = dict(c)
-                updated["question"] = question or c["question"]
-                updated["answer"] = answer if answer is not None else c["answer"]
-                updated["merged_count"] = c["merged_count"] + len(others)
-                updated["answer_len"] = len(updated["answer"])
-                new_weight = round(self._compute_weight(updated), 4)
-
-                conn.execute(
-                    "UPDATE memories SET question = ?, answer = ?, tags = ?, "
-                    "node_ids = ?, chains = ?, merged_count = ?, weight = ?, "
-                    "versions_json = ?, last_accessed = ? WHERE id = ?",
-                    (updated["question"], updated["answer"],
-                     json.dumps(sorted(all_tags), ensure_ascii=False),
-                     json.dumps(sorted(all_nodes), ensure_ascii=False),
-                     json.dumps(all_chains, ensure_ascii=False),
-                     updated["merged_count"], new_weight,
-                     json.dumps(versions, ensure_ascii=False), now, canon))
-                for mid in others:
-                    conn.execute(
-                        "UPDATE memories SET status = 'merged', "
-                        "merged_into = ? WHERE id = ?", (canon, mid))
-                # Variants of absorbed entries re-point at the canonical.
-                for mid in others:
-                    conn.execute(
-                        "UPDATE memories SET root_id = ? WHERE root_id = ? "
-                        "AND id != ? AND status = 'active'",
-                        (canon, mid, mid))
+                canon = self._merge_entries_locked(
+                    conn, entries, canon, question, answer)
                 conn.commit()
+                others = [mid for mid in entries if mid != canon]
                 print(f"Merged {others} into #{canon}")
                 return canon
             finally:
@@ -1324,9 +1341,115 @@ class MemoryStore:
                 "invalidated": len(invalidated_ids),
                 "invalidated_ids": invalidated_ids}
 
+    def compact(self,
+                similarity_threshold: float = MERGE_SIMILARITY_THRESHOLD) -> dict:
+        """Deterministic compaction pass (compact-style maintenance).
+
+        1. Cross-root duplicates: active ROOTS whose questions (plus
+           tags) are >= similarity_threshold similar are merged — the
+           highest-weight entry becomes canonical, tags/node_ids/
+           chains/symbols are absorbed, absorbed entries become
+           'merged' tombstones with a versions_json audit trail, and
+           their variants re-point at the canonical. merge-on-add only
+           catches NEW entries; roots created via no_merge, threshold
+           misses, or by different authors otherwise duplicate forever.
+        2. Orphan variants: active variants whose root is no longer
+           active follow the merged_into chain to a live root (or
+           become their own root).
+
+        Idempotent: a second run merges nothing. Returns a report.
+        """
+        merged_groups = 0
+        merged_ids: List[int] = []
+        repointed = 0
+        with _memory_lock(self.mem_dir):
+            conn = self._connect()
+            try:
+                # --- 1. group duplicate roots (greedy, weight-desc) ---
+                rows = conn.execute(
+                    "SELECT id, question, tags, weight FROM memories "
+                    "WHERE status = 'active' AND root_id = id "
+                    "ORDER BY weight DESC, id ASC").fetchall()
+                tokens_cache: dict = {}
+
+                def _tokens(r) -> set:
+                    mid = r["id"]
+                    if mid not in tokens_cache:
+                        t = _simple_tokenize(r["question"])
+                        try:
+                            for tag in json.loads(r["tags"] or "[]"):
+                                t |= _simple_tokenize(tag)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                        tokens_cache[mid] = t
+                    return tokens_cache[mid]
+
+                remaining = list(rows)
+                while remaining:
+                    canon_row, rest = remaining[0], remaining[1:]
+                    group = [canon_row]
+                    new_rest = []
+                    for r in rest:
+                        if (_similarity_score(_tokens(canon_row), _tokens(r))
+                                >= similarity_threshold):
+                            group.append(r)
+                        else:
+                            new_rest.append(r)
+                    remaining = new_rest
+                    if len(group) < 2:
+                        continue
+                    canon_id = group[0]["id"]
+                    entries = {}
+                    for r in group:
+                        e = self._get_row(conn, r["id"])
+                        if e is None or e["status"] != "active":
+                            continue
+                        entries[r["id"]] = e
+                    if len(entries) < 2 or canon_id not in entries:
+                        continue
+                    self._merge_entries_locked(conn, entries, canon_id)
+                    merged_groups += 1
+                    merged_ids.extend(mid for mid in entries if mid != canon_id)
+
+                # --- 2. re-point orphaned variants ---
+                live_roots = {r["id"] for r in conn.execute(
+                    "SELECT id FROM memories WHERE status = 'active' "
+                    "AND root_id = id")}
+                merged_into = {r["id"]: r["merged_into"] for r in conn.execute(
+                    "SELECT id, merged_into FROM memories "
+                    "WHERE merged_into IS NOT NULL")}
+                orphans = conn.execute(
+                    "SELECT id, root_id FROM memories WHERE status = "
+                    "'active' AND root_id != id").fetchall()
+                for o in orphans:
+                    rid = o["root_id"]
+                    if rid in live_roots:
+                        continue
+                    seen = set()
+                    while rid and rid not in live_roots and rid not in seen:
+                        seen.add(rid)
+                        rid = merged_into.get(rid)
+                    new_root = rid if rid in live_roots else o["id"]
+                    conn.execute(
+                        "UPDATE memories SET root_id = ? WHERE id = ?",
+                        (new_root, o["id"]))
+                    repointed += 1
+                conn.commit()
+            finally:
+                conn.close()
+        if merged_groups:
+            print(f"Compact: merged {merged_groups} group(s), "
+                  f"{len(merged_ids)} duplicate(s) absorbed")
+        if repointed:
+            print(f"Compact: re-pointed {repointed} orphaned variant(s)")
+        return {"merged_groups": merged_groups,
+                "merged_ids": merged_ids,
+                "repointed_variants": repointed}
+
     def consolidate(self) -> dict:
-        """One-pass decay + summary. Called after every build."""
+        """One-pass decay + compact + summary. Called after every build."""
         decayed = self.decay()
+        compact_report = self.compact()
         conn = self._connect()
         try:
             counts = {r["status"]: r["c"] for r in conn.execute(
@@ -1347,6 +1470,7 @@ class MemoryStore:
             "split": counts.get("split", 0),
             "roots": roots,
             "categories": cats,
+            "compact": compact_report,
         }
         print(f"Consolidated: {summary}")
         return summary

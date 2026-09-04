@@ -724,5 +724,104 @@ func TestController() int {
                           "exported function, should remain API_entry")
 
 
+class TestJavaApiEntryDetection(unittest.TestCase):
+    """Java API_entry detection — was entirely dead (no override, base
+    default returns False for every function), so Spring handlers, JVM
+    mains and framework callbacks were never entry points."""
+
+    def _scan_java(self, code, filepath_suffix='.java'):
+        from _scanner.java_scanner import JavaTreeSitterScanner
+        scanner = JavaTreeSitterScanner()
+        with tempfile.NamedTemporaryFile(suffix=filepath_suffix, mode='w',
+                                         delete=False) as f:
+            f.write(code)
+            f.flush()
+            result = scanner.scan_file(f.name, source_root=os.path.dirname(f.name))
+        os.unlink(f.name)
+        return result
+
+    _CONTROLLER = """\
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/users")
+public class UserController {
+
+    @GetMapping("/list")
+    public String listUsers() {
+        return findAll();
+    }
+
+    @PostMapping("/create")
+    public String createUser() {
+        return "ok";
+    }
+
+    private String findAll() {
+        return "[]";
+    }
+}
+"""
+
+    def test_spring_mapping_is_api_entry_with_route(self):
+        result = self._scan_java(self._CONTROLLER)
+        list_fn = next(f for f in result["functions"]
+                       if f["name"] == "UserController.listUsers")
+        self.assertIn("API_entry", list_fn["labels"])
+        self.assertIn("GetMapping", list_fn["annotations"])
+        self.assertIn("/list", list_fn["api_constraints"])
+
+    def test_private_helper_is_not_api(self):
+        result = self._scan_java(self._CONTROLLER)
+        helper = next(f for f in result["functions"]
+                      if f["name"] == "UserController.findAll")
+        self.assertNotIn("API_entry", helper["labels"])
+
+    def test_jvm_main_is_api_entry(self):
+        code = """\
+public class App {
+    public static void main(String[] args) {
+        run();
+    }
+    static void run() {}
+}
+"""
+        result = self._scan_java(code)
+        main_fn = next(f for f in result["functions"]
+                       if f["name"] == "App.main")
+        self.assertIn("API_entry", main_fn["labels"])
+
+    def test_event_listener_is_callback(self):
+        code = """\
+import org.springframework.context.event.*;
+
+public class Listener {
+    @EventListener
+    public void onReady(ContextRefreshedEvent e) {
+        handle();
+    }
+    void handle() {}
+}
+"""
+        result = self._scan_java(code)
+        fn = next(f for f in result["functions"]
+                  if f["name"] == "Listener.onReady")
+        self.assertIn("callback_func", fn["labels"])
+        self.assertIn("EventListener", fn["annotations"])
+
+    def test_plain_public_method_not_api(self):
+        code = """\
+public class Plain {
+    public int compute(int x) {
+        return x + 1;
+    }
+}
+"""
+        result = self._scan_java(code)
+        fn = next(f for f in result["functions"]
+                  if f["name"] == "Plain.compute")
+        self.assertNotIn("API_entry", fn["labels"])
+
+
 if __name__ == "__main__":
     unittest.main()

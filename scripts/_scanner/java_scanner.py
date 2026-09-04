@@ -12,6 +12,20 @@ try:
 except ImportError:
     _HAS_JAVA = False
 
+# Spring route annotations: a method carrying one of these is an HTTP
+# entry point (route path goes into api_constraints).
+_SPRING_ROUTE_ANNOTATIONS = frozenset({
+    "GetMapping", "PostMapping", "PutMapping", "DeleteMapping",
+    "PatchMapping", "RequestMapping",
+})
+
+# Framework-invoked callbacks: the method never runs from user code
+# directly — the container calls it (label: callback_func).
+_ANNOTATION_CALLBACKS = frozenset({
+    "EventListener", "Scheduled", "KafkaListener", "RabbitListener",
+    "JmsListener", "PostConstruct", "PreDestroy",
+})
+
 
 class JavaTreeSitterScanner(BaseScanner):
     def __init__(self):
@@ -174,6 +188,67 @@ class JavaTreeSitterScanner(BaseScanner):
         return modifiers
 
     # ------------------------------------------------------------------
+    # Annotation extraction (Spring & friends)
+    # ------------------------------------------------------------------
+
+    def _extract_annotations(self, node, source_bytes: bytes) -> list:
+        """[(name, args_text)] for annotations on a method/constructor.
+
+        tree_sitter_java nests annotations inside the `modifiers`
+        block: marker_annotation (@Foo) and annotation (@Foo(...)).
+        Simple names are returned (@org.springframework...GetMapping
+        -> GetMapping).
+        """
+        anns = []
+        for child in node.children:
+            if child.type == 'modifiers':
+                targets = child.children
+            elif child.type in ('marker_annotation', 'annotation'):
+                targets = (child,)
+            else:
+                continue
+            for sub in targets:
+                if sub.type not in ('marker_annotation', 'annotation'):
+                    continue
+                name_node = sub.child_by_field_name('name')
+                if name_node is None:
+                    continue
+                raw = self._node_text(name_node, source_bytes)
+                name = raw.split('.')[-1].lstrip('@')
+                if not name:
+                    continue
+                args = ""
+                if sub.type == 'annotation':
+                    arg_node = sub.child_by_field_name('arguments')
+                    if arg_node is not None:
+                        args = self._node_text(arg_node, source_bytes)
+                anns.append((name, args))
+        return anns
+
+    def _detect_api_entry(self, func_name: str, func_node,
+                          source_bytes: bytes) -> tuple:
+        """Java API entry detection (was entirely dead — the base
+        default returned False for every function).
+
+        Entry points: Spring route handlers (@GetMapping & friends —
+        the route path lands in api_constraints) and the JVM main
+        method. Plain public methods are NOT entries (in Java
+        everything is public; annotation/main based detection only).
+        """
+        for name, args in self._extract_annotations(func_node, source_bytes):
+            if name in _SPRING_ROUTE_ANNOTATIONS:
+                m = re.search(r'"([^"]*)"', args)
+                route = m.group(1) if m else ""
+                return True, (f"route: {route}" if route else f"@{name}")
+        if func_name == "main" or func_name.endswith(".main"):
+            for child in func_node.children:
+                if child.type == 'formal_parameters':
+                    params_text = self._node_text(child, source_bytes)
+                    if 'String' in params_text and '[' in params_text:
+                        return True, "jvm main"
+        return False, ""
+
+    # ------------------------------------------------------------------
     # AST walk
     # ------------------------------------------------------------------
     def _walk_java(self, node, source_bytes, filepath, source_root,
@@ -225,8 +300,13 @@ class JavaTreeSitterScanner(BaseScanner):
         if is_api:
             labels.append("API_entry")
 
-        # Extract modifiers
+        # Extract modifiers + annotations
         modifiers = self._extract_modifiers(node, source_bytes)
+        annotations = self._extract_annotations(node, source_bytes)
+        annotation_names = [n for n, _ in annotations]
+        if (any(n in _ANNOTATION_CALLBACKS for n in annotation_names)
+                and "callback_func" not in labels):
+            labels.append("callback_func")
 
         # Add modifier-based labels
         if 'static' in modifiers and "static_method" not in labels:
@@ -252,6 +332,7 @@ class JavaTreeSitterScanner(BaseScanner):
             "condition_vars": [],
             "modifiers": modifiers,
             "return_type": return_type,
+            "annotations": annotation_names,
             "doc_comment": self._extract_doc_comment(node, source_bytes),
             "start_byte": int(node.start_byte),
             "end_byte": int(node.end_byte),
@@ -282,6 +363,8 @@ class JavaTreeSitterScanner(BaseScanner):
 
         # Extract modifiers for constructors too
         modifiers = self._extract_modifiers(node, source_bytes)
+        annotation_names = [n for n, _ in
+                            self._extract_annotations(node, source_bytes)]
 
         params_list = self._extract_params(node, source_bytes)
         functions.append({
@@ -298,6 +381,7 @@ class JavaTreeSitterScanner(BaseScanner):
             "condition_vars": [],
             "modifiers": modifiers,
             "return_type": "",
+            "annotations": annotation_names,
             "doc_comment": self._extract_doc_comment(node, source_bytes),
         })
 

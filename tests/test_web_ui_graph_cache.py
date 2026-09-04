@@ -217,5 +217,110 @@ class TestGraphCacheExtended(unittest.TestCase):
         self.assertIsInstance(snip, str)
 
 
+class TestGraphCacheDegrees(unittest.TestCase):
+    """Degrees are precomputed once per reload and served from cache.
+
+    The old /api/degrees recomputed every node's degree on every
+    request — O(N+E) on the eager backend, but ~3N+2E indexed SQL
+    queries on the lazy SQLite backend (one query per node-attr fetch,
+    predecessor/successor scan and edge fetch), all while holding the
+    global GraphCache lock. Browsing k nodes froze every other
+    endpoint k times over.
+    """
+
+    def setUp(self):
+        from _builder.web_ui import GraphCache
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(self._cleanup)
+        self.GraphCache = GraphCache
+        self._write_dir(self._nodes(), self._edges())
+
+    def _cleanup(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _nodes(self):
+        return [
+            {'id': 'n1', 'name': 'foo', 'source_file': '/tmp/t.c', 'line': 1,
+             'domain': 'test', 'labels': [], 'signature': 'int foo()'},
+            {'id': 'n2', 'name': 'bar', 'source_file': '/tmp/t.c', 'line': 2,
+             'domain': 'test', 'labels': [], 'signature': 'int bar()'},
+            {'id': 'n3', 'name': 'f3', 'source_file': '/tmp/t.c', 'line': 3,
+             'domain': 'test', 'labels': [], 'is_empty': True},
+            {'id': 'n4', 'name': 'f4', 'source_file': '/tmp/t.c', 'line': 4,
+             'domain': 'test', 'labels': [], 'signature': 'int f4()'},
+        ]
+
+    def _edges(self):
+        return [
+            {'source': 'n1', 'target': 'n2', 'relation': 'INVOKES',
+             'call_order': 1, 'confidence': 'EXTRACTED'},
+            {'source': 'n1', 'target': 'n3', 'relation': 'CONTAINS'},
+            {'source': 'n3', 'target': 'n1', 'relation': 'IMPORTS'},
+            {'source': 'n4', 'target': 'n4', 'relation': 'INVOKES',
+             'call_order': 1, 'confidence': 'EXTRACTED'},
+        ]
+
+    def _write_dir(self, nodes, edges):
+        master = {'version': 't', 'stats': {'total_functions': len(nodes)},
+                  'total_nodes': len(nodes),
+                  'domains': {'test': 'code2database_test.json'}}
+        with open(os.path.join(self.tmpdir, 'code2database_master.json'), 'w') as f:
+            json.dump(master, f)
+        domain = {'domain': 'test', 'nodes': nodes, 'edges': edges}
+        with open(os.path.join(self.tmpdir, 'code2database_test.json'), 'w') as f:
+            json.dump(domain, f)
+
+    def test_degrees_semantics_preserved(self):
+        cache = self.GraphCache(self.tmpdir)
+        deg = cache.get_all_degrees()
+        # CONTAINS/IMPORTS excluded; is_empty node excluded from the
+        # all-degrees view; self-loop counts in both directions.
+        self.assertEqual(deg, {'n1': 1, 'n2': 1, 'n4': 2})
+        d = cache.get_node_degree('n4')
+        self.assertEqual(d, {'in_degree': 1, 'out_degree': 1, 'total': 2})
+
+    def test_degrees_served_from_cache_not_recomputed(self):
+        cache = self.GraphCache(self.tmpdir)
+        first = cache.get_all_degrees()
+        # Any attempt to walk the graph after reload must not happen.
+        def boom(*a, **k):
+            raise AssertionError('degrees recomputed per request')
+        cache.G.edges = boom
+        cache.G.predecessors = boom
+        cache.G.successors = boom
+        second = cache.get_all_degrees()
+        self.assertEqual(first, second)
+
+    def test_reload_recomputes_degrees(self):
+        cache = self.GraphCache(self.tmpdir)
+        self.assertEqual(cache.get_all_degrees()['n2'], 1)
+        domain_path = os.path.join(self.tmpdir, 'code2database_test.json')
+        with open(domain_path) as f:
+            data = json.load(f)
+        data['edges'].append({'source': 'n2', 'target': 'n4',
+                              'relation': 'INVOKES'})
+        with open(domain_path, 'w') as f:
+            json.dump(data, f)
+        cache.reload()
+        self.assertEqual(cache.get_all_degrees()['n2'], 2)
+
+    def test_lazy_sqlite_backend_precomputes_via_sql(self):
+        from _builder.sqlite_store import SQLiteStore
+        from _builder.streaming_graph import LazySQLiteGraph
+        db = os.path.join(self.tmpdir, 'code2database.db')
+        store = SQLiteStore(db)
+        store.connect()
+        store.store_functions(self._nodes())
+        store.store_edges(self._edges())
+        store.close()
+        cache = self.GraphCache(self.tmpdir)
+        cache.G = LazySQLiteGraph(db)
+        cache._compute_degrees()
+        self.assertEqual(cache.get_all_degrees(), {'n1': 1, 'n2': 1, 'n4': 2})
+        self.assertEqual(cache.get_node_degree('n1'),
+                         {'in_degree': 0, 'out_degree': 1, 'total': 1})
+
+
 if __name__ == '__main__':
     unittest.main()

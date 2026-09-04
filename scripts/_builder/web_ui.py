@@ -70,6 +70,9 @@ class GraphCache:
         self._lock = threading.RLock()
         self._freshness = None
         self._freshness_ts = 0.0
+        self._degrees: Dict[str, int] = {}
+        self._in_deg: Dict[str, int] = {}
+        self._out_deg: Dict[str, int] = {}
         self.reload()
 
     def freshness(self) -> Optional[Dict]:
@@ -129,6 +132,72 @@ class GraphCache:
                 name = nd.get("name", "")
                 if name:
                     self._name_to_id[name.lower()] = nid
+            self._compute_degrees()
+
+    def _compute_degrees(self):
+        """Precompute the degree maps once per reload.
+
+        /api/degrees used to recompute every node's degree on every
+        request: O(N+E) on the eager backend, but on the lazy SQLite
+        backend each "unit" is an indexed SQL query + JSON parse
+        (~3N+2E queries per request), all while holding the global
+        GraphCache lock — so every node click froze the whole UI. The
+        lazy backend is served by two GROUP BY queries instead.
+        """
+        self._degrees = {}
+        in_deg: Dict[str, int] = {}
+        out_deg: Dict[str, int] = {}
+        lazy = False
+        try:
+            from _builder.streaming_graph import LazySQLiteGraph
+            lazy = isinstance(self.G, LazySQLiteGraph)
+        except Exception:
+            lazy = False
+        if lazy:
+            try:
+                conn = self.G._conn
+                for row in conn.execute(
+                        "SELECT invoker_id, COUNT(*) FROM edges "
+                        "WHERE relation IS NOT NULL "
+                        "  AND relation NOT IN ('CONTAINS','IMPORTS') "
+                        "GROUP BY invoker_id"):
+                    out_deg[row[0]] = row[1]
+                for row in conn.execute(
+                        "SELECT invoked_id, COUNT(*) FROM edges "
+                        "WHERE relation IS NOT NULL "
+                        "  AND relation NOT IN ('CONTAINS','IMPORTS') "
+                        "GROUP BY invoked_id"):
+                    in_deg[row[0]] = row[1]
+                empty = {row[0] for row in conn.execute(
+                    "SELECT id FROM functions WHERE is_empty = 1")}
+                for nid in self.G.nodes():
+                    if nid in empty:
+                        continue
+                    self._degrees[nid] = (in_deg.get(nid, 0)
+                                          + out_deg.get(nid, 0))
+                self._in_deg = in_deg
+                self._out_deg = out_deg
+                return
+            except Exception:
+                # Schema drift / unexpected shape: fall through to the
+                # generic graph pass below (slower on lazy, still right).
+                self._degrees = {}
+                in_deg, out_deg = {}, {}
+        for nid in self.G.nodes():
+            if self.G.nodes[nid].get("is_empty", False):
+                continue
+            self._degrees[nid] = 0
+        for u, v, ed in self.G.edges(data=True):
+            if (ed or {}).get("relation") in ("CONTAINS", "IMPORTS"):
+                continue
+            out_deg[u] = out_deg.get(u, 0) + 1
+            in_deg[v] = in_deg.get(v, 0) + 1
+            if u in self._degrees:
+                self._degrees[u] += 1
+            if v in self._degrees:
+                self._degrees[v] += 1
+        self._in_deg = in_deg
+        self._out_deg = out_deg
 
     def summary(self) -> Dict:
         """High-level graph summary for the UI's initial load."""
@@ -444,15 +513,14 @@ class GraphCache:
             return sorted(callees, key=lambda c: c.get("call_order") or 0)
 
     def get_node_degree(self, node_id: str) -> Dict:
-        """In-degree + out-degree for node sizing."""
+        """In-degree + out-degree for node sizing (precomputed at reload)."""
         with self._lock:
             if node_id not in self.G:
                 return {"in_degree": 0, "out_degree": 0}
-            in_deg = sum(1 for p in self.G.predecessors(node_id)
-                         if (self.G.get_edge_data(p, node_id) or {}).get("relation") not in ("CONTAINS", "IMPORTS"))
-            out_deg = sum(1 for s in self.G.successors(node_id)
-                          if (self.G.get_edge_data(node_id, s) or {}).get("relation") not in ("CONTAINS", "IMPORTS"))
-            return {"in_degree": in_deg, "out_degree": out_deg, "total": in_deg + out_deg}
+            in_deg = self._in_deg.get(node_id, 0)
+            out_deg = self._out_deg.get(node_id, 0)
+            return {"in_degree": in_deg, "out_degree": out_deg,
+                    "total": in_deg + out_deg}
 
     def detect_cycles(self, limit: int = 50) -> List[Dict]:
         """Find cyclic call edges (A→B where B can reach A)."""
@@ -597,15 +665,9 @@ class GraphCache:
             return {"content": "", "missing": True}
 
     def get_all_degrees(self) -> Dict[str, int]:
-        """Compute degree for all nodes (for node sizing)."""
+        """Degree map for node sizing (precomputed at reload time)."""
         with self._lock:
-            degrees = {}
-            for nid in self.G.nodes():
-                if self.G.nodes[nid].get("is_empty", False):
-                    continue
-                deg = self.get_node_degree(nid)
-                degrees[nid] = deg["total"]
-            return degrees
+            return dict(self._degrees)
 
 
 # ---------------------------------------------------------------------------

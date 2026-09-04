@@ -56,7 +56,7 @@ python3 scripts/code2database_builder.py search-memory --graph code2db-out/ \
 #   --include-experience  同时搜索归档条目
 ```
 
-FTS5 无 token 交叠时，token 集相似度回退仍能找到近似项。
+FTS5 无 token 交叠时，token 集相似度回退仍能找到近似项。**中文感知**：unicode61 分词器把整段连续汉字当作单个 token，因此查询包含中文时相似度通道（单字 + 二元组）始终与 FTS5 并行运行并按最高分合并——中文语义不会被静默丢弃。
 
 ### 纠错（correct-first 保存）
 

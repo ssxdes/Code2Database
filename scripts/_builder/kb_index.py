@@ -19,6 +19,7 @@ import re
 import sqlite3
 import sys
 from _builder.c2d_foreign import _escape_sql_path
+from _builder.utils import _simple_tokenize, _similarity_score, _has_cjk
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import logging
@@ -714,10 +715,45 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
             params.extend(kinds)
         sql += "ORDER BY score DESC LIMIT ?"
         params.append(top_n)
-        rows = conn.execute(sql, params).fetchall()
+        try:
+            rows = conn.execute(sql, params).fetchall()
+        except sqlite3.Error:
+            rows = []
+        sim_scores: Dict[int, float] = {}
+        if not rows and _has_cjk(query):
+            # CJK fallback: the unicode61 tokenizer folds each CJK run
+            # into one token, so a Chinese query never token-matches
+            # (pure-CJK queries even escape to an empty FTS phrase and
+            # return nothing). Scan candidates with token-set similarity
+            # (CJK chars + bigrams) instead.
+            sql2 = "SELECT kb_paragraphs.* FROM kb_paragraphs " \
+                   "WHERE kb_paragraphs.weight >= ? "
+            params2: list = [min_weight]
+            if kinds:
+                placeholders = ",".join("?" for _ in kinds)
+                sql2 += f"AND kb_paragraphs.kind IN ({placeholders}) "
+                params2.extend(kinds)
+            cand = conn.execute(sql2, params2).fetchall()
+            q_tokens = _simple_tokenize(query)
+            scored_cand = []
+            for r in cand:
+                e_tokens = _simple_tokenize(" ".join(
+                    [r["title"] or "", r["body"] or "", r["tags"] or ""]))
+                sim = _similarity_score(q_tokens, e_tokens)
+                if sim > 0:
+                    scored_cand.append(
+                        (sim * (0.5 + 0.5 * min(r["weight"] / 2.0, 1.0)), r))
+            scored_cand.sort(key=lambda x: -x[0])
+            for s, r in scored_cand[:top_n]:
+                sim_scores[r["id"]] = s
+            rows = [r for _, r in scored_cand[:top_n]]
         max_chars = max_tokens * 4
         results = []
         for r in rows:
+            if "score" in r.keys():
+                score = r["score"]
+            else:
+                score = sim_scores.get(r["id"], 0.0)
             tags = r["tags"]
             if tags:
                 try:
@@ -743,7 +779,7 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
                 "node_ids": node_ids or [],
                 "weight": round(r["weight"], 4),
                 "kind": r["kind"],
-                "score": round(r["score"], 4),
+                "score": round(score, 4),
                 "scope_id": r["scope_id"],
                 "canonical_id": r["canonical_id"],
             })

@@ -262,6 +262,59 @@ class TestSearch(MemoryStoreTestBase):
         self.assertEqual(self.store.search("nvme", min_weight=9.9), [])
 
 
+class TestCjkSearch(MemoryStoreTestBase):
+    """CJK semantics must survive the Latin-only FTS5 escape path.
+
+    unicode61 folds each contiguous CJK run into one token, so the FTS
+    pass only ever sees the Latin tokens of a query; CJK meaning must
+    come from the token-set similarity channel (chars + bigrams).
+    """
+
+    def test_pure_cjk_query_matches(self):
+        self.store.add("登录失败如何处理", "检查 session 状态后重试",
+                       tags=["登录"])
+        results = self.store.search("登录失败")
+        self.assertTrue(results)
+        self.assertEqual(results[0]["question"], "登录失败如何处理")
+
+    def test_mixed_query_merges_cjk_channel(self):
+        # The Latin token "nvme" matches the English entry via FTS, so
+        # the old code never ran the similarity pass — the Chinese-only
+        # entry stayed invisible even though it is the right answer.
+        self.store.add("How to tune nvme performance?",
+                       "increase queue depth")
+        self.store.add("设备初始化的顺序是什么", "先分配队列再使能控制器")
+        results = self.store.search("nvme 初始化")
+        questions = [r["question"] for r in results]
+        self.assertIn("设备初始化的顺序是什么", questions)
+        self.assertIn("How to tune nvme performance?", questions)
+
+    def test_mixed_query_cjk_relevant_entry_ranks_high(self):
+        # With the merge channel the CJK-relevant entry must not lose
+        # to an entry that only matches the Latin token.
+        self.store.add("How to tune nvme performance?",
+                       "increase queue depth")
+        self.store.add("nvme 队列初始化顺序", "先分配再使能")
+        results = self.store.search("nvme 队列初始化")
+        self.assertTrue(results)
+        self.assertEqual(results[0]["question"], "nvme 队列初始化顺序")
+
+    def test_pure_latin_query_unchanged(self):
+        self.store.add("How does nvme driver submit IO?", "doorbell")
+        self.store.add("登录失败如何处理", "重试")
+        results = self.store.search("nvme submit")
+        self.assertTrue(results)
+        self.assertEqual(results[0]["question"],
+                         "How does nvme driver submit IO?")
+
+    def test_cjk_query_with_author_filter(self):
+        self.store.add("登录失败如何处理", "重试", author="alice")
+        self.store.add("其他问题", "其他答案", author="bob")
+        results = self.store.search("登录", author="alice")
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["author"], "alice")
+
+
 class TestCorrectReshapePromote(MemoryStoreTestBase):
     def test_correct_updates_and_versions(self):
         self.store.add("q", "old answer")

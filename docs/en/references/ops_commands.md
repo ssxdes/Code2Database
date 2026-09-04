@@ -707,6 +707,8 @@ python3 scripts/code2database_builder.py kb-rebuild-index \
 
 Unified FTS5+BM25 query across memory + knowledge. Returns ranked hits
 with `source_kind` (memory / knowledge), `score`, `body`, `see_also`.
+CJK queries (invisible to the unicode61 tokenizer) fall back to
+token-set similarity over candidates when FTS5 returns nothing.
 
 ```bash
 python3 scripts/code2database_builder.py kb-query \

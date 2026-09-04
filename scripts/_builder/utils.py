@@ -834,6 +834,19 @@ def _resolve_invoked_id(callee_name: str, domain: str, id_registry: dict,
 
 
 
+_CJK_RE = re.compile(r'[一-鿿㐀-䶿]')
+
+
+def _has_cjk(text) -> bool:
+    """True if text contains CJK unified ideograph characters.
+
+    Unicode61-tokenized FTS5 indexes treat each contiguous CJK run as
+    one token, so CJK query semantics are invisible to the Latin-only
+    FTS escape paths — callers use this to route to a similarity pass.
+    """
+    return bool(_CJK_RE.search(text or ""))
+
+
 def _similarity_score(tokens_a: set, tokens_b: set) -> float:
     """Jaccard-like similarity between two token sets."""
     if not tokens_a or not tokens_b:

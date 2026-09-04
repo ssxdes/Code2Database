@@ -706,7 +706,8 @@ python3 scripts/code2database_builder.py kb-rebuild-index \
 ### `kb-query`
 
 跨 memory + knowledge 的统一 FTS5+BM25 查询。返回带 `source_kind`、
-`score`、`body`、`see_also` 的排序结果。
+`score`、`body`、`see_also` 的排序结果。中文查询（unicode61 分词器
+不可见）在 FTS5 零结果时回退到 token 集相似度扫描。
 
 ```bash
 python3 scripts/code2database_builder.py kb-query \

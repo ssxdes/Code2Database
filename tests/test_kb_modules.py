@@ -190,6 +190,30 @@ class TestRebuildAndQueryKB(unittest.TestCase):
         for r in results:
             self.assertEqual(r["source_kind"], "knowledge")
 
+    def test_query_pure_cjk_falls_back_to_similarity(self):
+        # unicode61 FTS cannot match CJK runs — before the fallback a
+        # pure-Chinese query escaped to an empty FTS phrase and
+        # silently returned zero results.
+        _make_memory_entry(self.graph_dir, 1,
+                           "登录失败如何处理", "检查 session 状态后重试")
+        _make_knowledge_md(self.graph_dir, "principles.md",
+                           "## 线程安全\n\n每个线程运行独立的事件循环。\n")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        results = query_kb(self.graph_dir, "登录失败", top_n=10)
+        self.assertTrue(results)
+        self.assertEqual(results[0]["source_kind"], "memory")
+        self.assertGreater(results[0]["score"], 0.0)
+
+    def test_query_mixed_cjk_keeps_fts_latin_hits(self):
+        # A mixed query must still return its Latin FTS matches.
+        _make_memory_entry(self.graph_dir, 1,
+                           "How does bdev register io_device?",
+                           "bdev_register() calls io_device_register()")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        results = query_kb(self.graph_dir, "bdev 登录", top_n=10)
+        self.assertTrue(results)
+        self.assertIn("bdev", results[0]["title"] + results[0]["body"])
+
     def test_query_no_match_returns_empty(self):
         _make_memory_entry(self.graph_dir, 1,
                            "unrelated question", "unrelated answer")

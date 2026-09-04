@@ -56,7 +56,7 @@ python3 scripts/code2database_builder.py search-memory --graph code2db-out/ \
 #   --include-experience  also search archived entries
 ```
 
-When FTS5 has no token overlap, a token-set similarity fallback still finds near-matches.
+When FTS5 has no token overlap, a token-set similarity fallback still finds near-matches. **CJK-aware**: the unicode61 tokenizer folds each Chinese run into one token, so for queries containing CJK the similarity pass (chars + bigrams) always runs alongside FTS5 and both passes merge by best score — Chinese semantics are never silently dropped.
 
 ### Correction (correct-first save)
 

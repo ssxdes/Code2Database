@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-09-04
 
+### Round 24 — closing quality/loop gaps from the Round 24 audit
+
+Six gaps where the "AI knowledge system" goal had broken links (ROADMAP.md Round 24 analysis): MCP-side save, CJK search failures, freshness loop, memory↔symbol grounding, capture protocol, miss logging.
+
+- **CJK-aware retrieval (G2)** — two search defects fixed. ① `MemoryStore.search`: the FTS5 pass only sees Latin tokens (`_fts5_escape` strips CJK), so a mixed query like "nvme 初始化" silently dropped its Chinese semantics — pure-Chinese queries fell to an unranked full scan. Queries containing CJK now always run the token-set similarity pass (chars + bigrams) alongside FTS5 and merge by entry id (best score wins). ② `kb_index.query_kb`: a pure-CJK query escaped to an empty FTS phrase and returned **zero results** with no fallback (kb-query CLI + knowledge_query/kb_query MCP affected) — now falls back to similarity over candidates. New `_has_cjk()` helper in `utils.py`.
+
 ### Round 23 — ROADMAP follow-ups: architecture UI, correct-first save, memory lineage, multi-user views
 
 All four remaining ROADMAP items, closing the gap analysis from Round 21.

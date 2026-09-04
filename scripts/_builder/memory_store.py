@@ -51,7 +51,7 @@ except ImportError:
 
 import logging
 
-from _builder.utils import _simple_tokenize, _similarity_score
+from _builder.utils import _simple_tokenize, _similarity_score, _has_cjk
 
 # Weight formula constants — unchanged from the JSON store so behavior
 # carries over exactly.
@@ -571,8 +571,13 @@ class MemoryStore:
         Results are grouped by similarity cluster (root_id): the
         best-scoring member of each cluster is returned with a
         variant_count, so one popular Q&A can't flood the whole result
-        list. Falls back to token-set similarity when FTS5 has no
-        token overlap. Access counters of returned rows are bumped.
+        list. CJK-aware: the FTS5 pass only sees Latin tokens (the
+        unicode61 tokenizer folds each CJK run into one token), so for
+        queries containing CJK the token-set similarity pass always
+        runs alongside and both passes are merged by entry id (best
+        score wins); pure-Latin queries use FTS5 alone and fall back
+        to similarity only when FTS5 has no token overlap. Access
+        counters of returned rows are bumped.
         """
         if not query or not query.strip():
             return []
@@ -614,8 +619,10 @@ class MemoryStore:
         if fts_rows:
             for r in fts_rows:
                 scored.append((r["score"], self._row_to_dict(r)))
-        else:
-            # --- fallback: token-set similarity over candidates ---
+        if not fts_rows or _has_cjk(query):
+            # --- similarity pass (fallback for pure-Latin queries,
+            # always-on merge channel for CJK queries: the FTS5 pass
+            # above only ranks the Latin tokens of a mixed query) ---
             params2: list = []
             cat_sql2 = self._category_filter_sql(category, params2)
             author_sql2 = " AND m.author = ? " if author else ""
@@ -643,7 +650,15 @@ class MemoryStore:
                 sim = _similarity_score(q_tokens, e_tokens)
                 if sim > 0:
                     combined = sim * (0.5 + 0.5 * min(r["weight"] / 2.0, 1.0))
-                    scored.append((combined, dict(r)))
+                    scored.append((combined, self._row_to_dict(r)))
+
+        # --- merge the two passes by entry id (best score wins) ---
+        merged: dict = {}
+        for score, entry in scored:
+            mid = entry.get("id")
+            if mid not in merged or score > merged[mid][0]:
+                merged[mid] = (score, entry)
+        scored = list(merged.values())
 
         # --- tag post-filter (ALL requested tags must be present) ---
         if tags:

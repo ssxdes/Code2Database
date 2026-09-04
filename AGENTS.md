@@ -124,7 +124,7 @@ Capability modules have dedicated unit tests in `tests/` covering:
 - Update command (confirmation gate, attribute parsing, backend detection)
 - Profile generation (auto-profile, project-type detection, struct_op_types)
 
-**Test suite**: 2114 tests across 111 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails.)
+**Test suite**: 2121 tests across 111 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails.)
 
 ## Language Support
 

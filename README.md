@@ -164,10 +164,10 @@ Every language below gets full structural extraction and cross-file resolution i
 | Language | Extensions | What gets extracted |
 |----------|------------|---------------------|
 | **C / C++** | `.c` `.cc` `.cpp` `.h` `.hpp` `.cxx` | Functions, calls, `#ifdef` branches, struct field access, macros, callbacks |
-| **Go** | `.go` | Functions, methods, goroutine spawns, channel ops, interface dispatch |
-| **Python** | `.py` | Functions, classes, decorators, async calls, dynamic dispatch |
-| **Java** | `.java` | Classes, methods, interface dispatch, annotations, overrides |
-| **Rust** | `.rs` | Functions, traits, impls, async, generics, macro expansion |
+| **Go** | `.go` | Functions, methods, interfaces/structs (method sets, embedding), imports, goroutine spawns, interface dynamic dispatch (INFERRED edges from statically-typed receivers) |
+| **Python** | `.py` | Functions, classes, decorators, async calls |
+| **Java** | `.java` | Classes, methods, annotations (Spring routes → API entries, framework callbacks), extends/implements, JVM main detection |
+| **Rust** | `.rs` | Functions, traits, impls, `macro_rules!` definitions + invocations + calls inside macro arguments, attributes (`#[derive]` ...) |
 | **Assembly** | `.S` `.s` `.asm` | Function labels, call instructions, register usage (regex-based) |
 
 Plus **profile-driven** detection for frameworks, build systems, and project conventions — swap one Profile JSON to retarget the tool to a new project type.

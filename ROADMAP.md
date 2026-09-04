@@ -1,4 +1,4 @@
-# Code2Database 愿景与差距分析（Round 21）
+# Code2Database 愿景与差距分析
 
 > 目标定位：**让 C2D 成为代码项目的 AI 知识系统** —— AI 用它积累经验、跨会话延续上下文、通过脚本查询构建好的代码图谱而非依赖注意力随机检索；人类用它一键加载项目上下文、通过 UI 一眼理解代码业务实现、让新人直接获得前辈经验。
 
@@ -62,3 +62,38 @@ SKILL.md（en/zh）Step 0 改为 session-init；memory_knowledge.md / usage_refe
 ## 五、验证与回归约定
 
 每项独立 commit + `PYTHONPATH=scripts python3 -m pytest tests/ -q` 全量回归；文档随代码同步（SKILL en/zh、references、AGENTS.md、CHANGELOG）。
+
+---
+
+# Round 24 差距分析（2026-09-04）
+
+Round 21–23 落地后，七大目标能力（经验累积/纠错/跨会话/脚本查图/人类加载/UI 探索/新人继承）的**框架层已全部存在**。本轮审计从"目标能否在真实使用中成立"出发，发现六个**质量与闭环**缺口——不是缺功能，而是关键链路上有断点。
+
+## 一、差距清单（按对目标的威胁排序）
+
+| # | 缺口 | 现状证据 | 对目标的威胁 | 方案 |
+|---|------|----------|--------------|------|
+| G1 | **MCP 侧无 save-memory** —— 纯 MCP 接入的 agent 只能查（`memory_search`）不能存 | `mcp_server.py` 54 个 `_tool_*` 中无 save_memory | "AI 逐渐累积经验"在 MCP 接入路径上断链 | 新增 `code2database_save_memory` MCP 工具（82→83） |
+| G2 | **中文检索双病灶**：① `memory_store.search` FTS 主通道 `_fts5_escape` 只提取拉丁 token，中英混合查询的中文语义被静默丢弃（纯中文查询退化为全表相似度扫描，能用但无 BM25 排序）；② `kb_index.query_kb` **无任何 fallback**，纯中文查询 `_fts5_escape` 返回 `'""'` → **零结果**（影响 kb-query CLI + knowledge_query/kb_query MCP + 统一检索） | `memory_store.py:174` / `kb_index.py:287` 均为 `re.findall(r'[A-Za-z0-9_]+')`；kb_query_kb 无 fallback 分支 | 用户以中文为主，经验检索"看似有索引实际搜不到"直接瓦解 G1/G7 | ① memory search：查询含 CJK 时 FTS+相似度双通道合并（按簇根去重取最高分）；② kb query：FTS 零结果且查询含 CJK 时退化为 `_simple_tokenize` bigram 相似度扫描 |
+| G3 | **图新鲜度未闭环**：`cgdb_freshness.check_freshness()` 已存在（manifest mtime/size 比对 + git HEAD 检查），但 **session_init 不调用它**（Layer 3 只有 brief 漂移），web UI `/api/graph/summary` 也不含新鲜度 | `session_init.py` Layer 3 只比 node/edge 计数；`/api/graph/summary` 仅返回 `cache.summary()` | AI 在过期图上自信回答 = **制造错误经验**；人类看 UI 不知图已过期 | session_init Layer 3 接入 `check_freshness`（stale → hint 建议 rebuild）；`/api/graph/summary` 增加 `freshness` 字段；MCP `session_init` 自动获得 |
+| G4 | **记忆与图谱无关联**：memory 无 symbol 字段；`/api/node` 不返回相关记忆；UI 符号页看不到"这个函数的坑" | memory 表无 symbols 列；`web_ui.py` get_node 无记忆注入 | 经验漂浮在代码之外——新人看代码时前辈经验不可见，违背"得到前辈经验"的核心体验 | memory 加 `symbols` JSON 列（旧库 ALTER 迁移）；`save-memory --symbol`（可重复）；`search(symbol=)`；`/api/node` 注入 `related_memories` top-3；UI 符号详情显示；MCP `memory_search` 加 symbol 参数 |
+| G5 | **SKILL 无"何时存记忆"协议**：纠错协议（--correct）已协议化，但正向沉淀（什么情况该 save-memory）无触发准则，全凭 AI 自觉 | SKILL.md 仅有 correction protocol | 经验累积速率取决于模型心情，知识系统衰减为"偶尔想起来才存" | SKILL en/zh 增补 memory-capture triggers（排查成功后/踩坑后/澄清误解后/新约束发现后） |
+| G6 | **kb_query_log 只记录 kb 检索**：session_init 的 known-unknowns 依赖 kb_query_log，但 memory search 未记入 → 记忆层"反复没答案的问题"不可见 | `query_kb(log_query=True)`；`MemoryStore.search` 无日志 | known-unknowns 覆盖不全，"该沉淀什么"的信号丢失一半 | `MemoryStore.search` 零结果时记入 kb_query_log（复用同表，标 kind=memory_miss） |
+
+## 二、冗余复查（对照 Round 21 第三节）
+
+Round 21 结论仍成立：无"必须删除"的模块。本轮复查两点：
+- memory 三层（store/manager/cmd）与 facade —— 各层有独立消费者（store→MCP/UI、manager→CLI、cmd→参数解析），保留。
+- 本轮新增项全部为**补断点**而非加层：G1–G6 不引入新模块，只在既有模块内补链路。
+
+## 三、Round 24 执行计划
+
+每项独立 commit + 全量回归 + 文档同步判断：
+
+1. **本文档**（差距分析+方案）
+2. **G2 中文检索修复**：memory 双通道合并 + kb CJK fallback（含中文查询测试）
+3. **G3 新鲜度闭环**：session_init + /api/graph/summary + MCP 自动获得
+4. **G4 记忆↔符号关联**：schema 迁移 + CLI/UI/MCP 三面 + related_memories
+5. **G1 MCP save-memory**：82→83 工具
+6. **G6 记忆检索零结果入日志**（并入 5 或独立小项）
+7. **G5 SKILL 触发协议** + AGENTS/CHANGELOG/usage_reference 全量文档同步

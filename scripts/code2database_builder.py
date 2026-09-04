@@ -665,6 +665,18 @@ def main():
     sub = parser.add_subparsers(dest="command")
 
     # build
+    # build-update (precise per-file SQLite graph update)
+    p_bu2 = sub.add_parser("build-update",
+                           help="Update the SQLite graph from disk changes (per-file, no full rebuild)")
+    p_bu2.add_argument("--source", required=True, help="Source directory to scan for changes")
+    p_bu2.add_argument("--graph", required=True, help="Call graph output directory (must be SQLite-backed)")
+    p_bu2.add_argument("--extraction-backend", default=None,
+                       choices=["auto", "clang", "tree-sitter"],
+                       help="Extraction backend for the rescan (default: auto)")
+    p_bu2.add_argument("--dry-run", action="store_true",
+                       help="Report what would change without writing")
+    p_bu2.add_argument("--json", action="store_true", help="Output JSON report")
+
     p_build = sub.add_parser("build", help="Build invocation graph from extraction JSON")
     p_build.add_argument("--extraction", required=True, help="Extraction JSON from code2database_scanner.py")
     p_build.add_argument("--outdir", required=True, help="Output directory for domain-split JSON files")
@@ -2650,6 +2662,7 @@ def main():
 
     commands = {
         "build": cmd_build,
+        "build-update": _lazy("_builder.build_update", "cmd_build_update"),
         "make": _lazy("_builder.make_cmd", "cmd_make"),
         "load": cmd_load,
         "search": cmd_search,

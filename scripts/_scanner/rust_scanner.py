@@ -52,11 +52,19 @@ class RustTreeSitterScanner(BaseScanner):
         if seen_type_names is None:
             seen_type_names = set()
         rel_path = os.path.relpath(filepath, source_root)
+        # attribute_items attach to the item that FOLLOWS them
+        pending_attrs = []
         for child in node.children:
+            if child.type == 'attribute_item':
+                parsed = self._parse_attribute(child, source_bytes)
+                if parsed:
+                    pending_attrs.extend(parsed)
+                continue
             if child.type == 'function_item':
                 self._process_rust_func(child, source_bytes, filepath, source_root,
                                         domain, functions, edges, import_edges,
-                                        impl_type)
+                                        impl_type, attributes=pending_attrs)
+                pending_attrs = []
             elif child.type == 'impl_item':
                 # Extract the type being implemented
                 type_node = child.child_by_field_name('type')
@@ -81,9 +89,11 @@ class RustTreeSitterScanner(BaseScanner):
                 if impl_name and type_node and impl_name not in seen_type_names:
                     self._extract_type_node(
                         type_node, source_bytes, filepath, source_root,
-                        domain, functions, rel_path, "struct"
+                        domain, functions, rel_path, "struct",
+                        attributes=pending_attrs
                     )
                     seen_type_names.add(impl_name)
+                pending_attrs = []
 
                 self._walk_rust(child, source_bytes, filepath, source_root,
                                 domain, functions, edges, import_edges,
@@ -94,8 +104,10 @@ class RustTreeSitterScanner(BaseScanner):
                 struct_name = self._node_text(name_node, source_bytes) if name_node else ""
                 self._extract_type_node(
                     child, source_bytes, filepath, source_root,
-                    domain, functions, rel_path, "struct"
+                    domain, functions, rel_path, "struct",
+                    attributes=pending_attrs
                 )
+                pending_attrs = []
                 if struct_name:
                     seen_type_names.add(struct_name)
             elif child.type == 'trait_item':
@@ -103,13 +115,19 @@ class RustTreeSitterScanner(BaseScanner):
                 trait_name_text = self._node_text(name_node, source_bytes) if name_node else ""
                 self._extract_type_node(
                     child, source_bytes, filepath, source_root,
-                    domain, functions, rel_path, "trait"
+                    domain, functions, rel_path, "trait",
+                    attributes=pending_attrs
                 )
+                pending_attrs = []
                 if trait_name_text:
                     seen_type_names.add(trait_name_text)
                 self._walk_rust(child, source_bytes, filepath, source_root,
                                 domain, functions, edges, import_edges,
                                 impl_type, seen_type_names=seen_type_names)
+            elif child.type == 'macro_definition':
+                self._process_macro_definition(
+                    child, source_bytes, filepath, source_root, domain,
+                    functions, rel_path)
             elif child.type == 'use_declaration':
                 self._extract_imports(child, source_bytes, domain, rel_path,
                                       import_edges)
@@ -120,6 +138,66 @@ class RustTreeSitterScanner(BaseScanner):
                 self._walk_rust(child, source_bytes, filepath, source_root,
                                 domain, functions, edges, import_edges,
                                 impl_type, seen_type_names=seen_type_names)
+
+    def _parse_attribute(self, attr_node, source_bytes) -> list:
+        """attribute_item → readable entries.
+
+        #[derive(Debug, Clone)] → ['derive:Debug', 'derive:Clone'];
+        #[inline] → ['inline']; #[serde(rename_all = "...")] → ['serde'].
+        """
+        entries = []
+        for child in attr_node.children:
+            if child.type != 'attribute':
+                continue
+            name_node = child.child_by_field_name('name') or next(
+                (c for c in child.children if c.type == 'identifier'), None)
+            if name_node is None:
+                continue
+            name = self._node_text(name_node, source_bytes)
+            args_node = child.child_by_field_name('arguments')
+            if args_node is None:
+                args_node = next((c for c in child.children
+                                  if c.type == 'token_tree'), None)
+            if name == 'derive' and args_node is not None:
+                for c in args_node.children:
+                    if c.type == 'identifier':
+                        entries.append("derive:" + self._node_text(
+                            c, source_bytes))
+            else:
+                entries.append(name)
+        return entries
+
+    def _process_macro_definition(self, node, source_bytes, filepath,
+                                  source_root, domain, functions, rel_path):
+        """macro_rules! name { ... } → a macro node (node_type='macro').
+
+        Invocation sites produce edges to the bare name; unresolved
+        targets (std macros like println!) are dropped by the builder's
+        resolution, so only user-defined macros become graph nodes.
+        """
+        name_node = node.child_by_field_name('name')
+        if name_node is None:
+            return
+        name = self._node_text(name_node, source_bytes)
+        if not name:
+            return
+        text = self._node_text(node, source_bytes)
+        first_line = text.split("\n", 1)[0].rstrip("{ \t")
+        functions.append({
+            "id": self._make_func_id(domain, name),
+            "name": name,
+            "source_file": rel_path,
+            "line": node.start_point[0] + 1, "domain": domain,
+            "labels": [], "is_empty": False,
+            "api_constraints": "",
+            "body_text": "",
+            "signature": first_line,
+            "params": [], "local_vars": [], "callee_args": [],
+            "condition_vars": [],
+            "node_type": "macro",
+            "start_byte": int(node.start_byte),
+            "end_byte": int(node.end_byte),
+        })
 
     # ------------------------------------------------------------------
     # Import / use extraction
@@ -217,7 +295,7 @@ class RustTreeSitterScanner(BaseScanner):
 
     def _extract_type_node(self, type_or_decl_node, source_bytes, filepath,
                            source_root, domain, functions, rel_path,
-                           node_type):
+                           node_type, attributes=None):
         """Emit a class-like node for struct_item or trait_item."""
         # Determine the name: for struct_item/trait_item, use 'name' field;
         # for a type_identifier passed from impl, use its text directly.
@@ -273,6 +351,7 @@ class RustTreeSitterScanner(BaseScanner):
             "callee_args": [],
             "condition_vars": [],
             "node_type": node_type,
+            "attributes": attributes or [],
             "start_byte": type_or_decl_node.start_byte,
             "end_byte": type_or_decl_node.end_byte,
         })
@@ -372,7 +451,7 @@ class RustTreeSitterScanner(BaseScanner):
 
     def _process_rust_func(self, node, source_bytes, filepath, source_root,
                            domain, functions, edges, import_edges,
-                           impl_type=""):
+                           impl_type="", attributes=None):
         name_node = node.child_by_field_name('name')
         if name_node is None:
             return
@@ -412,6 +491,7 @@ class RustTreeSitterScanner(BaseScanner):
             "visibility": visibility,
             "modifiers": modifiers,
             "return_type": return_type,
+            "attributes": attributes or [],
             "doc_comment": self._extract_doc_comment(node, source_bytes),
             "start_byte": int(node.start_byte),
             "end_byte": int(node.end_byte),
@@ -570,6 +650,12 @@ class RustTreeSitterScanner(BaseScanner):
                         callee_args_list[-1]["callback_target"] = spawn_target_name
                 return
 
+            if node.type == 'macro_invocation':
+                self._extract_macro_invocation(
+                    node, source_bytes, invoker_id, edges,
+                    callee_args_list, call_order)
+                return
+
             if node.type == 'if_expression':
                 cond_node = node.child_by_field_name('condition')
                 cond_text = self._node_text(cond_node, source_bytes).strip() if cond_node else ""
@@ -634,6 +720,83 @@ class RustTreeSitterScanner(BaseScanner):
                 _walk(child)
 
         _walk(body_node)
+
+    def _extract_macro_invocation(self, node, source_bytes, invoker_id,
+                                  edges, callee_args_list, call_order):
+        """Record a macro invocation and extract calls in its arguments.
+
+        token_tree contents are NOT parsed into expression nodes by
+        tree-sitter-rust — an identifier directly followed by a
+        token_tree starting with '(' is a function call
+        (my_try!(compute(x)) → compute). The invocation itself gets an
+        edge to the macro name; unresolved targets (std macros like
+        println!) are dropped by the builder's resolution, so only
+        user-defined macro_rules! become graph edges.
+        """
+        name = ""
+        token_tree = None
+        for c in node.children:
+            if c.type == 'identifier' and not name:
+                name = self._node_text(c, source_bytes)
+            elif c.type == 'token_tree' and token_tree is None:
+                token_tree = c
+        if name:
+            call_order[0] += 1
+            callee_args_list.append({
+                "call_order": call_order[0],
+                "callee": name,
+                "full_callee": name + "!",
+                "args_snippet": "",
+                "args": [],
+                "concurrency_info": {"is_spawn": False, "spawn_target": "",
+                                     "spawn_arg": "", "concurrency_type": ""},
+            })
+            edges.append({
+                "source": invoker_id,
+                "target": name.lower(),
+                "call_order": call_order[0],
+                "call_condition": "",
+                "concurrency": "macro",
+            })
+        if token_tree is not None:
+            self._extract_token_tree_calls(
+                token_tree, source_bytes, invoker_id, edges,
+                callee_args_list, call_order)
+
+    def _extract_token_tree_calls(self, token_tree, source_bytes, invoker_id,
+                                  edges, callee_args_list, call_order):
+        """Pattern-match calls inside macro arguments (see above)."""
+        children = list(token_tree.children)
+        for i, c in enumerate(children):
+            if c.type == 'token_tree':
+                self._extract_token_tree_calls(
+                    c, source_bytes, invoker_id, edges,
+                    callee_args_list, call_order)
+                continue
+            if c.type != 'identifier':
+                continue
+            nxt = children[i + 1] if i + 1 < len(children) else None
+            if (nxt is not None and nxt.type == 'token_tree'
+                    and nxt.text.startswith(b'(')):
+                callee = self._node_text(c, source_bytes)
+                call_order[0] += 1
+                callee_args_list.append({
+                    "call_order": call_order[0],
+                    "callee": callee,
+                    "full_callee": callee,
+                    "args_snippet": self._node_text(nxt, source_bytes),
+                    "args": [],
+                    "concurrency_info": {"is_spawn": False, "spawn_target": "",
+                                         "spawn_arg": "",
+                                         "concurrency_type": ""},
+                })
+                edges.append({
+                    "source": invoker_id,
+                    "target": callee.lower(),
+                    "call_order": call_order[0],
+                    "call_condition": "",
+                    "concurrency": "macro_arg",
+                })
 
     def _extract_rust_callee(self, call_node, source_bytes: bytes):
         """Extract callee name from a call expression.

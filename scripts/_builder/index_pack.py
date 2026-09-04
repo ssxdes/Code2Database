@@ -932,26 +932,40 @@ def _build_context_pack(G: nx.DiGraph, outdir: str, source_root: str = "",
     # order wrote the file first, so the merged summaries only ever
     # existed in the in-memory dict and the on-disk context_pack never
     # contained them (the feature was dead on every build).
+    # Round 21: knowledge_summary comes from the project brief
+    # (knowledge/brief.json). The old .knowledge_pack_lite.json source
+    # was removed with the MD knowledge system (Round 20) — the key had
+    # been silently absent from every build since.
     try:
-        mem_pack_path = os.path.join(outdir, ".memory_pack_lite.json")
-        if os.path.exists(mem_pack_path):
-            mem_data = json.loads(Path(mem_pack_path).read_text(encoding="utf-8"))
-            pack["memory_summary"] = {
-                "top_questions": mem_data.get("top_questions", [])[:5],
-                "hot_memories": mem_data.get("hot_memories", [])[:5],
+        from _builder.brief import load_brief
+        brief = load_brief(outdir)
+        if brief is not None:
+            pack["knowledge_summary"] = {
+                "project": brief.get("project", ""),
+                "one_liner": brief.get("one_liner", ""),
+                "hard_rules": [hr.get("rule", "") for hr in
+                               (brief.get("hard_rules") or [])][:10],
+                "modes": [m.get("name", "") for m in
+                          (brief.get("modes") or [])][:10],
+                "pitfalls": (brief.get("pitfalls") or [])[:5],
             }
     except Exception:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
+    # Round 21: memory_summary is generated fresh from memory.db — the
+    # old source (.memory_pack_lite.json) is only written by an explicit
+    # `manage-memory --action pack`, so it was stale on every build.
     try:
-        know_pack_path = os.path.join(outdir, ".knowledge_pack_lite.json")
-        if os.path.exists(know_pack_path):
-            know_data = json.loads(Path(know_pack_path).read_text(encoding="utf-8"))
-            pack["knowledge_summary"] = {
-                "files": know_data.get("files", [])[:10],
-                "topics": know_data.get("topics", [])[:20],
-                "architecture_summary": (know_data.get("architecture_summary", "")
-                                         or "")[:500],
+        from _builder.memory_store import MemoryStore
+        store = MemoryStore(outdir)
+        digest = store.digest(limit=10)
+        if digest:
+            pack["memory_summary"] = {
+                "top_questions": [e["question"][:80]
+                                  for e in digest[:5]],
+                "hot_memories": [{"id": e["id"], "q": e["question"][:60],
+                                  "w": e["weight"]}
+                                 for e in digest if e["weight"] > 0.7][:5],
             }
     except Exception:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)

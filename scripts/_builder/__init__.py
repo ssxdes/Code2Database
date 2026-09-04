@@ -125,6 +125,10 @@ _LAZY_IMPORTS = {
     "cmd_memory_store_split": ("_builder.memory_store", "cmd_memory_store_split"),
     "cmd_memory_store_merge": ("_builder.memory_store", "cmd_memory_store_merge"),
     "cmd_memory_store_move": ("_builder.memory_store", "cmd_memory_store_move"),
+    # session_init
+    "cmd_session_init": ("_builder.session_init", "cmd_session_init"),
+    "build_session_context": ("_builder.session_init", "build_session_context"),
+    "render_session_context": ("_builder.session_init", "render_session_context"),
     # brief
     "cmd_knowledge_brief": ("_builder.brief", "cmd_knowledge_brief"),
     "cmd_brief_update": ("_builder.brief", "cmd_brief_update"),

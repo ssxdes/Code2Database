@@ -62,6 +62,7 @@ from _builder.brief import (
     cmd_knowledge_brief, cmd_brief_update, cmd_brief_extract,
     cmd_brief_validate,
 )
+from _builder.session_init import cmd_session_init
 from _builder.kb_index import rebuild_kb_index as cmd_kb_rebuild_index_impl
 from _builder.patcher import cmd_patch_from_diff, cmd_patch_from_git, cmd_light_scan
 from _builder.changelog_update import cmd_quick_update, cmd_export_changes, cmd_merge_changes, cmd_semantic_status
@@ -1023,6 +1024,13 @@ def main():
     p_val_mem = sub.add_parser("validate-memory",
                                help="Validate memory against current graph; invalidate stale → experience")
     p_val_mem.add_argument("--graph", required=True, help="Call graph output directory")
+
+    # session-init (one-shot session context: brief + memory digest + graph + known-unknowns)
+    p_si = sub.add_parser("session-init",
+                          help="Load full session context: project brief + memory digest + graph state + known unknowns")
+    p_si.add_argument("--graph", required=True, help="Call graph output directory")
+    p_si.add_argument("--top", type=int, default=10, help="Memory digest size")
+    p_si.add_argument("--json", action="store_true", help="Output structured JSON")
 
     # knowledge-brief (session-start mandatory load)
     p_kb = sub.add_parser("knowledge-brief",
@@ -2571,6 +2579,8 @@ def main():
         "search-memory": cmd_search_memory,
         "recall": cmd_search_memory,  # SKILL.md alias
         "brief": cmd_knowledge_brief,  # SKILL.md alias
+        "session-init": cmd_session_init,
+        "init": cmd_session_init,  # SKILL.md alias
         "validate-memory": cmd_validate_memory,
         "export-html": cmd_export_html,
         "export-obsidian": cmd_export_obsidian,

@@ -1248,6 +1248,27 @@ class MemoryStore:
         finally:
             conn.close()
 
+    def digest(self, limit: int = 10) -> List[dict]:
+        """Top active memories by weight — the session-start digest.
+
+        This is what a newcomer (or a fresh agent session) sees first:
+        the questions veterans keep asking, with answers.
+        """
+        cat_paths = self._category_paths()
+        entries = []
+        for e in self._active_entries(limit=limit):
+            entries.append({
+                "id": e["id"],
+                "question": e["question"],
+                "answer": (e["answer"] or "")[:300],
+                "category": cat_paths.get(e.get("category_id"), ""),
+                "author": e.get("author", ""),
+                "weight": round(e.get("weight", 1.0), 2),
+                "access_count": e.get("access_count", 0),
+                "tags": e.get("tags", [])[:5],
+            })
+        return entries
+
     def generate_pack(self, tier: str = "lite") -> dict:
         """Generate a memory pack for LLM consumption.
 

@@ -16,7 +16,7 @@ Code2Database 用两个形态相反的长期存储：
 python3 scripts/code2database_builder.py session-init --graph code2db-out/ [--top 10] [--json]
 ```
 
-一次加载四层并输出为 prompt 就绪文本：渲染后的简报、记忆摘要（按权重取 top 活跃 Q&A，含分类/作者/阅读数）、图统计 + 简报漂移告警、known unknowns（反复未命中的查询 — 为它们补答案）。空存储退化为引导提示而非报错。这是每次会话的 Step 0（AI）也是最快的项目简报（人类）；Web UI 以交互方式渲染同样的数据（Brief / Memory 面板）。
+一次加载四层并输出为 prompt 就绪文本：渲染后的简报、记忆摘要（按权重取 top 活跃 Q&A，含分类/作者/阅读数）、图统计 + 简报漂移告警、known unknowns（反复未命中的查询 — 为它们补答案）。空存储退化为引导提示而非报错。这是每次会话的 Step 0（AI）也是最快的项目简报（人类）；Web UI 以交互方式渲染同样的数据（Brief / Memory 面板）。MCP：同样的上下文以 `code2database_session_init` 工具暴露——代理应在会话开始时最先调用它，先于 search/describe/trace。
 
 ## Memory（memory.db）
 

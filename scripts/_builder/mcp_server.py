@@ -7,10 +7,11 @@ CLI subprocess calls.
 Usage:
     python code2database_builder.py serve --graph code2db-out/
 
-MCP Tools exposed (81 total):
-    - 34 code2database_* tools (load, search, describe, explore, trace,
+MCP Tools exposed (82 total):
+    - 35 code2database_* tools (load, search, describe, explore, trace,
       impact, key_paths, concurrency, data_lifecycle, domain, knowledge_query,
-      memory_search, semantic_status, blast_radius, field_access, etc.)
+      memory_search, semantic_status, blast_radius, field_access,
+      session_init, etc.)
     - 19 cgdb_* tools (search_symbols, get_definition, get_function_body,
       get_struct_layout, find_type_definition, find_invokers, find_invoked,
       find_ops_impls, find_cfg_paths, find_data_flow, find_aliases,
@@ -731,6 +732,28 @@ def _tool_kb_query(args: dict, graph_dir: str) -> dict:
         "results": results,
         "engine": "fts5_bm25",
     }
+
+
+def _tool_session_init(args: dict, graph_dir: str) -> dict:
+    """One-shot session context: brief + memory digest + graph +
+    known-unknowns.
+
+    The session-start entry for agents: instead of guessing which
+    tools to call first, one call returns the project brief (mandatory
+    rules/modes/pitfalls), the memory digest (veteran Q&A ranked by
+    weight), graph state with brief-drift warning, and known-unknowns
+    (repeatedly unanswered queries that should be captured into
+    memory). Every layer degrades to a hint when absent — never raises.
+    """
+    from _builder.session_init import build_session_context, \
+        render_session_context
+    ctx = build_session_context(
+        graph_dir, memory_top=int(args.get("top", 10)))
+    # "rendered" is the prompt-ready text form (same as the session-init
+    # CLI prints); the structured fields alongside it let agents follow
+    # up programmatically (e.g. memory_digest ids, known_unknowns queries)
+    ctx["rendered"] = render_session_context(ctx)
+    return ctx
 
 
 def _tool_semantic_status(args: dict, graph_dir: str) -> dict:
@@ -1625,6 +1648,17 @@ TOOLS = {
             "required": ["query"],
         },
         "handler": _tool_kb_query,
+    },
+    "code2database_session_init": {
+        "description": "One-shot session context: project brief (mandatory rules/modes/pitfalls), memory digest (veteran Q&A ranked by weight), graph state with brief-drift warning, and known-unknowns (repeatedly unanswered queries worth capturing into memory). Call this FIRST at session start, before search/describe/trace. Every layer degrades to a hint when absent.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "top": {"type": "integer", "description": "Max memory digest entries (default 10)"},
+            },
+            "required": [],
+        },
+        "handler": _tool_session_init,
     },
     "code2database_foreign_refs": {
         "description": "List cross-C2D foreign references for a node. Shows which functions in external C2Ds (project A) are called by this node (project B). Returns foreign_node_id, name, domain, source_file, signature, status.",

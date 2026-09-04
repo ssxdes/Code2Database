@@ -5,7 +5,16 @@ All notable changes to Code2Database will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-09-03
+## [Unreleased] - 2026-09-04
+
+### Round 22 — MCP `session_init` tool
+
+ROADMAP follow-up (lowest-hanging): the one-shot session context from Round 21 is now available where agents actually work — the MCP tool surface.
+
+- **`code2database_session_init`** — one call returns the project brief (mandatory rules/modes/pitfalls), memory digest (veteran Q&A ranked by weight), graph state with brief-drift warning, known-unknowns (repeatedly unanswered queries worth capturing into memory), plus a prompt-ready `rendered` form identical to the `session-init` CLI output. Structured fields alongside let agents follow up programmatically. Every layer degrades to a hint when absent — never raises. No required parameters (`top` optional, default 10).
+- MCP tool count: 81 → 82 (35 `code2database_*` + 19 `cgdb_*` + 28 design-report).
+
+Tests: +5 (test_mcp_server: registry presence, empty-dir degradation, full-context rendering, top clamping). Suite: 2085 tests / 111 files. Docs: SKILL.md / OVERVIEW.md / README / SKILL_ops / ops_commands / usage_reference / memory_knowledge (en+zh), AGENTS.md.
 
 ### Round 21 — C2D as the project's AI knowledge system (session-init + human UI context)
 

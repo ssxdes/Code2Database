@@ -7,7 +7,7 @@
 **一次扫描 · 持久图谱 · 精准查询 · 更少工具调用 · 更快回答**
 
 [![语言](https://img.shields.io/badge/语言-7%20%2B%20ASM-orange)](#语言支持)
-[![MCP工具](https://img.shields.io/badge/MCP工具-81-blueviolet)](#mcp-服务器)
+[![MCP工具](https://img.shields.io/badge/MCP工具-82-blueviolet)](#mcp-服务器)
 [![查询命令](https://img.shields.io/badge/查询命令-226-success)](#命令参考)
 [![许可证: MIT](https://img.shields.io/badge/许可证-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](#安装)
@@ -215,7 +215,7 @@ bash scripts/setup.sh --languages c,go
 | **边置信度** | EXTRACTED(1.0) / INFERRED(0.7-0.95) / AMBIGUOUS(0.1-0.3) + 来源审计 |
 | **一键探索** | `explore-flow` — 单次查询获取相关节点、路径和条件 |
 | **增量更新** | `quick-update` 无需 LLM；`light-scan`/`patch-from-git` 零 token 更新 |
-| **MCP 服务器** | `serve` — 通过 stdio 暴露 81 个查询工具（34 code2database_* + 19 cgdb_*）供 LLM 代理使用 |
+| **MCP 服务器** | `serve` — 通过 stdio 暴露 82 个查询工具（35 code2database_* + 19 cgdb_*）供 LLM 代理使用 |
 | **知识（简报）** | `knowledge-brief`/`brief-update` — 精简必载的项目简报 |
 | **记忆系统** | `save-memory`/`search-memory`/`manage-memory` — 持久 Q&A 记忆 + 衰减 |
 | **影响半径** | `blast-radius` — 变更影响的函数/API/测试 |
@@ -280,7 +280,7 @@ bash scripts/setup.sh --languages c,go
                                      │
                                      ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  [Query]     micro → lite → local · 81 个 MCP (53 base + 28 design-report) 工具 · 226 CLI 命令         │
+│  [Query]     micro → lite → local · 82 个 MCP (54 base + 28 design-report) 工具 · 226 CLI 命令         │
 │              explore-flow · trace-chain · detect-races · param-flow      │
 │              value-flow · lock-coverage · path-feasible · data-dep       │
 │              extract-invariants · ffi-trace · doc-code-check · query     │
@@ -305,7 +305,7 @@ bash scripts/setup.sh --languages c,go
 |------|------------|
 | **语言** | 7 种 — C/C++、Go、Python、Java、Rust、ASM（Python + tree-sitter + ASM 正则）|
 | **存储** | JSON 输出 + 大图可选 SQLite 后端 |
-| **MCP 服务器** | stdio 传输，**81 个查询工具**（34 code2database_* + 19 cgdb_*）供 LLM 代理使用 |
+| **MCP 服务器** | stdio 传输，**82 个查询工具**（35 code2database_* + 19 cgdb_*）供 LLM 代理使用 |
 | **CLI 命令** | **226 命令** 分为 3 个子技能（`/Code2Database` 核心、`/Code2Database-analysis`、`/Code2Database-ops`）— Build、Query、Trace、Concurrency、Knowledge、Memory、Provenance、Cypher、Data Flow、Lock Analysis、Path Feasibility、Invariants、Auto-Enhance、Transactions、FFI、Web UI、Benchmark、Profile Health、Doc-Code、Daemon、cgdb（clang 后端） |
 | **调用条件解析** | `if`/`switch`/`#ifdef` 分支 + 空节点聚合 |
 | **条件编译（`#ifdef`）** | 图谱知道哪些调用只在哪些 `CONFIG_*` 标志下存在 |
@@ -493,7 +493,7 @@ bash scripts/setup.sh --languages c,go
 
 | 命令 | 说明 |
 |------|------|
-| `serve` | 启动 MCP 服务器（stdio 传输，81 工具 (53 base + 28 design-report)：34 code2database_* + 19 cgdb_*） |
+| `serve` | 启动 MCP 服务器（stdio 传输，82 工具 (54 base + 28 design-report)：35 code2database_* + 19 cgdb_*） |
 
 所有查询命令支持 `--json` 结构化输出和 `--max-tokens` 预算控制。
 
@@ -507,7 +507,7 @@ bash scripts/setup.sh --languages c,go
 python3 scripts/code2database_builder.py serve --graph code2db-out/
 ```
 
-通过 stdio 传输暴露 **81 个 MCP (53 base + 28 design-report) 工具**：34 个 `code2database_*` 工具（包括 `code2database_explore`、`code2database_trace`、`code2database_describe`、`code2database_blast_radius`、`code2database_concurrency`、`code2database_data_lifecycle`）+ 19 个 `cgdb_*` 工具（启用 clang 提取后端时直接查询 cgdb 层——类型化 vtable 派发、CFG、数据流、同步原语、配置谓词、时间旅行版本）。代理可以直接查询图谱，无需重读源文件——一次工具调用获得精准上下文。
+通过 stdio 传输暴露 **82 个 MCP (54 base + 28 design-report) 工具**：35 个 `code2database_*` 工具（包括 `code2database_explore`、`code2database_trace`、`code2database_describe`、`code2database_blast_radius`、`code2database_concurrency`、`code2database_data_lifecycle`）+ 19 个 `cgdb_*` 工具（启用 clang 提取后端时直接查询 cgdb 层——类型化 vtable 派发、CFG、数据流、同步原语、配置谓词、时间旅行版本）。代理可以直接查询图谱，无需重读源文件——一次工具调用获得精准上下文。
 
 ---
 
@@ -564,7 +564,7 @@ python3 scripts/code2database_scanner.py scan --source /path --extraction-backen
 | `Code2Database-analysis` | `/Code2Database-analysis` | 深度语义分析——并发、数据流、不变量、FFI、来源、路径可行性、cgdb 表。13 个 Tier-1 命令 + 19 个 `cgdb_*` MCP 工具 |
 | `Code2Database-ops` | `/Code2Database-ops` | 图谱编辑 + 运维——事务、守护进程、profile/文档-代码、导出、插件、记忆、embeddings。14 个 Tier-1 命令 |
 
-当核心技能检测到深度分析或运维问题时，会显式移交给相应子技能。MCP 服务器（81 个工具 (53 base + 28 design-report)）与技能激活分离——无论哪个子技能激活，全部 81 个工具 (53 base + 28 design-report)都可访问。
+当核心技能检测到深度分析或运维问题时，会显式移交给相应子技能。MCP 服务器（82 个工具 (54 base + 28 design-report)）与技能激活分离——无论哪个子技能激活，全部 82 个工具 (54 base + 28 design-report)都可访问。
 
 ---
 

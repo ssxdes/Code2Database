@@ -239,3 +239,79 @@ class TestExpandedToolRegistry(unittest.TestCase):
                           f"{name} inputSchema missing properties")
             self.assertIn("required", schema,
                           f"{name} inputSchema missing required")
+
+
+class TestMcpSessionInitTool(unittest.TestCase):
+    """code2database_session_init — one-shot session context tool."""
+
+    def _make_graph_dir(self):
+        import tempfile
+        tmp = tempfile.mkdtemp(prefix="c2d_mcp_sess_")
+        self.addCleanup(lambda: __import__("shutil").rmtree(tmp,
+                                                           ignore_errors=True))
+        nodes = [{"id": f"n{i}", "name": f"n{i}", "source_file": "/tmp/x.c",
+                  "line": i + 1, "domain": "test", "labels": [],
+                  "is_empty": False} for i in range(3)]
+        edges = [{"source": "n0", "target": "n1", "relation": "INVOKES",
+                  "confidence": "EXTRACTED"}]
+        with open(os.path.join(tmp, "domain_test.json"), "w") as f:
+            json.dump({"nodes": nodes, "edges": edges}, f)
+        with open(os.path.join(tmp, "code2database_master.json"), "w") as f:
+            json.dump({"source_root": "/tmp",
+                       "domains": {"test": "domain_test.json"}}, f)
+        return tmp
+
+    def test_registry_contains_session_init(self):
+        from _builder.mcp_server import TOOLS
+        self.assertIn("code2database_session_init", TOOLS)
+        spec = TOOLS["code2database_session_init"]
+        # no required params — callable with an empty arguments dict
+        self.assertEqual(spec["inputSchema"]["required"], [])
+
+    def test_empty_graph_dir_degrades_to_hints(self):
+        """Bare graph dir: the tool never raises, layers become hints."""
+        from _builder.mcp_server import _tool_session_init
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            result = _tool_session_init({}, tmp)
+            self.assertIsInstance(result, dict)
+            for key in ("brief", "brief_rendered", "memory", "graph",
+                        "known_unknowns", "hints", "rendered"):
+                self.assertIn(key, result)
+            self.assertIn("=== Code2Database Session Context ===",
+                          result["rendered"])
+            self.assertTrue(any("brief-extract" in h
+                                for h in result["hints"]))
+
+    def test_full_context_renders_all_layers(self):
+        """Populated graph dir: brief + memory digest flow into the
+        prompt-ready rendered form."""
+        from _builder.mcp_server import _tool_session_init
+        from _builder.brief import brief_extract, brief_update
+        from _builder.memory_store import MemoryStore
+        graph_dir = self._make_graph_dir()
+        brief_extract(graph_dir)
+        brief_update(graph_dir, set_field="project", set_value="PX")
+        store = MemoryStore(graph_dir)
+        store.add("How does nvme submit IO?", "doorbell",
+                  category="bdev/nvme/pcie", author="alice", no_merge=True)
+        result = _tool_session_init({"top": 5}, graph_dir)
+        self.assertEqual(result["graph"]["nodes"], 3)
+        digest = result["memory"]["digest"]
+        self.assertEqual(len(digest), 1)
+        self.assertEqual(digest[0]["question"], "How does nvme submit IO?")
+        # structured field AND rendered text both carry the context
+        self.assertIn("[bdev/nvme/pcie]", result["rendered"])
+        self.assertIn("doorbell", result["rendered"])
+        self.assertIn("3 nodes", result["rendered"])
+
+    def test_top_param_clamps_digest(self):
+        """top=1 limits the memory digest length."""
+        from _builder.mcp_server import _tool_session_init
+        from _builder.memory_store import MemoryStore
+        graph_dir = self._make_graph_dir()
+        store = MemoryStore(graph_dir)
+        for i in range(3):
+            store.add(f"q{i}", f"a{i}", category="cat", no_merge=True)
+        result = _tool_session_init({"top": 1}, graph_dir)
+        self.assertEqual(len(result["memory"]["digest"]), 1)

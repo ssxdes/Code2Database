@@ -673,14 +673,14 @@ python3 scripts/code2database_builder.py embeddings-search \
 
 ### `serve`
 
-Start the MCP server (stdio transport, 81 tools: 34 `code2database_*` + 19 `cgdb_*` + 28 design-report).
+Start the MCP server (stdio transport, 82 tools: 35 `code2database_*` + 19 `cgdb_*` + 28 design-report).
 
 ```bash
 python3 scripts/code2database_builder.py serve \
   --graph code2db-out/
 ```
 
-All 81 tools are accessible regardless of sub-skill activation. MCP is separate from skill layer activation. See `references/analysis_commands.md` for the 19 `cgdb_*` tools; see parent `references/usage_reference.md` for the 34 `code2database_*` tools.
+All 82 tools are accessible regardless of sub-skill activation. MCP is separate from skill layer activation. See `references/analysis_commands.md` for the 19 `cgdb_*` tools; see parent `references/usage_reference.md` for the 35 `code2database_*` tools.
 
 The new `code2database_kb_query` tool (Phase 3) is the unified FTS5+BM25
 query surface across memory + knowledge stores:

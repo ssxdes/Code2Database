@@ -677,10 +677,10 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" serve \
   --graph code2db-out/
 ```
 
-暴露 **81 个 MCP (53 base + 28 design-report) 工具**（34 个 `code2database_*` + 19 个 `cgdb_*`）：
+暴露 **82 个 MCP (54 base + 28 design-report) 工具**（35 个 `code2database_*` + 19 个 `cgdb_*`）：
 
-**34 个 `code2database_*` 工具**（始终可用）：
-- code2database_audit_log, code2database_blast_radius, code2database_composite_query, code2database_concurrency, code2database_daemon_status, code2database_data_lifecycle, code2database_describe, code2database_doc_code_check, code2database_domain, code2database_explain_label, code2database_explore, code2database_extract_signals, code2database_ffi_trace, code2database_find_invariants, code2database_foreign_refs, code2database_get_code_snippet, code2database_happens_before, code2database_impact, code2database_kb_query, code2database_key_paths, code2database_knowledge_query, code2database_load, code2database_memory_ordering, code2database_memory_search, code2database_path_feasible, code2database_search, code2database_semantic_status, code2database_sync_foreign, code2database_trace, code2database_unbalanced_alloc_free, code2database_who_allocates, code2database_who_frees, code2database_who_locks, code2database_why_ambiguous
+**35 个 `code2database_*` 工具**（始终可用）：
+- code2database_audit_log, code2database_blast_radius, code2database_composite_query, code2database_concurrency, code2database_daemon_status, code2database_data_lifecycle, code2database_describe, code2database_doc_code_check, code2database_domain, code2database_explain_label, code2database_explore, code2database_extract_signals, code2database_ffi_trace, code2database_find_invariants, code2database_foreign_refs, code2database_get_code_snippet, code2database_happens_before, code2database_impact, code2database_kb_query, code2database_key_paths, code2database_knowledge_query, code2database_load, code2database_memory_ordering, code2database_memory_search, code2database_path_feasible, code2database_search, code2database_semantic_status, code2database_session_init, code2database_sync_foreign, code2database_trace, code2database_unbalanced_alloc_free, code2database_who_allocates, code2database_who_frees, code2database_who_locks, code2database_why_ambiguous
 
 注：CLI 专有命令（apply-invariants、blame-node、data-dep、field-access、lock-coverage、param-flow、profile-health、query、value-flow）**不**作为 MCP 工具暴露——通过 CLI（`python3 scripts/code2database_builder.py <cmd>`）调用。
 

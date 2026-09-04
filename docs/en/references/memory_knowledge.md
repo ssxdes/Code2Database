@@ -16,7 +16,7 @@ Code2Database separates two long-lived stores with opposite shapes:
 python3 scripts/code2database_builder.py session-init --graph code2db-out/ [--top 10] [--json]
 ```
 
-Loads all four layers in one prompt-ready output: the rendered brief, the memory digest (top active Q&A by weight, with category/author/reads), graph stats + brief drift warning, and known unknowns (recurring unanswered queries — save answers for them). Empty stores degrade to bootstrap hints instead of errors. This is Step 0 of every session (AI) and the fastest project briefing (humans); the web UI renders the same data interactively (Brief / Memory panels).
+Loads all four layers in one prompt-ready output: the rendered brief, the memory digest (top active Q&A by weight, with category/author/reads), graph stats + brief drift warning, and known unknowns (recurring unanswered queries — save answers for them). Empty stores degrade to bootstrap hints instead of errors. This is Step 0 of every session (AI) and the fastest project briefing (humans); the web UI renders the same data interactively (Brief / Memory panels). MCP: the same context is exposed as the `code2database_session_init` tool — agents should call it first at session start, before search/describe/trace.
 
 ## Memory (memory.db)
 

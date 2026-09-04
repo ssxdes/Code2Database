@@ -531,7 +531,7 @@ scripts/
 │   ├── semantic_edges.py         ← who-allocates, who-frees, unbalanced-alloc-free, who-locks,
 │   │                                add-semantic-edges
 │   ├── logging_utils.py          ← Structured logging (configure_logging, get_logger)
-│   ├── mcp_server.py             ← MCP server (stdio transport, 81 tools: 34 code2database_* + 19 cgdb_* + 28 design-report)
+│   ├── mcp_server.py             ← MCP server (stdio transport, 82 tools: 35 code2database_* + 19 cgdb_* + 28 design-report)
 │   ├── kb_index.py               ← Unified KB FTS5+BM25 index (kb_paragraphs table, cross memory+knowledge query)
 │   ├── kb_cluster.py             ← KB clustering (union-find on FTS5 similarity, scope_id/canonical_id/principle_ref)
 │   ├── kb_global.py              ← Cross-project global KB (~/.code2database_global_kb/global.db, reusable knowledge)
@@ -639,7 +639,7 @@ ASM (.s .S .asm) uses regex-based scanning — no tree-sitter grammar needed.
 
 | Component | Purpose |
 |-----------|---------|
-| **MCP (Model Context Protocol) stdio transport** | `serve` command exposes 81 tools (34 `code2database_*` + 19 `cgdb_*` + 28 design-report) over JSON-RPC with Content-Length framing |
+| **MCP (Model Context Protocol) stdio transport** | `serve` command exposes 82 tools (35 `code2database_*` + 19 `cgdb_*` + 28 design-report) over JSON-RPC with Content-Length framing |
 | **Tiered context packs** | micro (~200 tokens) → lite (~500) → standard (~1500) → full — minimizes LLM token cost |
 | **Lazy module imports** | `_builder/__init__.py` delays module load until first access, reducing startup time |
 
@@ -791,9 +791,9 @@ Circuit breaker: if events/minute > 1000 (configurable via `daemon.circuit_break
 
 ### MCP Server
 
-`serve` exposes 81 tools over stdio JSON-RPC with Content-Length framing:
+`serve` exposes 82 tools over stdio JSON-RPC with Content-Length framing:
 
-- 34 `code2database_*` tools (load, search, describe, explore, trace, impact, key_paths, concurrency, data_lifecycle, domain, knowledge_query, memory_search, semantic_status, etc.)
+- 35 `code2database_*` tools (load, search, describe, explore, trace, impact, key_paths, concurrency, data_lifecycle, domain, knowledge_query, memory_search, semantic_status, session_init, etc.)
 - 19 `cgdb_*` tools (cgdb_search_symbols, cgdb_find_invokers, cgdb_find_invoked, cgdb_get_definition, cgdb_get_function_body, cgdb_get_struct_layout, cgdb_find_type_definition, cgdb_find_ops_impls, cgdb_find_cfg_paths, cgdb_find_data_flow, cgdb_find_aliases, cgdb_find_lock_held_calls, cgdb_check_race_condition, cgdb_find_configs_for, cgdb_find_nodes_under_config, cgdb_index_status, cgdb_time_travel_query, cgdb_list_versions)
 
 The MCP server is accessible regardless of sub-skill activation; sub-skills are purely an LLM-context economy mechanism.
@@ -836,7 +836,7 @@ Code2Database's current capabilities, organized by category:
 
 ### Query & Analysis
 - 222 CLI commands (3 sub-skills: core 24, analysis 13, ops 23 Tier-1)
-- 81 MCP tools (53 base + 28 design-report) (34 code2database_* + 19 cgdb_*)
+- 82 MCP tools (54 base + 28 design-report) (35 code2database_* + 19 cgdb_*)
 - Cypher-subset query language (MATCH/WHERE/RETURN)
 - Z3 SMT path feasibility (heuristic fallback)
 - Tiered context packs (micro/lite/standard/full)

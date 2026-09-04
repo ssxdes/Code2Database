@@ -673,14 +673,14 @@ python3 scripts/code2database_builder.py embeddings-search \
 
 ### `serve`
 
-启动 MCP 服务器（stdio 传输，81 个工具 (53 base + 28 design-report)：34 个 `code2database_*` + 19 个 `cgdb_*`）。
+启动 MCP 服务器（stdio 传输，82 个工具 (54 base + 28 design-report)：35 个 `code2database_*` + 19 个 `cgdb_*`）。
 
 ```bash
 python3 scripts/code2database_builder.py serve \
   --graph code2db-out/
 ```
 
-无论子技能是否激活，全部 81 个工具 (53 base + 28 design-report)都可访问。MCP 与技能层激活分离。19 个 `cgdb_*` 工具见 `references/analysis_commands.md`；34 个 `code2database_*` 工具见父技能 `references/usage_reference.md`。
+无论子技能是否激活，全部 82 个工具 (54 base + 28 design-report)都可访问。MCP 与技能层激活分离。19 个 `cgdb_*` 工具见 `references/analysis_commands.md`；35 个 `code2database_*` 工具见父技能 `references/usage_reference.md`。
 
 新增 `code2database_kb_query` 工具（Phase 3）是跨越 memory + knowledge
 存储的统一 FTS5+BM25 查询接口：

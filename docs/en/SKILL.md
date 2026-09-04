@@ -112,7 +112,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 - **Symbol grounding**: when a memory is about a specific function/type, pass `--symbol <name>` (repeatable) — the web UI shows that Q&A on the symbol's node page, and `search-memory --symbol` / `code2database_memory_search(symbol=)` filter by it. Memories absorb symbols on merge and re-ground on `--correct`
 - **Capture triggers** (when to save-memory, so accumulation doesn't depend on luck): after (a) solving a non-trivial problem — the resolution path IS the answer; (b) hitting a pitfall that cost real debugging time; (c) discovering a mandatory rule/constraint the brief doesn't capture yet; (d) correcting a wrong answer (`--correct`); (e) answering a known-unknowns query from session-init. Skip anything the graph answers in one query.
 - Run `kb-rebuild-index` after `build`/`update` or after memory/brief edits
-- Memory is a shared accumulating store (memory.db): save with `--category path/to/topic` + `--author`; govern with `manage-memory --action split/merge/move/categories`
+- Memory is a shared accumulating store (memory.db): save with `--category path/to/topic` + `--author`; govern with `manage-memory --action split/merge/move/compact/categories` (compact merges near-duplicate roots automatically after every build); `brief-suggest` proposes graduating high-weight memories into the brief
 - Knowledge (brief.json) must stay lean: `brief-validate` warns above 3000 chars; move overflow into memory instead
 - Start with `context_pack_micro` → `context_pack_lite` → `describe`/`trace`
 - Only 7 labels: API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end
@@ -122,7 +122,10 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 - `update`/`merge`/`sync` commands require in-memory nx.DiGraph. On large projects
   (>=50K functions), `_load_full_graph` returns LazySQLiteGraph (read-only SQLite view).
   These commands will print a friendly error directing to `daemon-start` or `build`.
-  Use `daemon-start` for incremental sync (designed for SQLite-backed large graphs).
+  Use `daemon-start` for incremental sync (designed for SQLite-backed large graphs), or
+  `build-update --source SRC --graph DIR` for a precise per-file update of the
+  SQLite graph (content-hash detection + #include closure; format-only edits
+  are skipped structurally).
 - Concurrency analysis (`detect-races`, `concurrency-analyze`) is function-level,
   not access-site-level. TOCTOU races are NOT detected. Lock detection uses regex,
   not CFG. Results may have false positives/negatives — use `lock-coverage` for

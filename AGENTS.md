@@ -26,7 +26,7 @@ Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/
 - MSVC `__asm {}` block support and ERROR node fallback
 - Static fn-ptr dispatch array resolution (dispatch_op)
 - LLM context packs (micro/lite/standard/full tiers)
-- Dual knowledge/memory stores — knowledge = lean per-project brief (`knowledge/brief.json`, size-budgeted); memory = shared SQLite accumulating store (`memory/memory.db`, hierarchical categories `bdev/nvme/pcie`, FTS5 BM25 retrieval, split/merge/move governance). `session-init` is the one-shot entry (brief + memory digest + graph state incl. source-freshness warning + known-unknowns); the web UI renders brief, architecture-narrative, veteran Q&A (author-filtered, read-only), and lineage panels; `save-memory --correct` is the correct-first save; memories ground to graph symbols (`--symbol`, shown on the symbol's node page)
+- Dual knowledge/memory stores — knowledge = lean per-project brief (`knowledge/brief.json`, size-budgeted); memory = shared SQLite accumulating store (`memory/memory.db`, hierarchical categories `bdev/nvme/pcie`, FTS5 BM25 retrieval, split/merge/move/compact governance — compact merges near-duplicate roots + re-points orphaned variants after every build, and memory edits sync incrementally into the kb FTS index). `session-init` is the one-shot entry (brief + memory digest + graph state incl. source-freshness warning + known-unknowns); the web UI renders brief, architecture-narrative, veteran Q&A (author-filtered, read-only), and lineage panels; `save-memory --correct` is the correct-first save; memories ground to graph symbols (`--symbol`, shown on the symbol's node page); `brief-suggest` mines high-weight memories as brief candidates (memory→knowledge graduation gate, no auto-write)
 - MCP server mode for real-time agent queries (83 tools: 36 `code2database_*` + 19 `cgdb_*` + 28 design-report)
 
 Capabilities:
@@ -51,7 +51,7 @@ Capabilities:
 
 ## Skill Structure (3 sub-skills)
 
-The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 227 commands) is shared — all commands are accessible regardless of sub-skill activation.
+The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 224 subcommands + 8 scanner subcommands) is shared — all commands are accessible regardless of sub-skill activation.
 
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|
@@ -125,17 +125,17 @@ Capability modules have dedicated unit tests in `tests/` covering:
 - Update command (confirmation gate, attribute parsing, backend detection)
 - Profile generation (auto-profile, project-type detection, struct_op_types)
 
-**Test suite**: 2218 tests across 116 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails. Tests that drive a real scanner subprocess must pin `--memory-limit 9999` (and raised `--memory-warn/crit-threshold`) — MemoryGuard reads SYSTEM memory, so its auto cap (total RAM × 0.8) can cancel even a tiny scan on a busy machine, and make now fails fast on the leftover checkpoint.)
+**Test suite**: 2286 tests across 124 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails. Tests that drive a real scanner subprocess must pin `--memory-limit 9999` (and raised `--memory-warn/crit-threshold`) — MemoryGuard reads SYSTEM memory, so its auto cap (total RAM × 0.8) can cancel even a tiny scan on a busy machine, and make now fails fast on the leftover checkpoint. tests/test_web_ui_js.py extracts the shipped `<script>` block and runs it under Node.js — skipped when node is not on PATH.)
 
 ## Language Support
 
 | Language | Scanner | Extensions | Notes |
 |----------|---------|------------|-------|
 | C/C++ | tree-sitter | .c .h .cpp .cc .cxx .hpp | Full AST extraction; FFI target for ctypes/cgo/extern "C" |
-| Go | tree-sitter | .go | Full AST extraction; cgo FFI source (`import "C"`) |
+| Go | tree-sitter | .go | Functions, methods, interfaces/structs (method sets, embedding → IMPLEMENTS), imports, goroutine FFI source (`import "C"`), interface dynamic dispatch (INFERRED DISPATCH edges from statically-typed receivers) |
 | Python | tree-sitter | .py .pyw | Full AST extraction; ctypes FFI source (CDLL/WinDLL/cffi/pybind11) |
-| Java | tree-sitter | .java | Full AST extraction |
-| Rust | tree-sitter | .rs | Full AST extraction; `extern "C"` FFI source |
+| Java | tree-sitter | .java | Classes, methods, annotations (Spring routes → API_entry, framework callbacks), extends/implements, JVM main detection |
+| Rust | tree-sitter | .rs | Functions, traits, impls, `macro_rules!` definitions + invocations + calls inside macro arguments, attributes (`#[derive]`...); `extern "C"` FFI source |
 | ASM | regex | .s .S .asm | NASM x86_64 + kernel GNU as; no tree-sitter |
 
 Documentation is available in English (`docs/en/`) and Chinese (`docs/zh/`). The `SKILL.md` in each language directory contains the full skill instructions.
@@ -159,3 +159,7 @@ Documentation is available in English (`docs/en/`) and Chinese (`docs/zh/`). The
 | Profile health | `profile-health`, `profile-evolve`, `profile-bind-version` | 0-100 scoring + auto-evolution + git/svn HEAD binding |
 | Doc-code alignment | `doc-code-check`, `doc-mark-stale`, `doc-alignment-report`, `doc-signature-diff` | Detect doc-code mismatches (return value / param / signature / stale-doc) |
 | Background daemon | `daemon-start`, `daemon-stop`, `daemon-status`, `daemon-force-refresh`, `daemon-pause`, `daemon-resume`, `daemon-wait-sync`, `daemon-logs`, `daemon-reload`, `daemon-list-projects` | Real-time file monitoring + transactional auto-sync |
+| Incremental update | `build-update` | Precise per-file SQLite graph update from disk changes (content-hash detection, #include closure, ast_hash format-only skip) |
+| Memory compaction | `manage-memory --action compact` | Merge near-duplicate roots + re-point orphaned variants (auto-runs after every build via consolidate) |
+| Knowledge graduation | `brief-suggest` | Propose brief additions from high-weight memories (suggestive, no auto-write) |
+| Federated queries | `federate-register`, `federate-list`, `federate-remove`, `fed-search`, `fed-neighbors`, `fed-path` | Cross-project queries over a pluggable graph registry (results annotated with source graph) |

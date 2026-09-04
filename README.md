@@ -308,7 +308,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **Languages** | 6 + ASM — C/C++ (shared scanner), Go, Python, Java, Rust, ASM (regex — no tree-sitter grammar) (Python + tree-sitter + ASM regex) |
 | **Storage** | JSON output + optional SQLite backend for large graphs |
 | **MCP server** | stdio transport, **83 query tools** (36 `code2database_*` + 19 `cgdb_*` + 28 design-report) for LLM agents |
-| **CLI commands** | **226 commands** organized into 3 sub-skills (`/Code2Database` core, `/Code2Database-analysis`, `/Code2Database-ops`) — Build, Query, Trace, Concurrency, Knowledge, Memory, Provenance, Cypher, Data Flow, Lock Analysis, Path Feasibility, Invariants, Auto-Enhance, Transactions, FFI, Web UI, Benchmark, Profile Health, Doc-Code, Daemon, cgdb (clang backend) |
+| **CLI commands** | **224 builder subcommands + 8 scanner subcommands** organized into 3 sub-skills (`/Code2Database` core, `/Code2Database-analysis`, `/Code2Database-ops`) — Build, Query, Trace, Concurrency, Knowledge, Memory, Provenance, Cypher, Data Flow, Lock Analysis, Path Feasibility, Invariants, Auto-Enhance, Transactions, FFI, Web UI, Benchmark, Profile Health, Doc-Code, Daemon, cgdb (clang backend) |
 | **Call condition parsing** | `if`/`switch`/`#ifdef` branches + empty-node aggregation |
 | **Conditional compilation (`#ifdef`)** | Graph knows which calls exist only under which `CONFIG_*` flags |
 | **Data race detection** | Cross-thread hazard detection — `detect-races` |
@@ -560,7 +560,7 @@ If the cgdb export fails mid-build, the graph is left missing (parts of) its sem
 
 ## Skill Activation (3 sub-skills)
 
-The skill is split into 3 sub-skills to keep LLM context lean. Each sub-skill has its own `SKILL.md` exposing only the commands relevant to its layer. The CLI (`scripts/code2database_builder.py`) is shared — all 226 commands are accessible regardless of which sub-skill is active.
+The skill is split into 3 sub-skills to keep LLM context lean. Each sub-skill has its own `SKILL.md` exposing only the commands relevant to its layer. The CLI (`scripts/code2database_builder.py`) is shared — all 224 subcommands are accessible regardless of which sub-skill is active.
 
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|

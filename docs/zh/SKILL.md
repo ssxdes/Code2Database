@@ -112,7 +112,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 - **符号锚定**：记忆关于某个具体函数/类型时，传 `--symbol <name>`（可重复）——Web UI 会在该符号的节点页展示这条问答，`search-memory --symbol` / `code2database_memory_search(symbol=)` 可按符号过滤。合并时记忆吸收符号，`--correct` 时可重新锚定
 - **沉淀触发**（什么时候该 save-memory，让经验积累不靠运气）：(a) 解决了一个非平凡问题——排查路径本身就是答案；(b) 踩了耗费真实调试时间的坑；(c) 发现简报未覆盖的强制规则/约束；(d) 纠正了错误答案（`--correct`）；(e) 回答了 session-init 中反复出现的 known-unknowns 问题。图谱一次查询就能回答的不要存。
 - `build`/`update` 或修改 memory/brief 后运行 `kb-rebuild-index`
-- Memory 是共享积累库（memory.db）：保存时带 `--category 路径/主题` + `--author`；治理用 `manage-memory --action split/merge/move/categories`
+- Memory 是共享积累库（memory.db）：保存时带 `--category 路径/主题` + `--author`；治理用 `manage-memory --action split/merge/move/compact/categories`（compact 在每次 build 后自动合并近似重复根）；`brief-suggest` 建议把高权重记忆毕业进简报
 - Knowledge（brief.json）必须精简：`brief-validate` 超过 3000 字符告警；溢出内容放入 memory
 - 从 `context_pack_micro` → `context_pack_lite` → `describe`/`trace` 开始
 - 只有 7 个标签：API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end
@@ -121,7 +121,9 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 - 守护进程新鲜度：重要查询前检查 `daemon-status`；注意守护进程在启动宽限期（`startup_grace_active`）内会持有事件而不同步
 - `update`/`merge`/`sync` 命令需要内存中的 nx.DiGraph。大型项目（>=5万函数）
   时 `_load_full_graph` 返回 LazySQLiteGraph（只读 SQLite 视图）。这些命令会打印
-  友好错误提示使用 `daemon-start` 或 `build`。用 `daemon-start` 做增量同步。
+  友好错误提示使用 `daemon-start` 或 `build`。用 `daemon-start` 做增量同步，或用
+  `build-update --source 源码目录 --graph 图目录` 对 SQLite 图做精确的按文件更新
+  （content-hash 检测 + #include 闭包；纯格式改动按结构跳过）。
 - 并发分析（`detect-races`、`concurrency-analyze`）是函数级而非访问点级。
   TOCTOU 竞态不被检测。锁检测用 regex 而非 CFG。结果可能有误报/漏报——
   用 `lock-coverage` 做更细粒度分析。

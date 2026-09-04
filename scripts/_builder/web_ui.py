@@ -1319,8 +1319,13 @@ function buildCyElements() {
     });
   }
   for (const [key, edge] of Object.entries(allEdges)) {
+    // Skip dangling edges: /api/neighbors deliberately returns edges
+    // to depth-boundary nodes that are NOT part of the node set, and
+    // cytoscape throws "nonexistant source/target" on those — the
+    // exception escapes initCy() and leaves the canvas silently blank.
+    if (!allNodes[edge.source] || !allNodes[edge.target]) continue;
     eles.push({
-      data: { source: edge.source, target: edge.target,
+      data: { id: key, source: edge.source, target: edge.target,
               relation: edge.relation || 'INVOKES',
               condition: edge.call_condition || '',
               confidence: edge.confidence || 'EXTRACTED' },
@@ -1442,12 +1447,32 @@ function syncCyFromModel() {
   const modelIds = new Set(Object.keys(allNodes));
   for (const id of modelIds) {
     if (!currentIds.has(id)) {
-      cy.add({ data: { id: id, name: allNodes[id].name || id, labels: allNodes[id].labels || [],
-        degree: allNodes[id].degree || 0, community: allNodes[id].community || allNodes[id].domain || '' } });
+      const node = allNodes[id];
+      cy.add({ data: { id: id, name: node.name || id, labels: node.labels || [],
+        degree: node.degree || 0, community: node.community || node.domain || '' },
+        classes: nodeClasses(node) });
     }
   }
   for (const id of currentIds) {
     if (!modelIds.has(id)) { cy.remove('#' + id); }
+  }
+  // Edge sync. The old code synced nodes only: after the first
+  // initCy() no edge was ever added, so exploration rendered
+  // edgeless graphs and the cycle toggle never restyled anything.
+  const currentEdgeIds = new Set(cy.edges().map(e => e.id()));
+  for (const key in allEdges) {
+    const edge = allEdges[key];
+    if (!allNodes[edge.source] || !allNodes[edge.target]) continue;
+    if (!currentEdgeIds.has(key)) {
+      cy.add({ data: { id: key, source: edge.source, target: edge.target,
+              relation: edge.relation || 'INVOKES',
+              condition: edge.call_condition || '',
+              confidence: edge.confidence || 'EXTRACTED' },
+              classes: edgeClasses(edge) });
+    } else {
+      // Restyle in place (cycle toggle / future highlight-path).
+      cy.getElementById(key).classes(edgeClasses(edge));
+    }
   }
   runLayout();
   applyCommunityColors();

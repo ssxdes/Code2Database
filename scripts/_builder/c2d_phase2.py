@@ -1,4 +1,4 @@
-"""Phase 2 enhancements for multi-project support.
+"""Multi-project support enhancements.
 
 - composite_query: cross-C2D JOIN via SQLite ATTACH DATABASE
 - c2d_check_compat: verify B's foreign_refs still valid against A_v2

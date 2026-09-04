@@ -1,4 +1,4 @@
-"""Tests for the 18 new cgdb MCP tools (Phase 5).
+"""Tests for the cgdb_* MCP tools.
 
 Verifies that each cgdb_* tool:
   1. Is registered in the TOOLS dict

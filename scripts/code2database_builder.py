@@ -131,7 +131,7 @@ def cmd_kb_query(args):
         max_tokens=args.max_tokens,
         semantic=getattr(args, 'semantic', False),
     )
-    # Phase 8: fall back to global KB if no project matches
+    # fall back to global KB if no project matches
     if not results and getattr(args, 'global', False):
         from _builder.kb_global import global_search
         results = global_search(args.query, top_n=args.top)
@@ -142,14 +142,14 @@ def cmd_kb_query(args):
 
 
 def cmd_kb_cluster(args):
-    """Phase 4: cluster kb_paragraphs by FTS5 similarity."""
+    """cluster kb_paragraphs by FTS5 similarity."""
     from _builder.kb_cluster import cluster_kb
     summary = cluster_kb(args.graph, threshold=args.threshold, verbose=True)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 def cmd_kb_migrate(args):
-    """Phase 6: migrate kb_paragraphs → kb_items (fact-level)."""
+    """migrate kb_paragraphs → kb_items (fact-level)."""
     from _builder.kb_index import _kb_connect
     conn = _kb_connect(args.graph)
     if conn is None:
@@ -205,7 +205,7 @@ def cmd_kb_migrate(args):
 
 
 def cmd_kb_known_unknowns(args):
-    """Phase 9: list queries that returned no matches."""
+    """list queries that returned no matches."""
     from _builder.kb_index import get_known_unknowns
     results = get_known_unknowns(args.graph, top_n=args.top,
                                  min_occurrences=args.min_occurrences)
@@ -216,14 +216,14 @@ def cmd_kb_known_unknowns(args):
 
 
 def cmd_kb_audit(args):
-    """Phase 10: audit KB."""
+    """audit KB."""
     from _builder.kb_audit import audit_kb
     result = audit_kb(args.graph, topic=args.topic)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def cmd_kb_conflict(args):
-    """Phase 11: detect contradictory items."""
+    """detect contradictory items."""
     from _builder.kb_conflict import detect_conflicts
     conflicts = detect_conflicts(args.graph)
     if not conflicts:
@@ -234,21 +234,21 @@ def cmd_kb_conflict(args):
 
 
 def cmd_kb_rollback(args):
-    """Phase 11: restore a kb_item to a prior version."""
+    """restore a kb_item to a prior version."""
     from _builder.kb_conflict import rollback_kb_item
     result = rollback_kb_item(args.graph, args.id, args.to_version)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def cmd_kb_forget(args):
-    """Phase 11: immediately delete a kb_paragraph."""
+    """immediately delete a kb_paragraph."""
     from _builder.kb_conflict import forget_kb_paragraph
     result = forget_kb_paragraph(args.graph, args.id, reason=args.reason)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def cmd_kb_global_add(args):
-    """Phase 8: add to global KB."""
+    """add to global KB."""
     from _builder.kb_global import global_add
     tags = [t.strip() for t in args.tags.split(",") if t.strip()] if args.tags else []
     entry_id = global_add(
@@ -259,7 +259,7 @@ def cmd_kb_global_add(args):
 
 
 def cmd_kb_global_search(args):
-    """Phase 8: search global KB."""
+    """search global KB."""
     from _builder.kb_global import global_search
     results = global_search(args.query, top_n=args.top)
     if not results:
@@ -269,14 +269,14 @@ def cmd_kb_global_search(args):
 
 
 def cmd_kb_global_share(args):
-    """Phase 8: export global KB."""
+    """export global KB."""
     from _builder.kb_global import global_share
     output = global_share(args.output)
     print(json.dumps({"exported": True, "path": output}, ensure_ascii=False, indent=2))
 
 
 def cmd_kb_global_import(args):
-    """Phase 8: import shared global KB JSON."""
+    """import shared global KB JSON."""
     from _builder.kb_global import global_import
     imported = global_import(args.input)
     print(json.dumps({"imported": imported}, ensure_ascii=False, indent=2))
@@ -436,7 +436,7 @@ def cmd_sarif_export(args):
 
 
 def cmd_c2d_add_foreign(args):
-    """Phase 1: register foreign C2D + resolve refs."""
+    """register foreign C2D + resolve refs."""
     from _builder.c2d_foreign import add_foreign
     summary = add_foreign(
         graph_dir=args.graph,
@@ -449,7 +449,7 @@ def cmd_c2d_add_foreign(args):
 
 
 def cmd_c2d_sync_foreign(args):
-    """Phase 1: sync foreign_refs with updated foreign C2Ds."""
+    """sync foreign_refs with updated foreign C2Ds."""
     from _builder.c2d_foreign import sync_foreign
     summary = sync_foreign(
         graph_dir=args.graph,
@@ -460,7 +460,7 @@ def cmd_c2d_sync_foreign(args):
 
 
 def cmd_c2d_list_foreign(args):
-    """Phase 1: list watched foreign C2Ds."""
+    """list watched foreign C2Ds."""
     from _builder.c2d_foreign import list_foreign
     result = list_foreign(args.graph)
     if not result:
@@ -470,7 +470,7 @@ def cmd_c2d_list_foreign(args):
 
 
 def cmd_c2d_remove_foreign(args):
-    """Phase 1: unregister a foreign C2D."""
+    """unregister a foreign C2D."""
     from _builder.c2d_foreign import remove_foreign
     summary = remove_foreign(args.graph, args.foreign_c2d)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
@@ -514,7 +514,7 @@ def cmd_c2d_unpin_foreign(args):
 
 
 def cmd_composite_query(args):
-    """Phase 2: cross-C2D query via ATTACH."""
+    """cross-C2D query via ATTACH."""
     from _builder.c2d_phase2 import composite_query
     foreign_c2ds = []
     if args.foreign_c2d:
@@ -530,7 +530,7 @@ def cmd_composite_query(args):
 
 
 def cmd_c2d_check_compat(args):
-    """Phase 2: check B's foreign_refs against new A version."""
+    """check B's foreign_refs against new A version."""
     from _builder.c2d_phase2 import check_compat
     result = check_compat(
         graph_dir=args.graph,
@@ -541,7 +541,7 @@ def cmd_c2d_check_compat(args):
 
 
 def cmd_coverage_cross_c2d(args):
-    """Phase 2: test coverage across C2Ds."""
+    """test coverage across C2Ds."""
     from _builder.c2d_phase2 import coverage_cross_c2d
     result = coverage_cross_c2d(
         test_c2d=args.test_c2d,
@@ -552,7 +552,7 @@ def cmd_coverage_cross_c2d(args):
 
 
 def cmd_c2d_add_foreign_stub(args):
-    """Phase 3: register vendor stub C2D."""
+    """register vendor stub C2D."""
     from _builder.c2d_phase3 import add_foreign_stub
     summary = add_foreign_stub(
         graph_dir=args.graph,
@@ -564,21 +564,21 @@ def cmd_c2d_add_foreign_stub(args):
 
 
 def cmd_ffi_auto_link(args):
-    """Phase 3: auto-link FFI bindings to foreign C2Ds."""
+    """auto-link FFI bindings to foreign C2Ds."""
     from _builder.c2d_phase3 import auto_link_ffi_to_foreign
     summary = auto_link_ffi_to_foreign(args.graph, verbose=True)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 def cmd_scan_rpc(args):
-    """Phase 3: scan source for RPC client calls."""
+    """scan source for RPC client calls."""
     from _builder.c2d_phase3 import scan_rpc_edges
     summary = scan_rpc_edges(args.graph, verbose=True)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 def cmd_import_foreign_knowledge(args):
-    """Phase 3: copy foreign project brief into local knowledge/"""
+    """copy foreign project brief into local knowledge/"""
     from _builder.c2d_phase3 import import_foreign_knowledge
     summary = import_foreign_knowledge(
         graph_dir=args.graph,
@@ -1128,13 +1128,13 @@ def main():
     p_mh = sub.add_parser("memory-health", help="Report memory system health statistics")
     p_mh.add_argument("--graph", required=True, help="Call graph output directory")
 
-    # kb-rebuild-index (Phase 1: unified FTS5 index rebuild)
+    # kb-rebuild-index (unified FTS5 index rebuild)
     p_kri = sub.add_parser("kb-rebuild-index",
                            help="Rebuild the unified kb_paragraphs FTS5 index "
                                 "from memory.db + brief.json")
     p_kri.add_argument("--graph", required=True, help="Call graph output directory")
 
-    # kb-query (Phase 3: unified FTS5+BM25 query across memory + knowledge)
+    # kb-query (unified FTS5+BM25 query across memory + knowledge)
     p_kq2 = sub.add_parser("kb-query",
                            help="Unified FTS5+BM25 query across memory and knowledge")
     p_kq2.add_argument("--graph", required=True, help="Call graph output directory")
@@ -1147,42 +1147,42 @@ def main():
     p_kq2.add_argument("--max-tokens", type=int, default=4000,
                        help="Approximate character cap on returned bodies")
     p_kq2.add_argument("--semantic", action="store_true",
-                       help="Phase 5: enable semantic search (requires embeddings)")
+                       help="enable semantic search (requires embeddings)")
     p_kq2.add_argument("--global", action="store_true",
-                       help="Phase 8: fall back to global KB if project KB has no match")
+                       help="fall back to global KB if project KB has no match")
 
-    # kb-cluster (Phase 4: union-find clustering + principle_ref)
+    # kb-cluster (union-find clustering + principle_ref)
     p_kc = sub.add_parser("kb-cluster",
                           help="Cluster kb_paragraphs by FTS5 similarity + link principles")
     p_kc.add_argument("--graph", required=True, help="Call graph output directory")
     p_kc.add_argument("--threshold", type=float, default=0.5,
                       help="BM25 similarity threshold for clustering (default 0.5)")
 
-    # kb-migrate (Phase 6: migrate kb_paragraphs → kb_items fact-level)
+    # kb-migrate (migrate kb_paragraphs → kb_items fact-level)
     p_km = sub.add_parser("kb-migrate",
                           help="Migrate kb_paragraphs rows into kb_items (fact-level)")
     p_km.add_argument("--graph", required=True, help="Call graph output directory")
 
-    # kb-known-unknowns (Phase 9: aggregate unmatched queries)
+    # kb-known-unknowns (aggregate unmatched queries)
     p_kku = sub.add_parser("kb-known-unknowns",
-                           help="List queries that returned no matches (Phase 9)")
+                           help="List queries that returned no matches")
     p_kku.add_argument("--graph", required=True, help="Call graph output directory")
     p_kku.add_argument("--top", type=int, default=20, help="Max results")
     p_kku.add_argument("--min-occurrences", type=int, default=2,
                        help="Only show queries asked at least this many times")
 
-    # kb-audit (Phase 10: knowledge audit)
+    # kb-audit (knowledge audit)
     p_ka = sub.add_parser("kb-audit",
                           help="Audit KB: counts, stale, low-confidence, citations")
     p_ka.add_argument("--graph", required=True, help="Call graph output directory")
     p_ka.add_argument("--topic", default="", help="Optional: 'what do we know about X'")
 
-    # kb-conflict (Phase 11: detect contradictions)
+    # kb-conflict (detect contradictions)
     p_kcf = sub.add_parser("kb-conflict",
                            help="Detect contradictory items in the same cluster")
     p_kcf.add_argument("--graph", required=True, help="Call graph output directory")
 
-    # kb-rollback (Phase 11: restore kb_item to prior version)
+    # kb-rollback (restore kb_item to prior version)
     p_kr = sub.add_parser("kb-rollback",
                           help="Restore a kb_item to a prior version")
     p_kr.add_argument("--graph", required=True, help="Call graph output directory")
@@ -1190,14 +1190,14 @@ def main():
     p_kr.add_argument("--to-version", type=int, default=None,
                        help="Version to restore (default: latest)")
 
-    # kb-forget (Phase 11: immediate delete)
+    # kb-forget (immediate delete)
     p_kf = sub.add_parser("kb-forget",
                           help="Immediately delete a kb_paragraph (no decay)")
     p_kf.add_argument("--graph", required=True, help="Call graph output directory")
     p_kf.add_argument("--id", required=True, type=int, help="kb_paragraph id to forget")
     p_kf.add_argument("--reason", default="", help="Reason for forgetting (audit log)")
 
-    # kb-global-* (Phase 8: cross-project global KB)
+    # kb-global-* (cross-project global KB)
     p_kga = sub.add_parser("kb-global-add",
                            help="Add an entry to the cross-project global KB")
     p_kga.add_argument("--title", required=True)
@@ -1308,7 +1308,7 @@ def main():
 
 
 
-    # build-multi (Phase 1: multi-project aggregate build)
+    # build-multi (multi-project aggregate build)
     p_bm = sub.add_parser("build-multi",
                           help="Build a unified C2D from a multi-project manifest")
     p_bm.add_argument("--manifest", required=True,
@@ -1326,7 +1326,7 @@ def main():
     p_bm.add_argument("--no-clang", action="store_true",
                       help="Force tree-sitter (no libclang)")
 
-    # c2d-add-foreign (Phase 1: register external C2D + resolve refs)
+    # c2d-add-foreign (register external C2D + resolve refs)
     p_caf = sub.add_parser("c2d-add-foreign",
                            help="Register a foreign C2D and resolve cross-project refs")
     p_caf.add_argument("--graph", required=True, help="Local (B) C2D directory")
@@ -1337,19 +1337,19 @@ def main():
     p_caf.add_argument("--rescan-unresolved", action="store_true",
                        help="Re-attempt resolution of all unresolved refs")
 
-    # c2d-sync-foreign (Phase 1: detect foreign changes + re-resolve)
+    # c2d-sync-foreign (detect foreign changes + re-resolve)
     p_csf = sub.add_parser("c2d-sync-foreign",
                            help="Sync foreign_refs with updated foreign C2Ds")
     p_csf.add_argument("--graph", required=True, help="Local (B) C2D directory")
     p_csf.add_argument("--foreign-c2d", default="",
                        help="Specific foreign C2D to sync (default: all watched)")
 
-    # c2d-list-foreign (Phase 1: list watched C2Ds)
+    # c2d-list-foreign (list watched C2Ds)
     p_clf = sub.add_parser("c2d-list-foreign",
                            help="List watched foreign C2Ds with sync status")
     p_clf.add_argument("--graph", required=True, help="Local C2D directory")
 
-    # c2d-remove-foreign (Phase 1: unregister foreign C2D)
+    # c2d-remove-foreign (unregister foreign C2D)
     p_crf = sub.add_parser("c2d-remove-foreign",
                            help="Unregister a foreign C2D")
     p_crf.add_argument("--graph", required=True, help="Local C2D directory")
@@ -1383,7 +1383,7 @@ def main():
     p_crf8u.add_argument("--graph", required=True, help="Local C2D directory")
     p_crf8u.add_argument("--ref-id", required=True, type=int, help="foreign_refs.id")
 
-    # composite-query (Phase 2: cross-C2D JOIN via ATTACH)
+    # composite-query (cross-C2D JOIN via ATTACH)
     p_cq = sub.add_parser("composite-query",
                           help="Query across local + foreign C2Ds via SQLite ATTACH")
     p_cq.add_argument("--graph", required=True, help="Local C2D directory")
@@ -1393,20 +1393,20 @@ def main():
                       help="Comma-separated foreign C2D paths to attach")
     p_cq.add_argument("--top", type=int, default=50)
 
-    # c2d-check-compat (Phase 2: verify B's foreign_refs against A_v2)
+    # c2d-check-compat (verify B's foreign_refs against A_v2)
     p_ccc = sub.add_parser("c2d-check-compat",
                            help="Check if B's foreign_refs still valid against new A version")
     p_ccc.add_argument("--graph", required=True, help="Local (B) C2D directory")
     p_ccc.add_argument("--against-c2d", required=True,
                        help="New version of foreign (A) C2D to check against")
 
-    # coverage-cross-c2d (Phase 2: test coverage across C2Ds)
+    # coverage-cross-c2d (test coverage across C2Ds)
     p_ccc2 = sub.add_parser("coverage-cross-c2d",
                             help="Compute which functions in target_c2d are called by test_c2d")
     p_ccc2.add_argument("--test-c2d", required=True, help="Test code C2D directory")
     p_ccc2.add_argument("--target-c2d", required=True, help="Target (tested) C2D directory")
 
-    # Phase 3 commands
+    #  commands
     p_afs = sub.add_parser("c2d-add-foreign-stub",
                            help="Register a vendor SDK stub C2D (signatures only)")
     p_afs.add_argument("--graph", required=True, help="Local C2D directory")
@@ -1861,7 +1861,7 @@ def main():
     p_q.add_argument("--with-hints", action="store_true",
                      help="Wrap output as {\"rows\": [...], \"_hints\": [...]} where _hints "
                           "contains top-3 kb_paragraphs hits matching the query string "
-                          "(Phase 3 priority chain). Default off for backward compat — "
+                          ". Default off for backward compat — "
                           "stdout stays a flat rows list.")
 
     # (P0): value flow / taint tracking

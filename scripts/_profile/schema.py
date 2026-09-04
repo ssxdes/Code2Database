@@ -37,7 +37,7 @@ _DEFAULT_PROFILE = {
     },
     # C/C++ extraction backend: 'auto' (dual: tree-sitter+clang), 'clang'
     # (cgdb-only, requires libclang), or 'tree-sitter' (legacy). Per cgdb
-    # architecture Phase 1. Default 'auto' — uses clang when available,
+    # architecture . Default 'auto' — uses clang when available,
     # falls back to tree-sitter if libclang missing/unavailable.
     "extraction_backend": "auto",
     "skip_names": {

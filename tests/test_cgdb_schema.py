@@ -1,4 +1,4 @@
-"""Tests for cgdb schema (Phase 0 Foundation).
+"""Tests for the cgdb schema.
 
 Verifies that apply_cgdb_schema creates all 13-layer tables, FTS5 virtual
 table works, triggers fire correctly, and the schema is idempotent.

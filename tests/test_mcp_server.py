@@ -329,7 +329,7 @@ class TestMcpSessionInitTool(unittest.TestCase):
 
 
 class TestMcpMemorySearchSymbol(unittest.TestCase):
-    """Round 24: memory_search symbol filter (memory↔code grounding)."""
+    """memory_search symbol filter (memory↔code grounding)."""
 
     def test_symbol_filter_routes_to_store(self):
         from _builder.mcp_server import _tool_memory_search
@@ -367,7 +367,7 @@ class TestMcpMemorySearchSymbol(unittest.TestCase):
 
 
 class TestMcpSaveMemory(unittest.TestCase):
-    """Round 24: code2database_save_memory — MCP-side accumulation."""
+    """code2database_save_memory — MCP-side accumulation."""
 
     def _tmp_graph(self):
         import tempfile

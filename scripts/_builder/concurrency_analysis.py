@@ -1203,7 +1203,7 @@ def _print_concurrency_result(result):
             if risk.get("thread_b"):
                 print(f"    Thread B: {risk['thread_b']}")
 
-    # #11 fix: Annotate analysis limitations so users don't over-trust results
+    # Annotate analysis limitations so users don't over-trust results
     print("\n" + "=" * 70)
     print("ANALYSIS LIMITATIONS (please read before drawing conclusions):")
     print("  - Lock protection is function-level (not access-site-level).")

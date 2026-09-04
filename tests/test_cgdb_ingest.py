@@ -1,4 +1,4 @@
-"""Tests for cgdb_ingest (Phase 1: L1-L2 + FTS5).
+"""Tests for cgdb_ingest (L1-L2 + FTS5).
 
 Verifies that extract_cgdb_batch() correctly converts a scan result dict
 (from ClangScanner or DualBackendScanner) into an IngestBatch that can be

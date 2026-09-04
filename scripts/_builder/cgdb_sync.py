@@ -1,6 +1,6 @@
 """cgdb_sync — L8 sync_primitives extraction via AST walk.
 
-Per cgdb-architecture-and-poc-report.md 5.4 (Phase 4 L8):
+Per cgdb-architecture-and-poc-report.md 5.4:
   Walk each function body's AST, looking for CALL_EXPR nodes whose callee
   name matches known sync primitive patterns:
     - pthread_mutex_lock / pthread_mutex_unlock

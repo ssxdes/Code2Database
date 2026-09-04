@@ -688,7 +688,7 @@ python3 scripts/code2database_builder.py serve \
 
 All 82 tools are accessible regardless of sub-skill activation. MCP is separate from skill layer activation. See `references/analysis_commands.md` for the 19 `cgdb_*` tools; see parent `references/usage_reference.md` for the 35 `code2database_*` tools.
 
-The new `code2database_kb_query` tool (Phase 3) is the unified FTS5+BM25
+The `code2database_kb_query` tool is the unified FTS5+BM25
 query surface across memory + knowledge stores:
 
 ```json
@@ -697,7 +697,7 @@ query surface across memory + knowledge stores:
                "kinds": "memory_qa,knowledge_principle"}}
 ```
 
-## Knowledge Base (kb-* commands — Phase 1-11)
+## Knowledge Base (kb-* commands)
 
 ### `kb-rebuild-index`
 
@@ -835,7 +835,7 @@ python3 scripts/code2database_builder.py kb-global-import \
   --input ~/global_kb_share.json
 ```
 
-## Cross-C2D Management (Phase 1 F5/F7/F8)
+## Cross-C2D Management
 
 ### `c2d-resolve-foreign`
 

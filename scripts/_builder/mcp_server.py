@@ -721,7 +721,7 @@ def _tool_memory_search(args: dict, graph_dir: str) -> list:
 def _tool_kb_query(args: dict, graph_dir: str) -> dict:
     """Unified FTS5+BM25 query across memory + knowledge.
 
-    Phase 3 of the KB unification. Replaces the need to call
+    Replaces the need to call
     code2database_memory_search AND code2database_knowledge_query
     separately — this single tool searches both stores via the
     shared kb_paragraphs_fts index.
@@ -816,7 +816,7 @@ def _tool_semantic_status(args: dict, graph_dir: str) -> dict:
 
 
 def _tool_foreign_refs(args: dict, graph_dir: str) -> dict:
-    """F3: list cross-C2D foreign refs for a node."""
+    """List cross-C2D foreign refs for a node."""
     import sqlite3
     node_id = args.get("node", "")
     if not node_id:
@@ -846,7 +846,7 @@ def _tool_foreign_refs(args: dict, graph_dir: str) -> dict:
 
 
 def _tool_sync_foreign(args: dict, graph_dir: str) -> dict:
-    """F3: trigger sync of foreign_refs."""
+    """Trigger sync of foreign_refs."""
     from _builder.c2d_foreign import sync_foreign
     return sync_foreign(
         graph_dir,
@@ -856,7 +856,7 @@ def _tool_sync_foreign(args: dict, graph_dir: str) -> dict:
 
 
 def _tool_composite_query(args: dict, graph_dir: str) -> dict:
-    """F3: cross-C2D query via ATTACH."""
+    """Cross-C2D query via ATTACH."""
     from _builder.c2d_phase2 import composite_query
     query = args.get("query", "")
     if not query:
@@ -1197,7 +1197,7 @@ def _tool_unbalanced_alloc_free(args: dict, graph_dir: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# cgdb (code graph database) tools — Phase 5 per doc 5.5.7
+# cgdb (code graph database) tools per doc 5.5.7
 # These wrap SQLiteCGDBStore reader methods. When the graph_dir contains a
 # code2database.db with cgdb tables, they query the cgdb schema directly.
 # ---------------------------------------------------------------------------
@@ -1967,7 +1967,7 @@ TOOLS = {
         },
         "handler": _tool_unbalanced_alloc_free,
     },
-    # ---- cgdb (Phase 5): clang-based code graph database tools ----
+    # ---- cgdb: clang-based code graph database tools ----
     "cgdb_search_symbols": {
         "description": "Full-text search over cgdb_nodes via FTS5 (clang backend).",
         "inputSchema": {

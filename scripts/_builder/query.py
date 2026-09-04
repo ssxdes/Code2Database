@@ -787,7 +787,7 @@ def cmd_describe_node(args):
     if not nd.get("preproc_alive", True):
         result["preproc_alive"] = False
 
-    # Phase 3: surface related memory/knowledge entries so the LLM
+    # surface related memory/knowledge entries so the LLM
     # knows what we already know about this node. Uses the unified
     # kb_paragraphs FTS5 index; falls back silently if no DB.
     try:
@@ -967,7 +967,7 @@ def cmd_describe_node(args):
 
     # Auto-fill request — list empty fields the LLM should
     # fill. Lets the LLM complete the loop without manual export/import.
-    # #4 fix: default hidden to avoid 60%+ output token waste on
+    # default hidden to avoid 60%+ output token waste on
     # analysis-only queries. Use --fill-requests to show.
     if getattr(args, "fill_requests", False):
         try:

@@ -1382,7 +1382,7 @@ def cmd_query(args):
         for row in rows:
             print("| " + " | ".join(str(row.get(c, "")) for c in cols) + " |")
     else:
-        # Phase 3: consult memory/knowledge before printing graph rows.
+        # consult memory/knowledge before printing graph rows.
         # This realizes the SKILL.md "Query Priority Chain:
         # memory → knowledge → graph → source" — when the user asks a
         # natural-language-shaped query, we surface top kb_paragraphs

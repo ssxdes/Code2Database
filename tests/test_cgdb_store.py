@@ -1,4 +1,4 @@
-"""Tests for SQLiteCGDBStore (Phase 0 Foundation).
+"""Tests for SQLiteCGDBStore.
 
 Verifies GraphWriter/GraphReader split (per cdb 5.4.3): write_batch persists
 all 13-layer records, reader queries return correct results, FTS5 search

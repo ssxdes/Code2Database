@@ -1,4 +1,4 @@
-"""Tests for cgdb_config_predicates (Phase 2: L3.5).
+"""Tests for cgdb_config_predicates (L3.5).
 
 Verifies the three-pass pipeline:
   Pass 1: macro universe extraction (clang -E -dM -P)

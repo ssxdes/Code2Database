@@ -1,4 +1,4 @@
-"""Phase 3 enhancements: vendor stub C2D, FFI cross-C2D, RPC edges,
+"""Vendor stub C2D, FFI cross-C2D, RPC edges,
 cross-team knowledge sharing.
 
 1. Vendor stub C2D: pre-built function-signature-only db for common

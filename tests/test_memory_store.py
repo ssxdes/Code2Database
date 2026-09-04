@@ -316,7 +316,7 @@ class TestCjkSearch(MemoryStoreTestBase):
 
 
 class TestSymbolGrounding(MemoryStoreTestBase):
-    """Round 24: memories grounded to graph symbols (memory ↔ code)."""
+    """memories grounded to graph symbols (memory ↔ code)."""
 
     def test_add_with_symbols_roundtrip(self):
         mid = self.store.add("nvme 提交流程", "doorbell",
@@ -386,7 +386,7 @@ class TestSymbolGrounding(MemoryStoreTestBase):
         self.assertEqual(digest[0]["symbols"], ["fn_a"])
 
     def test_old_schema_migrates(self):
-        # simulate a pre-Round-24 db: drop the column, reopen (rw)
+        # simulate a legacy db: drop the column, reopen (rw)
         conn = sqlite3.connect(self.store.db_path)
         conn.execute("ALTER TABLE memories DROP COLUMN symbols")
         conn.commit()

@@ -1,15 +1,13 @@
 """Knowledge-base index builder and FTS5 query interface.
 
-Phase 1 of the KB unification: builds a derived SQLite table
+Builds a derived SQLite table
 (kb_paragraphs + kb_paragraphs_fts) from the canonical filesystem
 sources (memory/*.json and knowledge/*.md) so a single FTS5 + BM25
 query can search across both stores.
 
 The filesystem files remain the source of truth — kb_paragraphs is
 rebuildable via `kb-rebuild-index`. Writes to memory/knowledge should
-call upsert_kb_paragraph() to keep the index in sync (Phase 4 will
-add a transaction-aware wrapper that auto-updates on memory/knowledge
-mutations).
+call upsert_kb_paragraph() to keep the index in sync.
 """
 from __future__ import annotations
 
@@ -238,7 +236,7 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
 
 def _record_query_log(conn: sqlite3.Connection, query: str,
                       results_count: int, top_score: float) -> None:
-    """Phase 9: log every kb-query for feedback loop & known-unknowns.
+    """Log every kb-query for feedback loop & known-unknowns.
 
     Best-effort — silently swallows errors. Used by kb-known-unknowns
     to aggregate queries that returned no results (the user should
@@ -257,7 +255,7 @@ def _record_query_log(conn: sqlite3.Connection, query: str,
         pass
 def get_known_unknowns(graph_dir: str, top_n: int = 20,
                       min_occurrences: int = 2) -> List[Dict[str, Any]]:
-    """Phase 9: aggregate unmatched queries into 'known unknowns'.
+    """Aggregate unmatched queries into 'known unknowns'.
 
     Returns queries that returned 0 matches and were asked at least
     `min_occurrences` times. Grouped by FTS5 similarity so similar
@@ -673,17 +671,17 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
         kinds: Optional filter on the `kind` column.
         min_weight: Skip rows with weight below this.
         max_tokens: Approximate character cap on returned bodies.
-        semantic: Phase 5 — if True and embeddings are populated,
+        semantic: if True and embeddings are populated,
                   fall back to cosine similarity for items lacking
                   FTS5 token overlap. Currently a no-op stub: returns
                   only FTS5 matches but the interface is in place.
-        log_query: Phase 9 — record this query in kb_query_log for
+        log_query: record this query in kb_query_log for
                    feedback loop analysis (set False for internal calls).
 
     Returns:
         List of dicts with id, source_kind, source_file, title, body,
-        tags, node_ids, weight, kind, score, see_also (Phase 4 —
-        items in the same cluster).
+        tags, node_ids, weight, kind, score, see_also (items in the same
+        cluster).
     """
     conn = _kb_connect(graph_dir)
     if conn is None:
@@ -783,7 +781,7 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
                 "scope_id": r["scope_id"],
                 "canonical_id": r["canonical_id"],
             })
-        # Phase 4: attach see_also — items in the same cluster
+        # attach see_also — items in the same cluster
         # (same scope_id) ranked by weight × confidence.
         for res in results:
             scope_id = res.get("scope_id")
@@ -822,7 +820,7 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
         if log_query:
             top_score = results[0]["score"] if results else 0.0
             _record_query_log(conn, query, len(results), top_score)
-        # F2: if local results are thin, also search foreign C2Ds'
+        # if local results are thin, also search foreign C2Ds'
         # kb_paragraphs (via watched_c2ds + ATTACH). This lets B's
         # kb-query see A's knowledge.md content when local KB is thin.
         if len(results) < top_n:
@@ -840,7 +838,7 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
 
 def _query_foreign_kb(conn: sqlite3.Connection, query: str, top_n: int,
                       min_weight: float, max_tokens: int) -> List[Dict[str, Any]]:
-    """F2: search kb_paragraphs in all watched foreign C2Ds.
+    """Search kb_paragraphs in all watched foreign C2Ds.
 
     ATTACHes each foreign db read-only and queries its kb_paragraphs_fts.
     Returns results tagged with source_db so consumers know which C2D

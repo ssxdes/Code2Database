@@ -1,6 +1,6 @@
 """Unit tests for kb_index, kb_cluster, kb_global, kb_audit, kb_conflict.
 
-Phase 1-11 unified knowledge base modules.
+Unified knowledge base modules.
 
 These tests use a temporary code2database.db to verify:
 - FTS5 table creation + triggers

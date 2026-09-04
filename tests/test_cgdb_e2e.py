@@ -1,4 +1,4 @@
-"""End-to-end test for cgdb Phase 1: scan → build → SQLite tables populated.
+"""End-to-end test for cgdb scan → build → SQLite tables populated.
 
 Verifies the full pipeline:
 1. DualBackendScanner scans a C source → produces cgdb_nodes/cgdb_types/

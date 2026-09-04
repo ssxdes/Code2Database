@@ -1,4 +1,4 @@
-"""Phase 10: Knowledge audit.
+"""Knowledge audit.
 
 Answers "what do we know about X" across memory + knowledge + graph.
 Records every kb save/correct/forget into the existing audit_log
@@ -110,7 +110,7 @@ def write_audit_log_entry(graph_dir: str, action: str,
                            reason: str = "") -> None:
     """Record a kb operation in the project's audit_log table.
 
-    Reuses the existing audit_log table (Phase 10 integration).
+    Reuses the existing audit_log table.
     Best-effort — silently swallows errors.
     """
     conn = _kb_connect(graph_dir)

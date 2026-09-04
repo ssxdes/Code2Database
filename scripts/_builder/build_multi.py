@@ -1,6 +1,6 @@
 """Multi-project aggregate build — manifest-driven joint C2D construction.
 
-Phase 1 of the multi-project support design. Builds a single unified
+Builds a single unified
 C2D from a manifest of interdependent projects (A -> B -> C dependency
 chain), forcing each function's domain to start with the project name
 so that A:init() and B:init() never collide.

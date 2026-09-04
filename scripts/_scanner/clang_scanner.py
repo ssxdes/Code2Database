@@ -1,6 +1,6 @@
 """ClangScanner — libclang 17-based AST extraction for cgdb (code graph database).
 
-Per cgdb-architecture-and-poc-report.md Phase 1 (L1-L2 + FTS5):
+Per cgdb-architecture-and-poc-report.md  (L1-L2 + FTS5):
 - Walks clang AST via libclang Python bindings
 - Extracts multi-kind nodes: function, method, var, parm, field, struct, enum, typedef, decl_ref, member_ref
 - Extracts type records into cgdb_types (independent type system)

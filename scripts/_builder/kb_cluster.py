@@ -1,4 +1,4 @@
-"""Phase 4: KB clustering + principle_ref linking.
+"""KB clustering + principle_ref linking.
 
 Groups similar kb_paragraphs items into clusters via union-find on
 FTS5 BM25 similarity. Each cluster has a canonical_id pointing to
@@ -67,7 +67,7 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
                verbose: bool = True) -> dict:
     """Cluster kb_paragraphs by Jaccard token-set similarity.
 
-    C1 fix: previously used FTS5 BM25 score as similarity metric, but
+    uses Jaccard token-set similarity rather than FTS5 BM25:
     BM25 is a relevance ranking, not a similarity measure. Two docs with
     high BM25 just share tokens — they're not necessarily "the same
     question". Jaccard on token sets is the correct similarity metric.
@@ -157,7 +157,7 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
                     "UPDATE kb_paragraphs SET canonical_id = ? WHERE scope_id = ?",
                     (canonical_id, scope_id)
                 )
-        # Phase 4 part 2: link memory_qa → knowledge_principle
+        # link memory_qa → knowledge_principle
         # For each memory_qa, find the best-matching knowledge_principle
         # via FTS5 and set principle_ref.
         principle_refs_linked = 0

@@ -11,7 +11,7 @@ import networkx as nx
 
 
 class TestP1MacroBridging(unittest.TestCase):
-    """P1: Macro-to-function bridging (__name convention)."""
+    """Macro-to-function bridging (__name convention)."""
 
     def _build_with_macro_pair(self, macro_sf="", impl_sf="impl.c",
                                macro_domain="fs.ext4", impl_domain="fs.ext4"):
@@ -108,7 +108,7 @@ class TestP1MacroBridging(unittest.TestCase):
 
 
 class TestP2InlineFnPtrDispatch(unittest.TestCase):
-    """P2: Inline fn_ptr_call flattening and inline wrapper dispatch."""
+    """Inline fn_ptr_call flattening and inline wrapper dispatch."""
 
     def test_inline_wrapper_call_pattern(self):
         """call_* named auto-created nodes get vtable dispatch edges."""

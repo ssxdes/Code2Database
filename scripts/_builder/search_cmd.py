@@ -404,7 +404,7 @@ def _bfs_with_domain_preference(G, from_node, to_node, no_filter, prefer_same_do
         for nb in G.successors(cur):
             if nb in came_from:
                 continue
-            # #9 fix: hard domain filter
+            # hard domain filter
             if domain_filter:
                 nb_dom = _node_domain(G, nb)
                 if nb_dom and nb_dom != "root" and nb_dom not in domain_filter:
@@ -499,7 +499,7 @@ def _cmd_path_touched(args) -> frozenset:
 def cmd_path(args):
     G = _load_full_graph(args.graph)
 
-    # #2 fix: --source-file disambiguation. When the user supplies
+    # --source-file disambiguation. When the user supplies
     # --source-file, treat --from/--to as function names and resolve to
     # the node ID whose source_file matches. Without this, passing a
     # name like "drop_buffers" hits "node not found" because cmd_path
@@ -596,7 +596,7 @@ def cmd_path(args):
     strict_vtable_domain = getattr(args, 'strict_vtable_domain', False)
     vtable_bindings = _parse_vtable_bindings(getattr(args, 'vtable_bind', '') or '')
 
-    # #9 fix: --domain-filter — hard restriction to one or more domains.
+    # --domain-filter — hard restriction to one or more domains.
     # Unlike prefer_same_domain (soft preference), this excludes any node
     # whose domain is not in the allowlist (root is always allowed).
     domain_filter_raw = getattr(args, "domain_filter", "") or ""
@@ -633,7 +633,7 @@ def cmd_path(args):
             from _builder.utils import _make_call_graph
             call_G = _make_call_graph(G, skip_file_nodes=True)
 
-            # #9 fix: hard domain filter — remove nodes outside the allowlist
+            # hard domain filter — remove nodes outside the allowlist
             if domain_filter_set:
                 allowed = {"root"} | domain_filter_set
                 nodes_to_remove = [

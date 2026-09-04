@@ -1,4 +1,4 @@
-"""Tests for the get_scanner() factory with extraction_backend (Phase 1).
+"""Tests for the get_scanner() factory with extraction_backend.
 
 Verifies that get_scanner() returns the correct scanner type for each
 backend mode:

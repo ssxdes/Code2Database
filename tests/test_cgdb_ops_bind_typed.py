@@ -1,4 +1,4 @@
-"""Tests for cgdb_ops_bind (Phase 3: L7 typed vtable dispatch).
+"""Tests for cgdb_ops_bind (L7 typed vtable dispatch).
 
 Verifies that the OpsBindDeriver detects `.field = function` designators
 in struct initializer lists using clang's type system (not name patterns),

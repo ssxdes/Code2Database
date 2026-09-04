@@ -1,6 +1,6 @@
 """cgdb_incremental — content hash + #include dependency graph for incremental sync.
 
-Per cgdb-architecture-and-poc-report.md Phase 5 (C4):
+Per cgdb-architecture-and-poc-report.md (C4):
 - Replace mtime+size with SHA-256 content hash for change detection
 - Build a #include dependency graph (file → files it includes)
 - Compute reverse dependency graph (file → files that include it)

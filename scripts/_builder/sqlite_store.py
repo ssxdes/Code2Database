@@ -168,7 +168,7 @@ class SQLiteStore:
                 # FTS5 + BM25 query surface. The kb_paragraphs table
                 # is a derived index — rebuildable via kb-rebuild-index
                 # from the canonical filesystem sources (memory/*.json
-                # and knowledge/*.md). Phase 1 of the KB unification.
+                # and knowledge/*.md).
                 if int(row[0]) < 9:
                     try:
                         self._conn.executescript("""
@@ -257,7 +257,7 @@ class SQLiteStore:
                     self._add_column_if_missing(
                         "kb_paragraphs", "embedding", "BLOB"
                     )
-                # Schema v12: Phase 6 — kb_items unified fact-level table.
+                # Schema v12: kb_items unified fact-level table.
                 # Supersedes kb_paragraphs in the long term; for now
                 # kb_paragraphs stays as the operational table and
                 # kb_items is the fact-level migration target. Includes
@@ -321,7 +321,7 @@ class SQLiteStore:
                                 INSERT INTO kb_items_fts(rowid, title, body, tags)
                                 VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
                             END;
-                            -- Phase 9: query log for feedback loop
+                            -- query log for feedback loop
                             -- (records every kb-query call so kb-known-unknowns
                             -- can aggregate unmatched queries).
                             CREATE TABLE IF NOT EXISTS kb_query_log (
@@ -595,10 +595,10 @@ class SQLiteStore:
             CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);
             CREATE INDEX IF NOT EXISTS idx_audit_log_tx ON audit_log(tx_id);
 
-            -- Knowledge-base paragraphs (Phase 1: unified FTS5 search).
+            -- Knowledge-base paragraphs (unified FTS5 search).
             -- Derived index from memory/*.json + knowledge/*.md; rebuildable
-            -- via kb-rebuild-index. Phase 4 will add scope_id/canonical_id/
-            -- principle_ref columns; Phase 5 will add embedding BLOB.
+            -- via kb-rebuild-index. scope_id/canonical_id/principle_ref
+            -- columns and the embedding BLOB are added by later migrations.
             CREATE TABLE IF NOT EXISTS kb_paragraphs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source_kind TEXT NOT NULL,
@@ -653,7 +653,7 @@ class SQLiteStore:
                 VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
             END;
 
-            -- Phase 6: kb_items — unified fact-level table with
+            -- kb_items — unified fact-level table with
             -- versions, provenance, decay_class. Long-term successor
             -- to kb_paragraphs; both coexist during migration.
             CREATE TABLE IF NOT EXISTS kb_items (
@@ -711,7 +711,7 @@ class SQLiteStore:
                 VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
             END;
 
-            -- Phase 9: query log for feedback loop & known-unknowns.
+            -- query log for feedback loop & known-unknowns.
             CREATE TABLE IF NOT EXISTS kb_query_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 query TEXT NOT NULL,
@@ -725,7 +725,7 @@ class SQLiteStore:
             CREATE INDEX IF NOT EXISTS idx_kb_query_log_query
                 ON kb_query_log(query);
 
-            -- Phase 1 cross-C2D sync: foreign_refs + watched_c2ds.
+            -- Cross-C2D sync: foreign_refs + watched_c2ds.
             -- Lets project B's C2D reference functions in A's C2D
             -- without merging dbs; sync detects A's changes.
             CREATE TABLE IF NOT EXISTS foreign_refs (

@@ -1,6 +1,6 @@
 """cgdb_analysis — L4-L6 + L8 extraction via clang static analyzer CLI.
 
-Per cgdb-architecture-and-poc-report.md 5.4 (Phase 4):
+Per cgdb-architecture-and-poc-report.md 5.4:
   L4 (CFG):    `clang -cc1 -analyze -analyzer-checker=debug.DumpCFG`
   L5 (data flow): `clang -cc1 -analyze -analyzer-checker=debug.DumpLiveVars`
                   + AST-level def-use via DeclRefExpr tracking

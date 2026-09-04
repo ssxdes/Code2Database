@@ -1,9 +1,9 @@
-"""Phase 8: Cross-project global knowledge base.
+"""Cross-project global knowledge base.
 
 Stores project-agnostic knowledge (principles, debugging methodology,
 tool usage) at ~/.code2database_global_kb/ so it can be shared across
 all projects. Project KBs reference global entries via the
-`global_ref` column (added in Phase 8 migration).
+`global_ref` column.
 
 A separate SQLite db at ~/.code2database_global_kb/global.db holds
 the global knowledge; project KBs do a fallback query when the

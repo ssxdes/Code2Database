@@ -687,7 +687,7 @@ python3 scripts/code2database_builder.py serve \
 
 无论子技能是否激活，全部 82 个工具 (54 base + 28 design-report)都可访问。MCP 与技能层激活分离。19 个 `cgdb_*` 工具见 `references/analysis_commands.md`；35 个 `code2database_*` 工具见父技能 `references/usage_reference.md`。
 
-新增 `code2database_kb_query` 工具（Phase 3）是跨越 memory + knowledge
+新增 `code2database_kb_query` 工具是跨越 memory + knowledge
 存储的统一 FTS5+BM25 查询接口：
 
 ```json
@@ -696,7 +696,7 @@ python3 scripts/code2database_builder.py serve \
                "kinds": "memory_qa,knowledge_principle"}}
 ```
 
-## 知识库（kb-* 命令 — Phase 1-11）
+## 知识库（kb-* 命令）
 
 ### `kb-rebuild-index`
 
@@ -829,7 +829,7 @@ python3 scripts/code2database_builder.py kb-global-import \
   --input ~/global_kb_share.json
 ```
 
-## 跨 C2D 管理（Phase 1 F5/F7/F8）
+## 跨 C2D 管理
 
 ### `c2d-resolve-foreign`
 

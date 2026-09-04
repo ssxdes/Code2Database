@@ -1369,7 +1369,7 @@ class Daemon:
             self.state.pending_events = 0
         if not files:
             return
-        # Expand via #include dep graph (cgdb Phase 5 incremental sync).
+        # Expand via #include dep graph (incremental sync).
         # This catches the common case where a header changed and all TUs
         # that #include it (directly or transitively) need to be re-scanned.
         expanded_files = files
@@ -1415,7 +1415,7 @@ class Daemon:
             # Invalidate memory entries whose node_ids no longer exist
             # (graph changed → some Q&A may reference removed nodes).
             self._invalidate_stale_memory_after_sync()
-            # Phase 1 cross-C2D: re-resolve foreign refs (B's unresolved
+            # Cross-C2D: re-resolve foreign refs (B's unresolved
             # calls may now match A's existing functions after B's update).
             self._sync_foreign_refs_after_local_update()
         except Exception as exc:
@@ -1445,7 +1445,7 @@ class Daemon:
             # Invalidate memory entries after bulk rebuild (graph may have
             # changed significantly → many memory refs may now be stale).
             self._invalidate_stale_memory_after_sync()
-            # Phase 1 cross-C2D: also re-resolve foreign refs after bulk.
+            # Cross-C2D: also re-resolve foreign refs after bulk.
             self._sync_foreign_refs_after_local_update()
         except Exception as exc:
             self.state.last_error = str(exc)
@@ -1595,7 +1595,7 @@ class Daemon:
         """After B's graph updates, re-resolve foreign refs in case B's
         unresolved calls now match A's existing functions.
 
-        Phase 1 cross-C2D sync integration. Iterates over watched_c2ds
+        Cross-C2D sync integration. Iterates over watched_c2ds
         and calls sync_foreign for each. Best-effort: errors are logged
         but don't fail the daemon sync.
 

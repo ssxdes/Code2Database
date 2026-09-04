@@ -229,7 +229,7 @@ class MemoryStore:
             conn = self._connect()
             try:
                 conn.executescript(_SCHEMA)
-                # Migration: pre-Round-24 stores lack the symbols
+                # Migration: legacy stores lack the symbols
                 # column (memory↔symbol grounding). ALTER is cheap and
                 # idempotent-guarded via table_info.
                 cols = {r[1] for r in
@@ -256,7 +256,7 @@ class MemoryStore:
         for col in MemoryStore._JSON_COLUMNS:
             val = d.get(col, "[]")
             if val is None:
-                # pre-Round-24 read-only DBs lack the symbols column —
+                # legacy read-only DBs lack the symbols column —
                 # every JSON list column degrades to []
                 d[col] = []
             elif isinstance(val, str):
@@ -805,7 +805,7 @@ class MemoryStore:
         The symbol-page view of veteran experience: what the UI shows
         next to a function so a newcomer sees its pitfalls while
         reading the code. Pure read; degrades to [] when the column
-        is absent (pre-Round-24 read-only DBs).
+        is absent (legacy read-only DBs).
         """
         if not symbol or not symbol.strip():
             return []

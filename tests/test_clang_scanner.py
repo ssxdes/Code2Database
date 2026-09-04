@@ -1,4 +1,4 @@
-"""Tests for ClangScanner (Phase 1: L1-L2 + FTS5).
+"""Tests for ClangScanner (L1-L2 + FTS5).
 
 Verifies libclang-based scanner produces multi-kind nodes, type records,
 INVOKES edges, and call sites matching the cgdb PoC numbers (19 nodes, 6 edges

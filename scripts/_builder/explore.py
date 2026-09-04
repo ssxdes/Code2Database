@@ -886,7 +886,7 @@ def cmd_explore_flow(args):
 
     G = _load_full_graph(graph_dir)
 
-    # #10 fix: Exact symbol match pre-step — if the query exactly matches
+    # Exact symbol match pre-step — if the query exactly matches
     # a node name, return that node + its neighbors immediately instead
     # of going through BM25 scoring (which may return irrelevant results
     # for precise symbol names like "bdev_register").

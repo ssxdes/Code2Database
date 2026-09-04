@@ -669,7 +669,7 @@ def cmd_update(args):
                                 "--no-interactive"]
                 else:
                     files_arg = ",".join(to_scan)
-                    # #15 fix: byte-length check — even <200 files with
+                    # byte-length check — even <200 files with
                     # long paths can exceed ARG_MAX (~128KB on Linux).
                     if len(files_arg.encode("utf-8")) > 100_000:
                         # Fall back to --files-from for safety.

@@ -499,7 +499,7 @@ class GraphCache:
                 count += 1
         return cycles
 
-    # --- Round 21: project context (brief + memory) for humans ---
+    # --- project context (brief + memory) for humans ---
 
     def brief(self) -> Dict:
         """The project brief: rendered prompt form + structured JSON."""
@@ -694,7 +694,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 node_id = urllib.parse.unquote(path[len("/api/node/"):])
                 node = self.cache.get_node(node_id)
                 if node:
-                    # Round 24: veteran Q&A grounded to this symbol
+                    # veteran Q&A grounded to this symbol
                     try:
                         node["related_memories"] = \
                             self.cache.memories_for_node(node)
@@ -806,7 +806,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     logging.getLogger(__name__).warning("tour generation failed", exc_info=True)
                     self._send_json(500, {"tour": "", "error": "internal error"})
                 return
-            # --- Round 21: project context (brief + memory) ---
+            # --- project context (brief + memory) ---
             if path == "/api/brief":
                 try:
                     self._send_json(200, self.cache.brief())
@@ -834,7 +834,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     self._send_json(500, {"results": [], "stats": {},
                                           "error": "internal error"})
                 return
-            # --- Round 23: architecture narrative (ARCHITECTURE_FLOWS.md) ---
+            # --- architecture narrative (ARCHITECTURE_FLOWS.md) ---
             if path == "/api/architecture":
                 try:
                     self._send_json(200, self.cache.architecture())
@@ -844,7 +844,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     self._send_json(500, {"content": "", "missing": True,
                                           "error": "internal error"})
                 return
-            # --- Round 23: memory governance lineage ---
+            # --- memory governance lineage ---
             if path == "/api/memory/lineage":
                 try:
                     self._send_json(200, self.cache.memory_lineage())
@@ -854,7 +854,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     self._send_json(500, {"nodes": [], "edges": [],
                                           "error": "internal error"})
                 return
-            # --- Round 23: memory contributors (author filter) ---
+            # --- memory contributors (author filter) ---
             if path == "/api/memory/authors":
                 try:
                     self._send_json(200, self.cache.memory_authors())
@@ -957,11 +957,11 @@ _HTML_UI = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Code2Database</title>
 <style>
-/* P2: prefers-reduced-motion */
+/* prefers-reduced-motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
-/* P0: Dark Mode (OLED) + Swiss Style per ui-ux-pro-max row 82 */
+/* Dark Mode (OLED) + Swiss Style per ui-ux-pro-max row 82 */
 :root {
   --bg: #0d1b2a; --fg: #e0e0e0; --card: #16213e; --border: #334155;
   --primary: #4a90e2; --accent: #f59e0b; --danger: #ef4444; --success: #22c55e;
@@ -976,7 +976,7 @@ _HTML_UI = r"""<!DOCTYPE html>
 * { box-sizing: border-box; }
 body { margin: 0; font-family: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
        background: var(--bg); color: var(--fg); font-size: 13px; }
-/* P2: Typography — JetBrains Mono for code/identifiers */
+/* Typography — JetBrains Mono for code/identifiers */
 code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira Code", monospace; }
 
 /* Skip link for A11y */
@@ -1016,7 +1016,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 .action-btn:hover { opacity: 0.85; }
 .action-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
-/* P0: Callers/Callees lists in sidebar */
+/* Callers/Callees lists in sidebar */
 .call-list { margin: 6px 0; }
 .call-list-title { font-size: 11px; color: var(--muted); text-transform: uppercase; margin-bottom: 3px; }
 .call-item { padding: 3px 6px; border-radius: 4px; cursor: pointer; font-size: 12px;
@@ -1026,7 +1026,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 .call-item .call-cond { font-size: 10px; color: var(--accent); flex-shrink: 0; }
 .call-item .call-conf { font-size: 10px; flex-shrink: 0; }
 
-/* P0: Community legend */
+/* Community legend */
 #legend { position: absolute; left: 10px; top: 52px; background: rgba(13,27,42,0.9);
   padding: 8px; border-radius: 6px; font-size: 11px; max-height: 300px; overflow-y: auto;
   border: 1px solid var(--border); z-index: var(--z-toolbar); }
@@ -1034,7 +1034,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 #legend .legend-color { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
 #legend .legend-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* P0: Depth slider */
+/* Depth slider */
 #depth-control { display: flex; align-items: center; gap: 4px; }
 #depth-slider { width: 80px; }
 
@@ -1052,7 +1052,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
   background: var(--primary); color: #fff; padding: 10px 20px; border-radius: 6px;
   font-size: 13px; display: none; z-index: var(--z-loading); }
 
-/* P0: Help modal */
+/* Help modal */
 #help-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6);
   display: none; align-items: center; justify-content: center; z-index: var(--z-modal); }
 #help-content { background: var(--card); padding: 20px; border-radius: 12px; max-width: 500px;
@@ -1063,7 +1063,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 #help-content kbd { background: var(--bg); padding: 1px 5px; border-radius: 3px;
   border: 1px solid var(--border); font-size: 11px; font-family: monospace; }
 
-/* Round 21: project context modals */
+/* project context modals */
 #brief-modal, #memory-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center;
   z-index: var(--z-modal); }
@@ -1089,13 +1089,13 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 .mem-meta { font-size: 10px; color: var(--muted-fg); text-transform: uppercase;
   letter-spacing: 0.5px; }
 
-/* P0: Right-click context menu */
+/* Right-click context menu */
 #ctx-menu { position: fixed; display: none; background: var(--card); border: 1px solid var(--border);
   border-radius: 6px; padding: 4px 0; z-index: var(--z-modal); min-width: 140px; }
 #ctx-menu .ctx-item { padding: 6px 12px; cursor: pointer; font-size: 12px; }
 #ctx-menu .ctx-item:hover { background: var(--bg); }
 
-/* P1: Node type filter */
+/* Node type filter */
 #filter-panel { display: none; position: absolute; right: 330px; top: 52px;
   background: var(--card); padding: 8px; border-radius: 6px; border: 1px solid var(--border);
   z-index: var(--z-toolbar); }
@@ -1166,7 +1166,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
     <p style="text-align:center;margin-top:12px"><button class="action-btn" onclick="document.getElementById('help-modal').style.display='none'">Close</button></p>
   </div>
 </div>
-<!-- Round 21: project context modals (brief + veteran memory) -->
+<!-- project context modals (brief + veteran memory) -->
 <div id="brief-modal" role="dialog" aria-label="Project brief" aria-modal="true">
   <div id="brief-content">
     <h2>Project Brief</h2>
@@ -1191,7 +1191,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
     <p style="text-align:center;margin-top:12px"><button class="action-btn" onclick="document.getElementById('memory-modal').style.display='none'">Close</button></p>
   </div>
 </div>
-<!-- Round 23: architecture narrative modal (ARCHITECTURE_FLOWS.md) -->
+<!-- architecture narrative modal (ARCHITECTURE_FLOWS.md) -->
 <div id="arch-modal" role="dialog" aria-label="Architecture narrative" aria-modal="true">
   <div id="arch-content">
     <h2>Architecture — Core Execution Flows</h2>
@@ -1288,7 +1288,7 @@ function nodeClasses(node) {
   return cls.join(' ');
 }
 
-// P0: Edge type + confidence styling
+// Edge type + confidence styling
 function edgeClasses(edge) {
   let cls = [];
   const rel = edge.relation || 'INVOKES';
@@ -1330,7 +1330,7 @@ function buildCyElements() {
   return eles;
 }
 
-// P2: Force-sim auto-tuning by node count
+// Force-sim auto-tuning by node count
 function getLayoutOptions() {
   const n = Object.keys(allNodes).length;
   const name = document.getElementById('layout-select').value;
@@ -1369,20 +1369,20 @@ function initCy() {
       { selector: 'node.endpoint', style: { 'background-color': '#fb923c', 'border-color': '#f97316' } },
       { selector: 'node.ffi', style: { 'background-color': '#c084fc', 'border-color': '#a855f7' } },
       { selector: 'node.focused', style: { 'border-color': '#ef4444', 'border-width': 3 } },
-      // P0: Edge type styling
+      // Edge type styling
       { selector: 'edge.call-edge', style: { 'width': 2, 'line-color': '#64748b', 'curve-style': 'bezier',
         'target-arrow-shape': 'triangle', 'arrow-scale': 0.8, 'opacity': 0.6 } },
       { selector: 'edge.import-edge', style: { 'line-color': '#f59e0b', 'line-style': 'dashed', 'opacity': 0.5 } },
       { selector: 'edge.ffi-edge', style: { 'line-color': '#a855f7', 'line-style': 'dotted', 'opacity': 0.6 } },
-      // P1: Edge confidence
+      // Edge confidence
       { selector: 'edge.inferred', style: { 'line-style': 'dashed', 'opacity': 0.4 } },
       { selector: 'edge.ambiguous', style: { 'line-style': 'dotted', 'opacity': 0.3 } },
-      // P1: Cycle detection
+      // Cycle detection
       { selector: 'edge.cycle-edge', style: { 'line-color': '#ef4444', 'line-style': 'dashed', 'width': 3 } },
       // Highlight
       { selector: 'edge.highlighted', style: { 'width': 4, 'line-color': '#f59e0b', 'opacity': 0.9 } },
       { selector: '.faded', style: { 'opacity': 0.12 } },
-      // P1: Label zoom threshold
+      // Label zoom threshold
       { selector: 'node', style: { 'text-opacity': 0 } },
       { selector: 'node[degree > 0]', style: { 'text-opacity': 1 } },
       { selector: 'edge.show-condition', style: { 'label': 'data(condition)', 'font-size': '6px',
@@ -1391,7 +1391,7 @@ function initCy() {
     layout: getLayoutOptions(),
     wheelSensitivity: 0.2,
   });
-  // P0: Node click → callers/callees panel
+  // Node click → callers/callees panel
   cy.on('tap', 'node', function(evt) {
     activeNodeId = evt.target.id();
     focusNode(evt.target.id(), parseInt(document.getElementById('depth-slider').value));
@@ -1399,11 +1399,11 @@ function initCy() {
   cy.on('tap', function(evt) {
     if (evt.target === cy) { cy.elements().removeClass('faded'); }
   });
-  // P1: Right-click context menu
+  // Right-click context menu
   cy.on('cxttap', 'node', function(evt) {
     showContextMenu(evt.target.id(), evt.originalEvent.clientX, evt.originalEvent.clientY);
   });
-  // P1: Label zoom threshold
+  // Label zoom threshold
   cy.on('zoom', function() {
     const z = cy.zoom();
     if (z < 0.5) {
@@ -1412,11 +1412,11 @@ function initCy() {
       cy.style().selector('node').style('text-opacity', 1).update();
     }
   });
-  // P0: Apply community colors
+  // Apply community colors
   applyCommunityColors();
 }
 
-// P0: Community coloring
+// Community coloring
 function applyCommunityColors() {
   if (!cy) return;
   cy.nodes().forEach(node => {
@@ -1487,7 +1487,7 @@ async function focusNode(nodeId, depth) {
   } finally { hideLoading(); }
 }
 
-// P0: Click node → callers/callees detail panel
+// Click node → callers/callees detail panel
 async function loadNodeDetails(nodeId) {
   try {
     const [node, callers, callees] = await Promise.all([
@@ -1533,7 +1533,7 @@ async function loadNodeDetails(nodeId) {
       });
       html += '</div>';
     }
-    // Round 24: veteran Q&A grounded to this symbol (memory ↔ code)
+    // veteran Q&A grounded to this symbol (memory ↔ code)
     if (node.related_memories && node.related_memories.length > 0) {
       html += '<div class="call-list"><div class="call-list-title">Veteran Memories (' + node.related_memories.length + ')</div>';
       node.related_memories.forEach(m => {
@@ -1562,7 +1562,7 @@ async function loadCode(nodeId) {
   alert(data.code ? data.code.substring(0, 2000) : '(no source available)');
 }
 
-// P1: Blast-radius overlay (impact as visual highlight)
+// Blast-radius overlay (impact as visual highlight)
 async function loadImpact(nodeId) {
   showLoading();
   try {
@@ -1580,7 +1580,7 @@ async function loadImpact(nodeId) {
   } finally { hideLoading(); }
 }
 
-// P0: PNG export
+// PNG export
 function exportPNG() {
   if (!cy) return;
   const png64 = cy.png({ full: true, scale: 2, bg: '#0d1b2a' });
@@ -1590,7 +1590,7 @@ function exportPNG() {
   a.click();
 }
 
-// P1: Right-click context menu
+// Right-click context menu
 function showContextMenu(nodeId, x, y) {
   const menu = document.getElementById('ctx-menu');
   menu.innerHTML = '';
@@ -1613,7 +1613,7 @@ function showContextMenu(nodeId, x, y) {
   menu.style.display = 'block';
 }
 
-// P1: Cycle detection toggle
+// Cycle detection toggle
 async function toggleCycles() {
   const btn = document.getElementById('cycle-btn');
   if (cycleEdges.size > 0) {
@@ -1633,7 +1633,7 @@ async function toggleCycles() {
   } finally { hideLoading(); }
 }
 
-// P0: Community legend toggle
+// Community legend toggle
 let hiddenCommunities = new Set();
 function toggleCommunity(commId) {
   if (hiddenCommunities.has(commId)) {
@@ -1652,7 +1652,7 @@ function toggleCommunity(commId) {
   });
 }
 
-// P0: Dark mode toggle
+// Dark mode toggle
 function toggleDark() {
   const root = document.documentElement;
   const btn = document.getElementById('dark-btn');
@@ -1667,7 +1667,7 @@ function toggleDark() {
   }
 }
 
-// P0: Node type filter
+// Node type filter
 function applyFilters() {
   if (!cy) return;
   const checked = new Set();
@@ -1717,7 +1717,7 @@ document.getElementById('help-btn').addEventListener('click', () => {
   m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
 });
 
-// Round 21: project context panels
+// project context panels
 async function loadBrief() {
   const modal = document.getElementById('brief-modal');
   const body = document.getElementById('brief-body');
@@ -1782,7 +1782,7 @@ async function searchMemory() {
   }
 }
 
-// Round 23: author filter — multi-user read-only view
+// author filter — multi-user read-only view
 async function loadMemoryAuthors() {
   const select = document.getElementById('memory-author-select');
   try {
@@ -1800,7 +1800,7 @@ async function loadMemoryAuthors() {
   } catch (e) { /* filter stays on 'All authors' */ }
 }
 
-// Round 23: architecture narrative (ARCHITECTURE_FLOWS.md from the build)
+// architecture narrative (ARCHITECTURE_FLOWS.md from the build)
 async function loadArchitecture() {
   const modal = document.getElementById('arch-modal');
   const body = document.getElementById('arch-body');
@@ -1816,7 +1816,7 @@ async function loadArchitecture() {
   } catch (e) { body.textContent = 'Error loading architecture: ' + e; }
 }
 
-// Round 23: memory lineage tree (split / merge / variant relations)
+// memory lineage tree (split / merge / variant relations)
 function renderMemoryLineage(data) {
   const statsEl = document.getElementById('memory-stats');
   const resEl = document.getElementById('memory-results');
@@ -1903,7 +1903,7 @@ document.getElementById('filter-btn').addEventListener('click', () => {
 });
 document.querySelectorAll('.filter-label').forEach(cb => cb.addEventListener('change', applyFilters));
 
-// P1: Keyboard navigation
+// Keyboard navigation
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   switch(e.key) {

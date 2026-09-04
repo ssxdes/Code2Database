@@ -1,6 +1,6 @@
 """Cross-C2D foreign reference tracking + live sync.
 
-Phase 1 of the cross-C2D sync design. Lets project B's C2D reference
+Lets project B's C2D reference
 functions in project A's C2D without merging the two databases. When
 A updates, B can sync to detect renamed/deleted/added functions.
 
@@ -228,7 +228,7 @@ def _resolve_by_exact_name(foreign_conn: sqlite3.Connection,
     If project_name is given, the function's id should start with
     `<project_name>_` (because build-multi prefixed it).
 
-    C2 fix: if invoked_signature is provided, use it to disambiguate
+    If invoked_signature is provided, use it to disambiguate
     C++ overloads (same name, different signature). Returns the best
     match: exact signature first, then any name match.
 

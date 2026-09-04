@@ -327,7 +327,7 @@ class TestF1DescribeNodeForeignRefs(unittest.TestCase):
 
 
 class TestF2KbQueryForeignFallback(unittest.TestCase):
-    """Test F2: kb-query searches foreign C2Ds when local is thin."""
+    """Test kb-query searches foreign C2Ds when local is thin."""
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix="f2_test_")

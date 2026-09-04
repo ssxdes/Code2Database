@@ -922,7 +922,7 @@ def _build_context_pack(G: nx.DiGraph, outdir: str, source_root: str = "",
     # Generate human-readable Markdown micro pack
     _write_context_pack_micro_md(outdir, micro_pack)
 
-    # Phase 3: merge memory + knowledge packs into context_pack so the
+    # merge memory + knowledge packs into context_pack so the
     # agent gets all three layers in one shot. Previously these were
     # generated as separate .memory_pack_lite.json and
     # .knowledge_pack_lite.json files that the agent had to fetch
@@ -932,9 +932,9 @@ def _build_context_pack(G: nx.DiGraph, outdir: str, source_root: str = "",
     # order wrote the file first, so the merged summaries only ever
     # existed in the in-memory dict and the on-disk context_pack never
     # contained them (the feature was dead on every build).
-    # Round 21: knowledge_summary comes from the project brief
+    # knowledge_summary comes from the project brief
     # (knowledge/brief.json). The old .knowledge_pack_lite.json source
-    # was removed with the MD knowledge system (Round 20) — the key had
+    # was removed with the MD knowledge system — the key had
     # been silently absent from every build since.
     try:
         from _builder.brief import load_brief
@@ -952,7 +952,7 @@ def _build_context_pack(G: nx.DiGraph, outdir: str, source_root: str = "",
     except Exception:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
-    # Round 21: memory_summary is generated fresh from memory.db — the
+    # memory_summary is generated fresh from memory.db — the
     # old source (.memory_pack_lite.json) is only written by an explicit
     # `manage-memory --action pack`, so it was stale on every build.
     try:

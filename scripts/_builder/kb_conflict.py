@@ -1,4 +1,4 @@
-"""Phase 11: Conflict detection & rollback.
+"""Conflict detection & rollback.
 
 - kb-conflict: detect items in the same cluster with high weight but
   contradictory bodies (heuristic: very high BM25 overlap but
@@ -119,7 +119,7 @@ def rollback_kb_item(graph_dir: str, item_id: int,
                      to_version: int = None) -> Dict[str, Any]:
     """Restore a kb_item to a prior version.
 
-    Phase 11: kb_items has versions_json (list of historical snapshots).
+    kb_items has versions_json (list of historical snapshots).
     Restores the item to a prior version, appends the current state
     as a new version entry first (so rollback is itself reversible).
 
@@ -191,7 +191,7 @@ def forget_kb_paragraph(graph_dir: str, item_id: int,
                         reason: str = "") -> Dict[str, Any]:
     """Immediately delete a kb_paragraph (not decay).
 
-    Phase 11: gives the user a way to remove incorrect memory/knowledge
+    Gives the user a way to remove incorrect memory/knowledge
     without waiting for weight decay. Audit log preserves the deletion
     record (who/when/why) so the action is traceable.
     """

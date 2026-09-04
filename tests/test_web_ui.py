@@ -124,7 +124,7 @@ class TestWebUIModuleImport(unittest.TestCase):
 
 
 class TestWebUIProjectContext(unittest.TestCase):
-    """Round 21: /api/brief + /api/memory/search serve the project
+    """/api/brief + /api/memory/search serve the project
     context (knowledge brief + veteran Q&A memory)."""
 
     @classmethod
@@ -296,7 +296,7 @@ class TestWebUIProjectContext(unittest.TestCase):
         self.assertIn("fresh", body)
 
     def test_node_endpoint_returns_related_memories(self):
-        # Round 24: symbol-grounded veteran Q&A on the node page
+        # symbol-grounded veteran Q&A on the node page
         from _builder.memory_store import MemoryStore
         store = MemoryStore(self.graph_dir)
         store.add("what does a do", "it calls b — beware reentrancy",
@@ -345,7 +345,7 @@ class TestWebUIProjectContext(unittest.TestCase):
 
 
 class TestWebUIFreshnessBadge(unittest.TestCase):
-    """Round 24: /api/graph/summary carries source-vs-graph freshness."""
+    """/api/graph/summary carries source-vs-graph freshness."""
 
     @classmethod
     def setUpClass(cls):
@@ -421,7 +421,7 @@ class TestWebUIFreshnessBadge(unittest.TestCase):
 
 
 class TestWebUIArchitecture(unittest.TestCase):
-    """Round 23: /api/architecture serves ARCHITECTURE_FLOWS.md."""
+    """/api/architecture serves ARCHITECTURE_FLOWS.md."""
 
     @classmethod
     def setUpClass(cls):

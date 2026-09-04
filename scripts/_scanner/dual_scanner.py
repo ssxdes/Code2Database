@@ -1,6 +1,6 @@
 """DualBackendScanner — runs both tree-sitter and clang, merges results.
 
-Per cgdb-architecture-and-poc-report.md Phase 1:
+Per cgdb-architecture-and-poc-report.md 
 - Tree-sitter (CTreeSitterScanner) provides canonical functions/edges/
   vtable_registrations/fn_ptr_calls/macro_registrations — backward compat
   with the legacy Code2Database build pipeline.

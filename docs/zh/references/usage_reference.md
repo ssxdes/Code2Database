@@ -594,6 +594,14 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" export-html --graph code2d
 python3 "$SKILL_DIR/scripts/code2database_builder.py" export-obsidian --graph code2db-out/
 ```
 
+## 第0步 — 会话上下文
+
+```bash
+# 一站式：简报 + 前辈记忆摘要 + 图状态 + 未解答问题
+python3 "$SKILL_DIR/scripts/code2database_builder.py" session-init \
+  --graph code2db-out/ [--top 10] [--json]
+```
+
 ## 第9b步 — 知识（项目简报）
 
 ```bash
@@ -947,6 +955,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `key-paths` | Extract key execution paths from entry points automatically |
 | `knowledge-brief` | 渲染项目简报（会话启动加载） |
 | `brief-validate` | 校验简报（schema、体积预算、图漂移） |
+| `session-init` | 一站式会话上下文：简报 + 记忆摘要 + 图状态 + 未解答问题 |
 | `light-scan` | Lightweight scan of changed files (no LLM) |
 | `load` | Load and summarize the invocation graph |
 | `lock-coverage` | Analyze lock-held regions and per-access locksets (replaces over-approximation) |

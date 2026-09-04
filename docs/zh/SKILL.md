@@ -32,9 +32,10 @@ trigger: /Code2Database
 ## 快速开始
 
 ```bash
-# 0. 会话启动（必须）：加载项目简报到 prompt
-python3 scripts/code2database_builder.py knowledge-brief --graph code2db-out/
-#   → 若不存在：brief-extract 自举模板，再用 brief-update 精炼
+# 0. 会话启动（必须）：加载完整项目上下文
+python3 scripts/code2database_builder.py session-init --graph code2db-out/
+#   → 简报 + 前辈记忆摘要 + 图状态 + 未解答问题
+#   → 若无简报：brief-extract 自举模板，再用 brief-update 精炼
 
 # 1. 扫描 + 构建（一次性）
 python3 scripts/code2database_scanner.py scan --source /path --output ext.json
@@ -65,6 +66,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP 服�
 | `context` | 获取位置周围上下文 | Graph |
 | `build` | 扫描 + 构建图 | — |
 | `update` | 增量重扫 | — |
+| `session-init` | 一站式会话上下文：简报 + 记忆摘要 + 图状态 + 未解答问题（别名：`init`） | Memory+Knowledge |
 | `save-memory` | 保存 Q&A 到记忆，支持 `--category bdev/nvme/pcie` `--author`（别名：`save`） | Memory |
 | `search-memory` | 搜索记忆：FTS5 + `--category/--tags/--author` 过滤（别名：`recall`） | Memory |
 | `knowledge-brief` | 渲染项目简报 — 会话启动必载（别名：`brief`） | Knowledge |
@@ -101,7 +103,8 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 
 ## 约束
 
-- **会话启动**：先运行 `knowledge-brief`（别名 `brief`）— 简报包含本项目的强制规则（必开宏/分支）、使用模式与坑
+- **会话启动**：先运行 `session-init`（别名 `init`）— 简报（强制规则/模式/坑）+ 记忆摘要（前辈经验）+ 图状态 + 未解答问题，一次输出
+- **纠错协议**：回答项目问题前先 `search-memory`；答案错了用 `manage-memory --action correct/reshape`（不要存重复条目）；缺答案用 `save-memory --category ... --author ...`；查询反复未命中（session-init 的 known-unknowns）时把答案沉淀进记忆
 - `build`/`update` 或修改 memory/brief 后运行 `kb-rebuild-index`
 - Memory 是共享积累库（memory.db）：保存时带 `--category 路径/主题` + `--author`；治理用 `manage-memory --action split/merge/move/categories`
 - Knowledge（brief.json）必须精简：`brief-validate` 超过 3000 字符告警；溢出内容放入 memory

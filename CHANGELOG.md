@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-09-03
 
+### Round 21 — C2D as the project's AI knowledge system (session-init + human UI context)
+
+Vision-driven round (see ROADMAP.md for the full gap analysis): close the distance between C2D and "the AI knowledge system for a code project".
+
+- **`session-init`** — the one-shot session entry for AI agents AND humans: rendered project brief, memory digest (top active Q&A by weight with category/author/reads — the veteran-experience view for newcomers), graph stats + brief drift warning, and known unknowns (recurring unanswered queries surfaced as save-memory suggestions, closing a feedback loop that was hidden behind kb-known-unknowns). Empty stores degrade to bootstrap hints. CLI: `session-init [--top] [--json]`, alias `init`.
+- **context_pack regression fixed** — `knowledge_summary` had been reading the removed `.knowledge_pack_lite.json` (silently absent from every build since Round 20); now sourced from `knowledge/brief.json`. `memory_summary` read a stale pack file only written by explicit actions; now generated fresh from memory.db via the new public `MemoryStore.digest()`.
+- **Web UI: Brief + Memory panels** — `/api/brief` + `/api/memory/search` (empty query = weight-ranked digest); topbar buttons open the rendered brief (one-glance project context) and a searchable veteran Q&A panel (category/author/weight/reads, textContent-only rendering).
+- **Correction protocol documented** (SKILL.md en/zh): search-memory before answering; correct/reshape wrong answers instead of saving duplicates; save missing answers with category+author; known-unknowns feed back into memory.
+- Module redundancy assessment recorded in ROADMAP.md: no must-delete overlap; the gap was entry-point integration, not command count.
+
+Tests: +15 (test_session_init 9 incl. context_pack embedding; web UI project-context endpoints 6). Docs: SKILL.md (en/zh) Step 0 + protocol, memory_knowledge.md (en/zh), usage_reference (en/zh), AGENTS.md.
+
 ### Memory → SQLite, Knowledge → project brief (Round 20)
 
 Redesigned the two long-lived stores around their real shapes: memory is BIG and messy (many people, many question depths, shared accumulation) while knowledge is LEAN and mandatory (fixed per-project architecture/function/design/usage, loaded into the prompt at every session start).

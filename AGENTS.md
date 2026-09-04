@@ -26,7 +26,7 @@ Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/
 - MSVC `__asm {}` block support and ERROR node fallback
 - Static fn-ptr dispatch array resolution (dispatch_op)
 - LLM context packs (micro/lite/standard/full tiers)
-- Dual knowledge/memory stores — knowledge = lean per-project brief (`knowledge/brief.json`, mandatory session-start load via `knowledge-brief`, size-budgeted); memory = shared SQLite accumulating store (`memory/memory.db`, hierarchical categories `bdev/nvme/pcie`, FTS5 BM25 retrieval, split/merge/move governance)
+- Dual knowledge/memory stores — knowledge = lean per-project brief (`knowledge/brief.json`, size-budgeted); memory = shared SQLite accumulating store (`memory/memory.db`, hierarchical categories `bdev/nvme/pcie`, FTS5 BM25 retrieval, split/merge/move governance). `session-init` is the one-shot entry (brief + memory digest + graph state + known-unknowns); the web UI renders brief + veteran Q&A panels
 - MCP server mode for real-time agent queries (81 tools: 34 `code2database_*` + 19 `cgdb_*` + 28 design-report)
 
 Capabilities:

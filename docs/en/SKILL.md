@@ -32,9 +32,10 @@ top kb hits as a `_hints` field alongside graph rows.
 ## Quick Start
 
 ```bash
-# 0. Session start (MANDATORY): load the project brief into your prompt
-python3 scripts/code2database_builder.py knowledge-brief --graph code2db-out/
-#   → if missing: brief-extract to bootstrap, then curate with brief-update
+# 0. Session start (MANDATORY): load the full project context
+python3 scripts/code2database_builder.py session-init --graph code2db-out/
+#   → brief + veteran memory digest + graph state + unanswered questions
+#   → if no brief yet: brief-extract to bootstrap, then curate with brief-update
 
 # 1. Scan + build (one-time)
 python3 scripts/code2database_scanner.py scan --source /path --output ext.json
@@ -65,6 +66,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/  # MCP serve
 | `context` | Get context around a location | Graph |
 | `build` | Scan + build graph | — |
 | `update` | Incremental re-scan | — |
+| `session-init` | One-shot session context: brief + memory digest + graph + known-unknowns (alias: `init`) | Memory+Knowledge |
 | `save-memory` | Save Q&A to memory, `--category bdev/nvme/pcie` `--author` (alias: `save`) | Memory |
 | `search-memory` | Search memory: FTS5 + `--category/--tags/--author` filters (alias: `recall`) | Memory |
 | `knowledge-brief` | Render project brief — load at session start (alias: `brief`) | Knowledge |
@@ -101,7 +103,8 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/
 
 ## Constraints
 
-- **Session start**: run `knowledge-brief` (alias `brief`) FIRST — the brief holds this project's mandatory rules (forced macros/branches), usage modes, and pitfalls
+- **Session start**: run `session-init` (alias `init`) FIRST — brief (mandatory rules/modes/pitfalls) + memory digest (veteran experience) + graph state + known-unknowns, in one prompt-ready output
+- **Correction protocol**: before answering a project question, `search-memory` first; if an answer is WRONG use `manage-memory --action correct/reshape` (don't save a duplicate); if MISSING use `save-memory --category ... --author ...`; if a query repeatedly misses (known-unknowns in session-init), capture the answer into memory
 - Run `kb-rebuild-index` after `build`/`update` or after memory/brief edits
 - Memory is a shared accumulating store (memory.db): save with `--category path/to/topic` + `--author`; govern with `manage-memory --action split/merge/move/categories`
 - Knowledge (brief.json) must stay lean: `brief-validate` warns above 3000 chars; move overflow into memory instead

@@ -10,6 +10,14 @@ Code2Database separates two long-lived stores with opposite shapes:
 | **When loaded** | On demand (`search-memory`, `kb-query`) | **Every session start** (`knowledge-brief`) |
 | **Update cadence** | Continuously (save/merge/split) | Small scope, only when architecture genuinely changes |
 
+## session-init — the one-shot entry
+
+```bash
+python3 scripts/code2database_builder.py session-init --graph code2db-out/ [--top 10] [--json]
+```
+
+Loads all four layers in one prompt-ready output: the rendered brief, the memory digest (top active Q&A by weight, with category/author/reads), graph stats + brief drift warning, and known unknowns (recurring unanswered queries — save answers for them). Empty stores degrade to bootstrap hints instead of errors. This is Step 0 of every session (AI) and the fastest project briefing (humans); the web UI renders the same data interactively (Brief / Memory panels).
+
 ## Memory (memory.db)
 
 ### Layout

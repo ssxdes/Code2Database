@@ -10,6 +10,14 @@ Code2Database 用两个形态相反的长期存储：
 | **加载时机** | 按需（`search-memory`、`kb-query`） | **每次会话启动**（`knowledge-brief`） |
 | **更新节奏** | 持续（save/merge/split） | 小范围，仅在架构真正变化时 |
 
+## session-init — 一站式入口
+
+```bash
+python3 scripts/code2database_builder.py session-init --graph code2db-out/ [--top 10] [--json]
+```
+
+一次加载四层并输出为 prompt 就绪文本：渲染后的简报、记忆摘要（按权重取 top 活跃 Q&A，含分类/作者/阅读数）、图统计 + 简报漂移告警、known unknowns（反复未命中的查询 — 为它们补答案）。空存储退化为引导提示而非报错。这是每次会话的 Step 0（AI）也是最快的项目简报（人类）；Web UI 以交互方式渲染同样的数据（Brief / Memory 面板）。
+
 ## Memory（memory.db）
 
 ### 布局

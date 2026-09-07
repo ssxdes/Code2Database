@@ -641,7 +641,7 @@ def _tool_knowledge_query(args: dict, graph_dir: str) -> dict:
                    "must_know", "conventions", "pitfalls",
                    "query_paths"],
             min_weight=0.0,
-            max_tokens=int(args.get("max_tokens", 500)),
+            max_tokens=_mcp_coerce_int(args.get("max_tokens", 500), 500, 50, 50000),
         )
         if results:
             return {
@@ -689,7 +689,7 @@ def _tool_memory_search(args: dict, graph_dir: str) -> list:
         try:
             from _builder.memory_store import MemoryStore
             store = MemoryStore(graph_dir)
-            return store.search(query or symbol, top_n=int(args.get("top", 5)),
+            return store.search(query or symbol, top_n=_mcp_coerce_int(args.get("top", 5), 5, 1, 100),
                                 symbol=symbol)
         except Exception:
             logging.getLogger(__name__).debug("silent exception",
@@ -702,7 +702,7 @@ def _tool_memory_search(args: dict, graph_dir: str) -> list:
         results = query_kb(
             graph_dir=graph_dir,
             query=query,
-            top_n=int(args.get("top", 5)),
+            top_n=_mcp_coerce_int(args.get("top", 5), 5, 1, 100),
             kinds=["memory_qa", "memory_experience"],
             min_weight=0.0,  # no weight filter; let BM25 rank
             max_tokens=4000,
@@ -735,10 +735,10 @@ def _tool_kb_query(args: dict, graph_dir: str) -> dict:
     results = query_kb(
         graph_dir=graph_dir,
         query=query,
-        top_n=int(args.get("top", 10)),
+        top_n=_mcp_coerce_int(args.get("top", 10), 10, 1, 100),
         kinds=kinds,
         min_weight=float(args.get("min_weight", 0.0)),
-        max_tokens=int(args.get("max_tokens", 4000)),
+        max_tokens=_mcp_coerce_int(args.get("max_tokens", 4000), 4000, 100, 100000),
     )
     return {
         "query": query,
@@ -747,6 +747,36 @@ def _tool_kb_query(args: dict, graph_dir: str) -> dict:
         "results": results,
         "engine": "fts5_bm25",
     }
+
+
+def _mcp_coerce_str(value, max_len: int = 10000) -> str:
+    """Best-effort str coercion for MCP arguments.
+
+    MCP clients send JSON whose types we don't control: a stray int for
+    a string field used to crash the tool with AttributeError (a 500
+    to the client). None → '', scalars (int/float/bool) → str(), str →
+    truncated at max_len. Lists/dicts raise ValueError — callers convert
+    that into an {'error': ...} response.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, (list, dict)):
+        raise ValueError(f"expected a string, got {type(value).__name__}")
+    return str(value)[:max_len]
+
+
+def _mcp_coerce_int(value, default: int, lo: int, hi: int) -> int:
+    """Bounded int coercion for MCP arguments.
+
+    A non-numeric value falls back to the default; out-of-range values
+    clamp. Never raises — the old int(args.get(...)) crashed with
+    ValueError on client type mistakes.
+    """
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, n))
 
 
 def _tool_save_memory(args: dict, graph_dir: str) -> dict:
@@ -758,19 +788,29 @@ def _tool_save_memory(args: dict, graph_dir: str) -> dict:
     correct=True takes the correction path (reshape the most similar
     entry in place instead of adding a variant of a wrong answer).
     """
-    question = (args.get("question") or "").strip()
-    answer = args.get("answer", "")
+    try:
+        question = _mcp_coerce_str(args.get("question")).strip()
+        answer = _mcp_coerce_str(args.get("answer"))
+        author = _mcp_coerce_str(args.get("author"))
+        category = _mcp_coerce_str(args.get("category"))
+        raw_tags = args.get("tags", "")
+        if isinstance(raw_tags, list):
+            tags = [_mcp_coerce_str(t).strip() for t in raw_tags
+                    if _mcp_coerce_str(t).strip()]
+        else:
+            _t = _mcp_coerce_str(raw_tags)
+            tags = [t.strip() for t in _t.split(",") if t.strip()]
+        sym_arg = args.get("symbol", "")
+        if isinstance(sym_arg, list):
+            symbols = [_mcp_coerce_str(s).strip() for s in sym_arg
+                       if _mcp_coerce_str(s).strip()]
+        else:
+            _s = _mcp_coerce_str(sym_arg)
+            symbols = [s.strip() for s in _s.split(",") if s.strip()]
+    except ValueError as exc:
+        return {"error": f"invalid argument: {exc}"}
     if not question:
         return {"error": "question is required"}
-    author = args.get("author", "")
-    category = args.get("category", "")
-    tags = [t.strip() for t in args.get("tags", "").split(",")
-            if t.strip()] if args.get("tags") else []
-    sym_arg = args.get("symbol", "")
-    if isinstance(sym_arg, list):
-        symbols = [str(s).strip() for s in sym_arg if str(s).strip()]
-    else:
-        symbols = [s.strip() for s in sym_arg.split(",") if s.strip()]
     from _builder.memory_store import MemoryStore
     store = MemoryStore(graph_dir)
     if args.get("correct"):
@@ -801,7 +841,7 @@ def _tool_session_init(args: dict, graph_dir: str) -> dict:
     from _builder.session_init import build_session_context, \
         render_session_context
     ctx = build_session_context(
-        graph_dir, memory_top=int(args.get("top", 10)))
+        graph_dir, memory_top=_mcp_coerce_int(args.get("top", 10), 10, 1, 50))
     # "rendered" is the prompt-ready text form (same as the session-init
     # CLI prints); the structured fields alongside it let agents follow
     # up programmatically (e.g. memory_digest ids, known_unknowns queries)
@@ -869,7 +909,7 @@ def _tool_composite_query(args: dict, graph_dir: str) -> dict:
         graph_dir=graph_dir,
         query=query,
         foreign_c2ds=foreign_c2ds,
-        top_n=int(args.get("top", 50)),
+        top_n=_mcp_coerce_int(args.get("top", 50), 50, 1, 200),
     )
 
 
@@ -1147,7 +1187,7 @@ def _tool_audit_log(args: dict, graph_dir: str) -> dict:
         target_id=args.get("node"),
         command=args.get("command"),
         tx_id=args.get("tx"),
-        limit=int(args.get("limit", 100)),
+        limit=_mcp_coerce_int(args.get("limit", 100), 100, 1, 1000),
     )
 
 
@@ -1265,7 +1305,7 @@ def _tool_cgdb_get_definition(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    return store.get_definition(name, limit=int(args.get("limit", 10)))
+    return store.get_definition(name, limit=_mcp_coerce_int(args.get("limit", 10), 10, 1, 100))
 
 def _tool_cgdb_get_function_body(args: dict, graph_dir: str) -> dict:
     """Return the function body source text for a function (name or id)."""
@@ -1429,7 +1469,7 @@ def _tool_cgdb_find_type_definition(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    return store.find_type_definition(name, limit=int(args.get("limit", 10)))
+    return store.find_type_definition(name, limit=_mcp_coerce_int(args.get("limit", 10), 10, 1, 100))
 
 def _tool_cgdb_find_ops_impls(args: dict, graph_dir: str) -> list:
     """Find functions bound to a vtable field (e.g., file_operations.read_iter)."""
@@ -1538,7 +1578,7 @@ def _tool_cgdb_list_versions(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    return store.list_versions(limit=int(args.get("limit", 50)))
+    return store.list_versions(limit=_mcp_coerce_int(args.get("limit", 50), 50, 1, 1000))
 
 # ---------------------------------------------------------------------------
 # Tool registry

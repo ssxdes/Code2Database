@@ -241,6 +241,83 @@ class TestExpandedToolRegistry(unittest.TestCase):
                           f"{name} inputSchema missing required")
 
 
+class TestMcpInputValidation(unittest.TestCase):
+    """S3 (2026-09-07 review): MCP clients send JSON whose types we
+    don't control. A non-string question crashed _tool_save_memory
+    with AttributeError; a non-numeric top crashed _tool_session_init
+    with ValueError — both surfaced as server-side 500s."""
+
+    def test_save_memory_non_string_question_coerced(self):
+        from _builder.mcp_server import _tool_save_memory
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            result = _tool_save_memory({"question": 123, "answer": "a"},
+                                       tmp)
+            self.assertNotIn("error", result)
+            self.assertEqual(result["question"], "123")
+
+    def test_save_memory_dict_question_returns_error_not_500(self):
+        from _builder.mcp_server import _tool_save_memory
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            result = _tool_save_memory(
+                {"question": {"nested": "object"}}, tmp)
+            self.assertIn("error", result)
+            self.assertIn("string", result["error"])
+
+    def test_save_memory_answer_truncated(self):
+        from _builder.mcp_server import _tool_save_memory
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            result = _tool_save_memory(
+                {"question": "q", "answer": "x" * 50000}, tmp)
+            self.assertNotIn("error", result)
+
+            from _builder.memory_store import MemoryStore
+            entry = MemoryStore(tmp).search("q")[0]
+            self.assertLessEqual(len(entry.get("answer", "")), 10000)
+
+    def test_save_memory_tags_as_list_accepted(self):
+        from _builder.mcp_server import _tool_save_memory
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            result = _tool_save_memory(
+                {"question": "q2", "answer": "a",
+                 "tags": ["bdev", "nvme"]}, tmp)
+            self.assertNotIn("error", result)
+
+            from _builder.memory_store import MemoryStore
+            entry = MemoryStore(tmp).search("q2")[0]
+            self.assertIn("bdev", entry.get("tags", []))
+
+    def test_session_init_bad_top_uses_default(self):
+        from _builder.mcp_server import _tool_session_init
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            result = _tool_session_init({"top": "not-a-number"}, tmp)
+            self.assertIsInstance(result, dict)
+            self.assertNotIn("error", result)
+
+    def test_session_init_top_clamped(self):
+        from _builder.mcp_server import _tool_session_init
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            # negative / huge values must not explode downstream
+            for bad in (-5, 10**9, 2.5):
+                result = _tool_session_init({"top": bad}, tmp)
+                self.assertIsInstance(result, dict)
+                self.assertNotIn("error", result)
+
+    def test_kb_query_bad_max_tokens_uses_default(self):
+        from _builder.mcp_server import _tool_kb_query
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            result = _tool_kb_query({"query": "anything",
+                                     "max_tokens": "garbage"}, tmp)
+            # no db → graceful degradation, never a ValueError 500
+            self.assertIsInstance(result, (dict, list))
+
+
 class TestMcpSessionInitTool(unittest.TestCase):
     """code2database_session_init — one-shot session context tool."""
 

@@ -62,6 +62,70 @@ def _make_graph_dir():
     return d
 
 
+class TestStaleActiveRollbackFailure(unittest.TestCase):
+    """S2 (2026-09-07 review): when a stale active tx cannot be rolled
+    back (corrupt/missing snapshot), tx-begin used to clear the WAL
+    anyway and proceed with a NEW transaction — destroying the only
+    recovery path for the uncommitted writes and orphaning the old tx.
+
+    Correct semantics: abort the new tx-begin, keep the WAL, keep the
+    old tx active, and tell the user how to recover."""
+
+    def _stale_dir(self, snapshot_exists=False):
+        d = _make_graph_dir()
+        snap = create_snapshot(d, "stale tx snapshot")
+        if not snapshot_exists:
+            # Make restore fail: point the stale tx at a missing snapshot
+            import shutil
+            shutil.rmtree(os.path.join(d, ".code2database_tx",
+                                       "snapshots", snap.id),
+                          ignore_errors=True)
+        state = transactions.TransactionState(
+            tx_id="tx_stale", started_at=0.0, description="stale",
+            snapshot_id=snap.id, status="active")
+        transactions._write_tx_state(d, state)
+        append_wal_entry(d, "update", "n1", {"attr": "x"})
+        return d
+
+    def test_cmd_tx_begin_aborts_when_rollback_fails(self):
+        from _builder.transactions import cmd_tx_begin
+        d = self._stale_dir(snapshot_exists=False)
+        _ret, _out, err, code = _capture_call(
+            cmd_tx_begin, _ns(graph=d, description="new",
+                              file_id=None))
+        self.assertEqual(code, 1, "must abort, not proceed")
+        self.assertIn("tx-replay-wal", err)
+        # WAL must survive for tx-replay-wal recovery
+        self.assertTrue(os.path.exists(_wal_path(d)),
+                        "WAL was destroyed on rollback failure")
+        self.assertGreater(len(read_wal(d)), 0)
+        # old tx must still be the active one
+        state = transactions._read_tx_state(d)
+        self.assertEqual(state.tx_id, "tx_stale")
+        self.assertEqual(state.status, "active")
+
+    def test_transaction_ctx_raises_when_rollback_fails(self):
+        d = self._stale_dir(snapshot_exists=False)
+        with self.assertRaises(RuntimeError):
+            with transactions.transaction(d, description="new"):
+                pass  # pragma: no cover — begin must abort before yield
+        self.assertTrue(os.path.exists(_wal_path(d)),
+                        "WAL was destroyed on rollback failure")
+        state = transactions._read_tx_state(d)
+        self.assertEqual(state.tx_id, "tx_stale")
+
+    def test_stale_rollback_success_still_begins_new_tx(self):
+        from _builder.transactions import cmd_tx_begin
+        d = self._stale_dir(snapshot_exists=True)
+        _ret, out, _err, code = _capture_call(
+            cmd_tx_begin, _ns(graph=d, description="new", file_id=None))
+        self.assertIsNone(code)
+        state = transactions._read_tx_state(d)
+        self.assertEqual(state.status, "active")
+        self.assertNotEqual(state.tx_id, "tx_stale")
+        self.assertEqual(len(read_wal(d)), 0, "WAL cleared after clean rollback")
+
+
 class TestAppendWALEntry(unittest.TestCase):
     def test_seq_monotonic_and_fields_persisted(self):
         with tempfile.TemporaryDirectory() as d:

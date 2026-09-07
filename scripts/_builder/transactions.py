@@ -851,8 +851,13 @@ def transaction(graph_dir: str, description: str = "",
             # Stale active tx — roll it back first
             _restore_result = restore_snapshot(graph_dir, existing.snapshot_id)
             if not _restore_result.get("restored"):
-                print(f"[tx] WARNING: rollback failed: {_restore_result.get('reason', 'unknown')}",
-                      file=sys.stderr)
+                # S2: keep the WAL + the stale tx active; abort instead
+                # of orphaning the uncommitted writes. See cmd_tx_begin.
+                raise RuntimeError(
+                    f"[tx] stale transaction {existing.tx_id} rollback "
+                    f"failed ({_restore_result.get('reason', 'unknown')}); "
+                    f"WAL preserved for 'tx-replay-wal' recovery — "
+                    f"aborting this transaction instead of proceeding")
             clear_wal(graph_dir)
 
         # Begin: snapshot + state
@@ -1158,9 +1163,20 @@ def cmd_tx_begin(args):
             _restore_result = restore_snapshot(graph_dir,
                                                existing.snapshot_id)
             if not _restore_result.get("restored"):
-                print(f"[tx-begin] WARNING: stale-tx rollback failed: "
-                      f"{_restore_result.get('reason', 'unknown')}",
-                      file=sys.stderr)
+                # S2 (2026-09-07 review): do NOT clear the WAL and do
+                # NOT begin a new transaction here. The stale tx's
+                # uncommitted writes are only recoverable through the
+                # WAL; proceeding would orphan them with no rollback
+                # path. Abort and leave everything for recovery tools.
+                print(f"[tx-begin] ERROR: stale-tx rollback failed "
+                      f"({_restore_result.get('reason', 'unknown')}). "
+                      f"Keeping the WAL and transaction "
+                      f"{existing.tx_id} active. Recover with "
+                      f"'tx-replay-wal --graph {graph_dir}' or "
+                      f"'tx-restore --graph {graph_dir} "
+                      f"--id {existing.snapshot_id}', or inspect "
+                      f"tx_state.json manually.", file=sys.stderr)
+                sys.exit(1)
             clear_wal(graph_dir)
 
         snap = create_snapshot(graph_dir, description=description or "manual tx_begin")

@@ -137,6 +137,18 @@ class JavaTreeSitterScanner(BaseScanner):
 
         labels = [node_type]
 
+        # For interfaces: extract the method set (drives dynamic dispatch)
+        methods = []
+        if node_type == 'interface':
+            for child in node.children:
+                if child.type == 'interface_body':
+                    for body_child in child.children:
+                        if body_child.type == 'method_declaration':
+                            mname_node = body_child.child_by_field_name('name')
+                            if mname_node:
+                                methods.append(
+                                    self._node_text(mname_node, source_bytes))
+
         functions.append({
             "id": cls_id, "name": class_name,
             "source_file": rel_path, "line": cls_line, "domain": domain,
@@ -146,6 +158,7 @@ class JavaTreeSitterScanner(BaseScanner):
             "signature": " ".join(sig_parts),
             "params": [], "local_vars": [], "callee_args": [],
             "condition_vars": [], "node_type": node_type,
+            "methods": methods,
             "start_byte": node.start_byte,
             "end_byte": node.end_byte,
         })
@@ -347,6 +360,31 @@ class JavaTreeSitterScanner(BaseScanner):
                 functions[-1]["callee_args"] = callee_args_list
             if cond_vars_list:
                 functions[-1]["condition_vars"] = cond_vars_list
+            # Interface-typed receiver inference: params with a
+            # class/interface type → record interface_calls for calls
+            # through that receiver (builder resolves against the
+            # global interface registry + implementor method sets).
+            typed_vars = {}
+            for p in params_list:
+                if p.get("name") and p.get("type"):
+                    t = str(p["type"]).strip()
+                    if re.match(r'^[A-Z][a-zA-Z0-9_]*$', t):
+                        typed_vars[p["name"]] = t
+            interface_calls = []
+            for a in callee_args_list:
+                fc = a.get("full_callee", "")
+                if "." not in fc:
+                    continue
+                recv, method = fc.rsplit(".", 1)
+                if recv in typed_vars:
+                    interface_calls.append({
+                        "line": node.start_point[0] + 1,
+                        "iface": typed_vars[recv],
+                        "method": method,
+                        "receiver": recv,
+                    })
+            if interface_calls:
+                functions[-1]["interface_calls"] = interface_calls
 
     def _process_java_constructor(self, node, source_bytes, filepath, source_root,
                                   domain, functions, edges, class_name):

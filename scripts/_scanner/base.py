@@ -2441,19 +2441,19 @@ class BaseScanner(ABC):
         params = []
         params_node = None
         for child in func_node.children:
-            if child.type in ('parameter_list', 'parameters'):
+            if child.type in ('parameter_list', 'parameters', 'formal_parameters'):
                 params_node = child
                 break
             if child.type == 'function_declarator':
                 for inner in child.children:
-                    if inner.type in ('parameter_list', 'parameters'):
+                    if inner.type in ('parameter_list', 'parameters', 'formal_parameters'):
                         params_node = inner
                         break
             if child.type in ('pointer_declarator', 'reference_declarator'):
                 for inner in child.children:
                     if inner.type == 'function_declarator':
                         for inner2 in inner.children:
-                            if inner2.type in ('parameter_list', 'parameters'):
+                            if inner2.type in ('parameter_list', 'parameters', 'formal_parameters'):
                                 params_node = inner2
                                 break
                 if params_node:
@@ -2463,7 +2463,7 @@ class BaseScanner(ABC):
             return params
 
         for child in params_node.children:
-            if child.type == 'parameter_declaration':
+            if child.type in ('parameter_declaration', 'formal_parameter'):
                 param_name = ""
                 param_type = ""
                 has_identifier = False

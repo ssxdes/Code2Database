@@ -976,6 +976,10 @@ def main():
                       help="Large-project scan mode (split output, lower memory)")
     p_mk.add_argument("--check", action="store_true",
                       help="Run the environment check only; do not build")
+    p_mk.add_argument("--serial-derived", dest="serial_derived",
+                      action="store_true",
+                      help="Run derived steps serially (no parallel ThreadPool; "
+                           "use on memory-constrained machines)")
 
     # sync
     p_sync = sub.add_parser("sync", help="Sync local code2db-out with git-tracked version (local wins)")

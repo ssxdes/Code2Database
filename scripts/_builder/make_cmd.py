@@ -477,14 +477,37 @@ def _verify_scan_completed(source, graph_dir, extraction_path):
 
 
 def _do_make(rep, args):
-    """Phase 2: run the full pipeline with per-step failure policy."""
+    """Phase 2: run the full pipeline with per-step failure policy.
+
+    Derived steps that produce only JSON/file artifacts (no DB writes)
+    run in a ThreadPoolExecutor — each is a subprocess that loads the
+    graph independently, so this trades memory for wall-clock. DB-writing
+    steps (ffi-detect, kb-rebuild-index) and the brief-extract →
+    kb-rebuild-index dependency chain stay serial. --serial-derived
+    opts out for memory-constrained environments.
+    """
     steps = _build_steps(rep, args)
     total = len(steps)
     failures, skipped = [], []
+    serial_derived = bool(getattr(args, "serial_derived", False))
+
+    # Steps whose only output is JSON/files (no SQLite writes, no
+    # inter-step dependency) — safe to run concurrently.
+    _PARALLEL = frozenset({
+        "value-flow", "data-dep", "extract-signals",
+        "embeddings-build", "export-obsidian", "export-html",
+        "profile-health",
+    })
 
     print("\n[make] phase 2/2: build pipeline (%d steps)" % total)
-    for i, (name, cmd, fatal, note, requires, skip_reason) in enumerate(steps, 1):
-        print("\n[make] step %d/%d: %s — %s" % (i, total, name, note))
+    step_num = 0
+
+    # --- Fatal steps (scan, build) — always serial ---
+    for name, cmd, fatal, note, requires, skip_reason in steps:
+        if not fatal:
+            break
+        step_num += 1
+        print("\n[make] step %d/%d: %s — %s" % (step_num, total, name, note))
         if requires is not None and not requires():
             print("  SKIPPED (%s)" % skip_reason)
             skipped.append(name)
@@ -492,8 +515,6 @@ def _do_make(rep, args):
         print("  $ %s" % " ".join(cmd))
         rc = subprocess.run(cmd).returncode
         if rc == 0 and name == "scan":
-            # The scanner exits 0 even when MemoryGuard cancels the
-            # remaining files — catch the partial scan before building.
             _errs, _warns = _verify_scan_completed(
                 rep["source"], rep["graph"], rep["extraction_path"])
             for _w in _warns:
@@ -501,14 +522,57 @@ def _do_make(rep, args):
             if _errs:
                 for _e in _errs:
                     print("\n[make] FAILED after step %d/%d (scan): %s"
-                          % (i, total, _e), file=sys.stderr)
+                          % (step_num, total, _e), file=sys.stderr)
                 sys.exit(1)
         if rc != 0:
-            if fatal:
-                print("\n[make] FAILED at step %d/%d (%s, exit %d) — "
-                      "fix the issue above and re-run make"
-                      % (i, total, name, rc), file=sys.stderr)
-                sys.exit(1)
+            print("\n[make] FAILED at step %d/%d (%s, exit %d) — "
+                  "fix the issue above and re-run make"
+                  % (step_num, total, name, rc), file=sys.stderr)
+            sys.exit(1)
+
+    # --- Derived steps ---
+    derived = [s for s in steps if not s[2]]
+    if serial_derived:
+        parallel_steps, serial_steps = [], derived
+    else:
+        parallel_steps = [s for s in derived if s[0] in _PARALLEL]
+        serial_steps = [s for s in derived if s[0] not in _PARALLEL]
+
+    # Phase A: parallel (JSON/file-only steps)
+    if parallel_steps:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        n_par = len(parallel_steps)
+        print("\n[make] derived steps (parallel, %d)" % n_par)
+        with ThreadPoolExecutor(max_workers=min(4, n_par)) as pool:
+            futures = {}
+            for name, cmd, _fatal, note, requires, skip_reason in parallel_steps:
+                step_num += 1
+                if requires is not None and not requires():
+                    print("  step %d/%d: %s — SKIPPED (%s)"
+                          % (step_num, total, name, skip_reason))
+                    skipped.append(name)
+                    continue
+                print("  step %d/%d: %s — %s" % (step_num, total, name, note))
+                futures[pool.submit(subprocess.run, cmd)] = name
+            for future in as_completed(futures):
+                name = futures[future]
+                rc = future.result().returncode
+                if rc != 0:
+                    print("[make] WARN: step %s failed (exit %d) — continuing"
+                          % (name, rc), file=sys.stderr)
+                    failures.append(name)
+
+    # Phase B: serial (DB writes + brief→kb dependency chain)
+    for name, cmd, _fatal, note, requires, skip_reason in serial_steps:
+        step_num += 1
+        print("\n[make] step %d/%d: %s — %s" % (step_num, total, name, note))
+        if requires is not None and not requires():
+            print("  SKIPPED (%s)" % skip_reason)
+            skipped.append(name)
+            continue
+        print("  $ %s" % " ".join(cmd))
+        rc = subprocess.run(cmd).returncode
+        if rc != 0:
             print("[make] WARN: step %s failed (exit %d) — continuing; "
                   "the artifact it produces will be missing until re-run"
                   % (name, rc), file=sys.stderr)

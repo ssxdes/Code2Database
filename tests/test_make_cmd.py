@@ -269,16 +269,18 @@ class TestCmdMake(unittest.TestCase):
     def test_step_sequence(self):
         """Full pipeline order: scan, build, then enrichment + exports.
 
-        No condition index in the graph dir (build is mocked) ->
-        extract-signals runs its requires() check at execution time,
-        decides SKIP, so 11 real subprocess calls.
+        Uses --serial-derived for deterministic step ordering (parallel
+        mode runs the JSON-only steps in a thread pool — order is
+        non-deterministic there). No condition index in the graph dir
+        (build is mocked) -> extract-signals runs its requires() check
+        at execution time, decides SKIP, so 11 real subprocess calls.
         """
         self._patch_env()
         calls = []
         with mock.patch.object(
                 make_cmd.subprocess, "run",
                 side_effect=lambda c: calls.append(c) or SimpleNamespace(returncode=0)):
-            self._run()
+            self._run({"serial_derived": True})
         names = [c[2] for c in calls]
         self.assertEqual(names, [
             "scan", "build", "value-flow", "data-dep", "ffi-detect",
@@ -321,7 +323,7 @@ class TestCmdMake(unittest.TestCase):
         with mock.patch.object(
                 make_cmd.subprocess, "run",
                 side_effect=lambda c: calls.append(c) or SimpleNamespace(returncode=0)):
-            self._run()
+            self._run({"serial_derived": True})
         names = [c[2] for c in calls]
         self.assertEqual(names, [
             "scan", "build", "value-flow", "data-dep", "extract-signals",
@@ -358,7 +360,7 @@ class TestCmdMake(unittest.TestCase):
 
         with mock.patch.object(make_cmd.subprocess, "run",
                                side_effect=_run):
-            self._run()  # must NOT raise SystemExit
+            self._run({"serial_derived": True})  # must NOT raise SystemExit
         self.assertEqual([c[2] for c in calls],
                          ["scan", "build", "value-flow", "data-dep",
                           "ffi-detect", "brief-extract", "kb-rebuild-index",

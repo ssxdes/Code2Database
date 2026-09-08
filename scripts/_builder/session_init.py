@@ -49,7 +49,11 @@ def build_session_context(graph_dir: str, memory_top: int = 10) -> dict:
         memory["error"] = str(e)
 
     # --- Layer 3: graph state ---
-    graph = compute_graph_stats(graph_dir)
+    try:
+        graph = compute_graph_stats(graph_dir)
+    except Exception as exc:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        graph = {"error": str(exc), "nodes": 0, "edges": 0, "domains": 0}
     drift = None
     if brief is not None:
         stats = brief.get("graph_stats") or {}

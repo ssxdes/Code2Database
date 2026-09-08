@@ -289,3 +289,186 @@ def query_with_global_fallback(graph_dir: str, query: str,
         return results
     # Fallback to global KB
     return global_search(query, top_n=top_n)
+
+
+# ---------------------------------------------------------------------------
+# Cross-project Memory Q&A sharing (kind='memory_qa')
+# ---------------------------------------------------------------------------
+
+def global_share_memory(graph_dir: str, min_weight: float = 1.0,
+                        top_n: int = 50,
+                        source_project: str = "") -> int:
+    """Export high-weight project memory entries to the global KB.
+
+    Each qualifying memory entry is stored in the global KB with
+    kind='memory_qa', enabling cross-project veteran-experience
+    sharing: if project A solved 'deadlock pattern X', project B can
+    find it via global_search_memory().
+
+    Args:
+        graph_dir: project graph directory (contains memory/memory.db)
+        min_weight: only export entries with weight >= this threshold
+        top_n: max entries to export (by weight descending)
+        source_project: project name tag (auto-detected if empty)
+
+    Returns the number of entries exported.
+    """
+    import sqlite3 as _sqlite3
+    mem_db = os.path.join(graph_dir, "memory", "memory.db")
+    if not os.path.exists(mem_db):
+        return 0
+    if not source_project:
+        master_path = os.path.join(graph_dir, "code2database_master.json")
+        if os.path.exists(master_path):
+            try:
+                master = json.loads(Path(master_path).read_text(encoding="utf-8"))
+                source_project = master.get("project_name", "") or \
+                    os.path.basename(master.get("source_root", "") or "") or \
+                    os.path.basename(graph_dir.rstrip("/"))
+            except (json.JSONDecodeError, OSError):
+                pass
+        if not source_project:
+            source_project = os.path.basename(graph_dir.rstrip("/"))
+
+    conn = _sqlite3.connect(mem_db, timeout=5)
+    exported = 0
+    try:
+        rows = conn.execute(
+            "SELECT id, question, answer, tags, weight, author, category_id "
+            "FROM memories WHERE status = 'active' AND weight >= ? "
+            "ORDER BY weight DESC LIMIT ?",
+            (min_weight, top_n)
+        ).fetchall()
+        # Resolve category paths
+        cat_map = {}
+        for cr in conn.execute(
+                "SELECT id, path FROM categories").fetchall():
+            cat_map[cr[0]] = cr[1]
+        for r in rows:
+            mem_id, question, answer, tags_json, weight, author, cat_id = r
+            tags = []
+            if tags_json:
+                try:
+                    tags = json.loads(tags_json)
+                except (json.JSONDecodeError, TypeError):
+                    tags = []
+            category = cat_map.get(cat_id, "") if cat_id else ""
+            tag_list = list(tags or [])
+            if author and author != "anonymous":
+                tag_list.append(f"author:{author}")
+            if category:
+                tag_list.append(f"cat:{category}")
+            global_add(
+                title=question,
+                body=answer or "",
+                tags=tag_list,
+                kind="memory_qa",
+                source_project=source_project,
+                source_file="",
+                weight=float(weight),
+                confidence=min(1.0, float(weight) / 5.0),
+            )
+            exported += 1
+    except _sqlite3.OperationalError as exc:
+        logging.getLogger(__name__).debug(
+            "global_share_memory: query failed: %s", exc)
+    finally:
+        conn.close()
+    return exported
+
+
+def global_search_memory(query: str, top_n: int = 10) -> List[Dict[str, Any]]:
+    """Search the global KB for cross-project memory Q&A entries only."""
+    return global_search(query, top_n=top_n, kinds=["memory_qa"])
+
+
+def global_import_memory(graph_dir: str, query: str, top_n: int = 5,
+                         auto_merge: bool = True) -> Dict[str, Any]:
+    """Import similar Q&A from the global KB into project memory.
+
+    Searches the global KB for kind='memory_qa' entries matching the
+    query. For each result:
+    - If the project memory already has a similar entry (question
+      similarity >= 0.7), and auto_merge is True, the global answer is
+      merged as a variant if it's stronger (higher weight).
+    - If no similar entry exists, the global Q&A is imported as a new
+      memory entry tagged with 'global_import' + source_project.
+
+    Returns {imported: N, merged: N, skipped: N, details: [...]}.
+    """
+    from _builder.memory_store import MemoryStore
+    from _builder.utils import _similarity_score
+
+    results = global_search_memory(query, top_n=top_n)
+    if not results:
+        return {"imported": 0, "merged": 0, "skipped": 0, "details": []}
+
+    store = MemoryStore(graph_dir)
+    imported = 0
+    merged = 0
+    skipped = 0
+    details = []
+
+    for r in results:
+        question = r.get("title", "")
+        answer = r.get("body", "")
+        source_project = r.get("source_project", "global")
+        weight = r.get("weight", 1.0)
+        tags = r.get("tags", [])
+        if not question:
+            skipped += 1
+            continue
+
+        # Check for similar existing memory in project
+        existing = store.search(question, top=1)
+        is_similar = False
+        if existing:
+            sim = _similarity_score(question, existing[0].get("question", ""))
+            if sim >= 0.7:
+                is_similar = True
+
+        if is_similar and auto_merge:
+            # Merge as a variant — the store.add() merge path handles
+            # root/leaf logic automatically
+            entry_id = store.add(
+                question=question,
+                answer=answer,
+                tags=tags + ["global_import", f"from:{source_project}"],
+                category=f"global/{source_project}",
+                author="global_import",
+                no_merge=False,
+            )
+            merged += 1
+            details.append({
+                "action": "merged", "id": entry_id,
+                "question": question[:60],
+                "source_project": source_project,
+            })
+        elif not is_similar:
+            entry_id = store.add(
+                question=question,
+                answer=answer,
+                tags=tags + ["global_import", f"from:{source_project}"],
+                category=f"global/{source_project}",
+                author="global_import",
+                no_merge=True,
+            )
+            imported += 1
+            details.append({
+                "action": "imported", "id": entry_id,
+                "question": question[:60],
+                "source_project": source_project,
+            })
+        else:
+            skipped += 1
+            details.append({
+                "action": "skipped", "question": question[:60],
+                "reason": "similar entry exists, auto_merge=False",
+            })
+
+    return {
+        "imported": imported,
+        "merged": merged,
+        "skipped": skipped,
+        "details": details,
+    }

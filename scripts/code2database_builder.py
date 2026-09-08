@@ -282,6 +282,34 @@ def cmd_kb_global_import(args):
     print(json.dumps({"imported": imported}, ensure_ascii=False, indent=2))
 
 
+def cmd_kb_global_share_memory(args):
+    """Export project memories to global KB."""
+    from _builder.kb_global import global_share_memory
+    exported = global_share_memory(
+        graph_dir=args.graph, min_weight=args.min_weight,
+        top_n=args.top, source_project=args.source_project)
+    print(json.dumps({"exported": exported}, ensure_ascii=False, indent=2))
+
+
+def cmd_kb_global_search_memory(args):
+    """Search global KB for memory Q&A."""
+    from _builder.kb_global import global_search_memory
+    results = global_search_memory(args.query, top_n=args.top)
+    if not results:
+        print("No memory Q&A matches in global KB.")
+        return
+    print(json.dumps(results, ensure_ascii=False, indent=2))
+
+
+def cmd_kb_global_import_memory(args):
+    """Import similar Q&A from global into project memory."""
+    from _builder.kb_global import global_import_memory
+    result = global_import_memory(
+        graph_dir=args.graph, query=args.query, top_n=args.top,
+        auto_merge=not args.no_merge)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def cmd_build_multi(args):
     """Build unified C2D from multi-project manifest."""
     from _builder.build_multi import build_multi
@@ -1408,6 +1436,32 @@ def main():
     p_kgi = sub.add_parser("kb-global-import",
                            help="Import a shared global KB JSON file")
     p_kgi.add_argument("--input", required=True, help="Input JSON path")
+
+    # kb-global-share-memory — export project memory to global KB
+    p_kgsm = sub.add_parser("kb-global-share-memory",
+                            help="Export high-weight project memories to the cross-project global KB (kind=memory_qa)")
+    p_kgsm.add_argument("--graph", required=True)
+    p_kgsm.add_argument("--min-weight", type=float, default=1.0,
+                        help="Only export entries with weight >= this (default 1.0)")
+    p_kgsm.add_argument("--top", type=int, default=50,
+                        help="Max entries to export (default 50)")
+    p_kgsm.add_argument("--source-project", default="",
+                        help="Project name tag (auto-detected if empty)")
+
+    # kb-global-search-memory — search global memory Q&A only
+    p_kgsme = sub.add_parser("kb-global-search-memory",
+                             help="Search the global KB for cross-project memory Q&A")
+    p_kgsme.add_argument("--query", required=True)
+    p_kgsme.add_argument("--top", type=int, default=10)
+
+    # kb-global-import-memory — import similar Q&A from global into project
+    p_kgim = sub.add_parser("kb-global-import-memory",
+                            help="Import similar Q&A from global KB into project memory (with merge)")
+    p_kgim.add_argument("--graph", required=True)
+    p_kgim.add_argument("--query", required=True)
+    p_kgim.add_argument("--top", type=int, default=5)
+    p_kgim.add_argument("--no-merge", action="store_true",
+                        help="Skip merging into similar existing entries")
     # Code intelligence tools
     p_ro = sub.add_parser("references-of",
                           help="List ALL source locations where a symbol is referenced (declaration+calls+reads+writes)")
@@ -2885,6 +2939,9 @@ def main():
         "kb-global-search": cmd_kb_global_search,
         "kb-global-share": cmd_kb_global_share,
         "kb-global-import": cmd_kb_global_import,
+        "kb-global-share-memory": cmd_kb_global_share_memory,
+        "kb-global-search-memory": cmd_kb_global_search_memory,
+        "kb-global-import-memory": cmd_kb_global_import_memory,
         "references-of": cmd_references_of,
         "traverse-graph": cmd_traverse_graph,
         "hub-nodes": cmd_hub_nodes,

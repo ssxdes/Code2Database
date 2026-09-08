@@ -387,6 +387,51 @@ class TestKbGlobal(unittest.TestCase):
         results = global_search("share", top_n=10)
         self.assertGreater(len(results), 0)
 
+    def test_global_memory_qa_share_and_search(self):
+        """Cross-project memory Q&A sharing (kind='memory_qa')."""
+        from _builder.kb_global import (
+            global_share_memory, global_search_memory,
+            global_search,
+        )
+        from _builder.memory_store import MemoryStore
+        import tempfile as _tf
+
+        # Create a fake project with memory entries
+        with _tf.TemporaryDirectory(prefix="c2d_mem_test_") as proj_dir:
+            graph_dir = os.path.join(proj_dir, "code2db-out")
+            os.makedirs(graph_dir, exist_ok=True)
+            # Create master.json for project name detection
+            with open(os.path.join(graph_dir,
+                      "code2database_master.json"), "w") as f:
+                json.dump({"project_name": "TestProj",
+                           "source_root": "/tmp/testproj"}, f)
+            store = MemoryStore(graph_dir)
+            store.add("how to handle deadlock in bdev",
+                      "use trylock and retry with backoff",
+                      author="alice", no_merge=True)
+            store.add("how to init NVMe driver",
+                      "call spdk_nvme_probe first",
+                      author="bob", no_merge=True)
+
+            # Share memories to global KB
+            exported = global_share_memory(graph_dir, min_weight=0.5)
+            self.assertGreaterEqual(exported, 2)
+
+            # Search global KB for memory Q&A
+            results = global_search_memory("deadlock bdev", top_n=10)
+            self.assertGreater(len(results), 0)
+            self.assertTrue(any("deadlock" in r["title"].lower()
+                                for r in results))
+
+            # Verify kind filter: principle entries should NOT appear
+            from _builder.kb_global import global_add
+            global_add(title="principle entry", body="not memory",
+                       kind="principle")
+            results2 = global_search_memory("principle", top_n=10)
+            # Should NOT find the principle entry
+            self.assertFalse(any("principle entry" == r["title"]
+                                 for r in results2))
+
 
 if __name__ == "__main__":
     unittest.main()

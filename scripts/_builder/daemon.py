@@ -1696,27 +1696,79 @@ class Daemon:
             self._log(f"watched foreign c2d check failed: {exc}")
 
     def _rebuild_output_files(self):
-        """Rebuild affected output files (CODE2DATABASE_SUMMARY.md, etc.)."""
-        # For each output file, update last_updated_at marker
-        # (full rebuild is the user's responsibility via `build`)
+        """Rebuild affected output files (CODE2DATABASE_SUMMARY.md, etc.).
+
+        Regenerates CODE2DATABASE_SUMMARY.md from the SQLite DB (cheap —
+        a single read pass) so the summary reflects the post-sync graph.
+        The remaining output files (context packs, architecture flows,
+        etc.) are expensive to regenerate and only get their mtime
+        touched — the freshness marker records ``content_rebuilt: False``
+        for them so consumers can distinguish "stale content, fresh
+        timestamp" from a real rebuild.
+        """
+        rebuilt_files = []
+        # 1. Regenerate CODE2DATABASE_SUMMARY.md from SQLite (cheap)
+        try:
+            from _builder.sqlite_postprocess import (
+                _build_callgraph_summary_md_from_sqlite,
+            )
+            db_path = os.path.join(self.graph_dir, "code2database.db")
+            summary_path = Path(self.graph_dir) / "CODE2DATABASE_SUMMARY.md"
+            if os.path.exists(db_path):
+                master_path = os.path.join(
+                    self.graph_dir, "code2database_master.json")
+                source_root = ""
+                if os.path.exists(master_path):
+                    try:
+                        with open(master_path, "r", encoding="utf-8") as mf:
+                            _master = json.load(mf)
+                            source_root = _master.get("source_root", "")
+                    except (json.JSONDecodeError, OSError):
+                        pass
+                _build_callgraph_summary_md_from_sqlite(
+                    db_path, self.graph_dir,
+                    source_root=source_root,
+                    build_info=None,
+                )
+                rebuilt_files.append("CODE2DATABASE_SUMMARY.md")
+        except Exception as exc:
+            logging.getLogger(__name__).debug(
+                "_rebuild_output_files: SUMMARY regen failed: %s", exc)
+
+        # 2. Touch mtime for remaining output files (content not rebuilt)
+        touched_only = []
         for fname in OUTPUT_FILES:
+            if fname in rebuilt_files:
+                continue
             fpath = Path(self.graph_dir) / fname
             if fpath.exists():
-                # Touch the file's mtime to signal freshness
                 try:
                     os.utime(fpath, None)
+                    touched_only.append(fname)
                 except OSError:
-                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                    pass
+                    logging.getLogger(__name__).debug(
+                        "silent exception", exc_info=True)
+
+        if touched_only:
+            self._log(
+                f"output files touched (content NOT rebuilt — run "
+                f"'build' to refresh): {', '.join(touched_only)}")
+
+        # 3. Freshness marker — content_rebuilt flag lets consumers
+        #    distinguish "daemon synced but derived artifacts stale"
+        #    from "full rebuild done".
         freshness = {
             "last_updated_at": time.time(),
-            "source_commit": "",  # would be filled from git if available
+            "source_commit": "",
             "daemon_pid": os.getpid(),
+            "content_rebuilt": bool(rebuilt_files),
+            "rebuilt_files": rebuilt_files,
+            "stale_files": touched_only,
         }
         fresh_path = Path(self.graph_dir) / ".code2database_freshness.json"
-        # Atomic write: tmp + os.replace
         tmp_path = fresh_path.with_suffix(".json.tmp")
-        tmp_path.write_text(json.dumps(freshness, indent=2), encoding="utf-8")
+        tmp_path.write_text(json.dumps(freshness, indent=2),
+                            encoding="utf-8")
         os.replace(str(tmp_path), str(fresh_path))
 
     def _start_socket_server(self):

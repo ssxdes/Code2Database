@@ -139,6 +139,8 @@ class TestGoInterfaceDispatchBuildPhase(unittest.TestCase):
     every implementor (Go structural satisfaction)."""
 
     def test_dispatch_edges_added(self):
+        """Full interface satisfaction: both types implement Write +
+        Flush → both get DISPATCH edges."""
         from _builder.graph_build import build_graph
         extraction = {
             "functions": [
@@ -153,8 +155,18 @@ class TestGoInterfaceDispatchBuildPhase(unittest.TestCase):
                  "labels": [], "is_empty": False, "signature": "",
                  "api_constraints": "", "body_text": "", "params": [],
                  "local_vars": [], "callee_args": [], "condition_vars": []},
+                {"id": "root_store_diskwriter_flush", "name": "DiskWriter.Flush",
+                 "domain": "store", "source_file": "store/w.go", "line": 16,
+                 "labels": [], "is_empty": False, "signature": "",
+                 "api_constraints": "", "body_text": "", "params": [],
+                 "local_vars": [], "callee_args": [], "condition_vars": []},
                 {"id": "root_store_memorywriter_write", "name": "MemoryWriter.Write",
                  "domain": "store", "source_file": "store/w.go", "line": 19,
+                 "labels": [], "is_empty": False, "signature": "",
+                 "api_constraints": "", "body_text": "", "params": [],
+                 "local_vars": [], "callee_args": [], "condition_vars": []},
+                {"id": "root_store_memorywriter_flush", "name": "MemoryWriter.Flush",
+                 "domain": "store", "source_file": "store/w.go", "line": 20,
                  "labels": [], "is_empty": False, "signature": "",
                  "api_constraints": "", "body_text": "", "params": [],
                  "local_vars": [], "callee_args": [], "condition_vars": []},
@@ -183,6 +195,59 @@ class TestGoInterfaceDispatchBuildPhase(unittest.TestCase):
             if d.get("relation") == "DISPATCH":
                 self.assertEqual(d.get("confidence"), "INFERRED")
                 self.assertIn("Writer", d.get("call_condition", ""))
+
+    def test_partial_implementor_gets_no_dispatch(self):
+        """M5: a type that has the method but doesn't satisfy the FULL
+        interface must NOT get a DISPATCH edge (Go structural
+        satisfaction requires all methods)."""
+        from _builder.graph_build import build_graph
+        extraction = {
+            "functions": [
+                {"id": "root_store_writer", "name": "Writer", "domain": "store",
+                 "source_file": "store/w.go", "line": 5, "labels": [],
+                 "is_empty": False, "node_type": "interface",
+                 "methods": ["Write", "Flush"], "signature": "interface Writer",
+                 "api_constraints": "", "body_text": "", "params": [],
+                 "local_vars": [], "callee_args": [], "condition_vars": []},
+                # FullWriter implements both Write + Flush → dispatches
+                {"id": "root_store_fullwriter_write", "name": "FullWriter.Write",
+                 "domain": "store", "source_file": "store/w.go", "line": 10,
+                 "labels": [], "is_empty": False, "signature": "",
+                 "api_constraints": "", "body_text": "", "params": [],
+                 "local_vars": [], "callee_args": [], "condition_vars": []},
+                {"id": "root_store_fullwriter_flush", "name": "FullWriter.Flush",
+                 "domain": "store", "source_file": "store/w.go", "line": 11,
+                 "labels": [], "is_empty": False, "signature": "",
+                 "api_constraints": "", "body_text": "", "params": [],
+                 "local_vars": [], "callee_args": [], "condition_vars": []},
+                # PartialWriter has only Write, not Flush → no dispatch
+                {"id": "root_store_partialwriter_write", "name": "PartialWriter.Write",
+                 "domain": "store", "source_file": "store/w.go", "line": 15,
+                 "labels": [], "is_empty": False, "signature": "",
+                 "api_constraints": "", "body_text": "", "params": [],
+                 "local_vars": [], "callee_args": [], "condition_vars": []},
+                {"id": "root_store_use", "name": "use", "domain": "store",
+                 "source_file": "store/w.go", "line": 20, "labels": [],
+                 "is_empty": False, "signature": "",
+                 "api_constraints": "", "body_text": "", "params": [],
+                 "local_vars": [], "callee_args": [], "condition_vars": [],
+                 "interface_calls": [
+                     {"line": 21, "iface": "Writer", "method": "Write",
+                      "receiver": "w"}]},
+            ],
+            "edges": [
+                {"source": "root_store_use", "target": "write",
+                 "call_order": 1, "call_condition": ""},
+            ],
+        }
+        G, _ = build_graph(extraction)
+        dispatch = [(u, v) for u, v, d in G.edges(data=True)
+                    if d.get("relation") == "DISPATCH"]
+        targets = {v for u, v in dispatch}
+        self.assertIn("root_store_fullwriter_write", targets,
+                      "full implementor must get dispatch")
+        self.assertNotIn("root_store_partialwriter_write", targets,
+                         "partial implementor must NOT get dispatch")
 
 
 if __name__ == "__main__":

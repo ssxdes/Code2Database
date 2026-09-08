@@ -5141,7 +5141,12 @@ def _add_go_interface_dispatch(G) -> int:
                 continue
             if method not in interface_methods[iface]:
                 continue
+            # M5: Go structural satisfaction — a type must implement ALL
+            # of the interface's methods, not just the one being called.
+            required = interface_methods[iface]
             for tname, meths in methods_by_type.items():
+                if not required.issubset(set(meths.keys())):
+                    continue
                 target = meths.get(method)
                 if (target and target != nid
                         and not G.has_edge(nid, target)):

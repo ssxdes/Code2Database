@@ -454,6 +454,9 @@ class StreamingGraph:
                                if ek[0] == node_id or ek[1] == node_id]
             for ek in edges_to_remove:
                 self._edge_set.discard(ek)
+                # L1: also clean _edge_data — the deferred path used to
+                # leak edge attribute dicts for removed nodes here.
+                self._edge_data.pop(ek, None)
                 self._edge_count -= 1
                 u, v = ek
                 if u in self._out_degree:

@@ -260,6 +260,49 @@ class TestSessionFreshness(unittest.TestCase):
         self.assertIn("graph STALE", out["rendered"])
 
 
+class TestFreshnessCache(unittest.TestCase):
+    """M3: check_freshness caches its os.walk result with a short TTL
+    so session-init doesn't walk 70K+ files on every call."""
+
+    def setUp(self):
+        from _builder import cgdb_freshness
+        cgdb_freshness._freshness_cache.clear()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._cleanup)
+        src = os.path.join(self.tmp.name, "src")
+        os.makedirs(src)
+        with open(os.path.join(src, "main.c"), "w") as f:
+            f.write("int main(void) { return 0; }\n")
+        self.graph_dir = os.path.join(src, "graph")
+        os.makedirs(self.graph_dir)
+        import json as _json
+        st = os.stat(os.path.join(src, "main.c"))
+        with open(os.path.join(self.graph_dir,
+                               ".code2database_manifest.json"), "w") as f:
+            _json.dump({"files": {"main.c": f"{st.st_mtime_ns}:{st.st_size}"}},
+                       f)
+
+    def _cleanup(self):
+        from _builder import cgdb_freshness
+        cgdb_freshness._freshness_cache.clear()
+        self.tmp.cleanup()
+
+    def test_cached_call_returns_same_object(self):
+        from _builder.cgdb_freshness import check_freshness
+        src = os.path.dirname(self.graph_dir)
+        r1 = check_freshness(self.graph_dir, src, use_cache=True)
+        r2 = check_freshness(self.graph_dir, src, use_cache=True)
+        self.assertIs(r1, r2,
+                      "second call within TTL must return cached result")
+
+    def test_no_cache_recomputes(self):
+        from _builder.cgdb_freshness import check_freshness
+        src = os.path.dirname(self.graph_dir)
+        r1 = check_freshness(self.graph_dir, src, use_cache=True)
+        r2 = check_freshness(self.graph_dir, src, use_cache=False)
+        self.assertIsNot(r1, r2, "use_cache=False must recompute")
+
+
 class TestContextPackSummaries(unittest.TestCase):
     """context_pack must embed brief + fresh memory summaries."""
 

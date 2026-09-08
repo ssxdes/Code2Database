@@ -15,11 +15,19 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Dict
 import logging
 
+# M3: TTL cache so session-init doesn't os.walk a 70K-file source tree
+# on every call. The web UI already had a 10s GraphCache.freshness()
+# wrapper; session-init called check_freshness() directly with no cache.
+_freshness_cache: Dict[str, tuple] = {}
+_FRESHNESS_TTL = 10.0
 
-def check_freshness(graph_dir: str, source_root: str = "") -> Dict:
+
+def check_freshness(graph_dir: str, source_root: str = "",
+                    use_cache: bool = True) -> Dict:
     """Check if the code graph is fresh or stale.
 
     Returns a dict with:
@@ -33,6 +41,14 @@ def check_freshness(graph_dir: str, source_root: str = "") -> Dict:
       - staleness_ratio: float (changed/total, 0.0=fresh, 1.0=fully stale)
       - recommendation: str (suggested command to run)
     """
+    cache_key = (graph_dir, source_root)
+    if use_cache:
+        cached = _freshness_cache.get(cache_key)
+        if cached:
+            cached_time, cached_result = cached
+            if time.time() - cached_time < _FRESHNESS_TTL:
+                return cached_result
+
     result = {
         "is_fresh": True,
         "new_files": [],
@@ -167,6 +183,8 @@ def check_freshness(graph_dir: str, source_root: str = "") -> Dict:
     else:
         result["recommendation"] = "Graph is up to date."
 
+    if use_cache:
+        _freshness_cache[cache_key] = (time.time(), result)
     return result
 
 
@@ -191,7 +209,7 @@ def cmd_cgdb_freshness(args):
     """CLI handler for `code2database_builder.py cgdb-freshness`."""
     graph_dir = args.graph
     source_root = getattr(args, "source", "") or os.path.dirname(graph_dir)
-    result = check_freshness(graph_dir, source_root)
+    result = check_freshness(graph_dir, source_root, use_cache=False)
 
     if result["is_fresh"]:
         print("✓ Graph is fresh — no changes detected since last scan.")

@@ -8,6 +8,16 @@ trigger: /Code2Database
 
 **扫描一次 → 持久图 → 查询替代 grep。** 一次工具调用即可回答原本需要多次 grep/glob/Read 的问题。
 
+## ⚠ 强制第一步 — session-init
+
+**在执行任何其他 C2D 命令之前，每个 AI 会话必须运行一次 `session-init`（且仅需一次）。**
+
+```bash
+python3 scripts/code2database_builder.py session-init   # --graph 自动发现 code2db-out/
+```
+
+此命令加载完整的项目知识底蕴（brief — 架构规则、hard_rules、陷阱、query_paths）+ 前辈记忆摘要 + 图状态 + 已知未知。**如果不执行此步骤，项目的知识底蕴完全不可见** — 后续所有查询都在无视强制规则和前辈经验的情况下盲操作。session-init 是唯一返回完整 brief 的命令；`query` 和 `describe` 只显示 FTS5 匹配的片段。
+
 ## 查询优先级链
 
 提问时，按以下优先级查询：

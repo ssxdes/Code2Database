@@ -690,7 +690,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" serve \
 注：CLI 专有命令（apply-invariants、blame-node、data-dep、field-access、lock-coverage、param-flow、profile-health、query、value-flow）**不**作为 MCP 工具暴露——通过 CLI（`python3 scripts/code2database_builder.py <cmd>`）调用。
 
 **19 个 `cgdb_*` 工具**（需 clang 提取后端——`--extraction-backend clang` 或 auto 下已安装 libclang）：
-- cgdb_search_symbols, cgdb_find_invokers, cgdb_find_invoked, cgdb_get_definition, cgdb_get_function_body, cgdb_get_struct_layout, cgdb_find_type_definition, cgdb_find_ops_impls, cgdb_find_cfg_paths, cgdb_find_data_flow, cgdb_find_aliases, cgdb_find_lock_held_calls, cgdb_check_race_condition, cgdb_find_configs_for, cgdb_find_nodes_under_config, cgdb_index_status, cgdb_time_travel_query, cgdb_list_versions
+- cgdb_search_symbols, cgdb_find_invokers, cgdb_find_invoked, cgdb_get_definition, cgdb_get_function_body, cgdb_get_source, cgdb_get_struct_layout, cgdb_find_type_definition, cgdb_find_ops_impls, cgdb_find_cfg_paths, cgdb_find_data_flow, cgdb_find_aliases, cgdb_find_lock_held_calls, cgdb_check_race_condition, cgdb_find_configs_for, cgdb_find_nodes_under_config, cgdb_index_status, cgdb_time_travel_query, cgdb_list_versions
 
 在 tree-sitter-only 模式下，`cgdb_*` 工具返回空结果——回退到 `code2database_*` 工具。完整 `cgdb_*` 工具参考见 `~/.claude/skills/Code2Database-analysis/references/analysis_commands.md`。
 

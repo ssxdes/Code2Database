@@ -691,7 +691,7 @@ Exposes **83 MCP tools (55 base + 28 design-report)** (36 `code2database_*` + 19
 Note: CLI-only commands (apply-invariants, blame-node, data-dep, field-access, lock-coverage, param-flow, profile-health, query, value-flow) are NOT exposed as MCP tools — invoke them via the CLI (`python3 scripts/code2database_builder.py <cmd>`).
 
 **19 `cgdb_*` tools** (require clang extraction backend — `--extraction-backend clang` or auto with libclang installed):
-- cgdb_search_symbols, cgdb_find_invokers, cgdb_find_invoked, cgdb_get_definition, cgdb_get_function_body, cgdb_get_struct_layout, cgdb_find_type_definition, cgdb_find_ops_impls, cgdb_find_cfg_paths, cgdb_find_data_flow, cgdb_find_aliases, cgdb_find_lock_held_calls, cgdb_check_race_condition, cgdb_find_configs_for, cgdb_find_nodes_under_config, cgdb_index_status, cgdb_time_travel_query, cgdb_list_versions
+- cgdb_search_symbols, cgdb_find_invokers, cgdb_find_invoked, cgdb_get_definition, cgdb_get_function_body, cgdb_get_source, cgdb_get_struct_layout, cgdb_find_type_definition, cgdb_find_ops_impls, cgdb_find_cfg_paths, cgdb_find_data_flow, cgdb_find_aliases, cgdb_find_lock_held_calls, cgdb_check_race_condition, cgdb_find_configs_for, cgdb_find_nodes_under_config, cgdb_index_status, cgdb_time_travel_query, cgdb_list_versions
 
 In tree-sitter-only mode, the `cgdb_*` tools return empty results — fall back to the `code2database_*` tools. See `~/.claude/skills/Code2Database-analysis/references/analysis_commands.md` for the full `cgdb_*` tool reference.
 

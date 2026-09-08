@@ -2019,6 +2019,11 @@ def main():
         help="Path to TLS certificate PEM file (enables HTTPS)")
     p_serve.add_argument("--tls-key", default=None,
         help="Path to TLS private key PEM file (enables HTTPS)")
+    p_serve.add_argument("--allow-no-auth", action="store_true",
+        help="Explicitly allow HTTP transport on a public interface without "
+             "a Bearer token. Use ONLY for trusted/isolated networks. "
+             "Without this flag, --transport http --host 0.0.0.0 without "
+             "--token will refuse to start.")
 
     # get-code-snippet
     p_snippet = sub.add_parser("get-code-snippet",

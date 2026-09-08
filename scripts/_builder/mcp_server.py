@@ -2485,6 +2485,20 @@ def cmd_serve(args):
         token = getattr(args, "token", None)
         if not token:
             token = os.environ.get("C2D_MCP_TOKEN")
+        # Fail-fast: refuse to start on a public interface without auth
+        # unless --allow-no-auth is explicitly passed
+        allow_no_auth = getattr(args, "allow_no_auth", False)
+        if not token and host not in ("127.0.0.1", "localhost", "::1") \
+                and not allow_no_auth:
+            print(
+                "ERROR: Starting MCP HTTP server on a public interface "
+                f"({host}) without --token is unsafe — anyone who can reach "
+                f"this port can query your code graph AND write memories.\n"
+                "  Fix: add --token <secret> (or set C2D_MCP_TOKEN env var).\n"
+                "  Or: use --host 127.0.0.1 for localhost-only.\n"
+                "  Or: pass --allow-no-auth to suppress this check "
+                "(NOT recommended).", file=sys.stderr, flush=True)
+            sys.exit(1)
         tls_cert = getattr(args, "tls_cert", None)
         tls_key = getattr(args, "tls_key", None)
         max_clients = getattr(args, "max_clients", 32)

@@ -24,15 +24,16 @@ Predicate IDs are stable hashes of text_form, so the same predicate in
 different files deduplicates to the same row. We use a 60-bit hash to
 fit in SQLite's signed 64-bit INTEGER.
 """
+import ast
 import hashlib
 import json
+import logging
 import os
 import re
 import subprocess
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from _builder.cgdb_records import ConfigPredicateRecord
-import logging
 
 
 # Regex for preprocessor conditionals (matches #if, #ifdef, #ifndef, #elif, #else, #endif)
@@ -193,6 +194,127 @@ def _text_form_to_bdd_expr(text_form: str, vmap: Dict[str, str]) -> str:
     return s
 
 
+class _SafeBoolExprEvaluator(ast.NodeVisitor):
+    """Walks a parsed boolean expression AST and evaluates it without eval().
+
+    Per security requirement (RCE fix): only allows BoolOp (And/Or),
+    UnaryOp (Not/USub/UAdd), Compare (Eq/NotEq/Lt/Gt/LtE/GtE), Name, and
+    Constant (True/False/int). Rejects Attribute, Subscript, Call, Import,
+    Lambda, comprehensions, etc. — so a malicious #if directive cannot
+    execute arbitrary code.
+
+    Operator callables are supplied by the caller (``ops`` dict), so the
+    same walker drives both the Python-bool path and the Z3-BoolRef path.
+    """
+
+    _ALLOWED_UNARY = {
+        ast.Not: 'not',
+        ast.USub: 'neg',
+        ast.UAdd: 'pos',
+    }
+    _ALLOWED_CMP = {
+        ast.Eq: 'eq',
+        ast.NotEq: 'ne',
+        ast.Lt: 'lt',
+        ast.Gt: 'gt',
+        ast.LtE: 'le',
+        ast.GtE: 'ge',
+    }
+
+    def __init__(self, namespace: Dict[str, Any], ops: Dict[str, Callable]):
+        self._ns = namespace
+        self._ops = ops
+
+    def visit_Expression(self, node: ast.Expression) -> Any:
+        return self.visit(node.body)
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> Any:
+        values = [self.visit(v) for v in node.values]
+        op_name = 'and' if isinstance(node.op, ast.And) else (
+            'or' if isinstance(node.op, ast.Or) else None)
+        if op_name is None:
+            raise ValueError(f"Unsupported BoolOp: {type(node.op).__name__}")
+        fn = self._ops[op_name]
+        result = values[0]
+        for v in values[1:]:
+            result = fn(result, v)
+        return result
+
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> Any:
+        operand = self.visit(node.operand)
+        op_name = self._ALLOWED_UNARY.get(type(node.op))
+        if op_name is None:
+            raise ValueError(f"Unsupported UnaryOp: {type(node.op).__name__}")
+        return self._ops[op_name](operand)
+
+    def visit_Compare(self, node: ast.Compare) -> Any:
+        if len(node.ops) != 1:
+            raise ValueError("Chained comparisons not supported")
+        left = self.visit(node.left)
+        right = self.visit(node.comparators[0])
+        op_name = self._ALLOWED_CMP.get(type(node.ops[0]))
+        if op_name is None:
+            raise ValueError(
+                f"Unsupported Compare op: {type(node.ops[0]).__name__}")
+        return self._ops[op_name](left, right)
+
+    def visit_Name(self, node: ast.Name) -> Any:
+        if node.id in self._ns:
+            return self._ns[node.id]
+        raise ValueError(f"Undefined name: {node.id}")
+
+    def visit_Constant(self, node: ast.Constant) -> Any:
+        if isinstance(node.value, bool) or isinstance(node.value, int):
+            return node.value
+        raise ValueError(f"Unsupported constant: {node.value!r}")
+
+    def generic_visit(self, node: ast.AST) -> Any:
+        raise ValueError(
+            f"Disallowed node type: {type(node).__name__}")
+
+
+_PY_BOOL_OPS: Dict[str, Callable] = {
+    'and': lambda a, b: a and b,
+    'or': lambda a, b: a or b,
+    'not': lambda a: not a,
+    'neg': lambda a: -a,
+    'pos': lambda a: +a,
+    'eq': lambda a, b: a == b,
+    'ne': lambda a, b: a != b,
+    'lt': lambda a, b: a < b,
+    'gt': lambda a, b: a > b,
+    'le': lambda a, b: a <= b,
+    'ge': lambda a, b: a >= b,
+}
+
+
+def _safe_eval_python_bool(expr_str: str) -> bool:
+    """Evaluate a boolean expression over Python True/False without eval()."""
+    tree = ast.parse(expr_str, mode='eval')
+    return bool(_SafeBoolExprEvaluator({}, _PY_BOOL_OPS).visit(tree))
+
+
+def _safe_eval_z3_bool(expr_str: str,
+                       z3_vars: Dict[str, Any],
+                       And: Callable, Or: Callable, Not: Callable) -> Any:
+    """Build a Z3 BoolRef from a boolean expression string without eval()."""
+    z3_ops: Dict[str, Callable] = {
+        'and': And,
+        'or': Or,
+        'not': Not,
+        'neg': lambda a: -a,
+        'pos': lambda a: +a,
+        'eq': lambda a, b: a == b,
+        'ne': lambda a, b: a != b,
+        'lt': lambda a, b: a < b,
+        'gt': lambda a, b: a > b,
+        'le': lambda a, b: a <= b,
+        'ge': lambda a, b: a >= b,
+    }
+    tree = ast.parse(expr_str, mode='eval')
+    return _SafeBoolExprEvaluator(z3_vars, z3_ops).visit(tree)
+
+
 def evaluate_predicate(text_form: str, macro_bindings: Dict[str, bool]) -> Optional[bool]:
     """Evaluate a config predicate against a set of macro bindings.
 
@@ -228,7 +350,7 @@ def evaluate_predicate(text_form: str, macro_bindings: Dict[str, bool]) -> Optio
         if not expr_str:
             return None
         try:
-            expr = eval(expr_str, {"__builtins__": {}}, z3_vars)
+            expr = _safe_eval_z3_bool(expr_str, z3_vars, And, Or, Not)
         except Exception:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             return None
@@ -269,7 +391,7 @@ def evaluate_predicate(text_form: str, macro_bindings: Dict[str, bool]) -> Optio
         py_expr = _text_form_to_python_expr_simple(text_form, macro_bindings)
         if py_expr is None:
             return None
-        return bool(eval(py_expr, {"__builtins__": {}}, {}))
+        return bool(_safe_eval_python_bool(py_expr))
     except Exception:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
         return None

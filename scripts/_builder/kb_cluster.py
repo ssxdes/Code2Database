@@ -170,16 +170,27 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
                 continue
             try:
                 match_expr = _fts5_escape(query_text[:500])
+                # Link memory_qa entries to principle-like brief sections.
+                # The actual kinds emitted by _brief_sections_as_paragraphs
+                # are: description, must_know, hard_rule, mode, abstraction,
+                # convention, pitfall, query_path. 'principle' and 'fact'
+                # are never inserted (dead code in the original query).
+                # We match against the rule/convention/abstraction kinds
+                # that represent project principles.
                 pr_rows = conn.execute(
                     "SELECT kb_paragraphs.id, -bm25(kb_paragraphs_fts) AS score "
                     "FROM kb_paragraphs_fts JOIN kb_paragraphs "
                     "  ON kb_paragraphs.id = kb_paragraphs_fts.rowid "
                     "WHERE kb_paragraphs_fts MATCH ? "
-                    "  AND kb_paragraphs.kind IN ('principle', 'fact') "
+                    "  AND kb_paragraphs.kind IN "
+                    "  ('hard_rule', 'must_know', 'abstraction', 'convention') "
                     "ORDER BY score DESC LIMIT 1",
                     (match_expr,)
                 ).fetchall()
-                if pr_rows and pr_rows[0]["score"] >= threshold:
+                # BM25 scores are on a different scale (typically 1-15+)
+                # than the Jaccard threshold (0-1). Use a BM25-appropriate
+                # threshold: 1.0 means "at least some textual overlap".
+                if pr_rows and pr_rows[0]["score"] >= 1.0:
                     conn.execute(
                         "UPDATE kb_paragraphs SET principle_ref = ? WHERE id = ?",
                         (pr_rows[0]["id"], mr["id"])

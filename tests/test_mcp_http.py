@@ -20,6 +20,7 @@ import sys
 import json
 import time
 import socket
+import shutil
 import threading
 import http.client
 import unittest
@@ -186,16 +187,20 @@ class TestMcpHttpAuth(unittest.TestCase):
             headers={"Authorization": "Bearer secret123"})
         self.assertEqual(status, 200)
 
-    def test_health_does_not_require_auth(self):
-        """Health endpoint is accessible without auth."""
-        status, _, body = self.ctx.request("GET", "/health")
+    def test_health_requires_auth(self):
+        """Health endpoint requires auth when token is set."""
+        status, _, _ = self.ctx.request("GET", "/health")
+        self.assertEqual(status, 401)
+
+    def test_health_with_auth_succeeds(self):
+        """Health endpoint works with valid auth token."""
+        status, _, body = self.ctx.request(
+            "GET", "/health",
+            headers={"Authorization": "Bearer secret123"})
         self.assertEqual(status, 200)
         self.assertEqual(body["status"], "ok")
-
-    def test_health_reports_auth_required(self):
-        """Health endpoint reports auth_required=True when token is set."""
-        status, _, body = self.ctx.request("GET", "/health")
         self.assertTrue(body["auth_required"])
+        self.assertNotIn("graph_dir", body)  # no info leak
 
 
 class TestMcpHttpOpenMode(unittest.TestCase):
@@ -568,7 +573,7 @@ class TestMcpHttpHealth(unittest.TestCase):
         status, _, body = self.ctx.request("GET", "/health")
         self.assertEqual(status, 200)
         for field in ["status", "server", "version", "transport",
-                      "graph_dir", "tools_total", "tools_visible",
+                      "tools_total", "tools_visible",
                       "read_only", "auth_required"]:
             self.assertIn(field, body, f"Missing field: {field}")
         self.assertEqual(body["status"], "ok")
@@ -700,6 +705,65 @@ class TestLazySQLiteGraphThreadSafety(unittest.TestCase):
             t.join(timeout=10)
         self.assertEqual(errors, [], f"Concurrent access errors: {errors}")
         G.close()
+
+
+class TestMcpHttpSecurityHardening(unittest.TestCase):
+    """Test security hardening of the MCP HTTP server."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmpdir = tempfile.mkdtemp()
+        _make_graph_dir(cls.tmpdir)
+        cls.ctx = _ServerCtx(cls.tmpdir, token="secret123")
+        cls.ctx.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.ctx.stop()
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
+
+    def setUp(self):
+        if self.ctx.error:
+            self.skipTest(f"Server failed: {self.ctx.error}")
+
+    def test_content_length_too_large(self):
+        """POST with Content-Length > 10MB returns 413."""
+        conn = http.client.HTTPConnection("127.0.0.1", self.ctx.port, timeout=3)
+        conn.request("POST", "/mcp", body="{}",
+                     headers={"Content-Length": str(11 * 1024 * 1024),
+                              "Authorization": "Bearer secret123"})
+        resp = conn.getresponse()
+        self.assertEqual(resp.status, 413)
+        conn.close()
+
+    def test_invalid_content_length(self):
+        """POST with non-numeric Content-Length returns 400."""
+        conn = http.client.HTTPConnection("127.0.0.1", self.ctx.port, timeout=3)
+        conn.request("POST", "/mcp", body="{}",
+                     headers={"Content-Length": "abc",
+                              "Authorization": "Bearer secret123"})
+        resp = conn.getresponse()
+        self.assertEqual(resp.status, 400)
+        conn.close()
+
+    def test_health_no_graph_dir_leak(self):
+        """Health endpoint does not expose graph_dir path."""
+        status, _, body = self.ctx.request(
+            "GET", "/health",
+            headers={"Authorization": "Bearer secret123"})
+        self.assertEqual(status, 200)
+        self.assertNotIn("graph_dir", body)
+
+    def test_cors_reflects_origin(self):
+        """CORS preflight reflects request Origin instead of *."""
+        conn = http.client.HTTPConnection("127.0.0.1", self.ctx.port, timeout=3)
+        conn.request("OPTIONS", "/mcp",
+                     headers={"Origin": "https://example.com"})
+        resp = conn.getresponse()
+        self.assertEqual(resp.status, 204)
+        self.assertEqual(resp.getheader("Access-Control-Allow-Origin"),
+                         "https://example.com")
+        conn.close()
 
 
 if __name__ == "__main__":

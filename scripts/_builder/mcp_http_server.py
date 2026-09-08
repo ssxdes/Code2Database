@@ -36,6 +36,7 @@ Security:
 import json
 import os
 import ssl
+import sys
 import time
 import secrets
 import threading
@@ -115,11 +116,11 @@ class _McpHTTPHandler(BaseHTTPRequestHandler):
 
     def _check_auth(self) -> bool:
         """Return True if the request passes authentication."""
-        if self._token is None:
+        if not self._token:
             return True  # no token configured — open mode
         auth = self.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            return auth[7:] == self._token
+        if auth.lower().startswith("bearer "):
+            return secrets.compare_digest(auth[7:], self._token)
         return False
 
     def _send_json(self, status: int, body: dict,
@@ -186,6 +187,8 @@ class _McpHTTPHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         # Health check also accessible via POST for simple clients.
         if self.path == "/health":
+            if not self._check_auth():
+                return self._send_error(401, "Unauthorized")
             return self._handle_health()
 
         if self.path not in ("/mcp", "/mcp/"):
@@ -207,9 +210,14 @@ class _McpHTTPHandler(BaseHTTPRequestHandler):
 
     def _handle_mcp_post(self):
         # Read body
-        content_length = int(self.headers.get("Content-Length", 0))
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except (ValueError, TypeError):
+            return self._send_error(400, "Invalid Content-Length header")
         if content_length == 0:
             return self._send_error(400, "Empty request body")
+        if content_length > 10 * 1024 * 1024:
+            return self._send_error(413, "Request body too large (max 10MB)")
         raw = self.rfile.read(content_length)
         try:
             msg = json.loads(raw)
@@ -230,6 +238,8 @@ class _McpHTTPHandler(BaseHTTPRequestHandler):
         method = msg.get("method", "")
         msg_id = msg.get("id")
         params = msg.get("params", {})
+        if not isinstance(params, dict):
+            params = {}
         session_id = self.headers.get("Mcp-Session-Id")
 
         # Validate session (if client claims to have one)
@@ -241,12 +251,18 @@ class _McpHTTPHandler(BaseHTTPRequestHandler):
         if method == "initialize":
             new_session_id = _create_session(self._graph_dir)
 
-        # Dispatch
+        # Dispatch — no global lock (stats mutations are GIL-safe counters)
         from _builder.mcp_server import dispatch_mcp_request
-        with self._stats_lock:
+        try:
             response = dispatch_mcp_request(
                 method, msg_id, params, self._graph_dir,
                 self._mcp_stats, self._read_only)
+        except Exception:
+            logger.warning("uncaught error in dispatch_mcp_request",
+                           exc_info=True)
+            response = {"jsonrpc": "2.0", "id": msg_id,
+                        "error": {"code": -32603,
+                                  "message": "Internal error"}}
 
         if response is None:
             # Notification (no response expected)
@@ -255,18 +271,31 @@ class _McpHTTPHandler(BaseHTTPRequestHandler):
 
     def _handle_batch(self, messages: list):
         """Handle a JSON-RPC batch request."""
+        if not messages:
+            return self._send_error(400, "Invalid Request: empty batch")
         responses = []
         from _builder.mcp_server import dispatch_mcp_request
         for msg in messages:
             if not isinstance(msg, dict):
+                responses.append({"jsonrpc": "2.0", "id": None,
+                                  "error": {"code": -32600,
+                                            "message": "Invalid Request"}})
                 continue
             method = msg.get("method", "")
             msg_id = msg.get("id")
             params = msg.get("params", {})
-            with self._stats_lock:
+            if not isinstance(params, dict):
+                params = {}
+            try:
                 response = dispatch_mcp_request(
                     method, msg_id, params, self._graph_dir,
                     self._mcp_stats, self._read_only)
+            except Exception:
+                logger.warning("uncaught error in batch dispatch",
+                               exc_info=True)
+                response = {"jsonrpc": "2.0", "id": msg_id,
+                            "error": {"code": -32603,
+                                      "message": "Internal error"}}
             if response is not None:
                 responses.append(response)
         if responses:
@@ -281,6 +310,8 @@ class _McpHTTPHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
+            if not self._check_auth():
+                return self._send_error(401, "Unauthorized")
             return self._handle_health()
         if self.path in ("/mcp", "/mcp/"):
             # GET on /mcp opens an SSE stream for server notifications.
@@ -288,7 +319,15 @@ class _McpHTTPHandler(BaseHTTPRequestHandler):
             # with an empty stream that the client can keep open.
             if not self._check_auth():
                 return self._send_error(401, "Unauthorized")
-            return self._handle_sse_stream()
+            # Concurrency limit for SSE too (prevents FD/thread exhaustion)
+            if self._semaphore is not None:
+                if not self._semaphore.acquire(timeout=30):
+                    return self._send_error(503, "Server busy")
+            try:
+                return self._handle_sse_stream()
+            finally:
+                if self._semaphore is not None:
+                    self._semaphore.release()
         self._send_error(404, f"Not found: {self.path}")
 
     def _handle_health(self):
@@ -300,11 +339,10 @@ class _McpHTTPHandler(BaseHTTPRequestHandler):
             "server": "Code2Database",
             "version": "2.1.0",
             "transport": "http",
-            "graph_dir": self._graph_dir,
             "tools_total": available,
             "tools_visible": visible,
             "read_only": self._read_only,
-            "auth_required": self._token is not None,
+            "auth_required": bool(self._token),
         })
 
     def _handle_sse_stream(self):
@@ -312,21 +350,23 @@ class _McpHTTPHandler(BaseHTTPRequestHandler):
 
         We don't have server-pushed notifications to send, so we send
         a heartbeat comment every 30 seconds to keep the connection alive
-        until the client disconnects.
+        until the client disconnects or the max duration elapses.
         """
+        _SSE_MAX_DURATION = 300.0  # 5 minutes
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
         self.send_header("MCP-Protocol-Version", "2024-11-05")
         self.end_headers()
+        start = time.time()
         try:
-            while True:
+            while time.time() - start < _SSE_MAX_DURATION:
                 self.wfile.write(b": heartbeat\n\n")
                 self.wfile.flush()
                 time.sleep(30)
-        except (BrokenPipeError, ConnectionResetError):
-            pass  # client disconnected
+        except Exception:
+            pass  # client disconnected or socket error
 
     # ------------------------------------------------------------------
     # DELETE /mcp — terminate session
@@ -346,8 +386,11 @@ class _McpHTTPHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     def do_OPTIONS(self):
+        origin = self.headers.get("Origin", "")
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods",
                          "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers",
@@ -402,6 +445,9 @@ def run_mcp_server_http(graph_dir: str, host: str = "0.0.0.0",
     """
     if token is None:
         token = os.environ.get("C2D_MCP_TOKEN")
+    # Treat empty string as no token (prevents auth bypass via --token="")
+    if token and not token.strip():
+        token = None
 
     # Shared stats (same structure as stdio mode)
     mcp_stats = {"total_calls": 0, "total_output_tokens": 0, "by_tool": {}}
@@ -445,8 +491,13 @@ def run_mcp_server_http(graph_dir: str, host: str = "0.0.0.0",
     server.daemon_threads = True
 
     # TLS
+    if bool(tls_cert) != bool(tls_key):
+        print("ERROR: --tls-cert and --tls-key must both be set for TLS.",
+              file=sys.stderr, flush=True)
+        sys.exit(1)
     if tls_cert and tls_key:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         ctx.load_cert_chain(tls_cert, tls_key)
         server.socket = ctx.wrap_socket(server.socket, server_side=True)
 

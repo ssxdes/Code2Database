@@ -711,6 +711,43 @@ class TestReadOnlyAndAuthors(MemoryStoreTestBase):
         self.assertEqual(authors["anonymous"]["entries"], 1)
         self.assertEqual(authors["alice"]["active"], 1)
 
+    def test_authors_unifies_legacy_empty_with_anonymous(self):
+        """Legacy '' author entries are grouped with 'anonymous'."""
+        import sqlite3 as sq3
+        self._populate()  # creates alice, bob, anonymous entries
+        # Insert a legacy "" author entry directly into the DB
+        conn = sq3.connect(os.path.join(self.graph_dir, "memory", "memory.db"))
+        conn.execute(
+            "INSERT INTO memories (question, answer, category_id, status, "
+            "tags, node_ids, chains, knowledge_refs, symbols, author, "
+            "root_id, weight, created, last_accessed, validated_at) VALUES "
+            "(?, ?, 0, 'active', '[]', '[]', '[]', '[]', '[]', '', 0, "
+            "1.0, '2024-01-01', '2024-01-01', '2024-01-01')",
+            ("legacy q", "legacy a"))
+        conn.commit()
+        conn.close()
+        authors = {a["author"]: a for a in self.store.authors()}
+        # Both the new "anonymous" and legacy "" should group as "anonymous"
+        self.assertEqual(authors["anonymous"]["entries"], 2)
+        self.assertNotIn("(unattributed)", authors)
+
+    def test_search_anonymous_matches_legacy_empty(self):
+        """Searching with author='anonymous' also matches legacy '' entries."""
+        import sqlite3 as sq3
+        self._populate()
+        conn = sq3.connect(os.path.join(self.graph_dir, "memory", "memory.db"))
+        conn.execute(
+            "INSERT INTO memories (question, answer, category_id, status, "
+            "tags, node_ids, chains, knowledge_refs, symbols, author, "
+            "root_id, weight, created, last_accessed, validated_at) VALUES "
+            "(?, ?, 0, 'active', '[]', '[]', '[]', '[]', '[]', '', 0, "
+            "1.0, '2024-01-01', '2024-01-01', '2024-01-01')",
+            ("legacy question", "legacy answer"))
+        conn.commit()
+        conn.close()
+        hits = self.store.search("legacy", author="anonymous")
+        self.assertTrue(hits, "Should find legacy '' entry when filtering by 'anonymous'")
+
     def test_digest_author_filter(self):
         self._populate()
         reader = MemoryStore(self.graph_dir, read_only=True)

@@ -633,7 +633,17 @@ class MemoryStore:
         scored: List[dict] = []
         params: list = []
         cat_sql = self._category_filter_sql(category, params)
-        author_sql = " AND m.author = ? " if author else ""
+        # When filtering by "anonymous", also match legacy "" and NULL
+        if author and author == "anonymous":
+            author_sql = (" AND (m.author = 'anonymous' OR m.author = '' "
+                          "OR m.author IS NULL) ")
+            author_needs_param = False
+        elif author:
+            author_sql = " AND m.author = ? "
+            author_needs_param = True
+        else:
+            author_sql = ""
+            author_needs_param = False
         fts_rows = []
         try:
             sql = (
@@ -649,7 +659,7 @@ class MemoryStore:
             )
             fts_params = [_fts5_escape(query)] + list(statuses) \
                 + [min_weight] + params
-            if author:
+            if author_needs_param:
                 fts_params.append(author)
             fts_params.append(max(top_n * 3, 30))
             conn = self._connect()
@@ -669,13 +679,12 @@ class MemoryStore:
             # above only ranks the Latin tokens of a mixed query) ---
             params2: list = []
             cat_sql2 = self._category_filter_sql(category, params2)
-            author_sql2 = " AND m.author = ? " if author else ""
             sql = (
                 "SELECT * FROM memories m WHERE m.status IN "
-                f"({ph}) AND m.weight >= ? " + cat_sql2 + author_sql2
+                f"({ph}) AND m.weight >= ? " + cat_sql2 + author_sql
             )
             q_params = list(statuses) + [min_weight] + params2
-            if author:
+            if author_needs_param:
                 q_params.append(author)
             conn = self._connect()
             try:
@@ -1082,7 +1091,7 @@ class MemoryStore:
                 now = datetime.now().isoformat()
                 child_ids = []
                 for part in parts:
-                    q = part.get("question", "").strip()
+                    q = (part.get("question") or "").strip()
                     if not q:
                         raise ValueError("each split part needs a question")
                     parent_path = self._path_for_category(
@@ -1708,9 +1717,8 @@ class MemoryStore:
     def authors(self) -> List[dict]:
         """Contributors with entry counts — the multi-user index.
 
-        Groups by author (empty or 'anonymous' attributed as
-        'anonymous'; legacy empty-string entries shown as
-        '(unattributed)' for backward compat):
+        Groups by author (empty/NULL/'anonymous' all attributed as
+        'anonymous' for unified display):
         [{author, entries, active}] ordered by total entries. Pure
         read; used by the read-only web UI author filter.
         """
@@ -1718,10 +1726,13 @@ class MemoryStore:
         try:
             rows = conn.execute(
                 "SELECT CASE WHEN author = '' OR author IS NULL "
-                "THEN '(unattributed)' ELSE author END "
-                "AS author, COUNT(*) AS entries, "
+                "OR author = 'anonymous' THEN 'anonymous' "
+                "ELSE author END AS author, COUNT(*) AS entries, "
                 "SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) "
-                "AS active FROM memories GROUP BY author "
+                "AS active FROM memories GROUP BY "
+                "CASE WHEN author = '' OR author IS NULL "
+                "OR author = 'anonymous' THEN 'anonymous' "
+                "ELSE author END "
                 "ORDER BY entries DESC").fetchall()
         finally:
             conn.close()

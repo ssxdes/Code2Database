@@ -91,7 +91,7 @@ class GraphCache:
         try:
             from _builder.cgdb_freshness import check_freshness
             src_root = os.path.dirname(os.path.abspath(self.graph_dir))
-            fr = check_freshness(self.graph_dir, src_root)
+            fr = check_freshness(self.graph_dir, src_root, use_cache=False)
             slim = {
                 "is_fresh": fr.get("is_fresh", True),
                 "staleness_ratio": fr.get("staleness_ratio", 0.0),

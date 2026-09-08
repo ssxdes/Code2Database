@@ -358,6 +358,10 @@ def _merge_project_data(joint_extraction: Dict[str, Any],
     EMPTY cgdb tables (graph_build gates the cgdb layer on
     cgdb_nodes/cgdb_types/cgdb_edges being non-empty), so every
     ``cgdb_*`` key must survive the merge.
+
+    Unknown keys (not legacy, not ``cgdb_*``) are logged as a warning
+    so future scanner additions that forget the ``cgdb_`` prefix are
+    visible instead of silently dropped.
     """
     joint_extraction["functions"].extend(project_data.get("functions", []))
     joint_extraction["edges"].extend(project_data.get("edges", []))
@@ -372,11 +376,26 @@ def _merge_project_data(joint_extraction: Dict[str, Any],
     # sync_primitives, happens_before, alias_sets, doc_comments,
     # metadata, includes, ...). Generic on purpose: any NEW cgdb_* key
     # the scanner starts emitting gets merged without another fix here.
+    _legacy_keys = {"functions", "edges", "globals", "vtables", "imports"}
     for k, v in project_data.items():
         if not k.startswith("cgdb_") or not isinstance(v, list):
             continue
         if v:
             joint_extraction.setdefault(k, []).extend(v)
+    # Warn about unknown keys so future scanner output is not silently lost
+    import logging
+    _logger = logging.getLogger(__name__)
+    for k in project_data:
+        if k in _legacy_keys or k.startswith("cgdb_"):
+            continue
+        if k in ("extraction_backend", "extraction_version", "scanner_version",
+                 "source_root", "scan_time", "profile"):
+            continue
+        _logger.warning(
+            "_merge_project_data: project '%s' emitted key '%s' which "
+            "is neither a legacy key nor cgdb_* — DROPPED. If this is a "
+            "new scanner output, prefix it with 'cgdb_' or add it to "
+            "the legacy list.", project_name, k)
 
 
 def build_multi(manifest_path: str, outdir: str, jobs: int = 0,

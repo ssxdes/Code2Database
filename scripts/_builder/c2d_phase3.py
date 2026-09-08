@@ -15,8 +15,8 @@ cross-team knowledge sharing.
    foreign_refs with foreign_c2d_path = service URL.
 
 4. Cross-team knowledge sharing: c2d-add-foreign --import-knowledge
-   copies the foreign C2D's knowledge/*.md into local knowledge/ as
-   foreign_<project>_*.md so kb-query sees them.
+   copies the foreign C2D's knowledge/brief.json into local knowledge/
+   as foreign_<project>_brief.json so kb-query sees them.
 """
 from __future__ import annotations
 

@@ -1482,21 +1482,45 @@ class Daemon:
             self.state.pending_events = len(self._pending)
 
     def _run_direct_sync(self, files: List[str]):
-        """Run direct incremental sync using stale-marking."""
+        """Run direct incremental sync.
+
+        Upgraded from stale-mark-only: when the graph is SQLite-backed,
+        calls build_update() for a precise per-file rescan + DB upsert
+        (content-hash detection, #include closure, ast_hash format-only
+        skip). Falls back to stale-marking for JSON-storage graphs or
+        on build_update failure.
+        """
+        db_path = os.path.join(self.graph_dir, "code2database.db")
+        if os.path.exists(db_path) and self.source_root:
+            try:
+                from _builder.build_update import build_update
+                report = build_update(
+                    self.source_root, self.graph_dir,
+                    extraction_backend=self.config.get("extraction_backend"))
+                self._log(
+                    f"sync: build_update — {report['updated_files']} updated, "
+                    f"{report['deleted_files']} deleted, "
+                    f"{report['format_only_skipped']} format-only skipped")
+                if self.config.get("auto_rebuild_outputs", True):
+                    self._rebuild_output_files()
+                return
+            except RuntimeError as exc:
+                self._log(f"sync: build_update unavailable ({exc}); "
+                          f"falling back to stale-mark")
+            except Exception as exc:
+                self._log(f"sync: build_update failed ({exc}); "
+                          f"falling back to stale-mark")
+
+        # Fallback: stale-mark only (the previous behavior)
         for f in files:
             if not os.path.exists(f):
-                # File was deleted — mark it stale so graph nodes
-                # from this file are flagged as stale (was: silent
-                # continue, leaving orphan nodes as "live" forever).
                 self._mark_file_stale(f)
                 self._log(f"file deleted: {f} — marked stale")
                 continue
-            # Light-scan the file and patch
             try:
                 self._mark_file_stale(f)
             except Exception as exc:
                 self._log(f"failed to sync {f}: {exc}")
-        # Rebuild output files if configured
         if self.config.get("auto_rebuild_outputs", True):
             self._rebuild_output_files()
 

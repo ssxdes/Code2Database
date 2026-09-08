@@ -298,7 +298,7 @@ class _McpHTTPHandler(BaseHTTPRequestHandler):
         self._send_json(200, {
             "status": "ok",
             "server": "Code2Database",
-            "version": "2.0.0",
+            "version": "2.1.0",
             "transport": "http",
             "graph_dir": self._graph_dir,
             "tools_total": available,

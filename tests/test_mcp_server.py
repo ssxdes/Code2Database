@@ -494,3 +494,44 @@ class TestMcpSaveMemory(unittest.TestCase):
         tmp = self._tmp_graph()
         out = _tool_save_memory({"answer": "orphan"}, tmp)
         self.assertIn("error", out)
+
+
+class TestDispatchRobustness(unittest.TestCase):
+    """Test dispatch_mcp_request handles malformed input gracefully."""
+
+    def test_null_params_does_not_crash(self):
+        """dispatch_mcp_request with params=null returns error, not crash."""
+        from _builder.mcp_server import dispatch_mcp_request
+        mcp_stats = {"total_calls": 0, "total_output_tokens": 0, "by_tool": {}}
+        response = dispatch_mcp_request(
+            "tools/call", 1, None, "/nonexistent", mcp_stats, False)
+        self.assertEqual(response["jsonrpc"], "2.0")
+        # Should return either an error or an isError result, not crash
+        if "error" in response:
+            self.assertIn(response["error"]["code"], (-32601, -32603))
+        else:
+            self.assertTrue(response.get("result", {}).get("isError", False))
+
+    def test_non_dict_params_does_not_crash(self):
+        """dispatch_mcp_request with params=42 returns error, not crash."""
+        from _builder.mcp_server import dispatch_mcp_request
+        mcp_stats = {"total_calls": 0, "total_output_tokens": 0, "by_tool": {}}
+        response = dispatch_mcp_request(
+            "tools/call", 2, "not_a_dict", "/nonexistent", mcp_stats, False)
+        self.assertEqual(response["jsonrpc"], "2.0")
+
+    def test_internal_error_returns_32603(self):
+        """If a handler raises unexpectedly, dispatch returns -32603."""
+        from _builder.mcp_server import dispatch_mcp_request
+        from unittest.mock import patch
+
+        mcp_stats = {"total_calls": 0, "total_output_tokens": 0, "by_tool": {}}
+
+        with patch(
+            "_builder.mcp_server._handle_initialize",
+            side_effect=RuntimeError("boom")
+        ):
+            response = dispatch_mcp_request(
+                "initialize", 3, {}, "/nonexistent", mcp_stats, False)
+        self.assertEqual(response["jsonrpc"], "2.0")
+        self.assertEqual(response["error"]["code"], -32603)

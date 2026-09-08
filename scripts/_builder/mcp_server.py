@@ -2307,7 +2307,7 @@ def _handle_initialize(msg_id) -> dict:
     return {"jsonrpc": "2.0", "id": msg_id, "result": {
         "protocolVersion": "2024-11-05",
         "capabilities": {"tools": {"listChanged": False}},
-        "serverInfo": {"name": "Code2Database", "version": "2.0.0"},
+        "serverInfo": {"name": "Code2Database", "version": "2.1.0"},
     }}
 
 
@@ -2319,8 +2319,12 @@ def _handle_tools_call(msg_id, params, graph_dir, mcp_stats,
     the stdio transport's behaviour).  On error the isError flag is set.
     Token usage is tracked in *mcp_stats* (mutated in place).
     """
+    if not isinstance(params, dict):
+        params = {}
     tool_name = params.get("name", "")
     tool_args = params.get("arguments", {})
+    if not isinstance(tool_args, dict):
+        tool_args = {}
 
     if tool_name not in TOOLS:
         return {"jsonrpc": "2.0", "id": msg_id,
@@ -2350,10 +2354,12 @@ def _handle_tools_call(msg_id, params, graph_dir, mcp_stats,
                 "result": {"content": [{"type": "text",
                     "text": json.dumps(result, ensure_ascii=False, indent=2)}]}}
     except Exception as e:
-        logging.getLogger(__name__).debug("tool error", exc_info=True)
+        logging.getLogger(__name__).warning(
+            "tool '%s' raised: %s", tool_name, e, exc_info=True)
         return {"jsonrpc": "2.0", "id": msg_id,
                 "result": {"content": [{"type": "text",
-                    "text": json.dumps({"error": str(e)})}],
+                    "text": json.dumps({"error": "internal error",
+                     "tool": tool_name})}],
                     "isError": True}}
 
 
@@ -2367,28 +2373,35 @@ def dispatch_mcp_request(method, msg_id, params, graph_dir, mcp_stats,
         None  — the method is a notification (no response expected, e.g.
                 ``notifications/initialized``).
     """
-    if method == "initialize":
-        return _handle_initialize(msg_id)
+    try:
+        if method == "initialize":
+            return _handle_initialize(msg_id)
 
-    if method == "notifications/initialized":
+        if method == "notifications/initialized":
+            return None
+
+        if method == "tools/list":
+            return {"jsonrpc": "2.0", "id": msg_id,
+                    "result": {"tools": _build_tools_list(read_only)}}
+
+        if method == "tools/call":
+            return _handle_tools_call(msg_id, params, graph_dir,
+                                      mcp_stats, read_only)
+
+        if method == "ping":
+            return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
+
+        if msg_id is not None:
+            return {"jsonrpc": "2.0", "id": msg_id,
+                    "error": {"code": -32601,
+                              "message": f"Method not found: {method}"}}
         return None
-
-    if method == "tools/list":
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "dispatch error for method '%s': %s", method, exc, exc_info=True)
         return {"jsonrpc": "2.0", "id": msg_id,
-                "result": {"tools": _build_tools_list(read_only)}}
-
-    if method == "tools/call":
-        return _handle_tools_call(msg_id, params, graph_dir,
-                                  mcp_stats, read_only)
-
-    if method == "ping":
-        return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
-
-    if msg_id is not None:
-        return {"jsonrpc": "2.0", "id": msg_id,
-                "error": {"code": -32601,
-                          "message": f"Method not found: {method}"}}
-    return None
+                "error": {"code": -32603,
+                          "message": "Internal error"}}
 
 
 # ---------------------------------------------------------------------------
@@ -2423,9 +2436,18 @@ def run_mcp_server(graph_dir: str, read_only: bool = False):
         method = msg.get("method", "")
         msg_id = msg.get("id")
         params = msg.get("params", {})
+        if not isinstance(params, dict):
+            params = {}
 
-        response = dispatch_mcp_request(
-            method, msg_id, params, graph_dir, mcp_stats, read_only)
+        try:
+            response = dispatch_mcp_request(
+                method, msg_id, params, graph_dir, mcp_stats, read_only)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "uncaught error in dispatch_mcp_request", exc_info=True)
+            response = {"jsonrpc": "2.0", "id": msg_id,
+                        "error": {"code": -32603,
+                                  "message": "Internal error"}}
         if response is not None:
             _write_message(response)
 

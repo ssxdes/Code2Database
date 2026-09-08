@@ -26,6 +26,7 @@
     "flow",
     "concurrency",
     "context",
+    "make",
     "build",
     "update",
     "save-memory",

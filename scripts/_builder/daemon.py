@@ -1221,6 +1221,8 @@ class Daemon:
                         with self._pending_lock:
                             self._pending.update(job.get("paths", []))
                         result = self._sync_incremental()
+                    if hasattr(self, '_file_to_nodes_cache'):
+                        del self._file_to_nodes_cache
                     self._last_sync_result = {
                         "kind": job["kind"],
                         "completed_at": time.time(),
@@ -1235,6 +1237,8 @@ class Daemon:
                         "ok": False,
                         "error": str(exc),
                     }
+                    with self._pending_lock:
+                        self._pending.update(job.get("paths", []))
                 finally:
                     with self._sync_busy_lock:
                         self._sync_busy = False
@@ -1786,7 +1790,10 @@ class Daemon:
                 target=self._accept_loop, daemon=True, name="daemon-socket")
             self._socket_thread.start()
         except Exception as exc:
-            self._log(f"failed to start socket server: {exc}")
+            self._server_socket = None
+            logging.getLogger(__name__).error(
+                "daemon: failed to start socket server: %s", exc, exc_info=True)
+            self._log(f"ERROR: failed to start socket server: {exc}")
 
     def _accept_loop(self):
         """Accept connections and handle requests."""

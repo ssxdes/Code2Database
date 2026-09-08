@@ -179,7 +179,7 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 │        社区检测、端点分类、入口评分、数据竞争检测、                    │
 │        lock-coverage、不变量、FFI、文档-代码、                        │
 │        提交来源绑定到 git/svn HEAD                                    │
-│  文件：scripts/_builder/graph_build.py（核心，7447 行），            │
+│  文件：scripts/_builder/graph/graph_build.py（核心，7447 行），            │
 │        streaming_graph.py, index_pack.py, query.py,                 │
 │        entry_scoring.py, concurrency_analysis.py,                   │
 │        import_resolve.py, lock_coverage.py, invariants.py,          │
@@ -205,7 +205,7 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 │  职责：监视源路径，debounce + 批处理事件，                             │
 │        将更新包裹在事务中，自动重建输出文件，                          │
 │        暴露 Unix socket API                                          │
-│  文件：scripts/_builder/daemon.py, watcher.py                       │
+│  文件：scripts/_builder/daemon/daemon.py, watcher.py                       │
 │  CLI：scripts/code2database_builder.py daemon-start                  │
 │  Socket：/tmp/code2database-daemon-<project>.sock                    │
 │  状态：<graph_dir>/.daemon_status.json                              │
@@ -445,9 +445,9 @@ scripts/
 │   │                                auto-detect 阶段。SourceInfoCollector 单次 os.walk
 │   └── llm_phases.py             ← LLM 驱动的 Phase 4（头文件分析）+ Phase 6（结果检查）
 │
-├── _builder/                     ← 图构建和查询模块（54K 行，70 个文件）
+├── _builder/                     ← 图构建和查询模块（85K 行，139 个文件，14 子目录）
 │   ├── __init__.py               ← 懒加载机制（首次访问才加载模块）
-│   ├── graph_build.py            ← 核心图构建（7447 行）：build_graph、cmd_build、
+│   ├── graph_build.py (graph/)  ← 核心图构建（5496 行）：build_graph、cmd_build、
 │   │                                领域拆分、提交哈希检测、测试领域检测、
 │   │                                cgdb 擦除重建
 │   ├── streaming_graph.py        ← StreamingGraph：NetworkX 兼容 API，流式写入

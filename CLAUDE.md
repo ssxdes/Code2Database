@@ -106,20 +106,20 @@ python3 scripts/code2database_scanner.py scan --source /path --extraction-backen
 | `scripts/code2database_builder.py` | Builder CLI entry point (main command hub, 241 builder + 8 scanner = 249 commands organized into 3 sub-skills: `/Code2Database` core, `/Code2Database-analysis`, `/Code2Database-ops`) |
 | `scripts/_scanner/` | Language-specific AST scanners (C, Go, Python, Java, Rust) |
 | `scripts/_builder/` | Graph building, query, export, memory, knowledge modules |
-| `scripts/_builder/invariants.py` | Invariant extraction (preconditions/postconditions/loop_invariants/state_machine) |
-| `scripts/_builder/auto_enhance.py` | LLM auto-semantic enhancement with confidence-threshold auto-write |
-| `scripts/_builder/transactions.py` | Transactional updates — WAL + snapshots + fcntl locks |
-| `scripts/_builder/ffi_bridge.py` | Cross-language FFI detection (Python ctypes / Go cgo / Rust extern "C") |
-| `scripts/_builder/web_ui.py` | Interactive Web UI server (single-file HTML/SVG/JS) |
-| `scripts/_builder/bug_benchmark.py` | BUG benchmark — GraphInvestigator vs GrepInvestigator |
-| `scripts/_builder/profile_health.py` | Profile health (0-100 across 7 categories) + auto-evolution + git/svn HEAD binding |
-| `scripts/_builder/doc_code_align.py` | Doc-code alignment (return value / param / signature / stale-doc mismatch detection) |
-| `scripts/_builder/daemon.py` | Background daemon (inotify + polling fallback + Unix socket API) |
-| `scripts/_builder/query_lang.py` | Cypher-subset query parser (MATCH/WHERE/RETURN) |
-| `scripts/_builder/value_flow.py` | Value flow / DATA_FLOW edges (parameter→return-value propagation) |
-| `scripts/_builder/lock_coverage.py` | Lock-held region analysis with event-stream + char positions |
-| `scripts/_builder/path_feasibility.py` | Z3 SMT path feasibility (heuristic fallback when Z3 unavailable) |
-| `scripts/_builder/data_dep.py` | Cross-function data dependency (DATA_DEP edges) |
+| `scripts/_builder/analysis/invariants.py` | Invariant extraction (preconditions/postconditions/loop_invariants/state_machine) |
+| `scripts/_builder/build/auto_enhance.py` | LLM auto-semantic enhancement with confidence-threshold auto-write |
+| `scripts/_builder/ops/transactions.py` | Transactional updates — WAL + snapshots + fcntl locks |
+| `scripts/_builder/misc/ffi_bridge.py` | Cross-language FFI detection (Python ctypes / Go cgo / Rust extern "C") |
+| `scripts/_builder/misc/web_ui.py` | Interactive Web UI server (single-file HTML/SVG/JS) |
+| `scripts/_builder/misc/bug_benchmark.py` | BUG benchmark — GraphInvestigator vs GrepInvestigator |
+| `scripts/_builder/profile/profile_health.py` | Profile health (0-100 across 7 categories) + auto-evolution + git/svn HEAD binding |
+| `scripts/_builder/misc/doc_code_align.py` | Doc-code alignment (return value / param / signature / stale-doc mismatch detection) |
+| `scripts/_builder/daemon/daemon.py` | Background daemon (inotify + polling fallback + Unix socket API) |
+| `scripts/_builder/query/query_lang.py` | Cypher-subset query parser (MATCH/WHERE/RETURN) |
+| `scripts/_builder/analysis/value_flow.py` | Value flow / DATA_FLOW edges (parameter→return-value propagation) |
+| `scripts/_builder/analysis/lock_coverage.py` | Lock-held region analysis with event-stream + char positions |
+| `scripts/_builder/analysis/path_feasibility.py` | Z3 SMT path feasibility (heuristic fallback when Z3 unavailable) |
+| `scripts/_builder/analysis/data_dep.py` | Cross-function data dependency (DATA_DEP edges) |
 | `scripts/_detector/` | Build system, framework, and community detection |
 | `scripts/_profile/` | Profile schema and auto-generation |
 | `scripts/config/profiles/` | Built-in project profiles (DO NOT read into context) |

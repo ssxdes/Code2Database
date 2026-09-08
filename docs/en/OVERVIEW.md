@@ -181,7 +181,7 @@ The daemon coordinates with manual updates via `pause`/`resume` socket commands 
 │                  classification, entry scoring, data race detection, │
 │                  lock-coverage, invariants, FFI, doc-code,           │
 │                  commit-provenance binding to git/svn HEAD           │
-│  Files: scripts/_builder/graph_build.py (core, 7447 lines),         │
+│  Files: scripts/_builder/graph/graph_build.py (core, 7447 lines),         │
 │         streaming_graph.py, index_pack.py, query.py,                │
 │         entry_scoring.py, concurrency_analysis.py,                  │
 │         import_resolve.py, lock_coverage.py, invariants.py,         │
@@ -207,7 +207,7 @@ The daemon coordinates with manual updates via `pause`/`resume` socket commands 
 │  Responsibility: Watch source paths, debounce + batch events,        │
 │                  wrap updates in transaction, auto-rebuild           │
 │                  output files, expose Unix socket API                │
-│  Files: scripts/_builder/daemon.py, watcher.py                      │
+│  Files: scripts/_builder/daemon/daemon.py, watcher.py                      │
 │  CLI: scripts/code2database_builder.py daemon-start                  │
 │  Socket: /tmp/code2database-daemon-<project>.sock                    │
 │  State: <graph_dir>/.daemon_status.json                             │
@@ -447,9 +447,9 @@ scripts/
 │   │                                auto-detect phases. SourceInfoCollector single os.walk
 │   └── llm_phases.py             ← LLM-driven Phase 4 (header analysis) + Phase 6 (result check)
 │
-├── _builder/                     ← Graph building and query modules (54K lines, 70 files)
+├── _builder/                     ← Graph building and query modules (85K lines, 139 files, 14 subdirs)
 │   ├── __init__.py               ← Lazy import mechanism (delays module load until first access)
-│   ├── graph_build.py            ← Core graph construction (7447 lines): build_graph, cmd_build,
+│   ├── graph_build.py (graph/)  ← Core graph construction (5496 lines): build_graph, cmd_build,
 │   │                                domain split, commit hash detection, test domain detection,
 │   │                                cgdb wipe-and-rebuild
 │   ├── build_phases.py           ← Extracted build phases (1399 lines): 23 testable phase

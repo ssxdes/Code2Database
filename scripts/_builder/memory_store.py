@@ -128,7 +128,11 @@ CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
     INSERT INTO memories_fts(memories_fts, rowid, question, answer, tags)
     VALUES ('delete', old.id, old.question, old.answer, COALESCE(old.tags, '[]'));
 END;
-CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+-- L5: fire only when FTS-relevant columns change, not on every
+-- UPDATE (access_count / weight / last_accessed bumps were
+-- triggering a full FTS5 delete+reinsert on every memory search).
+DROP TRIGGER IF EXISTS memories_au;
+CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE OF question, answer, tags ON memories BEGIN
     INSERT INTO memories_fts(memories_fts, rowid, question, answer, tags)
     VALUES ('delete', old.id, old.question, old.answer, COALESCE(old.tags, '[]'));
     INSERT INTO memories_fts(rowid, question, answer, tags)

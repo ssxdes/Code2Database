@@ -44,6 +44,8 @@ from pathlib import Path
 from typing import Optional, List, Dict, Set, Tuple
 import logging
 
+from _builder.utils import normalize_str_field
+
 
 # ---------------------------------------------------------------------------
 # Mismatch detection
@@ -160,7 +162,7 @@ def _check_return_value_mismatch(node_id: str, node_data: Dict) -> List[DocCodeM
     doc_text = " ".join(filter(None, [
         node_data.get("semantic_desc", ""),
         node_data.get("external_desc", ""),
-        node_data.get("api_constraints", ""),
+        normalize_str_field(node_data.get("api_constraints", "")),
         node_data.get("doc_comment", ""),
     ]))
     if not doc_text:
@@ -195,7 +197,7 @@ def _check_param_mismatch(node_id: str, node_data: Dict) -> List[DocCodeMismatch
     doc_text = " ".join(filter(None, [
         node_data.get("semantic_desc", ""),
         node_data.get("external_desc", ""),
-        node_data.get("api_constraints", ""),
+        normalize_str_field(node_data.get("api_constraints", "")),
         node_data.get("doc_comment", ""),
     ]))
     if not doc_text:

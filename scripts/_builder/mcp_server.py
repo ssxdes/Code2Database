@@ -7,8 +7,8 @@ CLI subprocess calls.
 Usage:
     python code2database_builder.py serve --graph code2db-out/
 
-MCP Tools exposed (82 total):
-    - 35 code2database_* tools (load, search, describe, explore, trace,
+MCP Tools exposed (83 total):
+    - 36 code2database_* tools (load, search, describe, explore, trace,
       impact, key_paths, concurrency, data_lifecycle, domain, knowledge_query,
       memory_search, semantic_status, blast_radius, field_access,
       session_init, etc.)
@@ -2242,17 +2242,17 @@ TOOLS = {
 # insert_node_after / delete_node / add_function).
 # These implement design-report appendix B (28 tools: 8 L1 + 8 L2 + 7 L3 +
 # 2 writeback + 3 advanced-edit). They are imported from mcp_report_tools
-# so mcp_server.py stays under 2000 lines. Total tool count: 53 + 28 = 81.
+# so mcp_server.py stays under 2000 lines. Total tool count: 55 + 28 = 83.
 # ============================================================================
 try:
     from _builder.mcp_report_tools import TOOLS_REPORT
     TOOLS.update(TOOLS_REPORT)
 except ImportError:
     # mcp_report_tools not available — log loudly so the user knows
-    # the server is starting with 53 tools instead of the documented 81.
+    # the server is starting with 55 tools instead of the documented 83.
     logging.getLogger(__name__).error(
         "mcp_report_tools import failed — MCP server starting with "
-        "%d tools (expected 81). Design-report tools unavailable.",
+        "%d tools (expected 83). Design-report tools unavailable.",
         len(TOOLS))
 
 

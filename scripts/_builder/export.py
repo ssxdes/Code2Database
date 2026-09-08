@@ -15,6 +15,26 @@ import logging
 _DOMAIN_SAFE_RE = re.compile(r'[^A-Za-z0-9_\-]')
 
 
+def _esc(value) -> str:
+    """html.escape that tolerates list/dict values from node data.
+
+    Node attributes like ``api_constraints`` may be stored as a list
+    (e.g. ``["no_preempt", "irq_safe"]``).  Passing a list to
+    ``html.escape`` raises ``AttributeError: 'list' object has no
+    attribute 'replace'``.  This helper coerces non-str values to a
+    comma-joined string before escaping.
+    """
+    import html as _html
+    if not isinstance(value, str):
+        if isinstance(value, (list, tuple)):
+            value = ", ".join(str(v) for v in value)
+        elif value is None:
+            value = ""
+        else:
+            value = str(value)
+    return _html.escape(value)
+
+
 def _safe_domain_filename(domain: str) -> str:
     return _DOMAIN_SAFE_RE.sub('_', domain)
 
@@ -281,7 +301,7 @@ def _write_html_file(G: nx.DiGraph, output_path: str, title: str, full_graph: bo
                       f"File: {html_module.escape(location)}<br>"
                       f"Domain: {html_module.escape(ndata.get('domain', ''))}<br>"
                       f"Labels: {html_module.escape(label_str)}<br>"
-                      f"Constraints: {html_module.escape(ndata.get('api_constraints', ''))}<br>"
+                      f"Constraints: {_esc(ndata.get('api_constraints', ''))}<br>"
                       f"Desc: {html_module.escape(ndata.get('external_desc', '') or ndata.get('semantic_desc', ''))}")
 
         vis_nodes.append({
@@ -527,7 +547,7 @@ def _write_mermaid_html(G: nx.DiGraph, output_path: str, title: str):
         labels = html_module.escape(", ".join(ndata.get("labels", [])))
         loc = html_module.escape(ndata.get("location", ""))
         domain = html_module.escape(ndata.get("domain", ""))
-        constraints = html_module.escape(ndata.get("api_constraints", ""))
+        constraints = _esc(ndata.get("api_constraints", ""))
         desc = html_module.escape(ndata.get("semantic_desc", "") or ndata.get("external_desc", ""))
         node_rows.append(
             f'<tr><td class="font-mono text-xs">{name}</td>'
@@ -749,7 +769,7 @@ def cmd_export_obsidian(args):
         # Body
         body = f"# {name}\n\n"
         if ndata.get("api_constraints"):
-            body += f"**Constraints**: {ndata['api_constraints']}\n\n"
+            body += f"**Constraints**: {_esc(ndata['api_constraints'])}\n\n"
 
         # Callers (backlinks, call edges only)
         callers = [c for c in G.predecessors(nid)

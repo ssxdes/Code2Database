@@ -119,6 +119,36 @@ class TestSkillManifest(unittest.TestCase):
         self.assertEqual(ghosts, set(),
                          f"on_demand ghosts: {sorted(ghosts)}")
 
+    def test_builder_command_count_is_238(self):
+        """Pin the builder subcommand count — docs reference this number."""
+        self.assertEqual(len(self.builder), 238,
+                         "Builder subcommand count drifted from 238; "
+                         "update SKILL.md/AGENTS.md to match: %d"
+                         % len(self.builder))
+
+    def test_scanner_command_count_is_8(self):
+        """Pin the scanner subcommand count."""
+        self.assertEqual(len(self.scanner), 8,
+                         "Scanner subcommand count drifted from 8: %d"
+                         % len(self.scanner))
+
+    def test_mcp_tool_counts_match_docs(self):
+        """MCP tool counts must match the documented 83 total."""
+        from _builder.mcp_server import TOOLS, TOOLS_REPORT
+        c2d = sum(1 for k in TOOLS if k.startswith("code2database_"))
+        cgdb = sum(1 for k in TOOLS if k.startswith("cgdb_"))
+        self.assertEqual(c2d, 36,
+                         "code2database_* tool count drifted from 36: %d"
+                         % c2d)
+        self.assertEqual(cgdb, 19,
+                         "cgdb_* tool count drifted from 19: %d" % cgdb)
+        self.assertEqual(len(TOOLS_REPORT), 28,
+                         "report tool count drifted from 28: %d"
+                         % len(TOOLS_REPORT))
+        self.assertEqual(len(TOOLS), 83,
+                         "total TOOLS count drifted from 83: %d"
+                         % len(TOOLS))
+
 
 if __name__ == "__main__":
     unittest.main()

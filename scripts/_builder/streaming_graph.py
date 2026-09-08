@@ -21,6 +21,8 @@ import time
 from typing import Dict, List, Tuple, Set
 import logging
 
+from _builder.utils import normalize_str_field as _normalize_str_field
+
 
 class _StreamingNodeView:
     """NetworkX-compatible NodeView for StreamingGraph.
@@ -823,6 +825,13 @@ class LazySQLiteGraph:
         self._pred_cache_max = 50000
         self._node_neg_cache: OrderedDict = OrderedDict()
         self._node_neg_cache_max = 10000
+        # Full-edge-list cache for edges(data=True/False). The graph is
+        # read-only, so the edge set never changes during the object's
+        # lifetime — but the web UI calls edges(data=True) from multiple
+        # endpoints (summary, domain-breakdown, cycle-detection) and each
+        # call was a full SELECT + JSON-parse pass over 97K+ edges.
+        self._edges_data_cache = None
+        self._edges_nodata_cache = None
         # nx.DiGraph-compatibility attrs. networkx functions like nx.compose
         # call `result.graph.update(G1.graph)` which requires a `.graph` dict.
         # LazySQLiteGraph is read-only, so we expose an empty dict — callers
@@ -927,7 +936,7 @@ class LazySQLiteGraph:
             "labels_source": extra.get("labels_source", {l: "ast" for l in labels}),
             "is_empty": extra.get("is_empty", False),
             "condition": extra.get("condition", ""),
-            "api_constraints": extra.get("api_constraints", ""),
+            "api_constraints": _normalize_str_field(extra.get("api_constraints", "")),
             "external_desc": extra.get("external_desc", ""),
             "semantic_desc": extra.get("semantic_desc", ""),
             "body_text": "",  # lazy — use get_body_text(nid) to fetch
@@ -1223,38 +1232,53 @@ class LazySQLiteGraph:
                 yield (row[0], row[1])
 
     def edges(self, data: bool = False):
+        # Cache the full edge list: the graph is read-only so the edge
+        # set never changes. Without this, every web-ui endpoint that
+        # calls G.edges(data=True) (summary, domain-breakdown,
+        # cycle-detection) re-runs SELECT * FROM edges + JSON parse on
+        # 97K+ edges — 3-5s each, all under the GraphCache global lock.
         if data:
-            cur = self._conn.execute(
-                "SELECT invoker_id, invoked_id, call_order, call_condition, "
-                "concurrency, confidence, confidence_score, source, evidence, "
-                "relation FROM edges")
-            import json as _json
-            for row in cur:
-                row_dict = dict(row)
-                evidence = []
-                ev_raw = row_dict.get("evidence")
-                if ev_raw:
-                    try:
-                        evidence = _json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
-                    except (_json.JSONDecodeError, TypeError):
-                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                        pass
-                attrs = {
-                    "call_order": row_dict.get("call_order"),
-                    "call_condition": row_dict.get("call_condition", "") or "",
-                    "concurrency": row_dict.get("concurrency", "") or "",
-                    "confidence": row_dict.get("confidence") or "EXTRACTED",
-                    "confidence_score": row_dict.get("confidence_score") if row_dict.get("confidence_score") is not None else 1.0,
-                    "source": row_dict.get("source") or "ast",
-                    "evidence": evidence,
-                    "relation": row_dict.get("relation") or "INVOKES",
-                }
-                yield (row_dict["invoker_id"], row_dict["invoked_id"], attrs)
+            if self._edges_data_cache is None:
+                self._edges_data_cache = list(self._edges_data_iter())
+            yield from self._edges_data_cache
         else:
-            cur = self._conn.execute(
-                "SELECT invoker_id, invoked_id FROM edges")
-            for row in cur:
-                yield (row[0], row[1])
+            if self._edges_nodata_cache is None:
+                self._edges_nodata_cache = list(self._edges_nodata_iter())
+            yield from self._edges_nodata_cache
+
+    def _edges_data_iter(self):
+        cur = self._conn.execute(
+            "SELECT invoker_id, invoked_id, call_order, call_condition, "
+            "concurrency, confidence, confidence_score, source, evidence, "
+            "relation FROM edges")
+        import json as _json
+        for row in cur:
+            row_dict = dict(row)
+            evidence = []
+            ev_raw = row_dict.get("evidence")
+            if ev_raw:
+                try:
+                    evidence = _json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
+                except (_json.JSONDecodeError, TypeError):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                    pass
+            attrs = {
+                "call_order": row_dict.get("call_order"),
+                "call_condition": row_dict.get("call_condition", "") or "",
+                "concurrency": row_dict.get("concurrency", "") or "",
+                "confidence": row_dict.get("confidence") or "EXTRACTED",
+                "confidence_score": row_dict.get("confidence_score") if row_dict.get("confidence_score") is not None else 1.0,
+                "source": row_dict.get("source") or "ast",
+                "evidence": evidence,
+                "relation": row_dict.get("relation") or "INVOKES",
+            }
+            yield (row_dict["invoker_id"], row_dict["invoked_id"], attrs)
+
+    def _edges_nodata_iter(self):
+        cur = self._conn.execute(
+            "SELECT invoker_id, invoked_id FROM edges")
+        for row in cur:
+            yield (row[0], row[1])
 
     def add_node(self, *args, **kwargs):
         raise NotImplementedError("LazySQLiteGraph is read-only")
@@ -1266,6 +1290,8 @@ class LazySQLiteGraph:
         raise NotImplementedError("LazySQLiteGraph is read-only")
 
     def close(self):
+        self._edges_data_cache = None
+        self._edges_nodata_cache = None
         try:
             self._conn.close()
         except Exception:

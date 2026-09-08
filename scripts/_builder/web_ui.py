@@ -46,6 +46,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from typing import Optional, List, Dict, Any, Set, Tuple
 import logging
 
+from _builder.utils import normalize_str_field
+
 
 # ---------------------------------------------------------------------------
 # Graph cache — load once at server startup, refresh on demand
@@ -275,7 +277,7 @@ class GraphCache:
                 "signature": nd.get("signature", ""),
                 "semantic_desc": nd.get("semantic_desc", ""),
                 "external_desc": nd.get("external_desc", ""),
-                "api_constraints": nd.get("api_constraints", ""),
+                "api_constraints": normalize_str_field(nd.get("api_constraints", "")),
                 "is_empty": nd.get("is_empty", False),
             }
 

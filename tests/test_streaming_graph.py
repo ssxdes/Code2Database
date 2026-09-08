@@ -94,6 +94,44 @@ class TestLazySQLiteGraphBasicRead(unittest.TestCase):
     def test_number_of_edges(self):
         self.assertEqual(self._g.number_of_edges(), 2)
 
+    def test_edges_data_cached(self):
+        """edges(data=True) caches: second call returns same list object."""
+        first = list(self._g.edges(data=True))
+        self.assertEqual(len(first), 2)
+        # Cache should now be populated
+        self.assertIsNotNone(self._g._edges_data_cache)
+        second = list(self._g.edges(data=True))
+        self.assertEqual(len(second), 2)
+        # Same underlying cache object (not re-queried)
+        self.assertIs(self._g._edges_data_cache, self._g._edges_data_cache)
+
+    def test_edges_nodata_cached(self):
+        """edges(data=False) caches: second call returns same list."""
+        first = list(self._g.edges(data=False))
+        self.assertEqual(len(first), 2)
+        self.assertIsNotNone(self._g._edges_nodata_cache)
+        second = list(self._g.edges(data=False))
+        self.assertEqual(len(second), 2)
+
+    def test_edges_cache_cleared_on_close(self):
+        """close() must clear edge caches to release memory."""
+        list(self._g.edges(data=True))
+        self.assertIsNotNone(self._g._edges_data_cache)
+        self._g.close()
+        self.assertIsNone(self._g._edges_data_cache)
+        self.assertIsNone(self._g._edges_nodata_cache)
+
+    def test_edges_data_content_correct(self):
+        """Cached edges have the right structure: (src, dst, attrs)."""
+        edges = list(self._g.edges(data=True))
+        pairs = {(e[0], e[1]) for e in edges}
+        self.assertIn(("func_a", "func_b"), pairs)
+        self.assertIn(("func_b", "func_c"), pairs)
+        # Each edge has attrs dict with relation
+        for u, v, attrs in edges:
+            self.assertIsInstance(attrs, dict)
+            self.assertIn("relation", attrs)
+
 
 class TestStreamingGraphCloseIdempotent(unittest.TestCase):
     """Regression test for double-close empty-table (BUG-LZ-5)."""

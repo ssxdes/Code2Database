@@ -2428,7 +2428,7 @@ class AsmRegexScanner(BaseScanner):
             "domain": domain,
             "labels": [label] if label else ["unknown_end"],
             "is_empty": not body_text.strip(),
-            "api_constraints": [],
+            "api_constraints": "",
             "body_text": body_text,
             "signature": f"{func_name}:",
             "params": [],

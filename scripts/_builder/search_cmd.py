@@ -8,6 +8,7 @@ from collections import defaultdict
 import networkx as nx
 from _builder.graph_build import _load_full_graph
 from _builder.query_cache import cached_query
+from _builder.utils import normalize_str_field
 import logging
 
 
@@ -749,7 +750,7 @@ def cmd_search(args):
         body = (d.get("body_text") or "").lower()
         semantic = (d.get("semantic_desc") or "").lower()
         ext_desc = (d.get("external_desc") or "").lower()
-        constraints = (d.get("api_constraints") or "").lower()
+        constraints = normalize_str_field(d.get("api_constraints")).lower()
         # Also search callee_args
         callee_args_text = " ".join(
             ca.get("args_snippet", "").lower() + ca.get("callee", "").lower()
@@ -880,7 +881,7 @@ def _cmd_search_from_sqlite(db_path: str, args):
                 continue
             semantic = (extra.get("semantic_desc") or "").lower()
             ext_desc = (extra.get("external_desc") or "").lower()
-            constraints = (extra.get("api_constraints") or "").lower()
+            constraints = normalize_str_field(extra.get("api_constraints")).lower()
 
             score = 0
             for kw in keywords:

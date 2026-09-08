@@ -18,7 +18,7 @@ def _ns(**kw):
     base = dict(source="", graph="code2db-out", lang="auto",
                 extraction_backend="auto", compile_commands="",
                 clang_args="", profile="", workers=0,
-                large_project=False, check=False,
+                large_project=False, check=False, force=False,
                 # pass-through defaults (0/None/""/False = don't forward)
                 parallel_mode=None, max_workers=0, macros="",
                 macros_from="", memory_warn_threshold=0.0,
@@ -692,3 +692,65 @@ class TestScanVerification(unittest.TestCase):
             errors, warnings = self._verify(src, d)
             self.assertFalse(errors)
             self.assertTrue(warnings)
+
+
+class TestDaemonConflictDetection(unittest.TestCase):
+    """make must abort if the daemon is running (SQLite write-lock conflict)."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self.source = os.path.join(self._tmp, "proj")
+        os.makedirs(self.source)
+        open(os.path.join(self.source, "main.c"), "w").write(
+            "int main(void){return 0;}\n")
+        self.graph = os.path.join(self._tmp, "g-out")
+
+    def _patch_env(self):
+        patcher_lib = mock.patch.object(
+            make_cmd, "check_libclang",
+            return_value=TestDecideBackend._CLANG_OK)
+        patcher_mod = mock.patch.object(make_cmd, "_module_available",
+                                        return_value=True)
+        patcher_lib.start()
+        patcher_mod.start()
+        self.addCleanup(patcher_lib.stop)
+        self.addCleanup(patcher_mod.stop)
+
+    def test_make_aborts_when_daemon_running(self):
+        """make must exit(1) when daemon is running and --force not given."""
+        self._patch_env()
+        with mock.patch("_builder.daemon.is_daemon_running",
+                        return_value=True):
+            with self.assertRaises(SystemExit) as cm:
+                args = _ns(source=self.source, graph=self.graph)
+                make_cmd.cmd_make(args)
+            self.assertEqual(cm.exception.code, 1)
+
+    def test_make_proceeds_with_force_when_daemon_running(self):
+        """make --force must proceed even when daemon is running."""
+        self._patch_env()
+        calls = []
+        with mock.patch("_builder.daemon.is_daemon_running",
+                        return_value=True), \
+             mock.patch.object(
+                 make_cmd.subprocess, "run",
+                 side_effect=lambda c: calls.append(c) or SimpleNamespace(returncode=0)):
+            args = _ns(source=self.source, graph=self.graph,
+                       force=True, serial_derived=True)
+            make_cmd.cmd_make(args)
+        # scan + build + derived steps all ran
+        self.assertGreater(len(calls), 2)
+
+    def test_make_proceeds_when_no_daemon(self):
+        """Normal path: no daemon running, make proceeds."""
+        self._patch_env()
+        calls = []
+        with mock.patch("_builder.daemon.is_daemon_running",
+                        return_value=False), \
+             mock.patch.object(
+                 make_cmd.subprocess, "run",
+                 side_effect=lambda c: calls.append(c) or SimpleNamespace(returncode=0)):
+            args = _ns(source=self.source, graph=self.graph,
+                       serial_derived=True)
+            make_cmd.cmd_make(args)
+        self.assertGreater(len(calls), 2)

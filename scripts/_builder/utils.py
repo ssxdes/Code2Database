@@ -11,8 +11,32 @@ import logging
 
 
 # Cache source_root per graph_dir to avoid re-reading master.json on every
-# describe-node / get-source query. Invalidated only on graph reload.
+# describe-node / get-source / get-source query. Invalidated only on graph reload.
 _SOURCE_ROOT_CACHE: dict = {}
+
+
+def normalize_str_field(value) -> str:
+    """Coerce a node-data field value to a string.
+
+    Scanners store some fields (e.g. ``api_constraints``) as ``[]``
+    (an empty list) or a list of strings when non-empty. Downstream
+    code that calls ``.lower()``, ``.replace()``, or ``" ".join()``
+    on these values raises ``AttributeError`` / ``TypeError``.
+
+    This helper normalizes:
+      - ``None`` → ``""``
+      - ``[]`` (empty list) → ``""``
+      - ``["a", "b"]`` → ``"a, b"``
+      - ``""`` / ``"text"`` → unchanged
+      - other types → ``str(value)``
+    """
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(v) for v in value)
+    if isinstance(value, str):
+        return value
+    return str(value)
 
 
 def resolve_source_file(file_path: str, graph_dir: str) -> str:

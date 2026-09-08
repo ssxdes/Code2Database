@@ -538,6 +538,32 @@ def _do_make(rep, args):
     kb-rebuild-index dependency chain stay serial. --serial-derived
     opts out for memory-constrained environments.
     """
+    # Daemon conflict detection: make writes to the same SQLite DB the
+    # daemon watches. If the daemon is online its inotify watcher may
+    # trigger a concurrent sync mid-build → "database is locked" and
+    # inconsistent graph state. Abort unless --force is given.
+    graph_dir = rep.get("graph", "")
+    if graph_dir:
+        try:
+            from _builder.daemon import is_daemon_running
+            if is_daemon_running(graph_dir):
+                if getattr(args, "force", False):
+                    print("[make] WARNING: daemon is running for %s — "
+                          "proceeding with --force (SQLite write-lock "
+                          "conflicts may occur)" % graph_dir, file=sys.stderr)
+                else:
+                    print("[make] ERROR: daemon is running for %s.\n"
+                          "  The daemon's inotify watcher will trigger a "
+                          "concurrent sync during the build, causing\n"
+                          "  SQLite 'database is locked' errors and "
+                          "potential graph corruption.\n"
+                          "  Run 'daemon-stop --graph %s' first, or use "
+                          "'--force' to proceed at your own risk."
+                          % (graph_dir, graph_dir), file=sys.stderr)
+                    sys.exit(1)
+        except ImportError:
+            pass  # daemon module unavailable — skip check
+
     steps = _build_steps(rep, args)
     total = len(steps)
     failures, skipped = [], []

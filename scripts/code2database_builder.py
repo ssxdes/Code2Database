@@ -981,6 +981,9 @@ def main():
                       action="store_true",
                       help="Run derived steps serially (no parallel ThreadPool; "
                            "use on memory-constrained machines)")
+    p_mk.add_argument("--force", action="store_true",
+                      help="Proceed even if the daemon is running (normally "
+                           "make aborts to avoid SQLite write-lock conflicts)")
     # --- Shared scan+build pass-through (each tool accepts these) ---
     p_mk.add_argument("--parallel-mode", choices=["thread", "process"], default=None,
                       help="Parallelism model for scan + build: 'thread' (default) or "

@@ -9,6 +9,7 @@ from collections import Counter, defaultdict
 import networkx as nx
 from _builder.query import _resolve_detailed_chain, _trace_simple_chain
 from _builder.token_budget import estimate_tokens
+from _builder.utils import normalize_str_field
 import logging
 
 _CB_NUM_SUFFIX_RE = re.compile(r'.*_cb\d+$')
@@ -315,7 +316,8 @@ def _build_callgraph_summary_md(G: nx.DiGraph, outdir: str, source_root: str = "
         lines.append("|----------|--------|-----------|-------------|")
         for api, _ in top_apis:
             sig = api["signature"].replace("|", "\\|")[:60]
-            constraints = api["api_constraints"].replace("|", "\\|")[:40] if api["api_constraints"] else "—"
+            _constraints = normalize_str_field(api.get("api_constraints", ""))
+            constraints = _constraints.replace("|", "\\|")[:40] if _constraints else "—"
             lines.append(f"| {api['name']} | {api.get('domain', '')} | {sig} | {constraints} |")
         lines.append("")
 

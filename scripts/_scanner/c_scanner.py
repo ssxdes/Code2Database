@@ -687,7 +687,7 @@ class CTreeSitterScanner(BaseScanner):
                             "labels": [],
                             "labels_source": {},
                             "is_empty": False,
-                            "api_constraints": [],
+                            "api_constraints": "",
                             "body_text": "",
                             "signature": f"{func_name}()",
                             "params": [],

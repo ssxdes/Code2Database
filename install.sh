@@ -372,12 +372,15 @@ fi
 
 # 2. Reference docs — only the files SKILL.md explicitly references
 #    SKILL.md references: usage_reference.md, label_rules.md, data_model.md,
-#    semantic_enhancement.md, endpoint_pipeline.md, cross_skill_collaboration.md
+#    semantic_enhancement.md, endpoint_pipeline.md, cross_skill_collaboration.md,
+#    memory_knowledge.md (referenced by SKILL_ops.md and SKILL_analysis.md
+#    which inherit from core's references/)
 #    NOT installed: json_schema.md, usage_examples.md (not referenced from SKILL.md)
 REF_DIR="$INSTALL_DIR/references"
 mkdir -p "$REF_DIR"
 for ref_file in usage_reference.md label_rules.md data_model.md \
-    semantic_enhancement.md endpoint_pipeline.md cross_skill_collaboration.md; do
+    semantic_enhancement.md endpoint_pipeline.md cross_skill_collaboration.md \
+    memory_knowledge.md; do
     if [ -f "$SCRIPT_DIR/docs/$LANG/references/$ref_file" ]; then
         copy_to "$SCRIPT_DIR/docs/$LANG/references/$ref_file" "$REF_DIR/$ref_file"
     elif [ -f "$SCRIPT_DIR/docs/en/references/$ref_file" ]; then
@@ -385,7 +388,7 @@ for ref_file in usage_reference.md label_rules.md data_model.md \
         copy_to "$SCRIPT_DIR/docs/en/references/$ref_file" "$REF_DIR/$ref_file"
     fi
 done
-ok "References (6 files) [core]"
+ok "References (7 files) [core]"
 
 # 3. Scripts — all needed for commands to work (only installed in core skill)
 mkdir -p "$INSTALL_DIR/scripts"

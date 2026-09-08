@@ -269,8 +269,9 @@ class TestWebUIProjectContext(unittest.TestCase):
         self.assertIn("alice", by_author)
         self.assertEqual(by_author["alice"]["entries"], 1)
         self.assertEqual(by_author["alice"]["active"], 1)
-        # split parent tombstone + its 2 children carry no author
-        self.assertEqual(by_author["(unattributed)"]["entries"], 3)
+        # split parent tombstone + its 2 children carry no author →
+        # empty author now defaults to "anonymous"
+        self.assertEqual(by_author["anonymous"]["entries"], 3)
 
     def test_memory_search_author_filter(self):
         status, data = self._request_json(

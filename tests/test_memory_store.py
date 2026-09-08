@@ -707,7 +707,8 @@ class TestReadOnlyAndAuthors(MemoryStoreTestBase):
         authors = {a["author"]: a for a in self.store.authors()}
         self.assertEqual(authors["alice"]["entries"], 1)
         self.assertEqual(authors["bob"]["entries"], 1)
-        self.assertEqual(authors["(unattributed)"]["entries"], 1)
+        # Empty author now defaults to "anonymous" instead of ""
+        self.assertEqual(authors["anonymous"]["entries"], 1)
         self.assertEqual(authors["alice"]["active"], 1)
 
     def test_digest_author_filter(self):

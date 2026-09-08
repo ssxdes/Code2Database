@@ -450,6 +450,13 @@ class MemoryStore:
         chains = list(chains or [])
         symbols = sorted({str(s).strip() for s in (symbols or [])
                           if str(s).strip()})
+        # Coerce empty author to "anonymous" — the memory store is a
+        # shared veteran-experience space; unattributed entries lose
+        # their multi-person provenance. Defaulting to "anonymous"
+        # makes it clear the author was not specified (vs. silently
+        # storing an empty string that's invisible in queries/UI).
+        if not author or not author.strip():
+            author = "anonymous"
         now = datetime.now().isoformat()
 
         with _memory_lock(self.mem_dir):
@@ -1030,6 +1037,8 @@ class MemoryStore:
         Returns {"action": "corrected"|"created", "id", "score",
                  "matched_question"}.
         """
+        if not author or not author.strip():
+            author = "anonymous"
         with _memory_lock(self.mem_dir):
             conn = self._connect()
             try:
@@ -1699,14 +1708,17 @@ class MemoryStore:
     def authors(self) -> List[dict]:
         """Contributors with entry counts — the multi-user index.
 
-        Groups by author (empty attributed as '(unattributed)'):
+        Groups by author (empty or 'anonymous' attributed as
+        'anonymous'; legacy empty-string entries shown as
+        '(unattributed)' for backward compat):
         [{author, entries, active}] ordered by total entries. Pure
         read; used by the read-only web UI author filter.
         """
         conn = self._connect()
         try:
             rows = conn.execute(
-                "SELECT COALESCE(NULLIF(author, ''), '(unattributed)') "
+                "SELECT CASE WHEN author = '' OR author IS NULL "
+                "THEN '(unattributed)' ELSE author END "
                 "AS author, COUNT(*) AS entries, "
                 "SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) "
                 "AS active FROM memories GROUP BY author "

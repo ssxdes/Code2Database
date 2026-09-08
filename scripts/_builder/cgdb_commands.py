@@ -8,6 +8,7 @@ DB convention: <graph_dir>/code2database.db (same as MCP server).
 """
 import json
 import os
+import re
 import sqlite3
 import sys
 from typing import Any, Optional
@@ -284,14 +285,34 @@ def cmd_cgdb_sql(args):
         print("Error: --sql is required", file=sys.stderr)
         sys.exit(1)
 
-    # Read-only guard: only allow SELECT/WITH/EXPLAIN/PRAGMA (case-insensitive)
+    # Read-only guard: only allow SELECT/WITH/EXPLAIN/PRAGMA/VALUES
+    # (case-insensitive). The first-token check alone is insufficient
+    # because SQLite >=3.35 permits destructive writes inside CTEs, e.g.
+    # `WITH x AS (DELETE FROM t RETURNING *) SELECT * FROM x`.
     head = sql.lstrip().split(None, 1)[0].upper() if sql.lstrip() else ""
-    if head not in ("SELECT", "WITH", "EXPLAIN", "PRAGMA"):
+    if head not in ("SELECT", "WITH", "EXPLAIN", "PRAGMA", "VALUES"):
         print(f"Error: only SELECT/WITH/EXPLAIN/PRAGMA allowed (got: {head})",
               file=sys.stderr)
         sys.exit(1)
 
-    conn = sqlite3.connect(db_path)
+    # Reject RETURNING — it enables writes inside CTEs/subqueries.
+    if re.search(r"\bRETURNING\b", sql, re.IGNORECASE):
+        print("Error: RETURNING clause is not allowed in read-only SQL",
+              file=sys.stderr)
+        sys.exit(1)
+
+    # Reject PRAGMA except for a small allow-list of read-only forms.
+    if re.search(r"\bPRAGMA\b", sql, re.IGNORECASE):
+        readonly = {"table_info", "index_list", "database_list"}
+        found = re.findall(r"\bPRAGMA\s+(\w+)", sql, re.IGNORECASE)
+        if not found or any(m.lower() not in readonly for m in found):
+            print("Error: only read-only PRAGMAs allowed "
+                  "(table_info/index_list/database_list)", file=sys.stderr)
+            sys.exit(1)
+
+    # Defense-in-depth: open the connection read-only so even a guard bypass
+    # cannot mutate the database.
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     try:
         cur = conn.execute(sql)

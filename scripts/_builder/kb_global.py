@@ -397,7 +397,7 @@ def global_import_memory(graph_dir: str, query: str, top_n: int = 5,
     Returns {imported: N, merged: N, skipped: N, details: [...]}.
     """
     from _builder.memory_store import MemoryStore
-    from _builder.utils import _similarity_score
+    from _builder.utils import _similarity_score, _simple_tokenize
 
     results = global_search_memory(query, top_n=top_n)
     if not results:
@@ -420,10 +420,13 @@ def global_import_memory(graph_dir: str, query: str, top_n: int = 5,
             continue
 
         # Check for similar existing memory in project
-        existing = store.search(question, top=1)
+        existing = store.search(question, top_n=1)
         is_similar = False
         if existing:
-            sim = _similarity_score(question, existing[0].get("question", ""))
+            sim = _similarity_score(
+                _simple_tokenize(question),
+                _simple_tokenize(existing[0].get("question", "")),
+            )
             if sim >= 0.7:
                 is_similar = True
 

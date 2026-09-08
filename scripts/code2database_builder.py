@@ -973,13 +973,83 @@ def main():
                            "mid-way; pass a high value (e.g. 9999) to disable, or lower it "
                            "with --large-project for graceful partial stops")
     p_mk.add_argument("--large-project", action="store_true",
-                      help="Large-project scan mode (split output, lower memory)")
+                      help="Large-project mode: split output + lower memory. "
+                           "Forwarded to BOTH scanner and builder.")
     p_mk.add_argument("--check", action="store_true",
                       help="Run the environment check only; do not build")
     p_mk.add_argument("--serial-derived", dest="serial_derived",
                       action="store_true",
                       help="Run derived steps serially (no parallel ThreadPool; "
                            "use on memory-constrained machines)")
+    # --- Shared scan+build pass-through (each tool accepts these) ---
+    p_mk.add_argument("--parallel-mode", choices=["thread", "process"], default=None,
+                      help="Parallelism model for scan + build: 'thread' (default) or "
+                           "'process' (true multi-core via fork, bypasses GIL — use on "
+                           "4+ core machines for large C/C++ codebases). Forwarded to both.")
+    p_mk.add_argument("--max-workers", type=int, default=0,
+                      help="Override the hard cap on parallel workers for scan + build "
+                           "(default: min(cpu, 16)). On 64+ core machines, set to your "
+                           "core count for maximum throughput. Forwarded to both.")
+    p_mk.add_argument("--macros", default="",
+                      help="Macro bindings for #ifdef resolution (e.g., "
+                           "'NDEBUG FEATURE_X=1 -DFOO'). Forwarded to BOTH scanner "
+                           "(--macros) and builder (--macros, merged with --build-config).")
+    p_mk.add_argument("--memory-warn-threshold", type=float, default=0.0,
+                      help="Memory usage fraction (0.0-1.0) to trigger warnings in scan + "
+                           "build (0 = use each tool's default 0.75). On busy machines the "
+                           "default can cancel scans mid-way — raise to 0.90 or pair with "
+                           "--memory-limit 9999. Forwarded to both.")
+    p_mk.add_argument("--memory-crit-threshold", type=float, default=0.0,
+                      help="Memory usage fraction (0.0-1.0) to trigger critical actions in "
+                           "scan + build (0 = use each tool's default 0.85). Forwarded to both.")
+    # --- Scanner-only pass-through ---
+    p_mk.add_argument("--macros-from", default="",
+                      help="Path to a file with macro bindings (one per line: 'NAME' or "
+                           "'NAME=VALUE'). Merged with --macros. Forwarded to the scanner.")
+    p_mk.add_argument("--no-body-text", action="store_true",
+                      help="Skip body_text extraction to save memory. WARNING: disables "
+                           "state_access (globals_read/written, fields_read/written) — "
+                           "detect-races, data-dep, lock-coverage will produce no findings. "
+                           "Forwarded to the scanner.")
+    p_mk.add_argument("--exclude-dirs", default="",
+                      help="Comma-separated additional directory names to skip during scan "
+                           "(e.g., 'vendor,internal_tools'). Forwarded to the scanner.")
+    p_mk.add_argument("--scan-subsystems", default="",
+                      help="Comma-separated top-level subsystem dirs to include in the scan "
+                           "(e.g., 'fs,mm,block' for Linux kernel). Files whose path does "
+                           "not start with one of these are filtered out. Forwarded to the scanner.")
+    # --- Builder-only pass-through ---
+    p_mk.add_argument("--build-config", default=None,
+                      help="Build config for #ifdef resolution: 'auto', path to config file, "
+                           "or build type name (e.g., 'Release', 'Debug'). Forwarded to the builder.")
+    p_mk.add_argument("--plugin", action="append", default=[],
+                      help="Python plugin file to load (repeatable). Also auto-discovers "
+                           ".code2database_plugins/*.py. Forwarded to the builder.")
+    p_mk.add_argument("--plugin-config", default=None,
+                      help='Plugin config JSON, e.g. \'{"threshold":0.8}\'. Forwarded to the builder.')
+    p_mk.add_argument("--storage", choices=["json", "sqlite", "auto"], default="auto",
+                      help="Builder storage backend: auto (sqlite for >100K nodes, else json), "
+                           "json, or sqlite. Forwarded to the builder.")
+    p_mk.add_argument("--skip-community", action="store_true",
+                      help="Skip Leiden community detection in the builder (faster for large "
+                           "projects). Forwarded to the builder.")
+    p_mk.add_argument("--low-memory", action="store_true",
+                      help="Maximize memory savings in the builder: strip body_text early, "
+                           "skip community detection, streaming SQLite export. Forwarded to the builder.")
+    p_mk.add_argument("--memory-warn-mb", type=float, default=None,
+                      help="Absolute warn cap in MB for the builder (overrides "
+                           "--memory-warn-threshold). Forwarded to the builder.")
+    p_mk.add_argument("--memory-crit-mb", type=float, default=None,
+                      help="Absolute critical cap in MB for the builder (overrides "
+                           "--memory-crit-threshold). Forwarded to the builder.")
+    p_mk.add_argument("--no-memory-dynamic", dest="memory_dynamic", action="store_false",
+                      default=None,
+                      help="Disable dynamic memory clamping in the builder (use pure "
+                           "fractional thresholds). Forwarded to the builder.")
+    p_mk.add_argument("--no-auto-enhance", dest="auto_enhance", action="store_false",
+                      default=None,
+                      help="Disable post-build LLM auto-enhancement (heuristic generator "
+                           "still runs). Forwarded to the builder.")
 
     # sync
     p_sync = sub.add_parser("sync", help="Sync local code2db-out with git-tracked version (local wins)")

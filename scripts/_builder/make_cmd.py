@@ -367,16 +367,66 @@ def _build_steps(rep, args):
     if getattr(args, "large_project", False):
         scan_cmd += ["--large-project"]
     if getattr(args, "memory_limit", 0):
-        # 0 (default) = scanner auto-derives a GB cap from total RAM;
-        # on a busy machine that cap can cancel the scan mid-way, so an
-        # explicit value (e.g. 9999 to disable) keeps the pipeline going.
         scan_cmd += ["--memory-limit", str(args.memory_limit)]
+    if getattr(args, "parallel_mode", None):
+        scan_cmd += ["--parallel-mode", args.parallel_mode]
+    if getattr(args, "max_workers", 0):
+        scan_cmd += ["--max-workers", str(args.max_workers)]
+    if getattr(args, "macros", ""):
+        scan_cmd += ["--macros", args.macros]
+    if getattr(args, "macros_from", ""):
+        scan_cmd += ["--macros-from", args.macros_from]
+    if getattr(args, "memory_warn_threshold", 0.0):
+        scan_cmd += ["--memory-warn-threshold", str(args.memory_warn_threshold)]
+    if getattr(args, "memory_crit_threshold", 0.0):
+        scan_cmd += ["--memory-crit-threshold", str(args.memory_crit_threshold)]
+    if getattr(args, "no_body_text", False):
+        scan_cmd += ["--no-body-text"]
+    if getattr(args, "exclude_dirs", ""):
+        scan_cmd += ["--exclude-dirs", args.exclude_dirs]
+    if getattr(args, "scan_subsystems", ""):
+        scan_cmd += ["--scan-subsystems", args.scan_subsystems]
 
     build_cmd = [py, _BUILDER, "build",
                  "--extraction", rep["extraction_path"],
                  "--outdir", graph]
     if getattr(args, "profile", ""):
         build_cmd += ["--profile", args.profile]
+    if getattr(args, "workers", 0):
+        build_cmd += ["-j", str(args.workers)]
+    if getattr(args, "large_project", False):
+        build_cmd += ["--large-project"]
+    if getattr(args, "parallel_mode", None):
+        build_cmd += ["--parallel-mode", args.parallel_mode]
+    if getattr(args, "max_workers", 0):
+        build_cmd += ["--max-workers", str(args.max_workers)]
+    if getattr(args, "macros", ""):
+        build_cmd += ["--macros", args.macros]
+    if getattr(args, "build_config", None):
+        build_cmd += ["--build-config", args.build_config]
+    for plugin in getattr(args, "plugin", []) or []:
+        build_cmd += ["--plugin", plugin]
+    if getattr(args, "plugin_config", None):
+        build_cmd += ["--plugin-config", args.plugin_config]
+    storage = getattr(args, "storage", "auto")
+    if storage != "auto":
+        build_cmd += ["--storage", storage]
+    if getattr(args, "skip_community", False):
+        build_cmd += ["--skip-community"]
+    if getattr(args, "low_memory", False):
+        build_cmd += ["--low-memory"]
+    if getattr(args, "memory_warn_threshold", 0.0):
+        build_cmd += ["--memory-warn-threshold", str(args.memory_warn_threshold)]
+    if getattr(args, "memory_crit_threshold", 0.0):
+        build_cmd += ["--memory-crit-threshold", str(args.memory_crit_threshold)]
+    if getattr(args, "memory_warn_mb", None) is not None:
+        build_cmd += ["--memory-warn-mb", str(args.memory_warn_mb)]
+    if getattr(args, "memory_crit_mb", None) is not None:
+        build_cmd += ["--memory-crit-mb", str(args.memory_crit_mb)]
+    if getattr(args, "memory_dynamic", None) is False:
+        build_cmd += ["--no-memory-dynamic"]
+    if getattr(args, "auto_enhance", None) is False:
+        build_cmd += ["--no-auto-enhance"]
 
     return [
         ("scan", scan_cmd, True, "AST extraction -> %s"
@@ -420,7 +470,9 @@ def _build_steps(rep, args):
                          "--graph", graph, "--format", "vis-network"],
          False, "interactive HTML -> callgraph.html", None, ""),
         ("profile-health", [py, _BUILDER, "profile-health",
-                            "--graph", graph, "--source", src], False,
+                            "--graph", graph, "--source", src]
+         + (["--profile", args.profile] if getattr(args, "profile", "") else []),
+         False,
          "profile health report (0-100 score)", None, ""),
     ]
 

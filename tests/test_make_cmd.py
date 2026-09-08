@@ -18,7 +18,16 @@ def _ns(**kw):
     base = dict(source="", graph="code2db-out", lang="auto",
                 extraction_backend="auto", compile_commands="",
                 clang_args="", profile="", workers=0,
-                large_project=False, check=False)
+                large_project=False, check=False,
+                # pass-through defaults (0/None/""/False = don't forward)
+                parallel_mode=None, max_workers=0, macros="",
+                macros_from="", memory_warn_threshold=0.0,
+                memory_crit_threshold=0.0, no_body_text=False,
+                exclude_dirs="", scan_subsystems="",
+                build_config=None, plugin=[], plugin_config=None,
+                storage="auto", skip_community=False, low_memory=False,
+                memory_warn_mb=None, memory_crit_mb=None,
+                memory_dynamic=None, auto_enhance=None)
     base.update(kw)
     return argparse.Namespace(**base)
 
@@ -445,6 +454,159 @@ class TestCmdMake(unittest.TestCase):
         # Only the scan step ran; build and enrichment never started.
         self.assertEqual(len(calls), 1)
         self.assertIn("scan", " ".join(calls[0]))
+
+
+class TestPassThrough(unittest.TestCase):
+    """Verify make forwards user flags to scan + build + profile-health."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self.source = os.path.join(self._tmp, "proj")
+        os.makedirs(self.source)
+        open(os.path.join(self.source, "main.c"), "w").write(
+            "int main(void){return 0;}\n")
+        self.graph = os.path.join(self._tmp, "g-out")
+
+    def _run_capture(self, **extra):
+        """Run make with --serial-derived, return (scan_cmd, build_cmd, cmds)."""
+        args = _ns(source=self.source, graph=self.graph,
+                   serial_derived=True, **extra)
+        with mock.patch.object(make_cmd, "check_libclang",
+                               return_value=TestDecideBackend._CLANG_OK), \
+             mock.patch.object(make_cmd, "_module_available",
+                               return_value=True), \
+             mock.patch.object(
+                 make_cmd.subprocess, "run",
+                 side_effect=lambda c: calls.append(c)
+                 or SimpleNamespace(returncode=0)):
+            calls = []
+            make_cmd.cmd_make(args)
+        scan_cmd = calls[0]
+        build_cmd = calls[1]
+        return scan_cmd, build_cmd, calls
+
+    def test_parallel_mode_forwarded_to_both(self):
+        scan, build, _ = self._run_capture(parallel_mode="process")
+        self.assertIn("--parallel-mode", scan)
+        i = scan.index("--parallel-mode")
+        self.assertEqual(scan[i + 1], "process")
+        self.assertIn("--parallel-mode", build)
+        i = build.index("--parallel-mode")
+        self.assertEqual(build[i + 1], "process")
+
+    def test_max_workers_forwarded_to_both(self):
+        scan, build, _ = self._run_capture(max_workers=32)
+        self.assertIn("--max-workers", scan)
+        self.assertIn("32", scan)
+        self.assertIn("--max-workers", build)
+        self.assertIn("32", build)
+
+    def test_macros_forwarded_to_both(self):
+        scan, build, _ = self._run_capture(macros="NDEBUG FEATURE_X=1")
+        self.assertIn("--macros", scan)
+        i = scan.index("--macros")
+        self.assertEqual(scan[i + 1], "NDEBUG FEATURE_X=1")
+        self.assertIn("--macros", build)
+        i = build.index("--macros")
+        self.assertEqual(build[i + 1], "NDEBUG FEATURE_X=1")
+
+    def test_memory_thresholds_forwarded_to_both(self):
+        scan, build, _ = self._run_capture(
+            memory_warn_threshold=0.90, memory_crit_threshold=0.95)
+        self.assertIn("--memory-warn-threshold", scan)
+        self.assertIn("0.9", " ".join(scan))
+        self.assertIn("--memory-crit-threshold", scan)
+        self.assertIn("0.95", " ".join(scan))
+        self.assertIn("--memory-warn-threshold", build)
+        self.assertIn("--memory-crit-threshold", build)
+
+    def test_workers_forwarded_to_build_as_jobs(self):
+        """make -j must reach BOTH scanner and builder (was scan-only)."""
+        scan, build, _ = self._run_capture(workers=8)
+        self.assertIn("-j", scan)
+        i = scan.index("-j")
+        self.assertEqual(scan[i + 1], "8")
+        self.assertIn("-j", build)
+        i = build.index("-j")
+        self.assertEqual(build[i + 1], "8")
+
+    def test_large_project_forwarded_to_build(self):
+        """--large-project must reach BOTH scanner and builder (was scan-only)."""
+        scan, build, _ = self._run_capture(large_project=True)
+        self.assertIn("--large-project", scan)
+        self.assertIn("--large-project", build)
+
+    def test_scanner_only_flags(self):
+        scan, build, _ = self._run_capture(
+            macros_from="/tmp/macros.txt",
+            no_body_text=True,
+            exclude_dirs="vendor,internal",
+            scan_subsystems="fs,mm")
+        self.assertIn("--macros-from", scan)
+        self.assertIn("--no-body-text", scan)
+        self.assertIn("--exclude-dirs", scan)
+        self.assertIn("vendor,internal", " ".join(scan))
+        self.assertIn("--scan-subsystems", scan)
+        # None of these are builder args
+        self.assertNotIn("--macros-from", build)
+        self.assertNotIn("--no-body-text", build)
+        self.assertNotIn("--exclude-dirs", build)
+        self.assertNotIn("--scan-subsystems", build)
+
+    def test_builder_only_flags(self):
+        scan, build, _ = self._run_capture(
+            build_config="Release",
+            plugin=["/tmp/p1.py", "/tmp/p2.py"],
+            plugin_config='{"threshold":0.8}',
+            storage="sqlite",
+            skip_community=True,
+            low_memory=True,
+            memory_warn_mb=4096,
+            memory_crit_mb=8192,
+            memory_dynamic=False,
+            auto_enhance=False)
+        self.assertNotIn("--build-config", scan)
+        self.assertNotIn("--storage", scan)
+        self.assertIn("--build-config", build)
+        i = build.index("--build-config")
+        self.assertEqual(build[i + 1], "Release")
+        # plugin appears twice (repeatable)
+        self.assertEqual(build.count("--plugin"), 2)
+        self.assertIn("--plugin-config", build)
+        self.assertIn("--storage", build)
+        i = build.index("--storage")
+        self.assertEqual(build[i + 1], "sqlite")
+        self.assertIn("--skip-community", build)
+        self.assertIn("--low-memory", build)
+        self.assertIn("--memory-warn-mb", build)
+        self.assertIn("4096", " ".join(build))
+        self.assertIn("--memory-crit-mb", build)
+        self.assertIn("--no-memory-dynamic", build)
+        self.assertIn("--no-auto-enhance", build)
+
+    def test_profile_forwarded_to_profile_health(self):
+        """make --profile p.json must reach profile-health, not just scan+build."""
+        _, _, calls = self._run_capture(profile="p.json")
+        # profile-health is the last step
+        ph_cmd = calls[-1]
+        self.assertIn("profile-health", " ".join(ph_cmd))
+        self.assertIn("--profile", ph_cmd)
+        i = ph_cmd.index("--profile")
+        self.assertEqual(ph_cmd[i + 1], "p.json")
+
+    def test_defaults_dont_forward(self):
+        """Zero/None/False/'' defaults must not appear in cmd argv."""
+        scan, build, _ = self._run_capture()
+        for flag in ("--parallel-mode", "--max-workers", "--macros",
+                      "--macros-from", "--memory-warn-threshold",
+                      "--memory-crit-threshold", "--no-body-text",
+                      "--exclude-dirs", "--scan-subsystems",
+                      "--build-config", "--plugin", "--plugin-config",
+                      "--storage", "--skip-community", "--low-memory",
+                      "--memory-warn-mb", "--memory-crit-mb",
+                      "--no-memory-dynamic", "--no-auto-enhance"):
+            self.assertNotIn(flag, scan, "scan should not have %s" % flag)
+            self.assertNotIn(flag, build, "build should not have %s" % flag)
 
 
 if __name__ == "__main__":

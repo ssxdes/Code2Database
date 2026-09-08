@@ -535,6 +535,126 @@ def brief_suggest(graph_dir: str, top_n: int = 10,
     return result
 
 
+def migrate_from_legacy_knowledge(graph_dir: str) -> dict:
+    """Migrate legacy knowledge/*.md files into the brief.json sections.
+
+    Commit 5e106a2 replaced the MD knowledge system with brief.json but
+    left no migration path — curated knowledge/*.md files were silently
+    ignored. This reads the old-format files and folds their content
+    into the corresponding brief sections:
+
+      architecture.md / design.md → description (append)
+      constraints.md / principles.md → hard_rules (one rule per bullet)
+      glossary.md → key_abstractions (one entry per ## heading)
+
+    Idempotent: existing brief content is preserved, and a second run
+    adds nothing (duplicates detected by content). Does NOT delete the
+    .md files — the user archives them after verifying with brief-validate.
+    """
+    knowledge_dir = os.path.join(graph_dir, "knowledge")
+    if not os.path.isdir(knowledge_dir):
+        return {"migrated_files": 0, "items_added": 0, "sections": []}
+    md_files = sorted(f for f in os.listdir(knowledge_dir)
+                      if f.endswith(".md"))
+    if not md_files:
+        return {"migrated_files": 0, "items_added": 0, "sections": []}
+
+    brief = load_brief(graph_dir)
+    if brief is None:
+        brief = json.loads(json.dumps(_EMPTY_BRIEF))
+
+    items_added = 0
+    sections = set()
+    migrated = []
+
+    existing_rules = {r.get("rule", "")
+                      for r in brief.get("hard_rules", [])}
+    existing_abstractions = {a.get("name", "")
+                             for a in brief.get("key_abstractions", [])}
+    existing_desc = brief.get("description", "")
+
+    for fname in md_files:
+        fpath = os.path.join(knowledge_dir, fname)
+        try:
+            with open(fpath, encoding="utf-8") as f:
+                text = f.read().strip()
+        except OSError:
+            continue
+        if not text:
+            continue
+        migrated.append(fname)
+        base = fname.lower()
+
+        if base in ("architecture.md", "design.md"):
+            if text not in existing_desc:
+                sep = "\n\n--- Migrated from %s ---\n" % fname
+                brief["description"] = (existing_desc + sep + text
+                                        if existing_desc else text)
+                existing_desc = brief["description"]
+                items_added += 1
+                sections.add("description")
+        elif base in ("constraints.md", "principles.md"):
+            for line in text.split("\n"):
+                line = line.strip()
+                if line.startswith("- "):
+                    rule_text = line[2:].strip()
+                    if rule_text and rule_text not in existing_rules:
+                        brief.setdefault("hard_rules", []).append({
+                            "rule": rule_text, "type": "api",
+                            "detail": "",
+                            "evidence": "migrated from %s" % fname,
+                        })
+                        existing_rules.add(rule_text)
+                        items_added += 1
+                        sections.add("hard_rules")
+        elif base == "glossary.md":
+            current_term = ""
+            current_body: list = []
+            for line in text.split("\n"):
+                if line.startswith("## "):
+                    if current_term:
+                        name = current_term.strip()
+                        role = " ".join(current_body).strip()
+                        if name and name not in existing_abstractions:
+                            brief.setdefault("key_abstractions", []).append(
+                                {"name": name, "role": role})
+                            existing_abstractions.add(name)
+                            items_added += 1
+                            sections.add("key_abstractions")
+                    current_term = line[3:].strip()
+                    current_body = []
+                elif current_term and line.strip():
+                    current_body.append(line.strip())
+            if current_term:
+                name = current_term.strip()
+                role = " ".join(current_body).strip()
+                if name and name not in existing_abstractions:
+                    brief.setdefault("key_abstractions", []).append(
+                        {"name": name, "role": role})
+                    items_added += 1
+                    sections.add("key_abstractions")
+
+    if items_added > 0 or not brief.get("updated_at"):
+        brief["updated_at"] = datetime.now().isoformat()
+        save_brief(graph_dir, brief)
+
+    return {"migrated_files": len(migrated),
+            "items_added": items_added,
+            "sections": sorted(sections)}
+
+
+def cmd_brief_migrate_legacy(args):
+    """CLI entry: migrate legacy knowledge/*.md into the brief."""
+    graph_dir = args.graph
+    report = migrate_from_legacy_knowledge(graph_dir)
+    print(f"Migrated {report['migrated_files']} file(s), "
+          f"{report['items_added']} item(s) added "
+          f"to section(s): {', '.join(report['sections']) or '(none)'}")
+    if report["migrated_files"]:
+        print("Review with brief-validate; archive the .md files "
+              "once verified.")
+
+
 def cmd_brief_suggest(args):
     """Suggest brief additions from high-value memories (no writes)."""
     graph_dir = args.graph

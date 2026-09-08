@@ -60,7 +60,7 @@ from _builder.graph_history import (
 from _builder.memory_manager import cmd_manage_memory, cmd_memory_health
 from _builder.brief import (
     cmd_knowledge_brief, cmd_brief_update, cmd_brief_extract,
-    cmd_brief_validate, cmd_brief_suggest,
+    cmd_brief_validate, cmd_brief_suggest, cmd_brief_migrate_legacy,
 )
 from _builder.session_init import cmd_session_init
 from _builder.kb_index import rebuild_kb_index as cmd_kb_rebuild_index_impl
@@ -1176,6 +1176,11 @@ def main():
     p_bs.add_argument("--min-weight", dest="min_weight", default="1.5",
                       help="Weight threshold for candidacy (default 1.5)")
     p_bs.add_argument("--json", action="store_true", help="Output JSON")
+
+    # brief-migrate-legacy
+    p_bml = sub.add_parser("brief-migrate-legacy",
+                           help="Migrate legacy knowledge/*.md into the brief")
+    p_bml.add_argument("--graph", required=True, help="Call graph output directory")
 
     # export-html
     p_html = sub.add_parser("export-html", help="Export invocation graph as interactive HTML")
@@ -2766,6 +2771,7 @@ def main():
         "brief-extract": cmd_brief_extract,
         "brief-validate": cmd_brief_validate,
         "brief-suggest": cmd_brief_suggest,
+        "brief-migrate-legacy": cmd_brief_migrate_legacy,
         "kb-rebuild-index": cmd_kb_rebuild_index,
         "kb-query": cmd_kb_query,
         "kb-cluster": cmd_kb_cluster,

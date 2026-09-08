@@ -2,8 +2,8 @@
 
 Builds a derived SQLite table
 (kb_paragraphs + kb_paragraphs_fts) from the canonical filesystem
-sources (memory/*.json and knowledge/*.md) so a single FTS5 + BM25
-query can search across both stores.
+sources (memory/memory.db entries and knowledge/brief.json sections)
+so a single FTS5 + BM25 query can search across both stores.
 
 The filesystem files remain the source of truth — kb_paragraphs is
 rebuildable via `kb-rebuild-index`. Writes to memory/knowledge should

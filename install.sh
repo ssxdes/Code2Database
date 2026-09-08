@@ -335,7 +335,7 @@ fi
 
 # --- Check Python ---
 if ! command -v python3 &>/dev/null; then
-    die "python3 not found. Please install Python 3.9+ first."
+    die "python3 not found. Please install Python 3.8+ first."
 fi
 
 PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
@@ -872,7 +872,7 @@ else
     info "  For a leaner install, set C2D_LANGUAGES=c,go (etc.) before re-running install.sh"
 fi
 echo ""
-info "MCP server: 81 tools (34 code2database_* + 19 cgdb_* + 28 design-report) — start with:"
+info "MCP server: 83 tools (36 code2database_* + 19 cgdb_* + 28 design-report) — start with:"
 info "  python3 $INSTALL_DIR/scripts/code2database_builder.py serve --graph code2db-out/"
 echo ""
 info "Knowledge base (kb-*): unified FTS5+BM25 across memory+knowledge+global — start with:"

@@ -224,8 +224,6 @@ code2db-out/
 ├── .code2database_globals_enums.json   ← 枚举成员(从globals拆分)
 ├── .code2database_globals_macros.json  ← 宏定义(从globals拆分)
 ├── .code2database_globals_typedefs.json ← 类型定义(从globals拆分)
-├── .knowledge_pack_lite.json       ← LLM知识包(~300 tokens)
-├── .knowledge_pack_standard.json   ← LLM知识包(~800 tokens)
 ├── .memory_pack_lite.json          ← LLM记忆包(~200 tokens)
 ├── .memory_pack_standard.json      ← LLM记忆包(~600 tokens)
 ├── knowledge/                      ← 知识目录(Markdown,人可读)
@@ -804,9 +802,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## 完整 CLI 命令参考（222 个命令）
+## 完整 CLI 命令参考（249 个命令）
 
-全部 222 个 CLI 子命令，涵盖 `code2database_builder.py`（214 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
+全部 249 个 CLI 子命令，涵盖 `code2database_builder.py`（241 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
 
 | 命令 | 说明 |
 |------|------|

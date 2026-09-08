@@ -71,7 +71,7 @@ The skill is split into **3 sub-skills** to keep LLM context lean. Each sub-skil
 
 | Sub-skill | Trigger | Purpose | Tier-1 commands |
 |-----------|---------|---------|-----------------|
-| `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded | 24 high-weight commands (scan, build, explore-flow, describe-node, trace-chain, etc.) |
+| `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded | 25 high-weight commands (scan, build, explore-flow, describe-node, trace-chain, etc.) |
 | `Code2Database-analysis` | `/Code2Database-analysis` | Deep semantic analysis (concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb tables) | 13 high-weight commands (concurrency-analyze, value-flow, path-feasible, find-invariants, ffi-trace, blame-node, etc.) + 19 `cgdb_*` MCP tools |
 | `Code2Database-ops` | `/Code2Database-ops` | Graph editing, transactions, daemon, profile/doc-code, exports, plugins, memory, embeddings | 23 high-weight commands (tx-begin/commit/rollback, daemon-start/stop/wait-sync, profile-health, doc-code-check, etc.) |
 
@@ -133,7 +133,7 @@ python3 scripts/code2database_scanner.py scan --source /path --extraction-backen
 - **Only seven labels** supported (API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end)
 - **Do not propose fixes** before finding root cause
 - **Always verify** after sync/update operations
-- **Transactional writes**: DB-modifying operations (`update-node`, `update-edge`, `patch-profile`, `apply-semantics`, `apply-invariants`, `auto-enhance`, `apply-knowledge`, `doc-mark-stale`, `profile-evolve`) should be wrapped in `tx-begin`/`tx-commit` for multi-step changes. `patch-from-diff`/`patch-from-git` already wrap in a transaction by default; use `--no-transaction` to bypass.
+- **Transactional writes**: DB-modifying operations (`update-node`, `update-edge`, `patch-profile`, `apply-semantics`, `apply-invariants`, `auto-enhance`, `doc-mark-stale`, `profile-evolve`) should be wrapped in `tx-begin`/`tx-commit` for multi-step changes. `patch-from-diff`/`patch-from-git` already wrap in a transaction by default; use `--no-transaction` to bypass.
 - **Daemon freshness**: if `daemon-status` shows pending events or reports `syncing`, call `daemon-wait-sync` before important queries to ensure the graph is up-to-date. Daemon uses a circuit breaker (>1000 events/min → bulk rebuild).
 - **Doc-code alignment**: before reporting a bug based on `semantic_desc`, check `describe-node` output for `doc_code_mismatches` — if non-empty, the doc may be stale; consult `body_text` and consider `doc-mark-stale`.
 - **Invariants confidence**: invariants carry confidence (EXTRACTED/INFERRED/AMBIGUOUS). Never apply AMBIGUOUS invariants; INFERRED require user review.

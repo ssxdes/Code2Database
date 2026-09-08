@@ -125,7 +125,6 @@
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `check_on_describe` | bool | `true` | `describe-node` 默认暴露 `doc_code_mismatches`。 |
-| `check_on_knowledge_validate` | bool | `true` | `knowledge-validate` 运行文档-代码对齐检查。 |
 | `signature_diff_strict` | bool | `false` | 严格签名差异检查（参数顺序重要）。 |
 
 ### `daemon` — 后台守护进程参数

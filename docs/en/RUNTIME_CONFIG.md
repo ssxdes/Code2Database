@@ -125,7 +125,6 @@ Edit this file when you need to tune pipeline behavior without modifying source 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `check_on_describe` | bool | `true` | `describe-node` surfaces `doc_code_mismatches` by default. |
-| `check_on_knowledge_validate` | bool | `true` | `knowledge-validate` runs doc-code alignment check. |
 | `signature_diff_strict` | bool | `false` | Strict signature diffing (parameter order matters). |
 
 ### `daemon` — Background Daemon Parameters

@@ -989,28 +989,6 @@ Located at `code2db-out/knowledge/`.
 }
 ```
 
-### knowledge_pack_lite.json (~300 tokens)
-
-```json
-{
-  "files": ["architecture.md", "module_lib_device.md"],
-  "topics": ["Overview", "API Constraints"],
-  "architecture_summary": "... (first 500 chars of architecture.md)"
-}
-```
-
-### knowledge_pack_standard.json (~800 tokens)
-
-```json
-{
-  "files": [{"name": "architecture.md", "headings": ["Overview"]}],
-  "architecture": "... (first 2000 chars)",
-  "module_summaries": {"lib_device": "... (first 200 chars per module)"},
-  "constraints": "...",
-  "glossary": "..."
-}
-```
-
 ---
 
 ## Memory Directory Schema

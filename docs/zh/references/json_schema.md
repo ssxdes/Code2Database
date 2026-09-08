@@ -989,28 +989,6 @@ class Code2DatabasePlugin:
 }
 ```
 
-### knowledge_pack_lite.json（约 300 token）
-
-```json
-{
-  "files": ["architecture.md", "module_lib_device.md"],
-  "topics": ["Overview", "API Constraints"],
-  "architecture_summary": "... (first 500 chars of architecture.md)"
-}
-```
-
-### knowledge_pack_standard.json（约 800 token）
-
-```json
-{
-  "files": [{"name": "architecture.md", "headings": ["Overview"]}],
-  "architecture": "... (first 2000 chars)",
-  "module_summaries": {"lib_device": "... (first 200 chars per module)"},
-  "constraints": "...",
-  "glossary": "..."
-}
-```
-
 ---
 
 ## 记忆目录 Schema

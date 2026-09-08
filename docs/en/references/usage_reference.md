@@ -224,8 +224,6 @@ code2db-out/
 ├── .code2database_globals_enums.json   ← Enum members (split from globals)
 ├── .code2database_globals_macros.json  ← Macro definitions (split from globals)
 ├── .code2database_globals_typedefs.json ← Typedef definitions (split from globals)
-├── .knowledge_pack_lite.json       ← LLM knowledge pack (~300 tokens)
-├── .knowledge_pack_standard.json   ← LLM knowledge pack (~800 tokens)
 ├── .memory_pack_lite.json          ← LLM memory pack (~200 tokens)
 ├── .memory_pack_standard.json      ← LLM memory pack (~600 tokens)
 ├── knowledge/                      ← Knowledge directory (Markdown, human-readable)
@@ -805,9 +803,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (222 commands)
+## Complete CLI Command Reference (249 commands)
 
-All 222 CLI subparsers across `code2database_builder.py` (214) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
+All 249 CLI subparsers across `code2database_builder.py` (241) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
 
 | Command | Description |
 |---------|-------------|

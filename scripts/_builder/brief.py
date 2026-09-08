@@ -489,8 +489,8 @@ def _auto_extract_from_graph(graph_dir: str, brief: dict) -> None:
                         "SELECT DISTINCT call_condition FROM edges "
                         "WHERE call_condition IS NOT NULL "
                         "AND call_condition != '' "
-                        "AND call_condition LIKE '%#ifdef%' "
-                        "OR call_condition LIKE '%CONFIG_%' "
+                        "AND (call_condition LIKE '%#ifdef%' "
+                        "OR call_condition LIKE '%CONFIG_%') "
                         "LIMIT 20"
                     ).fetchall()
                     for r in rows:

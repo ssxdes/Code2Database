@@ -357,7 +357,8 @@ class TestCmdMake(unittest.TestCase):
         self.assertNotIn("extract-signals", [c[2] for c in calls])
 
     def test_enrichment_failure_degrades_to_warning(self):
-        """value-flow failing must not abort the remaining steps."""
+        """value-flow failing must not abort the remaining steps, but
+        make must still exit non-zero so CI can detect the failure."""
         self._patch_env()
         calls = []
 
@@ -369,7 +370,11 @@ class TestCmdMake(unittest.TestCase):
 
         with mock.patch.object(make_cmd.subprocess, "run",
                                side_effect=_run):
-            self._run({"serial_derived": True})  # must NOT raise SystemExit
+            with self.assertRaises(SystemExit) as cm:
+                self._run({"serial_derived": True})
+            # Derived-step failures exit 2 (distinct from fatal-step rc).
+            self.assertEqual(cm.exception.code, 2)
+        # Pipeline was NOT aborted: all 11 steps still ran.
         self.assertEqual([c[2] for c in calls],
                          ["scan", "build", "value-flow", "data-dep",
                           "ffi-detect", "brief-extract", "kb-rebuild-index",
@@ -428,7 +433,9 @@ class TestCmdMake(unittest.TestCase):
                                    side_effect=_fail):
                 with self.assertRaises(SystemExit) as cm:
                     self._run()
-                self.assertEqual(cm.exception.code, 1)
+                # Fatal-step exit code is propagated (not hardcoded to 1)
+                # so CI can distinguish failure modes.
+                self.assertEqual(cm.exception.code, 2)
             self.assertEqual(len(calls), fail_at)
 
     def test_partial_scan_checkpoint_aborts_make(self):

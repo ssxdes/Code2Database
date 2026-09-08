@@ -606,7 +606,7 @@ def _do_make(rep, args):
             print("\n[make] FAILED at step %d/%d (%s, exit %d) — "
                   "fix the issue above and re-run make"
                   % (step_num, total, name, rc), file=sys.stderr)
-            sys.exit(1)
+            sys.exit(rc)
 
     # --- Derived steps ---
     derived = [s for s in steps if not s[2]]
@@ -676,6 +676,8 @@ def _do_make(rep, args):
     if not rep["existing_brief"]:
         print("  brief curation : %s brief-update --set one_liner "
               "--value '...'" % _BUILDER)
+    if failures:
+        sys.exit(2)
 
 
 def cmd_make(args):

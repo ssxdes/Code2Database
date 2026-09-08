@@ -388,6 +388,133 @@ class TestCliHandlers(unittest.TestCase):
         self.assertEqual(code2, None)
         self.assertIn("VALID", out)
 
+class TestAutoExtract(unittest.TestCase):
+    """Tests for _auto_extract_from_graph — brief-extract auto-population."""
+
+    def setUp(self):
+        import sqlite3
+        self.tmp = tempfile.TemporaryDirectory()
+        self.graph_dir = os.path.join(self.tmp.name, "graph")
+        os.makedirs(self.graph_dir, exist_ok=True)
+        # Create a master.json (needed for project name + graph stats)
+        with open(os.path.join(self.graph_dir,
+                  "code2database_master.json"), "w") as f:
+            json.dump({
+                "source_root": "/tmp/testproj",
+                "project_name": "TestProject",
+                "domains": {"core": "domain_core.json"},
+            }, f)
+        # Create a domain JSON file for compute_graph_stats
+        nodes = [
+            {"id": "fn1", "name": "main_init", "source_file": "/tmp/x.c",
+             "line": 1, "domain": "core", "labels": [],
+             "is_empty": False},
+            {"id": "fn2", "name": "dispatch", "source_file": "/tmp/x.c",
+             "line": 10, "domain": "core", "labels": [],
+             "is_empty": False},
+            {"id": "fn3", "name": "handler", "source_file": "/tmp/x.c",
+             "line": 20, "domain": "core", "labels": [],
+             "is_empty": False},
+        ]
+        edges = [
+            {"source": "fn1", "target": "fn2",
+             "relation": "INVOKES", "confidence": "EXTRACTED"},
+            {"source": "fn2", "target": "fn3",
+             "relation": "INVOKES", "confidence": "EXTRACTED"},
+        ]
+        with open(os.path.join(self.graph_dir, "domain_core.json"), "w") as f:
+            json.dump({"domain": "core", "nodes": nodes, "edges": edges}, f)
+        # Create the SQLite DB with functions + edges tables
+        db_path = os.path.join(self.graph_dir, "code2database.db")
+        conn = sqlite3.connect(db_path)
+        conn.executescript("""
+            CREATE TABLE functions (
+                id TEXT PRIMARY KEY, name TEXT, domain TEXT,
+                source_file TEXT, line_number INTEGER, signature TEXT,
+                labels TEXT, body_text_compressed BLOB, extra_json TEXT,
+                is_api_entry INTEGER DEFAULT 0,
+                is_thread_processor INTEGER DEFAULT 0,
+                is_callback_func INTEGER DEFAULT 0,
+                is_out_end INTEGER DEFAULT 0,
+                is_unknown_end INTEGER DEFAULT 0
+            );
+            CREATE TABLE edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoker_id TEXT, invoked_id TEXT, relation TEXT,
+                call_order INTEGER, call_condition TEXT,
+                concurrency TEXT, confidence TEXT,
+                confidence_score REAL, source TEXT, evidence TEXT,
+                invoked_arg_json TEXT, reg_args_json TEXT,
+                vtable_type TEXT, vtable_bound_module TEXT
+            );
+        """)
+        conn.execute(
+            "INSERT INTO functions (id, name, domain, source_file, "
+            "is_api_entry) VALUES (?, ?, ?, ?, ?)",
+            ("fn1", "main_init", "core", "/tmp/x.c", 1))
+        conn.execute(
+            "INSERT INTO functions (id, name, domain, source_file, "
+            "is_api_entry) VALUES (?, ?, ?, ?, ?)",
+            ("fn2", "dispatch", "core", "/tmp/x.c", 0))
+        conn.execute(
+            "INSERT INTO functions (id, name, domain, source_file, "
+            "is_api_entry) VALUES (?, ?, ?, ?, ?)",
+            ("fn3", "handler", "core", "/tmp/x.c", 0))
+        conn.execute(
+            "INSERT INTO edges (invoker_id, invoked_id, relation) "
+            "VALUES (?, ?, ?)", ("fn1", "fn2", "CALLS"))
+        conn.execute(
+            "INSERT INTO edges (invoker_id, invoked_id, relation) "
+            "VALUES (?, ?, ?)", ("fn2", "fn3", "CALLS"))
+        conn.execute(
+            "INSERT INTO edges (invoker_id, invoked_id, relation, "
+            "call_condition) VALUES (?, ?, ?, ?)",
+            ("fn1", "fn3", "CALLS", "#ifdef CONFIG_X"))
+        conn.commit()
+        conn.close()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_auto_extract_populates_project_and_description(self):
+        brief = brief_extract(self.graph_dir)
+        self.assertEqual(brief["project"], "TestProject")
+        self.assertIn("[auto]", brief["one_liner"])
+        self.assertIn("TestProject", brief["one_liner"])
+        self.assertIn("[auto]", brief["description"])
+        self.assertIn("3 functions", brief["description"])
+
+    def test_auto_extract_key_abstractions(self):
+        brief = brief_extract(self.graph_dir)
+        # main_init is an API entry with 1 outgoing CALLS edge
+        abstractions = brief.get("key_abstractions") or []
+        self.assertTrue(len(abstractions) > 0)
+        names = [a["name"] for a in abstractions]
+        self.assertIn("main_init", names)
+
+    def test_auto_extract_hard_rules_from_config(self):
+        brief = brief_extract(self.graph_dir)
+        rules = brief.get("hard_rules") or []
+        self.assertTrue(any("CONFIG_X" in r["rule"] for r in rules))
+
+    def test_auto_extract_query_paths(self):
+        brief = brief_extract(self.graph_dir)
+        paths = brief.get("query_paths") or []
+        self.assertTrue(len(paths) > 0)
+        self.assertTrue(any("main_init" in p for p in paths))
+
+    def test_auto_extract_does_not_overwrite_existing(self):
+        """Re-extracting on an existing brief must NOT clobber content."""
+        brief_extract(self.graph_dir)  # creates with auto content
+        brief_update(self.graph_dir, set_field="project",
+                     set_value="MyCustomName")
+        brief_extract(self.graph_dir)  # re-extract
+        brief = load_brief(self.graph_dir)
+        self.assertEqual(brief["project"], "MyCustomName")
+        # Auto markers should be gone from one_liner since it was set
+        # by the first extract and preserved
+        self.assertNotIn("[auto]", brief.get("project", ""))
+
 
 if __name__ == "__main__":
     unittest.main()

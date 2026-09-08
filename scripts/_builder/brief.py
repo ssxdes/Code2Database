@@ -319,18 +319,258 @@ def brief_extract(graph_dir: str) -> dict:
     Preserves already-curated content; only fills graph_stats and, for
     a brand-new brief, seeds an empty structure with guidance notes.
     Also writes the brief so subsequent brief-update calls work.
+
+    For a NEW brief, auto-extracts preliminary knowledge from the graph:
+    - project name from master.json or graph_dir basename
+    - one_liner + description from graph stats
+    - key_abstractions from high-degree hub nodes
+    - hard_rules from distinct #ifdef config conditions
+    - query_paths from API entry points
+    - pitfalls from high-weight memory entries
+    Auto-extracted content is marked with an '[auto]' prefix so the
+    human curator knows to review and refine it.
     """
     existing = load_brief(graph_dir)
     brief = existing if existing is not None \
         else json.loads(json.dumps(_EMPTY_BRIEF))
     brief["graph_stats"] = compute_graph_stats(graph_dir)
+
+    # Auto-extract from graph only for brand-new briefs — never
+    # overwrite manually curated content.
+    if existing is None:
+        _auto_extract_from_graph(graph_dir, brief)
+
     save_brief(graph_dir, brief)
     return brief
 
 
-# ---------------------------------------------------------------------------
-# Validation
-# ---------------------------------------------------------------------------
+def _auto_extract_from_graph(graph_dir: str, brief: dict) -> None:
+    """Auto-populate empty brief sections from the graph DB.
+
+    Queries the SQLite database directly (no full-graph load) to
+    extract preliminary knowledge. All auto-extracted entries are
+    marked with '[auto]' prefix so the human curator knows to review.
+    Only fills sections that are currently empty — never overwrites.
+    """
+    import sqlite3
+
+    db_path = os.path.join(graph_dir, "code2database.db")
+    master_path = os.path.join(graph_dir, "code2database_master.json")
+    _logger = logging.getLogger(__name__)
+
+    # --- Project name + one_liner + description ---
+    project_name = ""
+    source_root = ""
+    if os.path.exists(master_path):
+        try:
+            master = json.loads(Path(master_path).read_text(encoding="utf-8"))
+            project_name = master.get("project_name", "") or \
+                master.get("project", "")
+            source_root = master.get("source_root", "")
+        except (json.JSONDecodeError, OSError):
+            pass
+    if not project_name and source_root:
+        # Only derive from source_root if it's a meaningful path
+        # (not /tmp, /, or other generic dirs)
+        basename = os.path.basename(source_root.rstrip("/"))
+        if basename and basename not in ("tmp", "var", "home", "opt", "src"):
+            project_name = basename
+    if not brief.get("project") and project_name:
+        brief["project"] = project_name
+
+    stats = brief.get("graph_stats") or {}
+    n_nodes = stats.get("nodes", 0)
+    n_edges = stats.get("edges", 0)
+    n_domains = stats.get("domains", 0)
+
+    if not brief.get("one_liner"):
+        brief["one_liner"] = (
+            f"[auto] {project_name} — {n_nodes} functions, "
+            f"{n_edges} call edges, {n_domains} domains")
+
+    if not brief.get("description"):
+        # Gather domain distribution from the SQLite DB
+        domain_summary = ""
+        if os.path.exists(db_path):
+            try:
+                conn = sqlite3.connect(db_path, timeout=5)
+                try:
+                    rows = conn.execute(
+                        "SELECT domain, COUNT(*) as cnt FROM functions "
+                        "GROUP BY domain ORDER BY cnt DESC LIMIT 5"
+                    ).fetchall()
+                    if rows:
+                        parts = [f"{r[0]} ({r[1]})" for r in rows]
+                        domain_summary = ", ".join(parts)
+                finally:
+                    conn.close()
+            except sqlite3.Error as exc:
+                _logger.debug("auto-extract domain query failed: %s", exc)
+
+        desc = (f"[auto] {project_name} is a codebase with {n_nodes} "
+                f"functions and {n_edges} call edges across {n_domains} "
+                f"domains")
+        if domain_summary:
+            desc += f". Top domains: {domain_summary}"
+        brief["description"] = desc
+
+    # --- key_abstractions: top hub nodes by degree ---
+    if not brief.get("key_abstractions"):
+        abstractions = []
+        if os.path.exists(db_path):
+            try:
+                conn = sqlite3.connect(db_path, timeout=5)
+                try:
+                    # High-degree = many callers + many callees
+                    rows = conn.execute(
+                        "SELECT f.id, f.name, f.domain, "
+                        "  (SELECT COUNT(*) FROM edges e "
+                        "   WHERE e.invoked_id = f.id "
+                        "   AND e.relation = 'CALLS') as in_deg, "
+                        "  (SELECT COUNT(*) FROM edges e "
+                        "   WHERE e.invoker_id = f.id "
+                        "   AND e.relation = 'CALLS') as out_deg "
+                        "FROM functions f "
+                        "WHERE f.is_api_entry = 1 OR f.is_thread_processor = 1 "
+                        "ORDER BY (in_deg + out_deg) DESC LIMIT 10"
+                    ).fetchall()
+                    for r in rows:
+                        name, domain = r[1], r[2]
+                        total = r[3] + r[4]
+                        if total == 0:
+                            continue
+                        role = "API entry" if r[3] > r[4] else "dispatch hub"
+                        abstractions.append({
+                            "name": name,
+                            "role": f"[auto] {role} ({total} conns, {domain})"
+                        })
+                    # If not enough API entries, get general hubs
+                    if len(abstractions) < 5:
+                        rows2 = conn.execute(
+                            "SELECT f.id, f.name, f.domain, "
+                            "  (SELECT COUNT(*) FROM edges e "
+                            "   WHERE e.invoked_id = f.id "
+                            "   AND e.relation = 'CALLS') as in_deg, "
+                            "  (SELECT COUNT(*) FROM edges e "
+                            "   WHERE e.invoker_id = f.id "
+                            "   AND e.relation = 'CALLS') as out_deg "
+                            "FROM functions f "
+                            "ORDER BY (in_deg + out_deg) DESC LIMIT 10"
+                        ).fetchall()
+                        seen = {a["name"] for a in abstractions}
+                        for r in rows2:
+                            if r[1] in seen:
+                                continue
+                            total = r[3] + r[4]
+                            if total < 3:
+                                continue
+                            abstractions.append({
+                                "name": r[1],
+                                "role": (f"[auto] hub "
+                                         f"({total} conns, {r[2]})")
+                            })
+                            if len(abstractions) >= 10:
+                                break
+                finally:
+                    conn.close()
+            except sqlite3.Error as exc:
+                _logger.debug("auto-extract hub query failed: %s", exc)
+        if abstractions:
+            brief["key_abstractions"] = abstractions
+
+    # --- hard_rules: distinct #ifdef config conditions ---
+    if not brief.get("hard_rules"):
+        hard_rules = []
+        if os.path.exists(db_path):
+            try:
+                conn = sqlite3.connect(db_path, timeout=5)
+                try:
+                    rows = conn.execute(
+                        "SELECT DISTINCT call_condition FROM edges "
+                        "WHERE call_condition IS NOT NULL "
+                        "AND call_condition != '' "
+                        "AND call_condition LIKE '%#ifdef%' "
+                        "OR call_condition LIKE '%CONFIG_%' "
+                        "LIMIT 20"
+                    ).fetchall()
+                    for r in rows:
+                        cond = r[0].strip()
+                        if cond:
+                            hard_rules.append({
+                                "rule": f"[auto] {cond}",
+                                "type": "config",
+                                "detail": "auto-extracted from edge conditions",
+                            })
+                finally:
+                    conn.close()
+            except sqlite3.Error as exc:
+                _logger.debug("auto-extract config query failed: %s", exc)
+        if hard_rules:
+            brief["hard_rules"] = hard_rules
+
+    # --- pitfalls: from high-weight memory entries ---
+    if not brief.get("pitfalls"):
+        pitfalls = []
+        mem_db = os.path.join(graph_dir, "memory", "memory.db")
+        if os.path.exists(mem_db):
+            try:
+                conn = sqlite3.connect(mem_db, timeout=5)
+                try:
+                    rows = conn.execute(
+                        "SELECT question, answer, weight "
+                        "FROM memories "
+                        "WHERE status = 'active' AND weight > 1.5 "
+                        "ORDER BY weight DESC LIMIT 5"
+                    ).fetchall()
+                    for r in rows:
+                        q = r[0][:100] if r[0] else ""
+                        pitfalls.append(
+                            f"[auto] (w={r[2]:.1f}) {q}")
+                except sqlite3.OperationalError:
+                    # Table might not exist or different schema
+                    pass
+                finally:
+                    conn.close()
+            except sqlite3.Error as exc:
+                _logger.debug("auto-extract memory query failed: %s", exc)
+        if pitfalls:
+            brief["pitfalls"] = pitfalls
+
+    # --- query_paths: suggested routes from entry points ---
+    if not brief.get("query_paths"):
+        query_paths = []
+        if os.path.exists(db_path):
+            try:
+                conn = sqlite3.connect(db_path, timeout=5)
+                try:
+                    rows = conn.execute(
+                        "SELECT name, domain FROM functions "
+                        "WHERE is_api_entry = 1 "
+                        "ORDER BY name LIMIT 5"
+                    ).fetchall()
+                    for r in rows:
+                        name = r[0]
+                        query_paths.append(
+                            f"[auto] trace --from {name} — explore this API entry")
+                    if not query_paths:
+                        # Fall back to top hub nodes
+                        rows = conn.execute(
+                            "SELECT f.name FROM functions f "
+                            "JOIN edges e ON e.invoker_id = f.id "
+                            "WHERE e.relation = 'CALLS' "
+                            "GROUP BY f.id "
+                            "ORDER BY COUNT(*) DESC LIMIT 3"
+                        ).fetchall()
+                        for r in rows:
+                            query_paths.append(
+                                f"[auto] trace --from {r[0]} — "
+                                f"high-fanout hub, explore callers/callees")
+                finally:
+                    conn.close()
+            except sqlite3.Error as exc:
+                _logger.debug("auto-extract entry query failed: %s", exc)
+        if query_paths:
+            brief["query_paths"] = query_paths
 
 def validate_brief(graph_dir: str) -> dict:
     """Schema + size budget + graph drift validation.
@@ -728,12 +968,25 @@ def cmd_brief_update(args):
 def cmd_brief_extract(args):
     """Initialize/refresh the brief template from graph stats."""
     graph_dir = args.graph
+    existing = load_brief(graph_dir)
     brief = brief_extract(graph_dir)
     stats = brief.get("graph_stats", {})
     print(f"Brief template ready at {brief_path(graph_dir)}")
     print(f"  Graph stats: {stats.get('nodes', 0)} nodes, "
           f"{stats.get('edges', 0)} edges, "
           f"{stats.get('domains', 0)} domains")
+    if existing is None:
+        auto_sections = []
+        for sec in ("project", "one_liner", "description",
+                     "key_abstractions", "hard_rules",
+                     "pitfalls", "query_paths"):
+            if brief.get(sec):
+                auto_sections.append(sec)
+        if auto_sections:
+            print(f"  Auto-extracted: {', '.join(auto_sections)}")
+            print("  (marked with [auto] — review and curate with brief-update)")
+        else:
+            print("  No auto-extraction (graph DB not found or empty)")
     print("Next: curate with brief-update, e.g.:")
     print("  brief-update --set one_liner --value '...'")
     print("  brief-update --add hard_rules --json "

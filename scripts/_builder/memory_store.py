@@ -157,6 +157,9 @@ def _memory_lock(mem_dir: str, timeout: float = 10.0):
     fd = open(lock_path, "a+")
     try:
         deadline = time.time() + timeout
+        # L6: exponential backoff instead of a fixed 50ms spin — high
+        # contention wasted CPU. Start at 2ms, double up to 200ms.
+        backoff = 0.002
         while True:
             try:
                 fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -166,7 +169,8 @@ def _memory_lock(mem_dir: str, timeout: float = 10.0):
                     raise TimeoutError(
                         "could not acquire memory lock within "
                         f"{timeout}s — another memory operation holds it")
-                time.sleep(0.05)
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 0.2)
         try:
             yield
         finally:

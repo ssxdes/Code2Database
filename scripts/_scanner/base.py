@@ -560,7 +560,7 @@ class BaseScanner(ABC):
         decode failure, no ranges found, no node byte offsets). Ensures
         config_predicate_id is always populated on cgdb_nodes."""
         try:
-            from _builder.cgdb_config_predicates import UNCONDITIONAL
+            from _builder.cgdb.cgdb_config_predicates import UNCONDITIONAL
         except ImportError:
             return
         for fn in functions:
@@ -595,7 +595,7 @@ class BaseScanner(ABC):
                 annotate_nodes_with_predicates,
                 serialize_predicates,
             )
-            from _builder.cgdb_config_predicates import UNCONDITIONAL
+            from _builder.cgdb.cgdb_config_predicates import UNCONDITIONAL
         except ImportError:
             self._mark_all_unconditional(functions)
             return []
@@ -1381,7 +1381,7 @@ class BaseScanner(ABC):
         # nodes (var/enum/field/typedef) inherit by byte-range containment
         # against the same #ifdef range map, falling back to UNCONDITIONAL.
         try:
-            from _builder.cgdb_config_predicates import UNCONDITIONAL
+            from _builder.cgdb.cgdb_config_predicates import UNCONDITIONAL
         except ImportError:
             UNCONDITIONAL = None
         if UNCONDITIONAL is not None:

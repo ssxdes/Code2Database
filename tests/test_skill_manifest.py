@@ -134,7 +134,7 @@ class TestSkillManifest(unittest.TestCase):
 
     def test_mcp_tool_counts_match_docs(self):
         """MCP tool counts must match the documented 83 total."""
-        from _builder.mcp_server import TOOLS, TOOLS_REPORT
+        from _builder.mcp.mcp_server import TOOLS, TOOLS_REPORT
         c2d = sum(1 for k in TOOLS if k.startswith("code2database_"))
         cgdb = sum(1 for k in TOOLS if k.startswith("cgdb_"))
         self.assertEqual(c2d, 36,

@@ -39,40 +39,40 @@ class TestCosineSimilarity(unittest.TestCase):
         so cosine([1,0,0], [1,1,0]) returned 1.0 (because nb=1, na=1,
         dot=1, dot/(1*1) = 1.0). After fix: nb=sqrt(2), result=1/sqrt(2).
         """
-        from _builder.neural_embed import cosine_similarity
+        from _builder.kb.neural_embed import cosine_similarity
         result = cosine_similarity([1, 0, 0], [1, 1, 0])
         self.assertAlmostEqual(result, 1.0 / math.sqrt(2), places=6)
 
     def test_same_vector_returns_one(self):
-        from _builder.neural_embed import cosine_similarity
+        from _builder.kb.neural_embed import cosine_similarity
         self.assertAlmostEqual(cosine_similarity([1, 2, 3], [1, 2, 3]), 1.0, places=6)
 
     def test_orthogonal_vectors_return_zero(self):
-        from _builder.neural_embed import cosine_similarity
+        from _builder.kb.neural_embed import cosine_similarity
         self.assertAlmostEqual(cosine_similarity([1, 0], [0, 1]), 0.0, places=6)
 
     def test_zero_vector_returns_zero(self):
-        from _builder.neural_embed import cosine_similarity
+        from _builder.kb.neural_embed import cosine_similarity
         self.assertEqual(cosine_similarity([0, 0, 0], [1, 1, 1]), 0.0)
         self.assertEqual(cosine_similarity([1, 1, 1], [0, 0, 0]), 0.0)
 
     def test_mismatched_lengths_return_zero(self):
-        from _builder.neural_embed import cosine_similarity
+        from _builder.kb.neural_embed import cosine_similarity
         self.assertEqual(cosine_similarity([1, 2], [1, 2, 3]), 0.0)
 
     def test_empty_vectors_return_zero(self):
-        from _builder.neural_embed import cosine_similarity
+        from _builder.kb.neural_embed import cosine_similarity
         self.assertEqual(cosine_similarity([], [1, 2, 3]), 0.0)
         self.assertEqual(cosine_similarity([1, 2, 3], []), 0.0)
 
     def test_negative_result_clamped_to_zero(self):
         """cosine([1,0], [-1,0]) = -1 → max(0, -1) = 0."""
-        from _builder.neural_embed import cosine_similarity
+        from _builder.kb.neural_embed import cosine_similarity
         self.assertEqual(cosine_similarity([1, 0], [-1, 0]), 0.0)
 
     def test_asymmetric_magnitude_vectors(self):
         """Vectors of different magnitudes should still give correct cosine."""
-        from _builder.neural_embed import cosine_similarity
+        from _builder.kb.neural_embed import cosine_similarity
         # [2,0] and [1,1] → dot=2, na=2, nb=sqrt(2) → cosine = 2/(2*sqrt(2)) = 1/sqrt(2)
         result = cosine_similarity([2, 0], [1, 1])
         self.assertAlmostEqual(result, 1.0 / math.sqrt(2), places=6)
@@ -83,7 +83,8 @@ class TestDetectProvider(unittest.TestCase):
 
     def test_explicit_provider_returned_directly(self):
         """When EMBEDDING_PROVIDER env var is set explicitly, that value wins."""
-        from _builder import neural_embed
+        from _builder.kb import neural_embed
+
         with patch.object(neural_embed, "EMBEDDING_PROVIDER", "none"):
             self.assertEqual(neural_embed._detect_provider(), "none")
         with patch.object(neural_embed, "EMBEDDING_PROVIDER", "openai"):
@@ -91,7 +92,8 @@ class TestDetectProvider(unittest.TestCase):
 
     def test_auto_fallback_to_none_when_nothing_available(self):
         """When EMBEDDING_PROVIDER=auto and no provider is available, returns 'none'."""
-        from _builder import neural_embed
+        from _builder.kb import neural_embed
+
         with patch.object(neural_embed, "EMBEDDING_PROVIDER", "auto"), \
              patch.object(neural_embed, "_detect_provider", return_value="none"):
             # Force _detect_provider to return "none" by mocking all the
@@ -103,13 +105,15 @@ class TestGetEmbedding(unittest.TestCase):
     """Tests for get_embedding provider dispatch."""
 
     def test_returns_none_when_provider_is_none(self):
-        from _builder import neural_embed
+        from _builder.kb import neural_embed
+
         with patch.object(neural_embed, "_detect_provider", return_value="none"):
             self.assertIsNone(neural_embed.get_embedding("hello world"))
 
     def test_returns_none_on_empty_text(self):
         """Empty text still goes through dispatch but providers may handle it."""
-        from _builder import neural_embed
+        from _builder.kb import neural_embed
+
         with patch.object(neural_embed, "_detect_provider", return_value="none"):
             self.assertIsNone(neural_embed.get_embedding(""))
 
@@ -118,7 +122,8 @@ class TestGetEmbeddingBatch(unittest.TestCase):
     """Tests for get_embedding_batch."""
 
     def test_returns_list_of_none_when_no_provider(self):
-        from _builder import neural_embed
+        from _builder.kb import neural_embed
+
         with patch.object(neural_embed, "_detect_provider", return_value="none"):
             result = neural_embed.get_embedding_batch(["a", "b", "c"])
         self.assertEqual(len(result), 3)

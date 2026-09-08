@@ -7,8 +7,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 import networkx as nx
 
-from _builder.query_lang import parse_query, execute_query
-from _builder.query_lang import _bfs_paths, RelPattern, NodePattern
+from _builder.query.query_lang import parse_query, execute_query
+from _builder.query.query_lang import _bfs_paths, RelPattern, NodePattern
 
 
 def _build_cyclic_graph():

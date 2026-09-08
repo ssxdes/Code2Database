@@ -11,7 +11,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.cgdb_schema import (
+from _builder.cgdb.cgdb_schema import (
     apply_cgdb_schema, CGDB_SCHEMA_VERSION,
     get_cgdb_schema_version, needs_cgdb_migration,
 )

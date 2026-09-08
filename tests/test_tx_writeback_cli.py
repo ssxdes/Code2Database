@@ -18,8 +18,8 @@ from argparse import Namespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.cgdb_schema import apply_cgdb_schema
-from _builder.transactions import (
+from _builder.cgdb.cgdb_schema import apply_cgdb_schema
+from _builder.ops.transactions import (
     cmd_tx_begin,
     cmd_tx_commit,
     cmd_tx_rollback,
@@ -43,7 +43,7 @@ class TestTransactionsModuleImport(unittest.TestCase):
     """Verify the module imports cleanly."""
 
     def test_module_imports_cleanly(self):
-        import _builder.transactions as tx
+        import _builder.ops.transactions as tx
         for fn in ['cmd_tx_begin', 'cmd_tx_commit', 'cmd_tx_rollback',
                    'cmd_tx_status', 'cmd_tx_snapshot', 'cmd_tx_list_snapshots',
                    'cmd_tx_replay_wal', 'mark_file_dirty', 'create_snapshot',
@@ -327,7 +327,7 @@ class TestRollbackFailureSemantics(unittest.TestCase):
         return d, db
 
     def test_cmd_tx_rollback_failure_keeps_active_and_exits_nonzero(self):
-        from _builder.transactions import cmd_tx_rollback
+        from _builder.ops.transactions import cmd_tx_rollback
         d, db = self._make_tx_then_kill_snapshot()
         ns = Namespace(graph=d)
         code = 0
@@ -344,7 +344,7 @@ class TestRollbackFailureSemantics(unittest.TestCase):
 
     def test_recover_unfinished_wal_failure_keeps_active(self):
         import time as _time
-        from _builder.transactions import (
+        from _builder.ops.transactions import (
             _write_tx_state as _wts, TransactionState as TS,
             recover_unfinished_wal)
         d = tempfile.mkdtemp()

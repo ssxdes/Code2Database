@@ -26,7 +26,7 @@ class TestMcpFraming(unittest.TestCase):
 
     def test_write_message_basic(self):
         """_write_message produces a valid Content-Length frame."""
-        from _builder.mcp_server import _write_message
+        from _builder.mcp.mcp_server import _write_message
         msg = {"jsonrpc": "2.0", "id": 1, "result": {"ok": True}}
         with patch("sys.stdout", new_callable=io.StringIO) as mock_out:
             _write_message(msg)
@@ -40,7 +40,7 @@ class TestMcpFraming(unittest.TestCase):
 
     def test_write_message_unicode(self):
         """_write_message handles non-ASCII (Chinese) content correctly."""
-        from _builder.mcp_server import _write_message
+        from _builder.mcp.mcp_server import _write_message
         msg = {"result": {"name": "测试函数", "desc": "中文描述"}}
         with patch("sys.stdout", new_callable=io.StringIO) as mock_out:
             _write_message(msg)
@@ -56,7 +56,7 @@ class TestMcpFraming(unittest.TestCase):
 
     def test_read_message_basic(self):
         """_read_message parses a valid Content-Length frame."""
-        from _builder.mcp_server import _read_message
+        from _builder.mcp.mcp_server import _read_message
         msg = {"jsonrpc": "2.0", "id": 1, "method": "initialize"}
         framed = self._make_framed(msg)
         with patch("sys.stdin", new_callable=io.StringIO) as mock_in:
@@ -67,7 +67,7 @@ class TestMcpFraming(unittest.TestCase):
 
     def test_read_message_eof(self):
         """_read_message returns _EOF_SENTINEL on EOF (empty stdin)."""
-        from _builder.mcp_server import _read_message, _EOF_SENTINEL
+        from _builder.mcp.mcp_server import _read_message, _EOF_SENTINEL
         with patch("sys.stdin", new_callable=io.StringIO) as mock_in:
             mock_in.write("")
             mock_in.seek(0)
@@ -76,7 +76,7 @@ class TestMcpFraming(unittest.TestCase):
 
     def test_read_message_large(self):
         """_read_message handles a large (1MB) message without truncation."""
-        from _builder.mcp_server import _read_message
+        from _builder.mcp.mcp_server import _read_message
         # Build a 1MB+ payload
         big_data = "x" * (1024 * 1024)
         msg = {"jsonrpc": "2.0", "id": 2, "params": {"data": big_data}}
@@ -90,7 +90,7 @@ class TestMcpFraming(unittest.TestCase):
 
     def test_read_message_malformed_json(self):
         """_read_message returns None on malformed JSON body."""
-        from _builder.mcp_server import _read_message
+        from _builder.mcp.mcp_server import _read_message
         body = "{not valid json"
         framed = f"Content-Length: {len(body.encode('utf-8'))}\r\n\r\n{body}"
         with patch("sys.stdin", new_callable=io.StringIO) as mock_in:
@@ -101,7 +101,7 @@ class TestMcpFraming(unittest.TestCase):
 
     def test_read_message_no_content_length_fallback(self):
         """_read_message falls back to line-based reading without Content-Length."""
-        from _builder.mcp_server import _read_message
+        from _builder.mcp.mcp_server import _read_message
         msg = {"jsonrpc": "2.0", "id": 3, "method": "ping"}
         # No Content-Length header — just a JSON line followed by newline
         with patch("sys.stdin", new_callable=io.StringIO) as mock_in:
@@ -112,7 +112,7 @@ class TestMcpFraming(unittest.TestCase):
 
     def test_round_trip(self):
         """A message written by _write_message can be read by _read_message."""
-        from _builder.mcp_server import _read_message, _write_message
+        from _builder.mcp.mcp_server import _read_message, _write_message
         msg = {"jsonrpc": "2.0", "id": 42, "method": "tools/call",
                "params": {"name": "search", "arguments": {"keywords": "test"}}}
         with patch("sys.stdout", new_callable=io.StringIO) as mock_out:
@@ -130,7 +130,8 @@ class TestMcpToolDispatch(unittest.TestCase):
 
     def test_tool_registry_has_16_tools(self):
         """The MCP server should expose 16 tools (per CLAUDE.md)."""
-        from _builder import mcp_server
+        from _builder.mcp import mcp_server
+
         # The tool dispatch table is in run_mcp_server; check the _tool_* funcs
         tool_funcs = [name for name in dir(mcp_server) if name.startswith("_tool_")]
         # CLAUDE.md says 16 tools. We have at least these:
@@ -150,7 +151,7 @@ class TestMcpToolDispatch(unittest.TestCase):
         We build a minimal valid graph dir (master + one domain file) so the
         loader succeeds and we can verify the summary contract.
         """
-        from _builder.mcp_server import _tool_load
+        from _builder.mcp.mcp_server import _tool_load
         import tempfile, os, json
         with tempfile.TemporaryDirectory() as tmp:
             # Create a minimal graph dir with code2database_master.json + one
@@ -193,12 +194,12 @@ class TestExpandedToolRegistry(unittest.TestCase):
 
     def test_at_least_30_tools_registered(self):
         """The TOOLS registry should have at least 30 tools after expansion."""
-        from _builder.mcp_server import TOOLS
+        from _builder.mcp.mcp_server import TOOLS
         self.assertGreaterEqual(len(TOOLS), 30)
 
     def test_new_tools_present(self):
         """All newly-added tools are present in the registry."""
-        from _builder.mcp_server import TOOLS
+        from _builder.mcp.mcp_server import TOOLS
         expected_new_tools = [
             "code2database_path_feasible",
             "code2database_find_invariants",
@@ -220,7 +221,7 @@ class TestExpandedToolRegistry(unittest.TestCase):
 
     def test_each_tool_has_required_fields(self):
         """Each tool entry has description, inputSchema, and handler."""
-        from _builder.mcp_server import TOOLS
+        from _builder.mcp.mcp_server import TOOLS
         for name, spec in TOOLS.items():
             self.assertIn("description", spec, f"{name} missing description")
             self.assertIn("inputSchema", spec, f"{name} missing inputSchema")
@@ -230,7 +231,7 @@ class TestExpandedToolRegistry(unittest.TestCase):
 
     def test_tool_input_schemas_are_valid(self):
         """Each tool's inputSchema is a dict with type=object."""
-        from _builder.mcp_server import TOOLS
+        from _builder.mcp.mcp_server import TOOLS
         for name, spec in TOOLS.items():
             schema = spec["inputSchema"]
             self.assertEqual(schema.get("type"), "object",
@@ -248,7 +249,7 @@ class TestMcpInputValidation(unittest.TestCase):
     with ValueError — both surfaced as server-side 500s."""
 
     def test_save_memory_non_string_question_coerced(self):
-        from _builder.mcp_server import _tool_save_memory
+        from _builder.mcp.mcp_server import _tool_save_memory
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             result = _tool_save_memory({"question": 123, "answer": "a"},
@@ -257,7 +258,7 @@ class TestMcpInputValidation(unittest.TestCase):
             self.assertEqual(result["question"], "123")
 
     def test_save_memory_dict_question_returns_error_not_500(self):
-        from _builder.mcp_server import _tool_save_memory
+        from _builder.mcp.mcp_server import _tool_save_memory
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             result = _tool_save_memory(
@@ -266,19 +267,19 @@ class TestMcpInputValidation(unittest.TestCase):
             self.assertIn("string", result["error"])
 
     def test_save_memory_answer_truncated(self):
-        from _builder.mcp_server import _tool_save_memory
+        from _builder.mcp.mcp_server import _tool_save_memory
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             result = _tool_save_memory(
                 {"question": "q", "answer": "x" * 50000}, tmp)
             self.assertNotIn("error", result)
 
-            from _builder.memory_store import MemoryStore
+            from _builder.memory.memory_store import MemoryStore
             entry = MemoryStore(tmp).search("q")[0]
             self.assertLessEqual(len(entry.get("answer", "")), 10000)
 
     def test_save_memory_tags_as_list_accepted(self):
-        from _builder.mcp_server import _tool_save_memory
+        from _builder.mcp.mcp_server import _tool_save_memory
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             result = _tool_save_memory(
@@ -286,12 +287,12 @@ class TestMcpInputValidation(unittest.TestCase):
                  "tags": ["bdev", "nvme"]}, tmp)
             self.assertNotIn("error", result)
 
-            from _builder.memory_store import MemoryStore
+            from _builder.memory.memory_store import MemoryStore
             entry = MemoryStore(tmp).search("q2")[0]
             self.assertIn("bdev", entry.get("tags", []))
 
     def test_session_init_bad_top_uses_default(self):
-        from _builder.mcp_server import _tool_session_init
+        from _builder.mcp.mcp_server import _tool_session_init
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             result = _tool_session_init({"top": "not-a-number"}, tmp)
@@ -299,7 +300,7 @@ class TestMcpInputValidation(unittest.TestCase):
             self.assertNotIn("error", result)
 
     def test_session_init_top_clamped(self):
-        from _builder.mcp_server import _tool_session_init
+        from _builder.mcp.mcp_server import _tool_session_init
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             # negative / huge values must not explode downstream
@@ -309,7 +310,7 @@ class TestMcpInputValidation(unittest.TestCase):
                 self.assertNotIn("error", result)
 
     def test_kb_query_bad_max_tokens_uses_default(self):
-        from _builder.mcp_server import _tool_kb_query
+        from _builder.mcp.mcp_server import _tool_kb_query
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             result = _tool_kb_query({"query": "anything",
@@ -339,7 +340,7 @@ class TestMcpSessionInitTool(unittest.TestCase):
         return tmp
 
     def test_registry_contains_session_init(self):
-        from _builder.mcp_server import TOOLS
+        from _builder.mcp.mcp_server import TOOLS
         self.assertIn("code2database_session_init", TOOLS)
         spec = TOOLS["code2database_session_init"]
         # no required params — callable with an empty arguments dict
@@ -347,7 +348,7 @@ class TestMcpSessionInitTool(unittest.TestCase):
 
     def test_empty_graph_dir_degrades_to_hints(self):
         """Bare graph dir: the tool never raises, layers become hints."""
-        from _builder.mcp_server import _tool_session_init
+        from _builder.mcp.mcp_server import _tool_session_init
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             result = _tool_session_init({}, tmp)
@@ -363,9 +364,9 @@ class TestMcpSessionInitTool(unittest.TestCase):
     def test_full_context_renders_all_layers(self):
         """Populated graph dir: brief + memory digest flow into the
         prompt-ready rendered form."""
-        from _builder.mcp_server import _tool_session_init
-        from _builder.brief import brief_extract, brief_update
-        from _builder.memory_store import MemoryStore
+        from _builder.mcp.mcp_server import _tool_session_init
+        from _builder.kb.brief import brief_extract, brief_update
+        from _builder.memory.memory_store import MemoryStore
         graph_dir = self._make_graph_dir()
         brief_extract(graph_dir)
         brief_update(graph_dir, set_field="project", set_value="PX")
@@ -384,8 +385,8 @@ class TestMcpSessionInitTool(unittest.TestCase):
 
     def test_top_param_clamps_digest(self):
         """top=1 limits the memory digest length."""
-        from _builder.mcp_server import _tool_session_init
-        from _builder.memory_store import MemoryStore
+        from _builder.mcp.mcp_server import _tool_session_init
+        from _builder.memory.memory_store import MemoryStore
         graph_dir = self._make_graph_dir()
         store = MemoryStore(graph_dir)
         for i in range(3):
@@ -395,8 +396,8 @@ class TestMcpSessionInitTool(unittest.TestCase):
 
     def test_session_init_digest_shows_symbols(self):
         """Symbol-grounded digest entries render with ⟨symbols⟩."""
-        from _builder.mcp_server import _tool_session_init
-        from _builder.memory_store import MemoryStore
+        from _builder.mcp.mcp_server import _tool_session_init
+        from _builder.memory.memory_store import MemoryStore
         graph_dir = self._make_graph_dir()
         store = MemoryStore(graph_dir)
         store.add("how to submit", "doorbell", category="nvme",
@@ -409,8 +410,8 @@ class TestMcpMemorySearchSymbol(unittest.TestCase):
     """memory_search symbol filter (memory↔code grounding)."""
 
     def test_symbol_filter_routes_to_store(self):
-        from _builder.mcp_server import _tool_memory_search
-        from _builder.memory_store import MemoryStore
+        from _builder.mcp.mcp_server import _tool_memory_search
+        from _builder.memory.memory_store import MemoryStore
         import tempfile
         import shutil
         tmp = tempfile.mkdtemp(prefix="c2d_mcp_sym_")
@@ -426,8 +427,8 @@ class TestMcpMemorySearchSymbol(unittest.TestCase):
         self.assertEqual(out[0]["symbols"], ["nvme_submit_cmd"])
 
     def test_symbol_no_match_returns_empty_list(self):
-        from _builder.mcp_server import _tool_memory_search
-        from _builder.memory_store import MemoryStore
+        from _builder.mcp.mcp_server import _tool_memory_search
+        from _builder.memory.memory_store import MemoryStore
         import tempfile
         import shutil
         tmp = tempfile.mkdtemp(prefix="c2d_mcp_sym2_")
@@ -437,7 +438,7 @@ class TestMcpMemorySearchSymbol(unittest.TestCase):
         self.assertEqual(out, [])
 
     def test_registry_schema_has_symbol_param(self):
-        from _builder.mcp_server import TOOLS
+        from _builder.mcp.mcp_server import TOOLS
         props = TOOLS["code2database_memory_search"]["inputSchema"][
             "properties"]
         self.assertIn("symbol", props)
@@ -454,15 +455,15 @@ class TestMcpSaveMemory(unittest.TestCase):
         return tmp
 
     def test_registry_contains_save_memory(self):
-        from _builder.mcp_server import TOOLS
+        from _builder.mcp.mcp_server import TOOLS
         self.assertIn("code2database_save_memory", TOOLS)
         spec = TOOLS["code2database_save_memory"]
         self.assertEqual(spec["inputSchema"]["required"], ["question"])
         self.assertEqual(spec["handler"].__name__, "_tool_save_memory")
 
     def test_save_creates_entry(self):
-        from _builder.mcp_server import _tool_save_memory
-        from _builder.memory_store import MemoryStore
+        from _builder.mcp.mcp_server import _tool_save_memory
+        from _builder.memory.memory_store import MemoryStore
         tmp = self._tmp_graph()
         out = _tool_save_memory(
             {"question": "how does nvme submit", "answer": "doorbell",
@@ -476,8 +477,8 @@ class TestMcpSaveMemory(unittest.TestCase):
         self.assertEqual(results[0]["tags"], ["io", "nvme"])
 
     def test_correct_reshapes_similar(self):
-        from _builder.mcp_server import _tool_save_memory
-        from _builder.memory_store import MemoryStore
+        from _builder.mcp.mcp_server import _tool_save_memory
+        from _builder.memory.memory_store import MemoryStore
         tmp = self._tmp_graph()
         _tool_save_memory(
             {"question": "how does bdev register", "answer": "wrong"}, tmp)
@@ -490,7 +491,7 @@ class TestMcpSaveMemory(unittest.TestCase):
         self.assertEqual(store.search("bdev")[0]["answer"], "right")
 
     def test_missing_question_errors(self):
-        from _builder.mcp_server import _tool_save_memory
+        from _builder.mcp.mcp_server import _tool_save_memory
         tmp = self._tmp_graph()
         out = _tool_save_memory({"answer": "orphan"}, tmp)
         self.assertIn("error", out)
@@ -501,7 +502,7 @@ class TestDispatchRobustness(unittest.TestCase):
 
     def test_null_params_does_not_crash(self):
         """dispatch_mcp_request with params=null returns error, not crash."""
-        from _builder.mcp_server import dispatch_mcp_request
+        from _builder.mcp.mcp_server import dispatch_mcp_request
         mcp_stats = {"total_calls": 0, "total_output_tokens": 0, "by_tool": {}}
         response = dispatch_mcp_request(
             "tools/call", 1, None, "/nonexistent", mcp_stats, False)
@@ -514,7 +515,7 @@ class TestDispatchRobustness(unittest.TestCase):
 
     def test_non_dict_params_does_not_crash(self):
         """dispatch_mcp_request with params=42 returns error, not crash."""
-        from _builder.mcp_server import dispatch_mcp_request
+        from _builder.mcp.mcp_server import dispatch_mcp_request
         mcp_stats = {"total_calls": 0, "total_output_tokens": 0, "by_tool": {}}
         response = dispatch_mcp_request(
             "tools/call", 2, "not_a_dict", "/nonexistent", mcp_stats, False)
@@ -522,13 +523,13 @@ class TestDispatchRobustness(unittest.TestCase):
 
     def test_internal_error_returns_32603(self):
         """If a handler raises unexpectedly, dispatch returns -32603."""
-        from _builder.mcp_server import dispatch_mcp_request
+        from _builder.mcp.mcp_server import dispatch_mcp_request
         from unittest.mock import patch
 
         mcp_stats = {"total_calls": 0, "total_output_tokens": 0, "by_tool": {}}
 
         with patch(
-            "_builder.mcp_server._handle_initialize",
+            "_builder.mcp.mcp_server._handle_initialize",
             side_effect=RuntimeError("boom")
         ):
             response = dispatch_mcp_request(

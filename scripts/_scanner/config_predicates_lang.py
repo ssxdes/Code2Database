@@ -22,7 +22,7 @@ import bisect
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from _builder.cgdb_config_predicates import (
+from _builder.cgdb.cgdb_config_predicates import (
     ConfigPredicate, UNCONDITIONAL, CONTRADICTORY,
 )
 

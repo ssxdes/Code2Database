@@ -9,7 +9,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 
-from _builder.patcher import _parse_unified_diff, lazy_fill_node
+from _builder.ops.patcher import _parse_unified_diff, lazy_fill_node
 from _builder.utils import _detect_language_from_path
 import networkx as nx
 
@@ -161,7 +161,7 @@ class TestCheckUpdateThreshold(unittest.TestCase):
         # With no manifest, should return needs_full_scan or ratio 0
         tmpdir = tempfile.mkdtemp()
         try:
-            from _builder.patcher import check_update_threshold
+            from _builder.ops.patcher import check_update_threshold
             result = check_update_threshold(self.sourcedir if hasattr(self, 'sourcedir') else "/tmp", tmpdir)
             self.assertIn("change_ratio", result)
             self.assertIn("needs_semantic_update", result)

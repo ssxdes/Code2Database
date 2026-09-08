@@ -11,11 +11,11 @@ from contextlib import redirect_stdout, redirect_stderr
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.session_init import (
+from _builder.mcp.session_init import (
     build_session_context, render_session_context, cmd_session_init,
 )
-from _builder.brief import brief_extract, brief_update, save_brief
-from _builder.memory_store import MemoryStore
+from _builder.kb.brief import brief_extract, brief_update, save_brief
+from _builder.memory.memory_store import MemoryStore
 
 
 def _ns(**kw):
@@ -168,7 +168,7 @@ class TestSessionContextFull(unittest.TestCase):
     def test_known_unknowns_surface(self):
         self._populate()
         # Log some unmatched queries into kb_query_log
-        from _builder.kb_index import _kb_connect
+        from _builder.kb.kb_index import _kb_connect
         conn = _kb_connect(self.graph_dir)
         try:
             for _ in range(3):
@@ -253,7 +253,7 @@ class TestSessionFreshness(unittest.TestCase):
 
     def test_mcp_tool_passes_freshness_through(self):
         self._write_manifest("1:1")
-        from _builder.mcp_server import _tool_session_init
+        from _builder.mcp.mcp_server import _tool_session_init
         out = _tool_session_init({}, self.graph_dir)
         self.assertIn("freshness", out)
         self.assertFalse(out["freshness"]["is_fresh"])
@@ -265,7 +265,8 @@ class TestFreshnessCache(unittest.TestCase):
     so session-init doesn't walk 70K+ files on every call."""
 
     def setUp(self):
-        from _builder import cgdb_freshness
+        from _builder.cgdb import cgdb_freshness
+
         cgdb_freshness._freshness_cache.clear()
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._cleanup)
@@ -283,12 +284,13 @@ class TestFreshnessCache(unittest.TestCase):
                        f)
 
     def _cleanup(self):
-        from _builder import cgdb_freshness
+        from _builder.cgdb import cgdb_freshness
+
         cgdb_freshness._freshness_cache.clear()
         self.tmp.cleanup()
 
     def test_cached_call_returns_same_object(self):
-        from _builder.cgdb_freshness import check_freshness
+        from _builder.cgdb.cgdb_freshness import check_freshness
         src = os.path.dirname(self.graph_dir)
         r1 = check_freshness(self.graph_dir, src, use_cache=True)
         r2 = check_freshness(self.graph_dir, src, use_cache=True)
@@ -296,7 +298,7 @@ class TestFreshnessCache(unittest.TestCase):
                       "second call within TTL must return cached result")
 
     def test_no_cache_recomputes(self):
-        from _builder.cgdb_freshness import check_freshness
+        from _builder.cgdb.cgdb_freshness import check_freshness
         src = os.path.dirname(self.graph_dir)
         r1 = check_freshness(self.graph_dir, src, use_cache=True)
         r2 = check_freshness(self.graph_dir, src, use_cache=False)
@@ -325,7 +327,7 @@ class TestContextPackSummaries(unittest.TestCase):
 
     def test_pack_carries_brief_and_memory(self):
         import networkx as nx
-        from _builder.index_pack import _build_context_pack
+        from _builder.export.index_pack import _build_context_pack
         # Populate brief + memory
         brief_extract(self.graph_dir)
         brief_update(self.graph_dir, set_field="project", set_value="PX")
@@ -352,7 +354,7 @@ class TestContextPackSummaries(unittest.TestCase):
 
     def test_pack_without_brief_omits_summary(self):
         import networkx as nx
-        from _builder.index_pack import _build_context_pack
+        from _builder.export.index_pack import _build_context_pack
         G = nx.DiGraph()
         G.add_node("a", name="a", domain="test", labels=[],
                    is_empty=False)

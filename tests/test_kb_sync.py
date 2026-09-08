@@ -18,13 +18,13 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.kb_index import (
+from _builder.kb.kb_index import (
     rebuild_kb_index,
     query_kb,
     sync_memory_entries,
 )
-from _builder.memory_store import MemoryStore
-from _builder.memory_manager import MemoryManager
+from _builder.memory.memory_store import MemoryStore
+from _builder.memory.memory_manager import MemoryManager
 
 
 class _KbTestBase(unittest.TestCase):

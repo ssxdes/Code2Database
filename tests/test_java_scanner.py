@@ -120,7 +120,7 @@ class Service {
         self.assertEqual(calls[0]["receiver"], "w")
 
     def test_dispatch_edges_in_built_graph(self):
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         result = _scan_java(self._CODE)
         G, _ = build_graph(result)
         dispatch = [(u, v) for u, v, d in G.edges(data=True)

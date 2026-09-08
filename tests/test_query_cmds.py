@@ -32,7 +32,8 @@ from contextlib import redirect_stdout, redirect_stderr
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder import query
+from _builder.query import query
+
 
 
 def _ns(**kw):

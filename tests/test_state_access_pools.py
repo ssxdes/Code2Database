@@ -19,7 +19,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 import networkx as nx
 
-from _builder import graph_build as gb
+from _builder.graph import graph_build as gb
+
 
 
 class TestStateAccessProcessPool(unittest.TestCase):

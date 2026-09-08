@@ -45,7 +45,7 @@ def _make_graph_dir() -> str:
 
 class TestLSPServerInitialize(unittest.TestCase):
     def setUp(self):
-        from _builder.lsp_server import LSPServer
+        from _builder.misc.lsp_server import LSPServer
         self.graph_dir = _make_graph_dir()
         self.server = LSPServer(self.graph_dir)
 
@@ -84,7 +84,7 @@ class TestLSPServerInitialize(unittest.TestCase):
 
 class TestLSPServerMethods(unittest.TestCase):
     def setUp(self):
-        from _builder.lsp_server import LSPServer
+        from _builder.misc.lsp_server import LSPServer
         self.graph_dir = _make_graph_dir()
         self.server = LSPServer(self.graph_dir)
         # Force cache initialization
@@ -154,7 +154,7 @@ class TestLSPServerMethods(unittest.TestCase):
 
 class TestLSPServerHandle(unittest.TestCase):
     def setUp(self):
-        from _builder.lsp_server import LSPServer
+        from _builder.misc.lsp_server import LSPServer
         self.graph_dir = _make_graph_dir()
         self.server = LSPServer(self.graph_dir)
 
@@ -198,7 +198,7 @@ class TestLSPServerHandle(unittest.TestCase):
 class TestLSPServerHelpers(unittest.TestCase):
     def test_file_to_uri(self):
         """_file_to_uri converts a path to a file:// URI."""
-        from _builder.lsp_server import LSPServer
+        from _builder.misc.lsp_server import LSPServer
         # Absolute path
         uri = LSPServer._file_to_uri("/tmp/foo.c")
         self.assertTrue(uri.startswith("file://"))
@@ -208,7 +208,7 @@ class TestLSPServerHelpers(unittest.TestCase):
 
     def test_uri_to_file(self):
         """_uri_to_file strips the file:// prefix."""
-        from _builder.lsp_server import LSPServer
+        from _builder.misc.lsp_server import LSPServer
         self.assertEqual(LSPServer._uri_to_file("file:///tmp/foo.c"), "/tmp/foo.c")
         # Pass-through when no prefix
         self.assertEqual(LSPServer._uri_to_file("/tmp/foo.c"), "/tmp/foo.c")

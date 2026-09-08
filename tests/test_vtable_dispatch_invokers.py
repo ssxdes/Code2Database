@@ -12,8 +12,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.cgdb_store import SQLiteCGDBStore, CGDBWriter, CGDBReader
-from _builder.cgdb_records import (
+from _builder.cgdb.cgdb_store import SQLiteCGDBStore, CGDBWriter, CGDBReader
+from _builder.cgdb.cgdb_records import (
     IngestBatch, NodeRecord, EdgeRecord, TypeRecord, FileRecord,
     ConfigPredicateRecord, InvokeSiteRecord, OpsBindingRecord,
     BasicBlockRecord, CFGEdgeRecord, DataFlowRecord, AliasSetRecord,
@@ -127,7 +127,8 @@ class TestVtableDispatchImport(unittest.TestCase):
     """Verify the store imports and find_invokers is callable."""
 
     def test_module_imports_cleanly(self):
-        from _builder import cgdb_store
+        from _builder.cgdb import cgdb_store
+
         self.assertTrue(hasattr(cgdb_store, 'SQLiteCGDBStore'))
         self.assertTrue(hasattr(cgdb_store.SQLiteCGDBStore, 'find_invokers'))
 

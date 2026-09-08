@@ -11,12 +11,12 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from _builder.cgdb_analysis import (
+from _builder.cgdb.cgdb_analysis import (
     ConditionExtractor,
     _text_to_z3,
     _condition_id,
 )
-from _builder.cgdb_records import ConditionRecord
+from _builder.cgdb.cgdb_records import ConditionRecord
 
 
 def test_text_to_z3_equality():
@@ -63,7 +63,7 @@ def test_condition_extractor_no_cursor():
 
 def test_condition_extractor_no_libclang(monkeypatch):
     """If libclang is unavailable, extractor returns empty list gracefully."""
-    import _builder.cgdb_analysis as mod
+    import _builder.cgdb.cgdb_analysis as mod
     monkeypatch.setattr(
         mod, "__builtins__",
         {**mod.__builtins__,

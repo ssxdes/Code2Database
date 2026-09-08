@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from _builder.auto_enhance import (
+from _builder.build.auto_enhance import (
     generate_heuristic_description,
     apply_heuristic_enhancement,
     _is_likely_builtin,

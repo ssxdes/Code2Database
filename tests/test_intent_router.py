@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.intent_router import (
+from _builder.misc.intent_router import (
     classify_intent, intent_query, cmd_intent_query, INTENT_RULES,
 )
 

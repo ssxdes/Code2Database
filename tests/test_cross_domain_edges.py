@@ -69,7 +69,7 @@ class TestSplitByDomainRealIDs(unittest.TestCase):
     """
 
     def _build(self):
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "lib_a_a_pub", "name": "a_pub",
@@ -110,7 +110,7 @@ class TestSplitByDomainRealIDs(unittest.TestCase):
         return build_graph(extraction)
 
     def test_cross_domain_edges_kept_in_master(self):
-        from _builder.graph_build import split_by_domain
+        from _builder.graph.graph_build import split_by_domain
         G, _ = self._build()
         with tempfile.TemporaryDirectory() as tmpdir:
             master_path = split_by_domain(G, tmpdir, source_root="/src")
@@ -126,7 +126,7 @@ class TestSplitByDomainRealIDs(unittest.TestCase):
                           "master cross_domain_edges: %r" % pairs)
 
     def test_domain_files_keep_only_intra_domain_calls(self):
-        from _builder.graph_build import split_by_domain
+        from _builder.graph.graph_build import split_by_domain
         G, _ = self._build()
         with tempfile.TemporaryDirectory() as tmpdir:
             master_path = split_by_domain(G, tmpdir, source_root="/src")
@@ -242,7 +242,7 @@ class TestCrossDomainEndToEnd(unittest.TestCase):
                         "b_entry -> a_public missing (cross=%r)" % (pairs,))
 
     def test_load_restores_cross_domain_edges_for_neighbors(self):
-        from _builder.graph_build import _load_full_graph
+        from _builder.graph.graph_build import _load_full_graph
         G = _load_full_graph(self.graph)
         a_pub = [n for n in G.nodes if n.endswith("a_public")]
         b_pub = [n for n in G.nodes if n.endswith("b_public")]

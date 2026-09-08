@@ -1,7 +1,7 @@
 """Line-number lookup helpers for source text.
 
 Standalone module (no networkx / no third-party deps) so it can be
-imported from `_builder.invariants`, `_builder.ffi_bridge`, scanners,
+imported from `_builder.analysis.invariants`, `_builder.misc.ffi_bridge`, scanners,
 and other places that need O(log N) line lookups without pulling in
 the heavy `_builder.utils` module graph.
 """

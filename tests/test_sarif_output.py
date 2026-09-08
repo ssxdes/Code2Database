@@ -56,14 +56,14 @@ class TestResultsToSarif(unittest.TestCase):
     """Tests for results_to_sarif (generic findings → SARIF)."""
 
     def test_empty_results_produces_valid_empty_sarif(self):
-        from _builder.sarif_output import results_to_sarif
+        from _builder.export.sarif_output import results_to_sarif
         sarif = results_to_sarif([])
         self.assertTrue(_is_valid_sarif_basic(sarif))
         self.assertEqual(sarif["runs"][0]["results"], [])
         self.assertEqual(sarif["runs"][0]["tool"]["driver"]["rules"], [])
 
     def test_basic_finding_produces_valid_sarif(self):
-        from _builder.sarif_output import results_to_sarif
+        from _builder.export.sarif_output import results_to_sarif
         findings = [{
             "rule_id": "test_rule",
             "message": "test issue",
@@ -90,7 +90,7 @@ class TestResultsToSarif(unittest.TestCase):
 
     def test_rule_deduplication(self):
         """Multiple findings with the same rule_id → single rule entry."""
-        from _builder.sarif_output import results_to_sarif
+        from _builder.export.sarif_output import results_to_sarif
         findings = [
             {"rule_id": "dup_rule", "message": "first", "level": "warning"},
             {"rule_id": "dup_rule", "message": "second", "level": "warning"},
@@ -105,41 +105,41 @@ class TestResultsToSarif(unittest.TestCase):
         self.assertEqual(len(sarif["runs"][0]["results"]), 3)
 
     def test_severity_high_mapped_to_error(self):
-        from _builder.sarif_output import results_to_sarif
+        from _builder.export.sarif_output import results_to_sarif
         sarif = results_to_sarif([{"rule_id": "x", "message": "m", "level": "high"}])
         self.assertEqual(sarif["runs"][0]["results"][0]["level"], "error")
 
     def test_severity_low_mapped_to_note(self):
-        from _builder.sarif_output import results_to_sarif
+        from _builder.export.sarif_output import results_to_sarif
         sarif = results_to_sarif([{"rule_id": "x", "message": "m", "level": "low"}])
         self.assertEqual(sarif["runs"][0]["results"][0]["level"], "note")
 
     def test_default_level_is_warning_when_missing(self):
-        from _builder.sarif_output import results_to_sarif
+        from _builder.export.sarif_output import results_to_sarif
         sarif = results_to_sarif([{"rule_id": "x", "message": "m"}])
         self.assertEqual(sarif["runs"][0]["results"][0]["level"], "warning")
 
     def test_finding_without_file_has_empty_locations(self):
-        from _builder.sarif_output import results_to_sarif
+        from _builder.export.sarif_output import results_to_sarif
         sarif = results_to_sarif([{"rule_id": "x", "message": "m"}])
         self.assertEqual(sarif["runs"][0]["results"][0]["locations"], [])
 
     def test_finding_with_file_but_no_line_omits_region(self):
-        from _builder.sarif_output import results_to_sarif
+        from _builder.export.sarif_output import results_to_sarif
         sarif = results_to_sarif([{"rule_id": "x", "message": "m", "file": "/tmp/x.c"}])
         loc = sarif["runs"][0]["results"][0]["locations"][0]
         self.assertIn("artifactLocation", loc["physicalLocation"])
         self.assertNotIn("region", loc["physicalLocation"])
 
     def test_tool_name_and_version_propagated(self):
-        from _builder.sarif_output import results_to_sarif
+        from _builder.export.sarif_output import results_to_sarif
         sarif = results_to_sarif([], tool_name="CustomTool", tool_version="9.9.9")
         self.assertEqual(sarif["runs"][0]["tool"]["driver"]["name"], "CustomTool")
         self.assertEqual(sarif["runs"][0]["tool"]["driver"]["version"], "9.9.9")
 
     def test_rule_name_uppercase_with_underscores(self):
         """rule_id 'my-cool-rule' → rule name 'MY_COOL_RULE'."""
-        from _builder.sarif_output import results_to_sarif
+        from _builder.export.sarif_output import results_to_sarif
         sarif = results_to_sarif([{"rule_id": "my-cool-rule", "message": "m"}])
         rules = sarif["runs"][0]["tool"]["driver"]["rules"]
         self.assertEqual(rules[0]["name"], "MY_COOL_RULE")
@@ -149,12 +149,12 @@ class TestRacesToSarif(unittest.TestCase):
     """Tests for races_to_sarif (detect-races → SARIF)."""
 
     def test_empty_races_produces_valid_sarif(self):
-        from _builder.sarif_output import races_to_sarif
+        from _builder.export.sarif_output import races_to_sarif
         sarif = races_to_sarif([])
         self.assertTrue(_is_valid_sarif_basic(sarif))
 
     def test_race_with_high_severity_is_error(self):
-        from _builder.sarif_output import races_to_sarif
+        from _builder.export.sarif_output import races_to_sarif
         races = [{
             "type": "data_race",
             "severity": "high",
@@ -172,7 +172,7 @@ class TestRacesToSarif(unittest.TestCase):
         self.assertEqual(r["properties"]["function"], "reader")
 
     def test_race_with_low_severity_is_warning(self):
-        from _builder.sarif_output import races_to_sarif
+        from _builder.export.sarif_output import races_to_sarif
         races = [{
             "type": "toctou",
             "severity": "low",
@@ -184,7 +184,7 @@ class TestRacesToSarif(unittest.TestCase):
         self.assertEqual(sarif["runs"][0]["results"][0]["level"], "warning")
 
     def test_tool_name_is_code2database_races(self):
-        from _builder.sarif_output import races_to_sarif
+        from _builder.export.sarif_output import races_to_sarif
         sarif = races_to_sarif([])
         self.assertEqual(sarif["runs"][0]["tool"]["driver"]["name"], "Code2Database-races")
 
@@ -193,12 +193,12 @@ class TestTaintToSarif(unittest.TestCase):
     """Tests for taint_to_sarif (taint flows → SARIF)."""
 
     def test_empty_flows_produces_valid_sarif(self):
-        from _builder.sarif_output import taint_to_sarif
+        from _builder.export.sarif_output import taint_to_sarif
         sarif = taint_to_sarif([])
         self.assertTrue(_is_valid_sarif_basic(sarif))
 
     def test_unsanitized_flow_is_error(self):
-        from _builder.sarif_output import taint_to_sarif
+        from _builder.export.sarif_output import taint_to_sarif
         flows = [{
             "source": "user_input",
             "sink": "exec",
@@ -214,7 +214,7 @@ class TestTaintToSarif(unittest.TestCase):
         self.assertIn("2 hops", r["message"]["text"])  # path length mentioned
 
     def test_sanitized_flow_is_note(self):
-        from _builder.sarif_output import taint_to_sarif
+        from _builder.export.sarif_output import taint_to_sarif
         flows = [{
             "source": "user_input",
             "sink": "exec",
@@ -226,7 +226,7 @@ class TestTaintToSarif(unittest.TestCase):
         self.assertIn("sanitized", sarif["runs"][0]["results"][0]["message"]["text"])
 
     def test_tool_name_is_code2database_taint(self):
-        from _builder.sarif_output import taint_to_sarif
+        from _builder.export.sarif_output import taint_to_sarif
         sarif = taint_to_sarif([])
         self.assertEqual(sarif["runs"][0]["tool"]["driver"]["name"], "Code2Database-taint")
 

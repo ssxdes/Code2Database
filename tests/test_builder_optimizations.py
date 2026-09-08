@@ -16,7 +16,7 @@ class TestP1MacroBridging(unittest.TestCase):
     def _build_with_macro_pair(self, macro_sf="", impl_sf="impl.c",
                                macro_domain="fs.ext4", impl_domain="fs.ext4"):
         """Build a graph with a macro wrapper and __implementation function."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_module_func", "name": "module_func",
@@ -64,7 +64,7 @@ class TestP1MacroBridging(unittest.TestCase):
 
     def test_no_bridge_double_underscore_source(self):
         """Node starting with __ is the implementation, not the macro."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root___journal_start", "name": "__journal_start",
@@ -83,7 +83,7 @@ class TestP1MacroBridging(unittest.TestCase):
 
     def test_no_duplicate_bridge(self):
         """If edge already exists, no duplicate macro_bridge edge."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_journal_start", "name": "journal_start",
@@ -112,7 +112,7 @@ class TestP2InlineFnPtrDispatch(unittest.TestCase):
 
     def test_inline_wrapper_call_pattern(self):
         """call_* named auto-created nodes get vtable dispatch edges."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_caller", "name": "caller",
@@ -153,7 +153,7 @@ class TestP2InlineFnPtrDispatch(unittest.TestCase):
 
     def test_inline_wrapper_with_h_source(self):
         """call_* node with .h source_file still gets dispatch edges."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_caller", "name": "caller",
@@ -193,7 +193,7 @@ class TestP2InlineFnPtrDispatch(unittest.TestCase):
 
     def test_no_dispatch_for_c_source_wrapper(self):
         """call_* node with .c source_file does NOT get inline dispatch."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_caller", "name": "caller",
@@ -233,7 +233,7 @@ class TestP2InlineFnPtrDispatch(unittest.TestCase):
 
     def test_only_calls_predecessors_are_callers(self):
         """Inline wrapper dispatch only considers INVOKES edges, not other types."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_cb_setter", "name": "cb_setter",
@@ -293,7 +293,7 @@ class TestP4ConditionalParentEdges(unittest.TestCase):
 
     def test_cond_suffix_parent_edge(self):
         """Conditional node func__cond_0 gets edge from parent func."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_f", "name": "f", "source_file": "f.c",
@@ -325,7 +325,7 @@ class TestP4ConditionalParentEdges(unittest.TestCase):
 
     def test_cond_else_suffix(self):
         """Conditional node func__cond_0_else gets parent edge."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_f", "name": "f", "source_file": "f.c",
@@ -356,7 +356,7 @@ class TestP4ConditionalParentEdges(unittest.TestCase):
 
     def test_no_duplicate_conditional_parent(self):
         """If edge already exists, no duplicate conditional_entry edge."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_f", "name": "f", "source_file": "f.c",
@@ -382,7 +382,7 @@ class TestP4ConditionalParentEdges(unittest.TestCase):
 
     def test_named_conditional_with_empty_source_file(self):
         """<conditional:...> node with empty source_file gets parent via ID regex."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_my_func", "name": "my_func",
@@ -419,7 +419,7 @@ class TestP5VtableDispatchCap(unittest.TestCase):
 
     def test_vtable_dispatch_cap_truncates(self):
         """When more than cap registrations exist, only cap edges are created."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         # Create 55 implementations (exceeds cap of 50)
         funcs = [
             {"id": f"root_caller", "name": "caller",
@@ -457,7 +457,7 @@ class TestP5VtableDispatchCap(unittest.TestCase):
 
     def test_conditional_dispatch_truncates_not_skips(self):
         """Conditional dispatch with >50 targets truncates, not skips entirely."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         # Build extraction with a fn_ptr_call in a conditional
         # that has 55 possible dispatch targets
         funcs = [
@@ -503,7 +503,7 @@ class TestP2AInlineFnPtrFlattening(unittest.TestCase):
 
     def test_inline_fn_ptr_call_flattened(self):
         """When caller has no node_id, edges go to callers of the inline."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_real_caller", "name": "real_caller",
@@ -552,7 +552,7 @@ class TestP1ExtendedMacroBridging(unittest.TestCase):
 
     def test_no_bridge_different_second_level_domain(self):
         """Same first-level domain but different second-level: no bridge."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "fs_ext4_journal_start", "name": "journal_start",
@@ -573,7 +573,7 @@ class TestP1ExtendedMacroBridging(unittest.TestCase):
 
     def test_no_bridge_when_no_dunder_pair_exists(self):
         """A function with no __ counterpart: no false positive bridge."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_standalone_func", "name": "standalone_func",
@@ -593,7 +593,7 @@ class TestP1ExtendedMacroBridging(unittest.TestCase):
 
     def test_no_bridge_empty_domain(self):
         """No bridge when one function has empty domain."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_func_a", "name": "func_a",
@@ -617,7 +617,7 @@ class TestP2BExtendedInlineWrapper(unittest.TestCase):
 
     def test_invoke_pattern_creates_dispatch(self):
         """invoke_method with no source_file creates vtable dispatch edges."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_caller_func", "name": "caller_func",
@@ -657,7 +657,7 @@ class TestP2BExtendedInlineWrapper(unittest.TestCase):
 
     def test_dunder_invoke_pattern(self):
         """__invoke_method with no source_file creates vtable dispatch edges."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         # Note: node ID must NOT contain '___' (triple underscore)
         # as that triggers the parser artifact filter
         extraction = {
@@ -698,7 +698,7 @@ class TestP2BExtendedInlineWrapper(unittest.TestCase):
 
     def test_case_insensitive_vtable_matching(self):
         """call_Method (capital M) matches vtable field 'method' (lowercase)."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_caller_func", "name": "caller_func",
@@ -738,7 +738,7 @@ class TestP2BExtendedInlineWrapper(unittest.TestCase):
 
     def test_lazy_vtable_index_with_no_fn_ptr_calls(self):
         """P2B works when vtable_registrations exist but fn_ptr_calls is empty."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_caller_func", "name": "caller_func",
@@ -828,7 +828,7 @@ class TestP4ExtendedConditionalParent(unittest.TestCase):
 
     def test_conditional_with_source_file_fallback(self):
         """<conditional:...> node with source_file uses Strategy 2 when ID regex fails."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_my_func", "name": "my_func",
@@ -865,7 +865,7 @@ class TestP4ExtendedConditionalParent(unittest.TestCase):
 
     def test_conditional_no_matching_parent(self):
         """<conditional:...> node with no matching parent: no edge created."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_other_func", "name": "other_func",
@@ -892,7 +892,7 @@ class TestP5MacroDispatchCap(unittest.TestCase):
 
     def test_macro_dispatch_respects_cap(self):
         """macro_dispatch edges are capped at _MAX_VTABLE_DISPATCH_PER_CALL."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         # Create 60 registrations for the same macro
         regs = []
         for i in range(60):

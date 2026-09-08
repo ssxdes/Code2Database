@@ -20,8 +20,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.sqlite_store import SQLiteStore
-from _builder.graph_build import _wipe_cgdb_data
+from _builder.graph.sqlite_store import SQLiteStore
+from _builder.graph.graph_build import _wipe_cgdb_data
 
 
 def _tmp_db():
@@ -133,8 +133,8 @@ class TestWipeCgdbDataOnMissingTables(unittest.TestCase):
         # Every table in _CGDB_WIPE_TABLES must be a real schema table —
         # a dead name (like the pre-fix "predicates") makes every build
         # log a spurious warning/error.
-        from _builder.cgdb_schema import apply_cgdb_schema
-        from _builder.graph_build import _CGDB_WIPE_TABLES
+        from _builder.cgdb.cgdb_schema import apply_cgdb_schema
+        from _builder.graph.graph_build import _CGDB_WIPE_TABLES
         d, db = _tmp_db()
         conn = sqlite3.connect(db)
         try:
@@ -171,8 +171,8 @@ class TestDeleteFileRecordsWithL1(unittest.TestCase):
         # foreign_keys=ON, deleting cgdb_files cascaded tokens, which
         # tripped literals' NO ACTION FK. It also never cleaned the L1
         # tables at all.
-        from _builder.cgdb_schema import apply_cgdb_schema
-        from _builder.cgdb_store import SQLiteCGDBStore
+        from _builder.cgdb.cgdb_schema import apply_cgdb_schema
+        from _builder.cgdb.cgdb_store import SQLiteCGDBStore
         d, db = _tmp_db()
         conn = sqlite3.connect(db)
         apply_cgdb_schema(conn)

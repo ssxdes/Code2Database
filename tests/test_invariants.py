@@ -23,7 +23,7 @@ class TestExtractPreconditions(unittest.TestCase):
 
     def test_null_check_precondition(self):
         """`if (ptr == NULL) return -EINVAL;` → precondition ptr != NULL."""
-        from _builder.invariants import extract_preconditions
+        from _builder.analysis.invariants import extract_preconditions
         body = "if (ptr == NULL) return -EINVAL;"
         params = [{"name": "ptr"}]
         results = extract_preconditions(body, params)
@@ -36,7 +36,7 @@ class TestExtractPreconditions(unittest.TestCase):
 
     def test_truthy_check_precondition(self):
         """`if (!flag) return -1;` → precondition flag is truthy."""
-        from _builder.invariants import extract_preconditions
+        from _builder.analysis.invariants import extract_preconditions
         body = "if (!flag) return -1;"
         params = [{"name": "flag"}]
         results = extract_preconditions(body, params)
@@ -46,7 +46,7 @@ class TestExtractPreconditions(unittest.TestCase):
 
     def test_lower_bound_precondition(self):
         """`if (count < 0) return -EINVAL;` → precondition count >= 0."""
-        from _builder.invariants import extract_preconditions
+        from _builder.analysis.invariants import extract_preconditions
         body = "if (count < 0) return -EINVAL;"
         params = [{"name": "count"}]
         results = extract_preconditions(body, params)
@@ -56,7 +56,7 @@ class TestExtractPreconditions(unittest.TestCase):
 
     def test_upper_bound_precondition(self):
         """`if (size > 1024) return -EINVAL;` → precondition size <= 1024."""
-        from _builder.invariants import extract_preconditions
+        from _builder.analysis.invariants import extract_preconditions
         body = "if (size > 1024) return -EINVAL;"
         params = [{"name": "size"}]
         results = extract_preconditions(body, params)
@@ -66,7 +66,7 @@ class TestExtractPreconditions(unittest.TestCase):
 
     def test_value_check_precondition(self):
         """`if (mode == 0) return -1;` → precondition mode != 0."""
-        from _builder.invariants import extract_preconditions
+        from _builder.analysis.invariants import extract_preconditions
         body = "if (mode == 0) return -1;"
         params = [{"name": "mode"}]
         results = extract_preconditions(body, params)
@@ -77,7 +77,7 @@ class TestExtractPreconditions(unittest.TestCase):
     def test_non_param_var_gets_inferred_confidence(self):
         """A var that's NOT in the params list gets INFERRED confidence
         (per AGENTS.md: 'INFERRED require user review')."""
-        from _builder.invariants import extract_preconditions
+        from _builder.analysis.invariants import extract_preconditions
         body = "if (local_var == NULL) return -EINVAL;"
         params = [{"name": "other_param"}]  # local_var not in params
         results = extract_preconditions(body, params)
@@ -85,17 +85,17 @@ class TestExtractPreconditions(unittest.TestCase):
         self.assertEqual(results[0]["confidence"], "INFERRED")
 
     def test_empty_body_returns_empty(self):
-        from _builder.invariants import extract_preconditions
+        from _builder.analysis.invariants import extract_preconditions
         self.assertEqual(extract_preconditions(""), [])
         self.assertEqual(extract_preconditions("", params=[]), [])
 
     def test_no_precondition_patterns_returns_empty(self):
-        from _builder.invariants import extract_preconditions
+        from _builder.analysis.invariants import extract_preconditions
         body = "int x = 5; return x;"
         self.assertEqual(extract_preconditions(body, params=[{"name": "x"}]), [])
 
     def test_line_number_reported(self):
-        from _builder.invariants import extract_preconditions
+        from _builder.analysis.invariants import extract_preconditions
         # Multi-line body — the precondition is on line 2
         body = "int foo() {\n  if (ptr == NULL) return -EINVAL;\n  return 0;\n}"
         params = [{"name": "ptr"}]
@@ -104,7 +104,7 @@ class TestExtractPreconditions(unittest.TestCase):
         self.assertEqual(results[0]["line"], 2)
 
     def test_multiple_preconditions_in_same_body(self):
-        from _builder.invariants import extract_preconditions
+        from _builder.analysis.invariants import extract_preconditions
         body = """
         if (ptr == NULL) return -EINVAL;
         if (count < 0) return -EINVAL;
@@ -122,7 +122,7 @@ class TestExtractPostconditions(unittest.TestCase):
 
     def test_state_assign_before_return(self):
         """`ctx->state = READY; return 0;` → postcondition ctx->state == READY."""
-        from _builder.invariants import extract_postconditions
+        from _builder.analysis.invariants import extract_postconditions
         body = "ctx->state = READY; return 0;"
         results = extract_postconditions(body)
         state_posts = [r for r in results if r["source"] == "state_assign_before_return"]
@@ -132,7 +132,7 @@ class TestExtractPostconditions(unittest.TestCase):
 
     def test_return_success(self):
         """`return 0;` → postcondition 'returns success (0)'."""
-        from _builder.invariants import extract_postconditions
+        from _builder.analysis.invariants import extract_postconditions
         body = "return 0;"
         results = extract_postconditions(body)
         success_posts = [r for r in results if r["source"] == "return_success"]
@@ -140,11 +140,11 @@ class TestExtractPostconditions(unittest.TestCase):
         self.assertIn("success", success_posts[0]["condition"].lower())
 
     def test_empty_body_returns_empty(self):
-        from _builder.invariants import extract_postconditions
+        from _builder.analysis.invariants import extract_postconditions
         self.assertEqual(extract_postconditions(""), [])
 
     def test_no_postcondition_patterns_returns_empty(self):
-        from _builder.invariants import extract_postconditions
+        from _builder.analysis.invariants import extract_postconditions
         body = "int x = 5;"
         self.assertEqual(extract_postconditions(body), [])
 
@@ -154,7 +154,7 @@ class TestExtractLoopInvariants(unittest.TestCase):
 
     def test_for_loop_header(self):
         """`for (i = 0; i < n; i++)` → loop invariant 'i < n'."""
-        from _builder.invariants import extract_loop_invariants
+        from _builder.analysis.invariants import extract_loop_invariants
         body = "for (i = 0; i < n; i++) { sum += arr[i]; }"
         results = extract_loop_invariants(body)
         self.assertEqual(len(results), 1)
@@ -164,7 +164,7 @@ class TestExtractLoopInvariants(unittest.TestCase):
 
     def test_while_loop_header(self):
         """`while (count > 0)` → loop invariant 'count > 0'."""
-        from _builder.invariants import extract_loop_invariants
+        from _builder.analysis.invariants import extract_loop_invariants
         body = "while (count > 0) { count--; }"
         results = extract_loop_invariants(body)
         self.assertEqual(len(results), 1)
@@ -172,7 +172,7 @@ class TestExtractLoopInvariants(unittest.TestCase):
         self.assertEqual(results[0]["source"], "while_loop_header")
 
     def test_multiple_loops(self):
-        from _builder.invariants import extract_loop_invariants
+        from _builder.analysis.invariants import extract_loop_invariants
         body = """
         for (i = 0; i < n; i++) { foo(); }
         while (running) { bar(); }
@@ -183,11 +183,11 @@ class TestExtractLoopInvariants(unittest.TestCase):
         self.assertEqual(sources, {"for_loop_header", "while_loop_header"})
 
     def test_empty_body_returns_empty(self):
-        from _builder.invariants import extract_loop_invariants
+        from _builder.analysis.invariants import extract_loop_invariants
         self.assertEqual(extract_loop_invariants(""), [])
 
     def test_no_loops_returns_empty(self):
-        from _builder.invariants import extract_loop_invariants
+        from _builder.analysis.invariants import extract_loop_invariants
         body = "int x = 5; return x;"
         self.assertEqual(extract_loop_invariants(body), [])
 
@@ -197,7 +197,7 @@ class TestExtractStateMachine(unittest.TestCase):
 
     def test_state_machine_detected(self):
         """Multiple assignments to ctx->state → state machine extracted."""
-        from _builder.invariants import extract_state_machine
+        from _builder.analysis.invariants import extract_state_machine
         body = """
         ctx->state = INIT;
         ctx->state = READY;
@@ -215,18 +215,18 @@ class TestExtractStateMachine(unittest.TestCase):
             self.assertEqual(t["function"], "init")
 
     def test_no_state_assignments_returns_none(self):
-        from _builder.invariants import extract_state_machine
+        from _builder.analysis.invariants import extract_state_machine
         body = "int x = 5; return x;"
         sm = extract_state_machine(body)
         self.assertIsNone(sm)
 
     def test_empty_body_returns_none(self):
-        from _builder.invariants import extract_state_machine
+        from _builder.analysis.invariants import extract_state_machine
         self.assertIsNone(extract_state_machine(""))
 
     def test_picks_most_assigned_variable(self):
         """When multiple state vars exist, pick the one with most assignments."""
-        from _builder.invariants import extract_state_machine
+        from _builder.analysis.invariants import extract_state_machine
         body = """
         a->state = X;
         b->mode = Y;
@@ -244,7 +244,7 @@ class TestExtractInvariantsForNode(unittest.TestCase):
     """Tests for extract_invariants_for_node (combined extraction)."""
 
     def test_combined_extraction_returns_all_categories(self):
-        from _builder.invariants import extract_invariants_for_node
+        from _builder.analysis.invariants import extract_invariants_for_node
         ndata = {
             "body_text": """
             if (ptr == NULL) return -EINVAL;
@@ -264,7 +264,7 @@ class TestExtractInvariantsForNode(unittest.TestCase):
         self.assertGreater(len(result["postconditions"]), 0)
 
     def test_empty_node_returns_empty_categories(self):
-        from _builder.invariants import extract_invariants_for_node
+        from _builder.analysis.invariants import extract_invariants_for_node
         result = extract_invariants_for_node({"body_text": "", "name": "x"})
         self.assertEqual(result["preconditions"], [])
         self.assertEqual(result["postconditions"], [])

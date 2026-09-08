@@ -22,7 +22,7 @@ class TestOpsBindEdges(unittest.TestCase):
 
     def test_vtable_registration_creates_ops_bind_edge(self):
         """A vtable registration produces an OPS_BIND edge from vtable node to function."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         funcs = [
             {"id": "root_ext4_read", "name": "ext4_read",
              "source_file": "fs/ext4/file.c", "line": 10,
@@ -50,7 +50,7 @@ class TestOpsBindEdges(unittest.TestCase):
 
     def test_multiple_fields_create_multiple_edges(self):
         """A vtable with N registrations creates N OPS_BIND edges."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         funcs = [
             {"id": "root_read", "name": "ext4_read",
              "source_file": "fs/ext4/file.c", "line": 10,
@@ -80,7 +80,7 @@ class TestOpsBindEdges(unittest.TestCase):
 
     def test_vtable_node_created(self):
         """A synthetic vtable node is created in the graph."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         funcs = [
             {"id": "root_foo", "name": "foo",
              "source_file": "fs/ext4/file.c", "line": 10,
@@ -102,7 +102,7 @@ class TestOpsBindEdges(unittest.TestCase):
 
     def test_no_ops_bind_when_no_vtable(self):
         """No vtable_registrations → no OPS_BIND edges."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         funcs = [
             {"id": "root_foo", "name": "foo",
              "source_file": "src.c", "line": 10,
@@ -115,7 +115,7 @@ class TestOpsBindEdges(unittest.TestCase):
 
     def test_unknown_function_skipped(self):
         """Vtable registration pointing to unknown function is skipped (no crash)."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         funcs = []
         vtables = [
             {"struct_type": "file_operations", "var_name": "fop",
@@ -132,7 +132,7 @@ class TestOpsBindEdges(unittest.TestCase):
 
     def test_ops_bind_carries_preproc_condition(self):
         """OPS_BIND edge carries the vtable's preproc_condition."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         funcs = [
             {"id": "root_foo", "name": "foo",
              "source_file": "src.c", "line": 10,
@@ -156,7 +156,7 @@ class TestOpsBindEdges(unittest.TestCase):
 
     def test_ops_bind_confidence_is_extracted(self):
         """OPS_BIND edges are tagged EXTRACTED with confidence 1.0."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         funcs = [
             {"id": "root_foo", "name": "foo",
              "source_file": "src.c", "line": 10,
@@ -178,7 +178,7 @@ class TestOpsBindEdges(unittest.TestCase):
 
     def test_query_ops_bind_by_field_name(self):
         """After building, we can query 'which functions bind to file_operations.read_iter'."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         funcs = [
             {"id": "root_ext4_read", "name": "ext4_read",
              "source_file": "fs/ext4/file.c", "line": 10,

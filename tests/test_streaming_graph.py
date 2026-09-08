@@ -13,7 +13,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from _builder.streaming_graph import StreamingGraph, LazySQLiteGraph
+from _builder.graph.streaming_graph import StreamingGraph, LazySQLiteGraph
 
 
 class TestLazySQLiteGraphNegativeCache(unittest.TestCase):

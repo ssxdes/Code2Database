@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.daemon import FileWatcher, _WatchdogHandler
+from _builder.daemon.daemon import FileWatcher, _WatchdogHandler
 
 
 class TestBackendSelection(unittest.TestCase):

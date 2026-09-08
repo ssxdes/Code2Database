@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 import networkx as nx
 
-from _builder.concurrency_analysis import (
+from _builder.analysis.concurrency_analysis import (
     detect_data_races, _detect_locks_held, _get_thread_context)
 
 

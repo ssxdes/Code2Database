@@ -17,7 +17,7 @@ import zlib
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from _builder.c2d_foreign import _connect  # ensures tables exist
+from _builder.scanner_bridge.c2d_foreign import _connect  # ensures tables exist
 
 
 def _make_test_db(db_path, functions=None, edges=None):
@@ -82,7 +82,7 @@ class TestAddForeignStub(unittest.TestCase):
         # This avoids the "database is locked" error that occurs when
         # add_foreign_stub tries to ATTACH while _kb_connect's
         # executescript hasn't fully committed FTS5 shadow tables.
-        from _builder.kb_index import _kb_connect
+        from _builder.kb.kb_index import _kb_connect
         conn = _kb_connect(self.b_dir, create_if_missing=True)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS functions "
@@ -133,7 +133,7 @@ class TestAddForeignStub(unittest.TestCase):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_stub_resolves_unresolved_calls(self):
-        from _builder.c2d_phase3 import add_foreign_stub
+        from _builder.scanner_bridge.c2d_phase3 import add_foreign_stub
         summary = add_foreign_stub(self.b_dir, self.stub_dir,
                                     "glibc", verbose=False)
         self.assertTrue(summary.get("added"))
@@ -182,7 +182,7 @@ class TestScanRpcEdges(unittest.TestCase):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_scan_rpc_detects_http_call(self):
-        from _builder.c2d_phase3 import scan_rpc_edges
+        from _builder.scanner_bridge.c2d_phase3 import scan_rpc_edges
         summary = scan_rpc_edges(self.graph_dir, verbose=False)
         self.assertGreater(summary.get("rpc_edges_found", 0), 0)
         # Should have created a stub node
@@ -221,7 +221,7 @@ class TestImportForeignKnowledge(unittest.TestCase):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_import_copies_brief_with_prefix(self):
-        from _builder.c2d_phase3 import import_foreign_knowledge
+        from _builder.scanner_bridge.c2d_phase3 import import_foreign_knowledge
         summary = import_foreign_knowledge(
             self.b_dir, self.a_dir, "A", verbose=False)
         self.assertEqual(summary["files_copied"], 1)
@@ -229,13 +229,13 @@ class TestImportForeignKnowledge(unittest.TestCase):
             os.path.join(self.b_dir, "knowledge",
                          "foreign_A_brief.json")))
         # The copied brief is indexable knowledge (kb_paragraphs source)
-        from _builder.kb_index import _load_knowledge_paragraphs
+        from _builder.kb.kb_index import _load_knowledge_paragraphs
         paras = _load_knowledge_paragraphs(self.b_dir)
         self.assertTrue(any("All A APIs require init" in p["body"]
                             for p in paras))
 
     def test_import_without_brief_reports_message(self):
-        from _builder.c2d_phase3 import import_foreign_knowledge
+        from _builder.scanner_bridge.c2d_phase3 import import_foreign_knowledge
         empty = os.path.join(self.tmpdir, "C")
         os.makedirs(empty, exist_ok=True)
         summary = import_foreign_knowledge(
@@ -244,7 +244,7 @@ class TestImportForeignKnowledge(unittest.TestCase):
         self.assertIn("message", summary)
 
     def test_import_reimport_overwrites(self):
-        from _builder.c2d_phase3 import import_foreign_knowledge
+        from _builder.scanner_bridge.c2d_phase3 import import_foreign_knowledge
         import_foreign_knowledge(self.b_dir, self.a_dir, "A", verbose=False)
         # Re-import copies again (idempotent overwrite)
         summary = import_foreign_knowledge(
@@ -311,7 +311,7 @@ class TestF1DescribeNodeForeignRefs(unittest.TestCase):
     def test_fetch_foreign_refs_returns_metadata(self):
         if not self.has_networkx:
             self.skipTest("networkx not installed")
-        from _builder.query import _fetch_foreign_refs_for_node
+        from _builder.query.query import _fetch_foreign_refs_for_node
         refs = _fetch_foreign_refs_for_node(self.graph_dir, "B_main")
         self.assertEqual(len(refs), 1)
         self.assertEqual(refs[0]["foreign_name"], "init")
@@ -321,7 +321,7 @@ class TestF1DescribeNodeForeignRefs(unittest.TestCase):
     def test_fetch_foreign_refs_empty_for_unknown_node(self):
         if not self.has_networkx:
             self.skipTest("networkx not installed")
-        from _builder.query import _fetch_foreign_refs_for_node
+        from _builder.query.query import _fetch_foreign_refs_for_node
         refs = _fetch_foreign_refs_for_node(self.graph_dir, "nonexistent")
         self.assertEqual(len(refs), 0)
 
@@ -339,7 +339,7 @@ class TestF2KbQueryForeignFallback(unittest.TestCase):
         with open(os.path.join(b_kb_dir, "local.md"), "w") as f:
             f.write("# Local\n\nLocal only content.\n")
         # Create B's db with watched_c2ds entry pointing to A
-        from _builder.kb_index import _kb_connect
+        from _builder.kb.kb_index import _kb_connect
         conn = _kb_connect(self.b_dir)
         conn.execute(
             "INSERT INTO watched_c2ds (c2d_path, project_name, "
@@ -356,7 +356,7 @@ class TestF2KbQueryForeignFallback(unittest.TestCase):
         with open(os.path.join(a_kb_dir, "principles.md"), "w") as f:
             f.write("# A Principles\n\nAll A APIs require init before use.\n")
         # Build A's kb_paragraphs
-        from _builder.kb_index import rebuild_kb_index
+        from _builder.kb.kb_index import rebuild_kb_index
         rebuild_kb_index(self.a_dir, verbose=False)
         # Build B's kb_paragraphs (thin — only 1 local item)
         rebuild_kb_index(self.b_dir, verbose=False)
@@ -365,7 +365,7 @@ class TestF2KbQueryForeignFallback(unittest.TestCase):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_query_falls_back_to_foreign(self):
-        from _builder.kb_index import query_kb
+        from _builder.kb.kb_index import query_kb
         # Query for "A APIs" — should find it in A's kb_paragraphs
         # if local results are thin (len < top_n)
         results = query_kb(self.b_dir, "A APIs require init", top_n=10)

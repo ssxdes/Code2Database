@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.explore import (  # noqa: E402
+from _builder.query.explore import (  # noqa: E402
     _tokenize_query,
     _expand_synonyms,
     _score_node_relevance,

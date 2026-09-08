@@ -50,7 +50,7 @@ class TestBuildGraph(unittest.TestCase):
     """Test build_graph from extraction JSON."""
 
     def test_basic_build(self):
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_main", "name": "main", "source_file": "main.c",
@@ -76,12 +76,12 @@ class TestBuildGraph(unittest.TestCase):
         self.assertIn("root_main", G)
 
     def test_empty_extraction(self):
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         G, _ = build_graph({"functions": [], "edges": [], "domains": [], "lang_stats": {}})
         self.assertEqual(G.number_of_nodes(), 0)
 
     def test_conditional_edges(self):
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_f", "name": "f", "source_file": "f.c",
@@ -105,7 +105,7 @@ class TestBuildGraph(unittest.TestCase):
         self.assertEqual(edge_data.get("call_condition"), "if(x)")
 
     def test_edge_source_tag(self):
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_f", "name": "f", "source_file": "f.c",
@@ -127,7 +127,7 @@ class TestBuildGraph(unittest.TestCase):
         self.assertEqual(edge_data.get("confidence"), "INFERRED")
 
     def test_node_attributes(self):
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_main", "name": "main", "source_file": "main.c",
@@ -149,7 +149,7 @@ class TestBuildGraph(unittest.TestCase):
 
 class TestHubFunctions(unittest.TestCase):
     def test_hub_detection(self):
-        from _builder.index_pack import _compute_hub_functions
+        from _builder.export.index_pack import _compute_hub_functions
         G = nx.DiGraph()
         G.add_node("a", name="a", domain="root", source_file="a.c", is_empty=False)
         G.add_node("b", name="b", domain="root", source_file="b.c", is_empty=False)
@@ -166,13 +166,13 @@ class TestHubFunctions(unittest.TestCase):
         self.assertGreater(hubs[0]["betweenness"], 0)
 
     def test_empty_graph(self):
-        from _builder.index_pack import _compute_hub_functions
+        from _builder.export.index_pack import _compute_hub_functions
         G = nx.DiGraph()
         hubs = _compute_hub_functions(G)
         self.assertEqual(len(hubs), 0)
 
     def test_skips_external_nodes(self):
-        from _builder.index_pack import _compute_hub_functions
+        from _builder.export.index_pack import _compute_hub_functions
         G = nx.DiGraph()
         G.add_node("ext_func", name="ext_func", domain="external", source_file="", is_empty=False)
         G.add_node("a", name="a", domain="root", source_file="a.c", is_empty=False)
@@ -184,7 +184,7 @@ class TestHubFunctions(unittest.TestCase):
 
 class TestCrossDomainHotspots(unittest.TestCase):
     def test_hotspot_detection(self):
-        from _builder.index_pack import _compute_cross_domain_hotspots
+        from _builder.export.index_pack import _compute_cross_domain_hotspots
         G = nx.DiGraph()
         G.add_node("a", name="a", domain="lib")
         G.add_node("b", name="b", domain="module")
@@ -196,7 +196,7 @@ class TestCrossDomainHotspots(unittest.TestCase):
         self.assertEqual(hotspots[0]["edge_count"], 2)
 
     def test_no_cross_domain(self):
-        from _builder.index_pack import _compute_cross_domain_hotspots
+        from _builder.export.index_pack import _compute_cross_domain_hotspots
         G = nx.DiGraph()
         G.add_node("a", name="a", domain="lib")
         G.add_node("b", name="b", domain="lib")
@@ -209,7 +209,7 @@ class TestSplitByDomain(unittest.TestCase):
     """Test split_by_domain writes correct JSON files."""
 
     def test_split(self):
-        from _builder.graph_build import build_graph, split_by_domain
+        from _builder.graph.graph_build import build_graph, split_by_domain
         extraction = {
             "functions": [
                 {"id": "lib.bdev.bdev_start", "name": "bdev_start", "source_file": "lib/bdev/bdev.c",
@@ -243,7 +243,7 @@ class TestSplitByDomain(unittest.TestCase):
             self.assertGreaterEqual(len(master["cross_domain_edges"]), 1)
 
     def test_edge_source_tag_written(self):
-        from _builder.graph_build import build_graph, split_by_domain
+        from _builder.graph.graph_build import build_graph, split_by_domain
         extraction = {
             "functions": [
                 {"id": "root_f", "name": "f", "source_file": "f.c",
@@ -275,7 +275,7 @@ class TestSplitByDomain(unittest.TestCase):
 
 class TestCompactEdgeFormat(unittest.TestCase):
     def test_read_compact(self):
-        from _builder.graph_build import _load_full_graph
+        from _builder.graph.graph_build import _load_full_graph
         with tempfile.TemporaryDirectory() as tmpdir:
             domain_data = {
                 "type": "code2database_domain",
@@ -319,7 +319,7 @@ class TestCompactEdgeFormat(unittest.TestCase):
             self.assertEqual(edge_data.get("confidence"), "EXTRACTED")
 
     def test_read_legacy_with_source_tag(self):
-        from _builder.graph_build import _load_full_graph
+        from _builder.graph.graph_build import _load_full_graph
         with tempfile.TemporaryDirectory() as tmpdir:
             domain_data = {
                 "type": "code2database_domain",
@@ -353,7 +353,7 @@ class TestCompactEdgeFormat(unittest.TestCase):
             self.assertEqual(G.number_of_nodes(), 1)
 
     def test_compact_edge_extras(self):
-        from _builder.graph_build import _load_full_graph
+        from _builder.graph.graph_build import _load_full_graph
         with tempfile.TemporaryDirectory() as tmpdir:
             domain_data = {
                 "type": "code2database_domain",
@@ -396,25 +396,25 @@ class TestCompactEdgeFormat(unittest.TestCase):
 
 class TestDomainSubdir(unittest.TestCase):
     def test_single_domain(self):
-        from _builder.graph_build import _domain_subdir
+        from _builder.graph.graph_build import _domain_subdir
         result = _domain_subdir("lib", {"lib": 5}, max_per_dir=50)
         self.assertEqual(result, "lib/")
 
     def test_nested_domain_many(self):
-        from _builder.graph_build import _domain_subdir
+        from _builder.graph.graph_build import _domain_subdir
         # When there are many domains under "lib", "lib.bdev" goes to "lib/bdev/"
         domain_count = {f"lib.bdev{n}": 5 for n in range(60)}
         result = _domain_subdir("lib.bdev0", domain_count, max_per_dir=50)
         self.assertEqual(result, "lib/bdev0/")
 
     def test_nested_domain_few(self):
-        from _builder.graph_build import _domain_subdir
+        from _builder.graph.graph_build import _domain_subdir
         # When there are few domains under "lib", collapses to "lib/"
         result = _domain_subdir("lib.bdev", {"lib.bdev": 5}, max_per_dir=50)
         self.assertEqual(result, "lib/")
 
     def test_empty_domain_returns_root_subdir(self):
-        from _builder.graph_build import _domain_subdir
+        from _builder.graph.graph_build import _domain_subdir
         # An empty domain must return "root/" (not "/") so that
         # os.path.join("domains", subdir, filename) stays relative.
         # Returning "/" makes os.path.join treat the path as absolute,
@@ -438,7 +438,7 @@ class TestBareNameCalleeDomainAssignment(unittest.TestCase):
     """
 
     def _build_with_bare_callee(self):
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         funcs = [
             {"id": "scripts_main", "name": "main",
              "source_file": "scripts/run.py", "line": 1,
@@ -488,7 +488,7 @@ class TestBareNameCalleeDomainAssignment(unittest.TestCase):
         "callback_func in external domain" would warn on every unresolvable
         callback target, masking real callback_func misplacement bugs.
         """
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         funcs = [
             {"id": "scripts_main", "name": "main",
              "source_file": "scripts/run.py", "line": 1,
@@ -520,13 +520,13 @@ class TestBareNameCalleeDomainAssignment(unittest.TestCase):
 
 class TestEntryPointScore(unittest.TestCase):
     def test_api_entry_boost(self):
-        from _builder.entry_scoring import _calculate_entry_point_score
+        from _builder.profile.entry_scoring import _calculate_entry_point_score
         score_api = _calculate_entry_point_score("bdev_start", True, 0, 5, [])
         score_non = _calculate_entry_point_score("helper", False, 0, 5, [])
         self.assertGreater(score_api, score_non)
 
     def test_utility_penalty(self):
-        from _builder.entry_scoring import _calculate_entry_point_score
+        from _builder.profile.entry_scoring import _calculate_entry_point_score
         score_util = _calculate_entry_point_score("get_value", True, 0, 5, [])
         score_handler = _calculate_entry_point_score("handle_request", True, 0, 5, [])
         self.assertGreater(score_handler, score_util)
@@ -620,40 +620,40 @@ class TestExecSummaryAndHubInfo(unittest.TestCase):
     """Test _compute_exec_summary and _compute_hub_info from query module."""
 
     def test_exec_summary_from_semantic(self):
-        from _builder.query import _compute_exec_summary
+        from _builder.query.query import _compute_exec_summary
         result = _compute_exec_summary(
             "Initializes the bdev layer. Sets up internal structures.",
             "", "bdev_init", [], [])
         self.assertTrue(result.startswith("Initializes the bdev layer"))
 
     def test_exec_summary_from_external(self):
-        from _builder.query import _compute_exec_summary
+        from _builder.query.query import _compute_exec_summary
         result = _compute_exec_summary(
             "", "External: starts bdev subsystem", "bdev_start", ["API_entry"], [])
         self.assertEqual(result, "External: starts bdev subsystem")
 
     def test_exec_summary_api_label(self):
-        from _builder.query import _compute_exec_summary
+        from _builder.query.query import _compute_exec_summary
         result = _compute_exec_summary("", "", "spdk_bdev_open", ["API_entry"], [])
         self.assertIn("API entry point", result)
 
     def test_exec_summary_thread_label(self):
-        from _builder.query import _compute_exec_summary
+        from _builder.query.query import _compute_exec_summary
         result = _compute_exec_summary("", "", "poller_fn", ["thread_processor"], [])
         self.assertIn("Thread entry", result)
 
     def test_exec_summary_callback_label(self):
-        from _builder.query import _compute_exec_summary
+        from _builder.query.query import _compute_exec_summary
         result = _compute_exec_summary("", "", "on_complete", ["callback_func"], [])
         self.assertIn("Callback", result)
 
     def test_exec_summary_empty(self):
-        from _builder.query import _compute_exec_summary
+        from _builder.query.query import _compute_exec_summary
         result = _compute_exec_summary("", "", "helper", [], [])
         self.assertEqual(result, "")
 
     def test_hub_info_connector(self):
-        from _builder.query import _compute_hub_info
+        from _builder.query.query import _compute_hub_info
         G = nx.DiGraph()
         G.add_node("a1", name="a1", labels=[])
         G.add_node("a2", name="a2", labels=[])
@@ -674,7 +674,7 @@ class TestExecSummaryAndHubInfo(unittest.TestCase):
         self.assertEqual(result["out_degree"], 3)
 
     def test_hub_info_bridge(self):
-        from _builder.query import _compute_hub_info
+        from _builder.query.query import _compute_hub_info
         G = nx.DiGraph()
         G.add_node("api", name="api_func", labels=["API_entry"])
         G.add_node("mid", name="middle", labels=[])
@@ -777,33 +777,33 @@ class TestExploreFlow(unittest.TestCase):
         self.assertEqual(cm.exception.code, 0)
 
     def test_tokenize_query(self):
-        from _builder.explore import _tokenize_query
+        from _builder.query.explore import _tokenize_query
         tokens = _tokenize_query("bdev initialization flow")
         self.assertEqual(tokens, ["bdev", "initialization", "flow"])
 
     def test_tokenize_query_cjk(self):
-        from _builder.explore import _tokenize_query
+        from _builder.query.explore import _tokenize_query
         tokens = _tokenize_query("spdk_bdev_open 初始化")
         # Tokenizer splits on underscores and separates CJK characters
         self.assertIn("初始化", tokens)
         self.assertIn("spdk", tokens)
 
     def test_score_node_relevance(self):
-        from _builder.explore import _score_node_relevance
+        from _builder.query.explore import _score_node_relevance
         nd = {"name": "bdev_init", "signature": "void bdev_init(int mode)",
               "semantic_desc": "Initialize bdev subsystem", "domain": "lib.bdev", "labels": []}
         score = _score_node_relevance(nd, ["bdev", "init"])
         self.assertGreater(score, 0)
 
     def test_score_exact_name_match(self):
-        from _builder.explore import _score_node_relevance
+        from _builder.query.explore import _score_node_relevance
         nd = {"name": "bdev_init", "signature": "", "semantic_desc": "",
               "domain": "", "labels": []}
         score = _score_node_relevance(nd, ["bdev_init"])
         self.assertGreater(score, 5.0)  # 3 for partial + 5 for exact
 
     def test_find_relevant_nodes(self):
-        from _builder.explore import _find_relevant_nodes
+        from _builder.query.explore import _find_relevant_nodes
         G = nx.DiGraph()
         G.add_node("lib_bdev_init", name="bdev_init", signature="void bdev_init()",
                    semantic_desc="Initialize bdev", domain="lib.bdev", labels=[], is_empty=False)
@@ -817,7 +817,7 @@ class TestExploreFlow(unittest.TestCase):
         self.assertEqual(result[0][0], "lib_bdev_init")
 
     def test_extract_subgraph_context(self):
-        from _builder.explore import _extract_subgraph_context
+        from _builder.query.explore import _extract_subgraph_context
         G = nx.DiGraph()
         G.add_node("a", name="fn_a", signature="void a()", domain="d1",
                    labels=[], is_empty=False, source_file="a.c", line=1)
@@ -830,7 +830,7 @@ class TestExploreFlow(unittest.TestCase):
         self.assertGreater(len(result["edges"]), 0)
 
     def test_derive_exec_summary(self):
-        from _builder.explore import _derive_exec_summary
+        from _builder.query.explore import _derive_exec_summary
         nd = {"semantic_desc": "Initialize the bdev layer. Configure resources.",
               "external_desc": "", "name": "bdev_init", "labels": []}
         result = _derive_exec_summary(nd)
@@ -841,7 +841,7 @@ class TestFQNAndMultiStrategy(unittest.TestCase):
     """Test FQN computation and multi-strategy callee resolution."""
 
     def test_compute_fqn_basic(self):
-        from _builder.import_resolve import _compute_fqn
+        from _builder.build.import_resolve import _compute_fqn
         nd = {"name": "bdev_init", "domain": "lib.bdev", "source_file": "lib/bdev/bdev.c"}
         fqn = _compute_fqn(nd, "spdk")
         self.assertIn("spdk", fqn)
@@ -849,14 +849,14 @@ class TestFQNAndMultiStrategy(unittest.TestCase):
         self.assertIn("bdev_init", fqn)
 
     def test_compute_fqn_no_project(self):
-        from _builder.import_resolve import _compute_fqn
+        from _builder.build.import_resolve import _compute_fqn
         nd = {"name": "main", "domain": "app", "source_file": "app/main.c"}
         fqn = _compute_fqn(nd, "")
         self.assertIn("app", fqn)
         self.assertIn("main", fqn)
 
     def test_multi_strategy_same_file(self):
-        from _builder.import_resolve import _multi_strategy_resolve
+        from _builder.build.import_resolve import _multi_strategy_resolve
         G = nx.DiGraph()
         G.add_node("caller", name="fn_caller", source_file="test.c",
                    domain="lib.test", labels=[], is_empty=False, body_text="")
@@ -868,7 +868,7 @@ class TestFQNAndMultiStrategy(unittest.TestCase):
         self.assertGreater(conf, 0.9)
 
     def test_multi_strategy_same_domain(self):
-        from _builder.import_resolve import _multi_strategy_resolve
+        from _builder.build.import_resolve import _multi_strategy_resolve
         G = nx.DiGraph()
         G.add_node("caller", name="fn_caller", source_file="a.c",
                    domain="lib.bdev", labels=[], is_empty=False, body_text="")
@@ -879,7 +879,7 @@ class TestFQNAndMultiStrategy(unittest.TestCase):
         self.assertEqual(strategy, "same_domain")
 
     def test_multi_strategy_unique_name(self):
-        from _builder.import_resolve import _multi_strategy_resolve
+        from _builder.build.import_resolve import _multi_strategy_resolve
         G = nx.DiGraph()
         G.add_node("caller", name="fn_caller", source_file="a.c",
                    domain="lib.x", labels=[], is_empty=False, body_text="")
@@ -890,7 +890,7 @@ class TestFQNAndMultiStrategy(unittest.TestCase):
         self.assertEqual(strategy, "unique_name")
 
     def test_multi_strategy_unresolved(self):
-        from _builder.import_resolve import _multi_strategy_resolve
+        from _builder.build.import_resolve import _multi_strategy_resolve
         G = nx.DiGraph()
         G.add_node("caller", name="fn_caller", source_file="a.c",
                    domain="lib.x", labels=[], is_empty=False, body_text="")
@@ -899,7 +899,7 @@ class TestFQNAndMultiStrategy(unittest.TestCase):
 
     def test_fqn_in_built_graph(self):
         """Test that build_graph adds fqn to nodes."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "lib_bdev_init", "name": "bdev_init", "source_file": "lib/bdev/bdev.c",
@@ -920,7 +920,7 @@ class TestRoundTrip(unittest.TestCase):
     """Test build → split → load round trip."""
 
     def test_round_trip(self):
-        from _builder.graph_build import build_graph, split_by_domain, _load_full_graph
+        from _builder.graph.graph_build import build_graph, split_by_domain, _load_full_graph
         extraction = {
             "functions": [
                 {"id": "lib_bdev_start", "name": "bdev_start", "source_file": "lib/bdev/bdev.c",
@@ -1048,7 +1048,7 @@ class TestParserArtifactDetection(unittest.TestCase):
 
     def test_build_graph_skips_artifact_edges(self):
         """Edges with parser artifact targets should be filtered out."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "scripts_add_quotes", "name": "add_quotes", "source_file": "scripts/add.py",
@@ -1092,7 +1092,7 @@ class TestResolveImportsPerformance(unittest.TestCase):
 
     def test_resolve_imports_skips_unneeded_headers(self):
         """Only scan headers that are referenced in include_map."""
-        from _builder.import_resolve import _resolve_imports
+        from _builder.build.import_resolve import _resolve_imports
         import tempfile
         G = self._make_graph_with_includes()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1109,7 +1109,7 @@ class TestResolveImportsPerformance(unittest.TestCase):
 
     def test_large_header_no_backtracking(self):
         """The new regex should not cause catastrophic backtracking on large headers."""
-        from _builder.import_resolve import _resolve_imports
+        from _builder.build.import_resolve import _resolve_imports
         import tempfile
         import time
         G = nx.DiGraph()
@@ -1143,7 +1143,7 @@ class TestCrossFileResolution(unittest.TestCase):
 
     def test_cross_file_same_domain(self):
         """foo() in file_a.c calls bar() defined in file_b.c, same domain."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "lib.a.foo", "name": "foo", "source_file": "lib/a/a.c",
@@ -1171,7 +1171,7 @@ class TestCrossFileResolution(unittest.TestCase):
 
     def test_cross_file_unique_name(self):
         """foo() calls unique_func() defined in another domain — unique_name strategy."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "app.main_func", "name": "main_func", "source_file": "app/main.c",
@@ -1194,7 +1194,7 @@ class TestCrossFileResolution(unittest.TestCase):
 
     def test_multi_strategy_same_file(self):
         """Two functions in same file — same_file strategy."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_caller", "name": "caller", "source_file": "test.c",

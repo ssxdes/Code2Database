@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.daemon import Daemon, DEFAULT_CONFIG
+from _builder.daemon.daemon import Daemon, DEFAULT_CONFIG
 
 
 class TestCircuitBreakerConfig(unittest.TestCase):

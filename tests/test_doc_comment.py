@@ -202,7 +202,7 @@ class TestDocCodeAlignDocCommentFallback(unittest.TestCase):
 
     def test_doc_comment_provides_return_value_claim(self):
         """A doc_comment with return-value claim is used when semantic_desc is missing."""
-        from _builder.doc_code_align import _check_return_value_mismatch
+        from _builder.misc.doc_code_align import _check_return_value_mismatch
         node_data = {
             "name": "do_work",
             "body_text": "int do_work(int x) { return 1; }",
@@ -218,7 +218,7 @@ class TestDocCodeAlignDocCommentFallback(unittest.TestCase):
 
     def test_doc_comment_provides_param_mention(self):
         """A doc_comment mentioning a param is used for param-mismatch check."""
-        from _builder.doc_code_align import _check_param_mismatch
+        from _builder.misc.doc_code_align import _check_param_mismatch
         node_data = {
             "name": "do_work",
             "body_text": "int do_work(int x) { return x; }",
@@ -233,7 +233,7 @@ class TestDocCodeAlignDocCommentFallback(unittest.TestCase):
 
     def test_doc_comment_provides_signature(self):
         """A doc_comment with function signature is used for signature-change check."""
-        from _builder.doc_code_align import _check_signature_change
+        from _builder.misc.doc_code_align import _check_signature_change
         node_data = {
             "name": "do_work",
             "signature": "int do_work(int x, int y)",
@@ -246,18 +246,19 @@ class TestDocCodeAlignDocCommentFallback(unittest.TestCase):
     def test_check_doc_code_alignment_includes_doc_comment_only_nodes(self):
         """check_doc_code_alignment processes nodes with only doc_comment field."""
         import networkx as nx
-        from _builder.doc_code_align import check_doc_code_alignment
+        from _builder.misc.doc_code_align import check_doc_code_alignment
         # Build a minimal graph
         G = nx.DiGraph()
         G.add_node("n1", name="do_work", body_text="int do_work(int x) { return 1; }",
                    signature="int do_work(int x)", params=["x"],
                    doc_comment="Returns 0 on success, 1 on failure.")
         # We need to monkeypatch _load_full_graph to return our test graph
-        import _builder.doc_code_align as dca
-        original_load = dca._builder.graph_build._load_full_graph if hasattr(
+        import _builder.misc.doc_code_align as dca
+        original_load = dca._builder.graph.graph_build._load_full_graph if hasattr(
             dca, '_builder') else None
         # Use direct patch
-        from _builder import graph_build
+        from _builder.graph import graph_build
+
         original = graph_build._load_full_graph
         graph_build._load_full_graph = lambda gd: G
         try:
@@ -273,12 +274,13 @@ class TestDocCodeAlignDocCommentFallback(unittest.TestCase):
     def test_check_doc_code_alignment_skips_nodes_without_any_doc(self):
         """check_doc_code_alignment skips nodes that have no doc fields at all."""
         import networkx as nx
-        from _builder.doc_code_align import check_doc_code_alignment
+        from _builder.misc.doc_code_align import check_doc_code_alignment
         G = nx.DiGraph()
         G.add_node("n1", name="bare_func", body_text="int bare_func() { return 0; }",
                    signature="int bare_func()", params=[])
         # No semantic_desc, external_desc, api_constraints, OR doc_comment
-        from _builder import graph_build
+        from _builder.graph import graph_build
+
         original = graph_build._load_full_graph
         graph_build._load_full_graph = lambda gd: G
         try:

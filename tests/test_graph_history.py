@@ -8,8 +8,9 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder import graph_history
-from _builder.graph_history import (
+from _builder.graph import graph_history
+
+from _builder.graph.graph_history import (
     record_version, list_versions, get_version, node_history,
     graph_diff, _ensure_history_db, _load_nodes_from_dir, _load_edges_from_dir,
     _attr_diff, _edge_key,

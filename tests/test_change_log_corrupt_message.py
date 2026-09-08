@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.query import cmd_describe_commit, cmd_node_history
+from _builder.query.query import cmd_describe_commit, cmd_node_history
 
 
 def _corrupt_graph_dir():

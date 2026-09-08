@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.audit_log import (
+from _builder.ops.audit_log import (
     log_audit, query_audit_log, new_tx_id, annotate_fact_source,
 )
 

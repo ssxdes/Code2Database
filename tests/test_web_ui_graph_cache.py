@@ -56,7 +56,7 @@ class TestGraphCacheImport(unittest.TestCase):
     """Verify the web_ui module imports cleanly."""
 
     def test_module_imports_cleanly(self):
-        from _builder.web_ui import GraphCache
+        from _builder.misc.web_ui import GraphCache
         self.assertTrue(callable(GraphCache))
         # Verify the 8+ public methods exist
         for name in ('reload', 'summary', 'get_node', 'neighbors',
@@ -71,7 +71,7 @@ class TestGraphCacheSmoke(unittest.TestCase):
     """Smoke test 8 GraphCache public methods."""
 
     def setUp(self):
-        from _builder.web_ui import GraphCache
+        from _builder.misc.web_ui import GraphCache
         self.tmpdir = tempfile.mkdtemp()
         self.addCleanup(self._cleanup)
         _write_graph_dir(self.tmpdir)
@@ -179,7 +179,7 @@ class TestGraphCacheExtended(unittest.TestCase):
     """Reload, list_domains, get_code_snippet — supporting methods."""
 
     def setUp(self):
-        from _builder.web_ui import GraphCache
+        from _builder.misc.web_ui import GraphCache
         self.tmpdir = tempfile.mkdtemp()
         self.addCleanup(self._cleanup)
         _write_graph_dir(self.tmpdir)
@@ -229,7 +229,7 @@ class TestGraphCacheDegrees(unittest.TestCase):
     """
 
     def setUp(self):
-        from _builder.web_ui import GraphCache
+        from _builder.misc.web_ui import GraphCache
         self.tmpdir = tempfile.mkdtemp()
         self.addCleanup(self._cleanup)
         self.GraphCache = GraphCache
@@ -306,8 +306,8 @@ class TestGraphCacheDegrees(unittest.TestCase):
         self.assertEqual(cache.get_all_degrees()['n2'], 2)
 
     def test_lazy_sqlite_backend_precomputes_via_sql(self):
-        from _builder.sqlite_store import SQLiteStore
-        from _builder.streaming_graph import LazySQLiteGraph
+        from _builder.graph.sqlite_store import SQLiteStore
+        from _builder.graph.streaming_graph import LazySQLiteGraph
         db = os.path.join(self.tmpdir, 'code2database.db')
         store = SQLiteStore(db)
         store.connect()
@@ -326,7 +326,7 @@ class TestImpactAnalysis(unittest.TestCase):
     """impact_analysis correctness + truncation surfacing."""
 
     def setUp(self):
-        from _builder.web_ui import GraphCache
+        from _builder.misc.web_ui import GraphCache
         self.tmpdir = tempfile.mkdtemp()
         self.addCleanup(self._cleanup)
         nodes = [
@@ -375,7 +375,7 @@ class TestRealCommunities(unittest.TestCase):
     the precomputed .code2database_communities.json was never read."""
 
     def setUp(self):
-        from _builder.web_ui import GraphCache
+        from _builder.misc.web_ui import GraphCache
         self.tmpdir = tempfile.mkdtemp()
         self.addCleanup(self._cleanup)
         self.GraphCache = GraphCache
@@ -440,7 +440,7 @@ class TestSearchResultsLocation(unittest.TestCase):
     """search() results carry location info for disambiguation."""
 
     def setUp(self):
-        from _builder.web_ui import GraphCache
+        from _builder.misc.web_ui import GraphCache
         self.tmpdir = tempfile.mkdtemp()
         self.addCleanup(self._cleanup)
         nodes = [

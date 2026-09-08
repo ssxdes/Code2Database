@@ -19,8 +19,9 @@ from contextlib import redirect_stdout, redirect_stderr
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder import cgdb_commands as cc
-from _builder.cgdb_store import SQLiteCGDBStore
+from _builder.cgdb import cgdb_commands as cc
+
+from _builder.cgdb.cgdb_store import SQLiteCGDBStore
 from tests.test_cgdb_store import _make_batch
 
 
@@ -254,7 +255,7 @@ class TestCmdCgdbSchemaVersion(_StoreFixture):
     def test_reports_current_and_latest(self):
         _, out, _ = _run(cc.cmd_cgdb_schema_version, _ns(graph=self.graph_dir))
         r = _json(out)
-        from _builder.cgdb_schema import CGDB_SCHEMA_VERSION
+        from _builder.cgdb.cgdb_schema import CGDB_SCHEMA_VERSION
         self.assertEqual(r["current_version"], CGDB_SCHEMA_VERSION)
         self.assertEqual(r["latest_version"], CGDB_SCHEMA_VERSION)
         self.assertFalse(r["needs_migration"])

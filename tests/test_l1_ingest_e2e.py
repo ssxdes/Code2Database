@@ -1,4 +1,4 @@
-"""End-to-end smoke tests for _builder.l1_ingest.ingest_l1().
+"""End-to-end smoke tests for _builder.scanner_bridge.l1_ingest.ingest_l1().
 
 The L1 ingest layer requires libclang to populate the tokens / macros /
 pp_branches tables (per design report §2.1.1). When libclang is not
@@ -18,8 +18,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.cgdb_schema import apply_cgdb_schema
-from _builder.l1_ingest import (
+from _builder.cgdb.cgdb_schema import apply_cgdb_schema
+from _builder.scanner_bridge.l1_ingest import (
     ingest_l1,
     is_libclang_available,
     _refine_literal_kind,
@@ -46,7 +46,7 @@ class TestL1IngestImport(unittest.TestCase):
     """Verify the module and helpers import cleanly."""
 
     def test_module_imports_cleanly(self):
-        import _builder.l1_ingest as l1
+        import _builder.scanner_bridge.l1_ingest as l1
         self.assertTrue(hasattr(l1, 'ingest_l1'))
         self.assertTrue(callable(l1.ingest_l1))
 
@@ -254,7 +254,7 @@ def _l1_context_probe(task):
     concurrent multi-process SQLite is unusable on some environments
     (WSL1), which would obscure the pool-contract assertions below.
     """
-    import _builder.l1_ingest as _l1
+    import _builder.scanner_bridge.l1_ingest as _l1
     fp, _fid = task
     return {
         "file_path": fp,
@@ -277,7 +277,7 @@ class TestProcessPoolSpawnContext(unittest.TestCase):
 
     def test_pool_uses_spawn_and_initializer_sets_context(self):
         import multiprocessing as _mp
-        import _builder.l1_ingest as _l1
+        import _builder.scanner_bridge.l1_ingest as _l1
         from unittest.mock import patch as _patch
 
         tasks = [(f"/fake/src/f{i}.c", i + 1) for i in range(120)]
@@ -320,7 +320,7 @@ class TestProcessPoolSpawnContext(unittest.TestCase):
 
     def test_worker_init_sets_globals(self):
         """_l1_worker_init directly sets the three context globals."""
-        import _builder.l1_ingest as _l1
+        import _builder.scanner_bridge.l1_ingest as _l1
         old = (_l1._L1_DB_PATH, _l1._L1_SOURCE_ROOT, _l1._L1_COMMIT_HASH)
         try:
             _l1._l1_worker_init("/x/y.db", "/src", "abc123")

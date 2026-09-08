@@ -15,7 +15,7 @@ import unittest
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'scripts')
 sys.path.insert(0, SCRIPTS_DIR)
 
-from _builder.export import _esc  # noqa: E402
+from _builder.export.export import _esc  # noqa: E402
 from _builder.utils import normalize_str_field  # noqa: E402
 
 

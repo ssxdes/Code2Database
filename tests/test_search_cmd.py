@@ -27,7 +27,8 @@ from contextlib import redirect_stdout, redirect_stderr
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder import search_cmd
+from _builder.query import search_cmd
+
 
 
 def _ns(**kw):

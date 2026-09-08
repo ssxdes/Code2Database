@@ -42,7 +42,7 @@ def _make_dep_graph(nodes_spec) -> str:
 
 
 def _load_graph(graph_dir):
-    from _builder.graph_build import _load_full_graph
+    from _builder.graph.graph_build import _load_full_graph
     return _load_full_graph(graph_dir)
 
 
@@ -63,7 +63,7 @@ class TestBuildDataDepEdges(unittest.TestCase):
         self.G = _load_graph(self.graph_dir)
 
     def test_global_node_registered_with_writer_and_reader(self):
-        from _builder.data_dep import build_data_dep_edges
+        from _builder.analysis.data_dep import build_data_dep_edges
         result = build_data_dep_edges(self.G)
         self.assertIn("counter", result["global_nodes"])
         gn = result["global_nodes"]["counter"]
@@ -74,7 +74,7 @@ class TestBuildDataDepEdges(unittest.TestCase):
         self.assertEqual(gn["readers"][0]["function"], "reader")
 
     def test_field_node_registered_with_writer_and_reader(self):
-        from _builder.data_dep import build_data_dep_edges
+        from _builder.analysis.data_dep import build_data_dep_edges
         result = build_data_dep_edges(self.G)
         self.assertIn("ctx->state", result["field_nodes"])
         fn = result["field_nodes"]["ctx->state"]
@@ -86,7 +86,7 @@ class TestBuildDataDepEdges(unittest.TestCase):
 
     def test_mod_read_chain_pairs_writer_with_reader(self):
         """For each global/field, every (writer, reader) pair → mod_read_chain."""
-        from _builder.data_dep import build_data_dep_edges
+        from _builder.analysis.data_dep import build_data_dep_edges
         result = build_data_dep_edges(self.G)
         chains = result["mod_read_chains"]
         self.assertEqual(len(chains), 2)  # 1 global + 1 field
@@ -102,7 +102,7 @@ class TestBuildDataDepEdges(unittest.TestCase):
     def test_self_read_write_not_in_mod_read_chains(self):
         """A function that both writes and reads the same global should
         not produce a mod-read chain with itself."""
-        from _builder.data_dep import build_data_dep_edges
+        from _builder.analysis.data_dep import build_data_dep_edges
         graph_dir = _make_dep_graph([
             {"id": "selfie", "name": "selfie",
              "globals_written": [{"name": "x"}],
@@ -113,7 +113,7 @@ class TestBuildDataDepEdges(unittest.TestCase):
         self.assertEqual(len(result["mod_read_chains"]), 0)
 
     def test_file_and_empty_nodes_excluded(self):
-        from _builder.data_dep import build_data_dep_edges
+        from _builder.analysis.data_dep import build_data_dep_edges
         graph_dir = _make_dep_graph([
             {"id": "file:x.c", "name": "x.c", "node_type": "file",
              "globals_written": [{"name": "should_be_ignored"}]},
@@ -132,7 +132,7 @@ class TestForwardDataDepImpact(unittest.TestCase):
     """Tests for forward_data_dep_impact."""
 
     def test_finds_all_readers_of_written_globals(self):
-        from _builder.data_dep import forward_data_dep_impact
+        from _builder.analysis.data_dep import forward_data_dep_impact
         graph_dir = _make_dep_graph([
             {"id": "w", "name": "w", "globals_written": [{"name": "g"}]},
             {"id": "r1", "name": "r1", "globals_read": [{"name": "g"}]},
@@ -148,7 +148,7 @@ class TestForwardDataDepImpact(unittest.TestCase):
         self.assertNotIn("unrelated", impacted_ids)
 
     def test_finds_readers_of_written_fields(self):
-        from _builder.data_dep import forward_data_dep_impact
+        from _builder.analysis.data_dep import forward_data_dep_impact
         graph_dir = _make_dep_graph([
             {"id": "w", "name": "w",
              "fields_written": [{"struct_chain": "ctx", "field_name": "state"}]},
@@ -165,7 +165,7 @@ class TestFindDeadWriters(unittest.TestCase):
     """Tests for find_dead_writers."""
 
     def test_writer_with_no_readers_is_dead(self):
-        from _builder.data_dep import find_dead_writers
+        from _builder.analysis.data_dep import find_dead_writers
         graph_dir = _make_dep_graph([
             {"id": "w", "name": "w", "globals_written": [{"name": "unread"}]},
             {"id": "r", "name": "r", "globals_read": [{"name": "other"}]},
@@ -177,7 +177,7 @@ class TestFindDeadWriters(unittest.TestCase):
         self.assertIn("global unread", dead[0]["dead_writes"])
 
     def test_writer_with_readers_is_not_dead(self):
-        from _builder.data_dep import find_dead_writers
+        from _builder.analysis.data_dep import find_dead_writers
         graph_dir = _make_dep_graph([
             {"id": "w", "name": "w", "globals_written": [{"name": "read"}]},
             {"id": "r", "name": "r", "globals_read": [{"name": "read"}]},
@@ -187,7 +187,7 @@ class TestFindDeadWriters(unittest.TestCase):
         self.assertEqual(len(dead), 0)
 
     def test_dead_field_writer_detected(self):
-        from _builder.data_dep import find_dead_writers
+        from _builder.analysis.data_dep import find_dead_writers
         graph_dir = _make_dep_graph([
             {"id": "w", "name": "w",
              "fields_written": [{"struct_chain": "ctx", "field_name": "unused"}]},
@@ -198,7 +198,7 @@ class TestFindDeadWriters(unittest.TestCase):
         self.assertIn("field ctx->unused", dead[0]["dead_writes"])
 
     def test_empty_nodes_excluded_from_dead_writers(self):
-        from _builder.data_dep import find_dead_writers
+        from _builder.analysis.data_dep import find_dead_writers
         graph_dir = _make_dep_graph([
             {"id": "empty", "name": "empty", "is_empty": True,
              "globals_written": [{"name": "x"}]},

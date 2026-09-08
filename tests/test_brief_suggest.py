@@ -13,8 +13,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.brief import brief_suggest, save_brief
-from _builder.memory_store import MemoryStore
+from _builder.kb.brief import brief_suggest, save_brief
+from _builder.memory.memory_store import MemoryStore
 
 
 def _weight_store(graph_dir):

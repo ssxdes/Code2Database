@@ -1,4 +1,4 @@
-"""Smoke tests for _builder.ffi_bridge.persist_ffi_to_sqlite().
+"""Smoke tests for _builder.misc.ffi_bridge.persist_ffi_to_sqlite().
 
 persist_ffi_to_sqlite() takes FFI edges (caller/callee/type_mapping/source_file)
 and writes them into cross_lang_bindings / type_mappings / ffi_call_sites.
@@ -13,8 +13,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.cgdb_schema import apply_cgdb_schema
-from _builder.ffi_bridge import (
+from _builder.cgdb.cgdb_schema import apply_cgdb_schema
+from _builder.misc.ffi_bridge import (
     persist_ffi_to_sqlite,
     _parse_ffi_symbol_id,
     _resolve_or_create_symbol,
@@ -30,7 +30,7 @@ class TestFfiBridgeImport(unittest.TestCase):
     """Verify the module and primary entry points are importable."""
 
     def test_module_imports_cleanly(self):
-        import _builder.ffi_bridge as fb
+        import _builder.misc.ffi_bridge as fb
         self.assertTrue(hasattr(fb, 'persist_ffi_to_sqlite'))
         self.assertTrue(callable(fb.persist_ffi_to_sqlite))
 

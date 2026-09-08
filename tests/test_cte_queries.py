@@ -7,8 +7,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.sqlite_store import SQLiteStore
-from _builder.query_router import (
+from _builder.graph.sqlite_store import SQLiteStore
+from _builder.query.query_router import (
     route_call_chain, route_blast_radius, route_trace_chain,
     route_path_between, sqlite_available,
 )

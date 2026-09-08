@@ -21,53 +21,53 @@ from _builder.logging_utils import configure_logging, get_logger, parse_log_leve
 
 # Core command handlers — these are lightweight to import and cover the
 # most common operations (build, search, describe, trace, query).
-from _builder.graph_build import cmd_build
-from _builder.search_cmd import cmd_load, cmd_search, cmd_path, cmd_neighbors, cmd_impact, cmd_domain
-from _builder.query import cmd_describe_node, cmd_resolve_chain, cmd_trace_chain, cmd_diff_chains, cmd_get_code_snippet, cmd_blast_radius, cmd_io_path, cmd_reverse_trace, cmd_field_access, cmd_field_flow, cmd_param_flow, cmd_describe_commit, cmd_node_history, cmd_graph_provenance, cmd_blame_node, cmd_find_commits
-from _builder.query_lang import cmd_query
-from _builder.value_flow import cmd_value_flow
-from _builder.lock_coverage import cmd_lock_coverage
-from _builder.data_dep import cmd_data_dep
-from _builder.invariants import cmd_extract_invariants, cmd_find_invariants, cmd_apply_invariants
-from _builder.auto_enhance import cmd_auto_enhance, cmd_batch_confirm, cmd_rollback, cmd_fill_request, cmd_heuristic_enhance
-from _builder.transactions import (
+from _builder.graph.graph_build import cmd_build
+from _builder.query.search_cmd import cmd_load, cmd_search, cmd_path, cmd_neighbors, cmd_impact, cmd_domain
+from _builder.query.query import cmd_describe_node, cmd_resolve_chain, cmd_trace_chain, cmd_diff_chains, cmd_get_code_snippet, cmd_blast_radius, cmd_io_path, cmd_reverse_trace, cmd_field_access, cmd_field_flow, cmd_param_flow, cmd_describe_commit, cmd_node_history, cmd_graph_provenance, cmd_blame_node, cmd_find_commits
+from _builder.query.query_lang import cmd_query
+from _builder.analysis.value_flow import cmd_value_flow
+from _builder.analysis.lock_coverage import cmd_lock_coverage
+from _builder.analysis.data_dep import cmd_data_dep
+from _builder.analysis.invariants import cmd_extract_invariants, cmd_find_invariants, cmd_apply_invariants
+from _builder.build.auto_enhance import cmd_auto_enhance, cmd_batch_confirm, cmd_rollback, cmd_fill_request, cmd_heuristic_enhance
+from _builder.ops.transactions import (
     cmd_tx_begin, cmd_tx_commit, cmd_tx_rollback, cmd_tx_status,
     cmd_tx_snapshot, cmd_tx_restore, cmd_tx_list_snapshots, cmd_tx_replay_wal,
 )
-from _builder.ffi_bridge import cmd_ffi_detect, cmd_ffi_list, cmd_ffi_trace, cmd_ffi_types
-from _builder.intent_router import cmd_intent_query
-from _builder.explore import cmd_explore_flow
-from _builder.key_paths import cmd_key_paths
-from _builder.update_sync import cmd_merge, cmd_update, cmd_sync
-from _builder.semantics import cmd_classify_endpoints, cmd_extract_semantics, cmd_apply_semantics, cmd_think_chain, cmd_extract_signals
-from _builder.memory_cmd import cmd_save_memory, cmd_search_memory, cmd_validate_memory
-from _builder.export import cmd_export_obsidian, cmd_export_html
-from _builder.watcher import cmd_watch
-from _builder.plugins import cmd_plugins, cmd_validate_plugin
-from _builder.concurrency import cmd_concurrency_risks, cmd_data_lifecycle
-from _builder.concurrency_analysis import cmd_detect_races, cmd_concurrency_analyze
-from _builder.memory_ordering import cmd_happens_before, cmd_memory_ordering
-from _builder.explain import cmd_explain_label, cmd_why_ambiguous
-from _builder.audit_log import cmd_audit_log
-from _builder.semantic_edges import (
+from _builder.misc.ffi_bridge import cmd_ffi_detect, cmd_ffi_list, cmd_ffi_trace, cmd_ffi_types
+from _builder.misc.intent_router import cmd_intent_query
+from _builder.query.explore import cmd_explore_flow
+from _builder.profile.key_paths import cmd_key_paths
+from _builder.build.update_sync import cmd_merge, cmd_update, cmd_sync
+from _builder.graph.semantics import cmd_classify_endpoints, cmd_extract_semantics, cmd_apply_semantics, cmd_think_chain, cmd_extract_signals
+from _builder.memory.memory_cmd import cmd_save_memory, cmd_search_memory, cmd_validate_memory
+from _builder.export.export import cmd_export_obsidian, cmd_export_html
+from _builder.daemon.watcher import cmd_watch
+from _builder.ops.plugins import cmd_plugins, cmd_validate_plugin
+from _builder.analysis.concurrency import cmd_concurrency_risks, cmd_data_lifecycle
+from _builder.analysis.concurrency_analysis import cmd_detect_races, cmd_concurrency_analyze
+from _builder.memory.memory_ordering import cmd_happens_before, cmd_memory_ordering
+from _builder.misc.explain import cmd_explain_label, cmd_why_ambiguous
+from _builder.ops.audit_log import cmd_audit_log
+from _builder.graph.semantic_edges import (
     cmd_who_allocates, cmd_who_frees, cmd_unbalanced_alloc_free,
     cmd_who_locks, cmd_add_semantic_edges,
 )
-from _builder.llm_invariants import cmd_extract_invariants_llm
-from _builder.graph_history import (
+from _builder.analysis.llm_invariants import cmd_extract_invariants_llm
+from _builder.graph.graph_history import (
     cmd_graph_history, cmd_graph_diff, cmd_graph_record_version,
 )
-from _builder.memory_manager import cmd_manage_memory, cmd_memory_health
-from _builder.brief import (
+from _builder.memory.memory_manager import cmd_manage_memory, cmd_memory_health
+from _builder.kb.brief import (
     cmd_knowledge_brief, cmd_brief_update, cmd_brief_extract,
     cmd_brief_validate, cmd_brief_suggest, cmd_brief_migrate_legacy,
 )
-from _builder.session_init import cmd_session_init
-from _builder.kb_index import rebuild_kb_index as cmd_kb_rebuild_index_impl
-from _builder.patcher import cmd_patch_from_diff, cmd_patch_from_git, cmd_light_scan
-from _builder.changelog_update import cmd_quick_update, cmd_export_changes, cmd_merge_changes, cmd_semantic_status
-from _builder.update_cmd import cmd_update_node, cmd_update_edge, cmd_patch_profile
-from _builder.cgdb_commands import (
+from _builder.mcp.session_init import cmd_session_init
+from _builder.kb.kb_index import rebuild_kb_index as cmd_kb_rebuild_index_impl
+from _builder.ops.patcher import cmd_patch_from_diff, cmd_patch_from_git, cmd_light_scan
+from _builder.build.changelog_update import cmd_quick_update, cmd_export_changes, cmd_merge_changes, cmd_semantic_status
+from _builder.ops.update_cmd import cmd_update_node, cmd_update_edge, cmd_patch_profile
+from _builder.cgdb.cgdb_commands import (
     cmd_cgdb_query, cmd_cgdb_time_travel, cmd_cgdb_configs_for,
     cmd_cgdb_ops_impls, cmd_cgdb_cfg_paths, cmd_cgdb_data_flow,
     cmd_cgdb_race_check, cmd_cgdb_index_status, cmd_cgdb_versions,
@@ -78,20 +78,20 @@ from _builder.cgdb_commands import (
     cmd_cgdb_views, cmd_cgdb_get_source, cmd_cgdb_layer_summary,
     cmd_cgdb_coverage, cmd_cgdb_write_coverage,
 )
-from _builder.cmd_report_tools import (
+from _builder.misc.cmd_report_tools import (
     cmd_render_source, cmd_verify_consistency, cmd_edit_token,
     cmd_insert_token, cmd_delete_token, cmd_find_macros,
     cmd_get_pp_branches, cmd_get_string_literals,
     cmd_commit_db_transaction, cmd_rollback_db_transaction,
     cmd_insert_node_after, cmd_delete_node, cmd_add_function,
 )
-from _builder.runtime_guards import cmd_runtime_guards
-from _builder.path_feasibility import cmd_path_feasible, cmd_path_guards
-from _builder.doc_code_align import (
+from _builder.ops.runtime_guards import cmd_runtime_guards
+from _builder.analysis.path_feasibility import cmd_path_feasible, cmd_path_guards
+from _builder.misc.doc_code_align import (
     cmd_doc_code_check, cmd_doc_mark_stale, cmd_doc_alignment_report,
     cmd_doc_signature_diff,
 )
-from _builder.profile_health import (
+from _builder.profile.profile_health import (
     cmd_profile_health, cmd_profile_evolve, cmd_profile_bind_version,
 )
 
@@ -120,7 +120,7 @@ def cmd_kb_rebuild_index(args):
 
 def cmd_kb_query(args):
     """Unified FTS5+BM25 query across memory + knowledge."""
-    from _builder.kb_index import query_kb
+    from _builder.kb.kb_index import query_kb
     kinds = [k.strip() for k in args.kinds.split(",") if k.strip()] if args.kinds else None
     results = query_kb(
         graph_dir=args.graph,
@@ -133,7 +133,7 @@ def cmd_kb_query(args):
     )
     # fall back to global KB if no project matches
     if not results and getattr(args, 'global', False):
-        from _builder.kb_global import global_search
+        from _builder.kb.kb_global import global_search
         results = global_search(args.query, top_n=args.top)
     if not results:
         print("No matches found.")
@@ -143,14 +143,14 @@ def cmd_kb_query(args):
 
 def cmd_kb_cluster(args):
     """cluster kb_paragraphs by FTS5 similarity."""
-    from _builder.kb_cluster import cluster_kb
+    from _builder.kb.kb_cluster import cluster_kb
     summary = cluster_kb(args.graph, threshold=args.threshold, verbose=True)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 def cmd_kb_migrate(args):
     """migrate kb_paragraphs → kb_items (fact-level)."""
-    from _builder.kb_index import _kb_connect
+    from _builder.kb.kb_index import _kb_connect
     conn = _kb_connect(args.graph)
     if conn is None:
         print("No code2database.db found")
@@ -206,7 +206,7 @@ def cmd_kb_migrate(args):
 
 def cmd_kb_known_unknowns(args):
     """list queries that returned no matches."""
-    from _builder.kb_index import get_known_unknowns
+    from _builder.kb.kb_index import get_known_unknowns
     results = get_known_unknowns(args.graph, top_n=args.top,
                                  min_occurrences=args.min_occurrences)
     if not results:
@@ -217,14 +217,14 @@ def cmd_kb_known_unknowns(args):
 
 def cmd_kb_audit(args):
     """audit KB."""
-    from _builder.kb_audit import audit_kb
+    from _builder.kb.kb_audit import audit_kb
     result = audit_kb(args.graph, topic=args.topic)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def cmd_kb_conflict(args):
     """detect contradictory items."""
-    from _builder.kb_conflict import detect_conflicts
+    from _builder.kb.kb_conflict import detect_conflicts
     conflicts = detect_conflicts(args.graph)
     if not conflicts:
         print("No conflicts detected.")
@@ -235,21 +235,21 @@ def cmd_kb_conflict(args):
 
 def cmd_kb_rollback(args):
     """restore a kb_item to a prior version."""
-    from _builder.kb_conflict import rollback_kb_item
+    from _builder.kb.kb_conflict import rollback_kb_item
     result = rollback_kb_item(args.graph, args.id, args.to_version)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def cmd_kb_forget(args):
     """immediately delete a kb_paragraph."""
-    from _builder.kb_conflict import forget_kb_paragraph
+    from _builder.kb.kb_conflict import forget_kb_paragraph
     result = forget_kb_paragraph(args.graph, args.id, reason=args.reason)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def cmd_kb_global_add(args):
     """add to global KB."""
-    from _builder.kb_global import global_add
+    from _builder.kb.kb_global import global_add
     tags = [t.strip() for t in args.tags.split(",") if t.strip()] if args.tags else []
     entry_id = global_add(
         title=args.title, body=args.body, tags=tags, kind=args.kind,
@@ -260,7 +260,7 @@ def cmd_kb_global_add(args):
 
 def cmd_kb_global_search(args):
     """search global KB."""
-    from _builder.kb_global import global_search
+    from _builder.kb.kb_global import global_search
     results = global_search(args.query, top_n=args.top)
     if not results:
         print("No matches in global KB.")
@@ -270,21 +270,21 @@ def cmd_kb_global_search(args):
 
 def cmd_kb_global_share(args):
     """export global KB."""
-    from _builder.kb_global import global_share
+    from _builder.kb.kb_global import global_share
     output = global_share(args.output)
     print(json.dumps({"exported": True, "path": output}, ensure_ascii=False, indent=2))
 
 
 def cmd_kb_global_import(args):
     """import shared global KB JSON."""
-    from _builder.kb_global import global_import
+    from _builder.kb.kb_global import global_import
     imported = global_import(args.input)
     print(json.dumps({"imported": imported}, ensure_ascii=False, indent=2))
 
 
 def cmd_kb_global_share_memory(args):
     """Export project memories to global KB."""
-    from _builder.kb_global import global_share_memory
+    from _builder.kb.kb_global import global_share_memory
     exported = global_share_memory(
         graph_dir=args.graph, min_weight=args.min_weight,
         top_n=args.top, source_project=args.source_project)
@@ -293,7 +293,7 @@ def cmd_kb_global_share_memory(args):
 
 def cmd_kb_global_search_memory(args):
     """Search global KB for memory Q&A."""
-    from _builder.kb_global import global_search_memory
+    from _builder.kb.kb_global import global_search_memory
     results = global_search_memory(args.query, top_n=args.top)
     if not results:
         print("No memory Q&A matches in global KB.")
@@ -303,7 +303,7 @@ def cmd_kb_global_search_memory(args):
 
 def cmd_kb_global_import_memory(args):
     """Import similar Q&A from global into project memory."""
-    from _builder.kb_global import global_import_memory
+    from _builder.kb.kb_global import global_import_memory
     result = global_import_memory(
         graph_dir=args.graph, query=args.query, top_n=args.top,
         auto_merge=not args.no_merge)
@@ -312,7 +312,7 @@ def cmd_kb_global_import_memory(args):
 
 def cmd_build_multi(args):
     """Build unified C2D from multi-project manifest."""
-    from _builder.build_multi import build_multi
+    from _builder.build.build_multi import build_multi
     summary = build_multi(
         manifest_path=args.manifest,
         outdir=args.outdir,
@@ -328,14 +328,14 @@ def cmd_build_multi(args):
 
 def cmd_references_of(args):
     """List ALL source locations where a symbol is referenced."""
-    from _builder.code_intelligence import references_of
+    from _builder.query.code_intelligence import references_of
     result = references_of(args.graph, args.node, limit=getattr(args, "limit", 100))
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
 
 
 def cmd_traverse_graph(args):
     """Free-form BFS/DFS traversal."""
-    from _builder.code_intelligence import traverse_graph
+    from _builder.query.code_intelligence import traverse_graph
     result = traverse_graph(
         args.graph, args.start,
         mode=getattr(args, "mode", "bfs"),
@@ -348,28 +348,28 @@ def cmd_traverse_graph(args):
 
 def cmd_hub_nodes(args):
     """Most connected nodes."""
-    from _builder.code_intelligence import hub_nodes
+    from _builder.query.code_intelligence import hub_nodes
     result = hub_nodes(args.graph, top_n=getattr(args, "top", 20))
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
 
 
 def cmd_bridge_nodes(args):
     """Bridge nodes (betweenness centrality)."""
-    from _builder.code_intelligence import bridge_nodes
+    from _builder.query.code_intelligence import bridge_nodes
     result = bridge_nodes(args.graph, top_n=getattr(args, "top", 20))
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
 
 
 def cmd_graph_diff(args):
     """Compare two graph builds."""
-    from _builder.graph_diff import graph_diff
+    from _builder.graph.graph_diff import graph_diff
     result = graph_diff(args.before, args.after, detail=getattr(args, "detail", "summary"))
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
 
 
 def cmd_hybrid_search(args):
     """Hybrid search: FTS5 + optional embedding + RRF."""
-    from _builder.hybrid_search import hybrid_search
+    from _builder.query.hybrid_search import hybrid_search
     result = hybrid_search(
         graph_dir=args.graph, query=args.query, top_n=getattr(args, "top", 20),
         semantic=getattr(args, "no_semantic", False) is False,
@@ -380,7 +380,7 @@ def cmd_hybrid_search(args):
 
 def cmd_co_change(args):
     """Mine git log for co-change coupling edges."""
-    from _builder.co_change import extract_co_change_edges
+    from _builder.graph.co_change import extract_co_change_edges
     edges = extract_co_change_edges(
         source_root=args.source, graph_dir=args.graph,
         min_co_changes=getattr(args, "min_co_changes", 3),
@@ -392,7 +392,7 @@ def cmd_co_change(args):
 
 def cmd_ast_search(args):
     """Structural code search with metavariables."""
-    from _builder.ast_pattern import search_pattern
+    from _builder.misc.ast_pattern import search_pattern
     results = search_pattern(args.graph, args.pattern, limit=getattr(args, "limit", 50))
     print(json.dumps({"pattern": args.pattern, "matches": len(results),
                        "results": results}, ensure_ascii=False, indent=2, default=str))
@@ -400,7 +400,7 @@ def cmd_ast_search(args):
 
 def cmd_taint_analysis(args):
     """Taint analysis: source/sink/sanitizer propagation."""
-    from _builder.taint_analysis import taint_analysis
+    from _builder.analysis.taint_analysis import taint_analysis
     sources = [s.strip() for s in args.sources.split(",") if s.strip()]
     sinks = [s.strip() for s in args.sinks.split(",") if s.strip()]
     sanitizers = []
@@ -413,14 +413,14 @@ def cmd_taint_analysis(args):
 
 def cmd_semantic_search(args):
     """Neural semantic search."""
-    from _builder.neural_embed import semantic_search
+    from _builder.kb.neural_embed import semantic_search
     result = semantic_search(args.graph, args.query, top_n=getattr(args, "top", 20))
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
 
 
 def cmd_code_slice(args):
     """Code slicing: data-flow or usage slice."""
-    from _builder.code_slice import data_flow_slice, usage_slice
+    from _builder.analysis.code_slice import data_flow_slice, usage_slice
     slice_type = getattr(args, "type", "data-flow")
     if slice_type == "data-flow":
         result = data_flow_slice(args.graph, args.node,
@@ -437,7 +437,7 @@ def cmd_code_slice(args):
 
 def cmd_sarif_export(args):
     """Export to SARIF 2.1.0."""
-    from _builder.sarif_output import results_to_sarif, races_to_sarif, taint_to_sarif
+    from _builder.export.sarif_output import results_to_sarif, races_to_sarif, taint_to_sarif
     input_path = getattr(args, "input", "")
     if not input_path or not os.path.exists(input_path):
         print("Usage: sarif-export --input <results.json> [--type races|taint|generic]")
@@ -465,7 +465,7 @@ def cmd_sarif_export(args):
 
 def cmd_c2d_add_foreign(args):
     """register foreign C2D + resolve refs."""
-    from _builder.c2d_foreign import add_foreign
+    from _builder.scanner_bridge.c2d_foreign import add_foreign
     summary = add_foreign(
         graph_dir=args.graph,
         foreign_c2d_path=args.foreign_c2d,
@@ -478,7 +478,7 @@ def cmd_c2d_add_foreign(args):
 
 def cmd_c2d_sync_foreign(args):
     """sync foreign_refs with updated foreign C2Ds."""
-    from _builder.c2d_foreign import sync_foreign
+    from _builder.scanner_bridge.c2d_foreign import sync_foreign
     summary = sync_foreign(
         graph_dir=args.graph,
         foreign_c2d_path=getattr(args, "foreign_c2d", "") or "",
@@ -489,7 +489,7 @@ def cmd_c2d_sync_foreign(args):
 
 def cmd_c2d_list_foreign(args):
     """list watched foreign C2Ds."""
-    from _builder.c2d_foreign import list_foreign
+    from _builder.scanner_bridge.c2d_foreign import list_foreign
     result = list_foreign(args.graph)
     if not result:
         print("No watched foreign C2Ds.")
@@ -499,14 +499,14 @@ def cmd_c2d_list_foreign(args):
 
 def cmd_c2d_remove_foreign(args):
     """unregister a foreign C2D."""
-    from _builder.c2d_foreign import remove_foreign
+    from _builder.scanner_bridge.c2d_foreign import remove_foreign
     summary = remove_foreign(args.graph, args.foreign_c2d)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 def cmd_c2d_resolve_foreign(args):
     """F5: force re-resolve stale foreign_refs by name."""
-    from _builder.c2d_foreign import resolve_foreign_by_name
+    from _builder.scanner_bridge.c2d_foreign import resolve_foreign_by_name
     summary = resolve_foreign_by_name(
         args.graph,
         foreign_c2d_path=getattr(args, "foreign_c2d", "") or "",
@@ -517,7 +517,7 @@ def cmd_c2d_resolve_foreign(args):
 
 def cmd_c2d_prune_foreign(args):
     """F7: prune old deleted/orphaned foreign_refs."""
-    from _builder.c2d_foreign import prune_foreign
+    from _builder.scanner_bridge.c2d_foreign import prune_foreign
     summary = prune_foreign(
         args.graph,
         max_age_days=args.max_age_days,
@@ -529,21 +529,21 @@ def cmd_c2d_prune_foreign(args):
 
 def cmd_c2d_pin_foreign(args):
     """F8: pin a foreign_ref."""
-    from _builder.c2d_foreign import pin_foreign_ref
+    from _builder.scanner_bridge.c2d_foreign import pin_foreign_ref
     summary = pin_foreign_ref(args.graph, args.ref_id, verbose=True)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 def cmd_c2d_unpin_foreign(args):
     """F8: unpin a foreign_ref."""
-    from _builder.c2d_foreign import unpin_foreign_ref
+    from _builder.scanner_bridge.c2d_foreign import unpin_foreign_ref
     summary = unpin_foreign_ref(args.graph, args.ref_id, verbose=True)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 def cmd_composite_query(args):
     """cross-C2D query via ATTACH."""
-    from _builder.c2d_phase2 import composite_query
+    from _builder.scanner_bridge.c2d_phase2 import composite_query
     foreign_c2ds = []
     if args.foreign_c2d:
         foreign_c2ds = [s.strip() for s in args.foreign_c2d.split(",")
@@ -559,7 +559,7 @@ def cmd_composite_query(args):
 
 def cmd_c2d_check_compat(args):
     """check B's foreign_refs against new A version."""
-    from _builder.c2d_phase2 import check_compat
+    from _builder.scanner_bridge.c2d_phase2 import check_compat
     result = check_compat(
         graph_dir=args.graph,
         against_c2d=args.against_c2d,
@@ -570,7 +570,7 @@ def cmd_c2d_check_compat(args):
 
 def cmd_coverage_cross_c2d(args):
     """test coverage across C2Ds."""
-    from _builder.c2d_phase2 import coverage_cross_c2d
+    from _builder.scanner_bridge.c2d_phase2 import coverage_cross_c2d
     result = coverage_cross_c2d(
         test_c2d=args.test_c2d,
         target_c2d=args.target_c2d,
@@ -581,7 +581,7 @@ def cmd_coverage_cross_c2d(args):
 
 def cmd_c2d_add_foreign_stub(args):
     """register vendor stub C2D."""
-    from _builder.c2d_phase3 import add_foreign_stub
+    from _builder.scanner_bridge.c2d_phase3 import add_foreign_stub
     summary = add_foreign_stub(
         graph_dir=args.graph,
         stub_c2d_path=args.stub_c2d,
@@ -593,21 +593,21 @@ def cmd_c2d_add_foreign_stub(args):
 
 def cmd_ffi_auto_link(args):
     """auto-link FFI bindings to foreign C2Ds."""
-    from _builder.c2d_phase3 import auto_link_ffi_to_foreign
+    from _builder.scanner_bridge.c2d_phase3 import auto_link_ffi_to_foreign
     summary = auto_link_ffi_to_foreign(args.graph, verbose=True)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 def cmd_scan_rpc(args):
     """scan source for RPC client calls."""
-    from _builder.c2d_phase3 import scan_rpc_edges
+    from _builder.scanner_bridge.c2d_phase3 import scan_rpc_edges
     summary = scan_rpc_edges(args.graph, verbose=True)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 def cmd_import_foreign_knowledge(args):
     """copy foreign project brief into local knowledge/"""
-    from _builder.c2d_phase3 import import_foreign_knowledge
+    from _builder.scanner_bridge.c2d_phase3 import import_foreign_knowledge
     summary = import_foreign_knowledge(
         graph_dir=args.graph,
         foreign_c2d_path=args.foreign_c2d,
@@ -2860,14 +2860,14 @@ def main():
 
     commands = {
         "build": cmd_build,
-        "build-update": _lazy("_builder.build_update", "cmd_build_update"),
-        "federate-register": _lazy("_builder.federated", "cmd_federate_register"),
-        "federate-list": _lazy("_builder.federated", "cmd_federate_list"),
-        "federate-remove": _lazy("_builder.federated", "cmd_federate_remove"),
-        "fed-search": _lazy("_builder.federated", "cmd_fed_search"),
-        "fed-neighbors": _lazy("_builder.federated", "cmd_fed_neighbors"),
-        "fed-path": _lazy("_builder.federated", "cmd_fed_path"),
-        "make": _lazy("_builder.make_cmd", "cmd_make"),
+        "build-update": _lazy("_builder.build.build_update", "cmd_build_update"),
+        "federate-register": _lazy("_builder.query.federated", "cmd_federate_register"),
+        "federate-list": _lazy("_builder.query.federated", "cmd_federate_list"),
+        "federate-remove": _lazy("_builder.query.federated", "cmd_federate_remove"),
+        "fed-search": _lazy("_builder.query.federated", "cmd_fed_search"),
+        "fed-neighbors": _lazy("_builder.query.federated", "cmd_fed_neighbors"),
+        "fed-path": _lazy("_builder.query.federated", "cmd_fed_path"),
+        "make": _lazy("_builder.build.make_cmd", "cmd_make"),
         "load": cmd_load,
         "search": cmd_search,
         "describe-node": cmd_describe_node,
@@ -2978,7 +2978,7 @@ def main():
         "patch-from-diff": cmd_patch_from_diff,
         "patch-from-git": cmd_patch_from_git,
         "light-scan": cmd_light_scan,
-        "lsp-server": _lazy("_builder.lsp_server", "cmd_lsp_server"),
+        "lsp-server": _lazy("_builder.misc.lsp_server", "cmd_lsp_server"),
         "explore-flow": cmd_explore_flow,
         "key-paths": cmd_key_paths,
         "quick-update": cmd_quick_update,
@@ -2986,7 +2986,7 @@ def main():
         "merge-changes": cmd_merge_changes,
         "semantic-status": cmd_semantic_status,
         "install-hook": cmd_install_hook,
-        "serve": _lazy("_builder.mcp_server", "cmd_serve"),
+        "serve": _lazy("_builder.mcp.mcp_server", "cmd_serve"),
         "get-code-snippet": cmd_get_code_snippet,
         "blast-radius": cmd_blast_radius,
         "field-access": cmd_field_access,
@@ -3042,12 +3042,12 @@ def main():
         # D45+D16 optimization: intent router
         "intent-query": cmd_intent_query,
         # D24 enhancement: TF-IDF char n-gram embeddings
-        "embeddings-build": _lazy("_builder.embeddings", "cmd_embeddings_build"),
-        "embeddings-search": _lazy("_builder.embeddings", "cmd_embeddings_search"),
+        "embeddings-build": _lazy("_builder.kb.embeddings", "cmd_embeddings_build"),
+        "embeddings-search": _lazy("_builder.kb.embeddings", "cmd_embeddings_search"),
         # interactive Web UI
-        "web-ui": _lazy("_builder.web_ui", "cmd_web_ui"),
+        "web-ui": _lazy("_builder.misc.web_ui", "cmd_web_ui"),
         # BUG benchmark
-        "bug-benchmark": _lazy("_builder.bug_benchmark", "cmd_bug_benchmark"),
+        "bug-benchmark": _lazy("_builder.misc.bug_benchmark", "cmd_bug_benchmark"),
         # profile health + auto-evolution
         "profile-health": cmd_profile_health,
         "health": cmd_profile_health,  # SKILL.md alias
@@ -3059,17 +3059,17 @@ def main():
         "doc-alignment-report": cmd_doc_alignment_report,
         "doc-signature-diff": cmd_doc_signature_diff,
         # (P0): background daemon
-        "daemon-start": _lazy("_builder.daemon", "cmd_daemon_start"),
-        "daemon-stop": _lazy("_builder.daemon", "cmd_daemon_stop"),
-        "daemon-status": _lazy("_builder.daemon", "cmd_daemon_status"),
-        "daemon": _lazy("_builder.daemon", "cmd_daemon_status"),  # SKILL.md alias
-        "daemon-force-refresh": _lazy("_builder.daemon", "cmd_daemon_force_refresh"),
-        "daemon-pause": _lazy("_builder.daemon", "cmd_daemon_pause"),
-        "daemon-resume": _lazy("_builder.daemon", "cmd_daemon_resume"),
-        "daemon-wait-sync": _lazy("_builder.daemon", "cmd_daemon_wait_sync"),
-        "daemon-logs": _lazy("_builder.daemon", "cmd_daemon_logs"),
-        "daemon-reload": _lazy("_builder.daemon", "cmd_daemon_reload"),
-        "daemon-list-projects": _lazy("_builder.daemon", "cmd_daemon_list_projects"),
+        "daemon-start": _lazy("_builder.daemon.daemon", "cmd_daemon_start"),
+        "daemon-stop": _lazy("_builder.daemon.daemon", "cmd_daemon_stop"),
+        "daemon-status": _lazy("_builder.daemon.daemon", "cmd_daemon_status"),
+        "daemon": _lazy("_builder.daemon.daemon", "cmd_daemon_status"),  # SKILL.md alias
+        "daemon-force-refresh": _lazy("_builder.daemon.daemon", "cmd_daemon_force_refresh"),
+        "daemon-pause": _lazy("_builder.daemon.daemon", "cmd_daemon_pause"),
+        "daemon-resume": _lazy("_builder.daemon.daemon", "cmd_daemon_resume"),
+        "daemon-wait-sync": _lazy("_builder.daemon.daemon", "cmd_daemon_wait_sync"),
+        "daemon-logs": _lazy("_builder.daemon.daemon", "cmd_daemon_logs"),
+        "daemon-reload": _lazy("_builder.daemon.daemon", "cmd_daemon_reload"),
+        "daemon-list-projects": _lazy("_builder.daemon.daemon", "cmd_daemon_list_projects"),
         # cgdb direct queries
         "cgdb-query": cmd_cgdb_query,
         "cgdb-time-travel": cmd_cgdb_time_travel,
@@ -3094,13 +3094,13 @@ def main():
         "cgdb-path-feasible": cmd_cgdb_path_feasible,
         "cgdb-get-source": cmd_cgdb_get_source,
         "cgdb-layer-summary": cmd_cgdb_layer_summary,
-        "cgdb-merge-knowledge": _lazy("_builder.cgdb_merge", "cmd_cgdb_merge_knowledge"),
-        "cgdb-suggest": _lazy("_builder.cgdb_suggest", "cmd_cgdb_suggest"),
-        "cgdb-tour": _lazy("_builder.cgdb_tour", "cmd_cgdb_tour"),
-        "cgdb-freshness": _lazy("_builder.cgdb_freshness", "cmd_cgdb_freshness"),
-        "cgdb-compare": _lazy("_builder.cgdb_compare", "cmd_cgdb_compare"),
-        "export-mermaid": _lazy("_builder.export_mermaid", "cmd_export_mermaid"),
-        "export": _lazy("_builder.export_mermaid", "cmd_export_mermaid"),  # SKILL.md alias
+        "cgdb-merge-knowledge": _lazy("_builder.cgdb.cgdb_merge", "cmd_cgdb_merge_knowledge"),
+        "cgdb-suggest": _lazy("_builder.cgdb.cgdb_suggest", "cmd_cgdb_suggest"),
+        "cgdb-tour": _lazy("_builder.cgdb.cgdb_tour", "cmd_cgdb_tour"),
+        "cgdb-freshness": _lazy("_builder.cgdb.cgdb_freshness", "cmd_cgdb_freshness"),
+        "cgdb-compare": _lazy("_builder.cgdb.cgdb_compare", "cmd_cgdb_compare"),
+        "export-mermaid": _lazy("_builder.export.export_mermaid", "cmd_export_mermaid"),
+        "export": _lazy("_builder.export.export_mermaid", "cmd_export_mermaid"),  # SKILL.md alias
         "render-source": cmd_render_source,
         "verify-consistency": cmd_verify_consistency,
         "edit-token": cmd_edit_token,
@@ -3115,9 +3115,9 @@ def main():
         "delete-node": cmd_delete_node,
         "add-function": cmd_add_function,
         "runtime-guards": cmd_runtime_guards,
-        "cgdb-coverage": _lazy("_builder.cgdb_commands", "cmd_cgdb_coverage"),
-        "cgdb-write-coverage": _lazy("_builder.cgdb_commands", "cmd_cgdb_write_coverage"),
-        "ffi-persist": _lazy("_builder.ffi_bridge", "cmd_ffi_persist"),
+        "cgdb-coverage": _lazy("_builder.cgdb.cgdb_commands", "cmd_cgdb_coverage"),
+        "cgdb-write-coverage": _lazy("_builder.cgdb.cgdb_commands", "cmd_cgdb_write_coverage"),
+        "ffi-persist": _lazy("_builder.misc.ffi_bridge", "cmd_ffi_persist"),
     }
     handler = commands.get(args.command)
     if handler is None:

@@ -22,7 +22,8 @@ class TestBugBenchmarkModule(unittest.TestCase):
 
     def test_import(self):
         try:
-            from _builder import bug_benchmark
+            from _builder.misc import bug_benchmark
+
             self.assertTrue(
                 hasattr(bug_benchmark, "GraphInvestigator") or
                 hasattr(bug_benchmark, "GrepInvestigator") or
@@ -34,7 +35,7 @@ class TestBugBenchmarkModule(unittest.TestCase):
 
     def test_graph_investigator_class(self):
         try:
-            from _builder.bug_benchmark import GraphInvestigator
+            from _builder.misc.bug_benchmark import GraphInvestigator
         except ImportError:
             self.skipTest("GraphInvestigator not importable")
         # Verify it has the expected query surface
@@ -47,7 +48,7 @@ class TestBugBenchmarkModule(unittest.TestCase):
 
     def test_grep_investigator_class(self):
         try:
-            from _builder.bug_benchmark import GrepInvestigator
+            from _builder.misc.bug_benchmark import GrepInvestigator
         except ImportError:
             self.skipTest("GrepInvestigator not importable")
         self.assertTrue(hasattr(GrepInvestigator, "__init__"))
@@ -60,7 +61,7 @@ class TestBenchmarkResultSchema(unittest.TestCase):
         """The benchmark result schema should include the documented fields:
         recall, precision, avg_tool_calls, avg_tokens, avg_time."""
         try:
-            from _builder.bug_benchmark import InvestigationResult
+            from _builder.misc.bug_benchmark import InvestigationResult
         except ImportError:
             self.skipTest("InvestigationResult not defined")
         # Should be a dataclass or named tuple with the documented fields

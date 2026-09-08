@@ -12,8 +12,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.cgdb_store import SQLiteCGDBStore, CGDBWriter, CGDBReader
-from _builder.cgdb_records import (
+from _builder.cgdb.cgdb_store import SQLiteCGDBStore, CGDBWriter, CGDBReader
+from _builder.cgdb.cgdb_records import (
     IngestBatch, NodeRecord, EdgeRecord, TypeRecord, FileRecord,
     ConfigPredicateRecord, InvokeSiteRecord, OpsBindingRecord,
     BasicBlockRecord, CFGEdgeRecord, DataFlowRecord, AliasSetRecord,

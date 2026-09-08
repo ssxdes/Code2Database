@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 import networkx as nx
 
-from _builder.semantic_edges import (
+from _builder.graph.semantic_edges import (
     detect_semantic_edges, add_semantic_edges_to_graph,
     who_allocates, who_frees, unbalanced_alloc_free, who_locks,
 )

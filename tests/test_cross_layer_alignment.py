@@ -13,7 +13,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.cgdb_schema import (
+from _builder.cgdb.cgdb_schema import (
     apply_cgdb_schema,
     get_cgdb_schema_version,
     CGDB_SCHEMA_VERSION,
@@ -38,7 +38,7 @@ class TestSchemaImport(unittest.TestCase):
     """Verify the schema module imports cleanly."""
 
     def test_module_imports_cleanly(self):
-        import _builder.cgdb_schema as cs
+        import _builder.cgdb.cgdb_schema as cs
         self.assertTrue(hasattr(cs, 'apply_cgdb_schema'))
         self.assertTrue(hasattr(cs, 'CGDB_SCHEMA_VERSION'))
         self.assertGreater(CGDB_SCHEMA_VERSION, 0)

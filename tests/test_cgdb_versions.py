@@ -16,8 +16,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.cgdb_versions import VersionController
-from _builder.cgdb_schema import apply_cgdb_schema
+from _builder.cgdb.cgdb_versions import VersionController
+from _builder.cgdb.cgdb_schema import apply_cgdb_schema
 
 
 def _make_test_db(tmpdir: str) -> str:

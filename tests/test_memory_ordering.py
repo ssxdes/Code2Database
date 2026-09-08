@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.memory_ordering import (  # noqa: E402
+from _builder.memory.memory_ordering import (  # noqa: E402
     analyze_memory_ordering,
     happens_before_analysis,
     MemoryOrderingInfo,

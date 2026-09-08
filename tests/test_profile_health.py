@@ -21,7 +21,8 @@ class TestProfileHealthModule(unittest.TestCase):
 
     def test_import(self):
         try:
-            from _builder import profile_health
+            from _builder.profile import profile_health
+
             self.assertTrue(
                 hasattr(profile_health, "ProfileHealth") or
                 hasattr(profile_health, "compute_health") or
@@ -57,7 +58,7 @@ class TestProfileHealthScoring(unittest.TestCase):
     def test_score_in_range(self):
         """Score should be in [0, 100]."""
         try:
-            from _builder.profile_health import compute_profile_health
+            from _builder.profile.profile_health import compute_profile_health
         except ImportError:
             self.skipTest("compute_profile_health not importable")
         profile = self._make_minimal_profile()
@@ -79,7 +80,7 @@ class TestProfileHealthScoring(unittest.TestCase):
     def test_categories_documented(self):
         """The 7 documented categories should be present in breakdown."""
         try:
-            from _builder.profile_health import compute_profile_health
+            from _builder.profile.profile_health import compute_profile_health
         except ImportError:
             self.skipTest("compute_profile_health not importable")
         documented = {
@@ -110,7 +111,8 @@ class TestProfileEvolution(unittest.TestCase):
 
     def test_evolution_module(self):
         try:
-            from _builder import profile_health
+            from _builder.profile import profile_health
+
             self.assertTrue(
                 hasattr(profile_health, "detect_evolution_suggestions") or
                 hasattr(profile_health, "apply_evolution_suggestions") or
@@ -123,7 +125,7 @@ class TestProfileEvolution(unittest.TestCase):
         """Evolution suggestions should carry EXTRACTED/INFERRED/AMBIGUOUS
         confidence (per AGENTS.md)."""
         try:
-            from _builder.profile_health import EvolutionSuggestion
+            from _builder.profile.profile_health import EvolutionSuggestion
         except ImportError:
             self.skipTest("EvolutionSuggestion not importable")
         # Just verify the class/dataclass exists; full evolution test

@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.memory_manager import MemoryManager
+from _builder.memory.memory_manager import MemoryManager
 
 
 class MemoryManagerTest(unittest.TestCase):

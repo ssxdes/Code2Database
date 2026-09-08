@@ -11,7 +11,7 @@ from contextlib import redirect_stdout, redirect_stderr
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.brief import (
+from _builder.kb.brief import (
     brief_path, load_brief, save_brief, compute_graph_stats,
     refresh_graph_stats, render_brief_prompt, brief_update,
     brief_extract, validate_brief,

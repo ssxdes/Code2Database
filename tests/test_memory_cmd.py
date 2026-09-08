@@ -19,12 +19,13 @@ from contextlib import redirect_stdout, redirect_stderr
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder import memory_cmd
-from _builder.memory_cmd import (
+from _builder.memory import memory_cmd
+
+from _builder.memory.memory_cmd import (
     cmd_save_memory, cmd_search_memory, cmd_validate_memory,
     _auto_validate_memory,
 )
-from _builder.memory_manager import cmd_manage_memory, cmd_memory_health
+from _builder.memory.memory_manager import cmd_manage_memory, cmd_memory_health
 
 
 def _ns(**kw):

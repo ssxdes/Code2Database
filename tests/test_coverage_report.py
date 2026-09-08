@@ -1,4 +1,4 @@
-"""Smoke tests for _builder.coverage_report.
+"""Smoke tests for _builder.misc.coverage_report.
 
 Covers write_coverage_report() (writes .code2database_coverage_report.json
 from cgdb_files) and query_coverage() (returns subsystem summary / function
@@ -14,8 +14,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.cgdb_schema import apply_cgdb_schema
-from _builder.coverage_report import (
+from _builder.cgdb.cgdb_schema import apply_cgdb_schema
+from _builder.misc.coverage_report import (
     write_coverage_report,
     write_file_coverage,
     query_coverage,
@@ -40,7 +40,7 @@ class TestCoverageReportImport(unittest.TestCase):
     """Verify module and primary entry points are importable."""
 
     def test_module_imports_cleanly(self):
-        import _builder.coverage_report as cr
+        import _builder.misc.coverage_report as cr
         self.assertTrue(hasattr(cr, 'write_coverage_report'))
         self.assertTrue(hasattr(cr, 'query_coverage'))
 

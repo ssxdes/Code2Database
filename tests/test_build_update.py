@@ -253,7 +253,7 @@ class TestBuildUpdate(unittest.TestCase):
         """Regression: _mark_file_stale's first UPDATE hit a nonexistent
         `stale` column; the except swallowed it and skipped the
         extra_json update + commit — stale-marking was fully dead."""
-        from _builder.daemon import Daemon
+        from _builder.daemon.daemon import Daemon
 
         class _D:
             graph_dir = self.graph

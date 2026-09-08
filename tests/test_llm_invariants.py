@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.llm_invariants import (
+from _builder.analysis.llm_invariants import (
     _normalize_condition, _parse_llm_invariants, _build_rule_invariant_index,
     _merge_invariants, extract_invariants_with_llm,
 )

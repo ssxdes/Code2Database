@@ -21,7 +21,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.transactions import create_snapshot, restore_snapshot
+from _builder.ops.transactions import create_snapshot, restore_snapshot
 
 
 def _wal_db(d):
@@ -132,7 +132,7 @@ class TestGraphLockReentrancy(unittest.TestCase):
 
     def test_nested_same_thread_locks(self):
         import time
-        from _builder.transactions import write_lock, read_lock
+        from _builder.ops.transactions import write_lock, read_lock
         with tempfile.TemporaryDirectory() as d:
             t0 = time.time()
             with write_lock(d, timeout=5.0):
@@ -143,7 +143,7 @@ class TestGraphLockReentrancy(unittest.TestCase):
 
     def test_transaction_with_nested_write_lock(self):
         import time
-        from _builder.transactions import transaction, write_lock
+        from _builder.ops.transactions import transaction, write_lock
         with tempfile.TemporaryDirectory() as d:
             t0 = time.time()
             try:
@@ -158,7 +158,7 @@ class TestGraphLockReentrancy(unittest.TestCase):
     def test_cross_thread_still_blocks(self):
         import threading
         import time
-        from _builder.transactions import GraphLock
+        from _builder.ops.transactions import GraphLock
         with tempfile.TemporaryDirectory() as d:
             outer = GraphLock(d)
             self.assertTrue(outer.acquire_write(timeout=5.0))
@@ -182,7 +182,7 @@ class TestGraphLockReentrancy(unittest.TestCase):
             l3.release()
 
     def test_sequential_cycles(self):
-        from _builder.transactions import write_lock
+        from _builder.ops.transactions import write_lock
         with tempfile.TemporaryDirectory() as d:
             for _ in range(3):
                 with write_lock(d, timeout=2.0):

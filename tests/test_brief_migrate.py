@@ -13,7 +13,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.brief import migrate_from_legacy_knowledge, load_brief, save_brief
+from _builder.kb.brief import migrate_from_legacy_knowledge, load_brief, save_brief
 
 
 _LEGACY_ARCH = """\

@@ -14,7 +14,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.cgdb_incremental import (
+from _builder.cgdb.cgdb_incremental import (
     IncrementalSync, compute_content_hash, parse_includes,
     compute_affected_tus,
 )
@@ -123,7 +123,7 @@ class TestIncrementalSyncDetectChanges(unittest.TestCase):
     def _setup_db_with_files(self, file_hash_map):
         """Create a cgdb_files table populated with (path, content_hash)."""
         import sqlite3
-        from _builder.cgdb_schema import apply_cgdb_schema
+        from _builder.cgdb.cgdb_schema import apply_cgdb_schema
         conn = sqlite3.connect(self.db_path)
         try:
             apply_cgdb_schema(conn)
@@ -283,7 +283,7 @@ class TestIncrementalSyncMarkClean(unittest.TestCase):
 
     def _setup_db_with_files(self, file_hash_map):
         import sqlite3
-        from _builder.cgdb_schema import apply_cgdb_schema
+        from _builder.cgdb.cgdb_schema import apply_cgdb_schema
         conn = sqlite3.connect(self.db_path)
         try:
             apply_cgdb_schema(conn)

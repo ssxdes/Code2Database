@@ -22,7 +22,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from _builder.kb_index import (
+from _builder.kb.kb_index import (
     rebuild_kb_index,
     query_kb,
     upsert_kb_paragraph,
@@ -31,9 +31,9 @@ from _builder.kb_index import (
     _fts5_escape,
     _split_markdown_paragraphs,
 )
-from _builder.kb_cluster import cluster_kb
-from _builder.kb_audit import audit_kb, write_audit_log_entry
-from _builder.kb_conflict import detect_conflicts, forget_kb_paragraph, rollback_kb_item
+from _builder.kb.kb_cluster import cluster_kb
+from _builder.kb.kb_audit import audit_kb, write_audit_log_entry
+from _builder.kb.kb_conflict import detect_conflicts, forget_kb_paragraph, rollback_kb_item
 
 
 def _make_memory_entry(graph_dir, entry_id, question, answer, tags=None,
@@ -44,7 +44,7 @@ def _make_memory_entry(graph_dir, entry_id, question, answer, tags=None,
     (fresh dirs match the requested ids). status maps to the store's
     lifecycle ('trusted' → active).
     """
-    from _builder.memory_store import MemoryStore
+    from _builder.memory.memory_store import MemoryStore
     store = MemoryStore(graph_dir)
     return store.add(question=question, answer=answer, tags=tags or [],
                      no_merge=True)
@@ -123,7 +123,7 @@ class TestRebuildAndQueryKB(unittest.TestCase):
         # Create a synthetic SQLiteStore-compatible db by calling connect
         # via kb_index._kb_connect (which creates the table idempotently)
         # But we need the db file to exist first; create empty.
-        from _builder.sqlite_store import SQLiteStore
+        from _builder.graph.sqlite_store import SQLiteStore
         store = SQLiteStore(os.path.join(self.graph_dir, "code2database.db"))
         store.connect()
         store.close()
@@ -239,7 +239,7 @@ class TestKbCluster(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp(prefix="kb_cluster_test_")
         self.graph_dir = os.path.join(self.tmpdir, "code2db-out")
         os.makedirs(self.graph_dir, exist_ok=True)
-        from _builder.sqlite_store import SQLiteStore
+        from _builder.graph.sqlite_store import SQLiteStore
         store = SQLiteStore(os.path.join(self.graph_dir, "code2database.db"))
         store.connect()
         store.close()
@@ -268,7 +268,7 @@ class TestKbAudit(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp(prefix="kb_audit_test_")
         self.graph_dir = os.path.join(self.tmpdir, "code2db-out")
         os.makedirs(self.graph_dir, exist_ok=True)
-        from _builder.sqlite_store import SQLiteStore
+        from _builder.graph.sqlite_store import SQLiteStore
         store = SQLiteStore(os.path.join(self.graph_dir, "code2database.db"))
         store.connect()
         store.close()
@@ -306,7 +306,7 @@ class TestKbConflict(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp(prefix="kb_conflict_test_")
         self.graph_dir = os.path.join(self.tmpdir, "code2db-out")
         os.makedirs(self.graph_dir, exist_ok=True)
-        from _builder.sqlite_store import SQLiteStore
+        from _builder.graph.sqlite_store import SQLiteStore
         store = SQLiteStore(os.path.join(self.graph_dir, "code2database.db"))
         store.connect()
         store.close()
@@ -323,7 +323,7 @@ class TestKbConflict(unittest.TestCase):
                                     "Is X safe?", "no it is not safe",
                                     kind="memory_qa")
         # Manually cluster them (same scope_id)
-        from _builder.kb_index import _kb_connect
+        from _builder.kb.kb_index import _kb_connect
         conn = _kb_connect(self.graph_dir)
         conn.execute("UPDATE kb_paragraphs SET scope_id = 1 WHERE id IN (?, ?)",
                       (rid1, rid2))
@@ -356,7 +356,7 @@ class TestKbGlobal(unittest.TestCase):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_global_add_and_search(self):
-        from _builder.kb_global import global_add, global_search
+        from _builder.kb.kb_global import global_add, global_search
         entry_id = global_add(
             title="test principle",
             body="this is a test principle about bdev registration",
@@ -369,7 +369,7 @@ class TestKbGlobal(unittest.TestCase):
         self.assertEqual(results[0]["title"], "test principle")
 
     def test_global_share_and_import_roundtrip(self):
-        from _builder.kb_global import global_add, global_share, global_import, global_search
+        from _builder.kb.kb_global import global_add, global_share, global_import, global_search
         global_add(title="share test", body="body to share", kind="principle")
         out_path = os.path.join(self.tmpdir, "export.json")
         global_share(out_path)
@@ -389,11 +389,11 @@ class TestKbGlobal(unittest.TestCase):
 
     def test_global_memory_qa_share_and_search(self):
         """Cross-project memory Q&A sharing (kind='memory_qa')."""
-        from _builder.kb_global import (
+        from _builder.kb.kb_global import (
             global_share_memory, global_search_memory,
             global_search,
         )
-        from _builder.memory_store import MemoryStore
+        from _builder.memory.memory_store import MemoryStore
         import tempfile as _tf
 
         # Create a fake project with memory entries
@@ -424,7 +424,7 @@ class TestKbGlobal(unittest.TestCase):
                                 for r in results))
 
             # Verify kind filter: principle entries should NOT appear
-            from _builder.kb_global import global_add
+            from _builder.kb.kb_global import global_add
             global_add(title="principle entry", body="not memory",
                        kind="principle")
             results2 = global_search_memory("principle", top_n=10)

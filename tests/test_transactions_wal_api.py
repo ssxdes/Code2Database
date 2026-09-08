@@ -29,8 +29,9 @@ from contextlib import redirect_stdout, redirect_stderr
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder import transactions
-from _builder.transactions import (
+from _builder.ops import transactions
+
+from _builder.ops.transactions import (
     append_wal_entry, read_wal, mark_wal_entry_applied, clear_wal,
     delete_snapshot, prune_snapshots, create_snapshot, list_snapshots,
     cmd_tx_restore, cmd_tx_list_snapshots, _wal_path, _read_wal_seq_counter,
@@ -88,7 +89,7 @@ class TestStaleActiveRollbackFailure(unittest.TestCase):
         return d
 
     def test_cmd_tx_begin_aborts_when_rollback_fails(self):
-        from _builder.transactions import cmd_tx_begin
+        from _builder.ops.transactions import cmd_tx_begin
         d = self._stale_dir(snapshot_exists=False)
         _ret, _out, err, code = _capture_call(
             cmd_tx_begin, _ns(graph=d, description="new",
@@ -115,7 +116,7 @@ class TestStaleActiveRollbackFailure(unittest.TestCase):
         self.assertEqual(state.tx_id, "tx_stale")
 
     def test_stale_rollback_success_still_begins_new_tx(self):
-        from _builder.transactions import cmd_tx_begin
+        from _builder.ops.transactions import cmd_tx_begin
         d = self._stale_dir(snapshot_exists=True)
         _ret, out, _err, code = _capture_call(
             cmd_tx_begin, _ns(graph=d, description="new", file_id=None))

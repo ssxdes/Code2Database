@@ -22,16 +22,16 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from _builder.build_multi import (
+from _builder.build.build_multi import (
     _parse_manifest, _topo_sort, _prefix_domain_with_project,
     _merge_compile_commands, _normalize_name,
 )
-from _builder.c2d_foreign import (
+from _builder.scanner_bridge.c2d_foreign import (
     _connect, _ensure_foreign_tables, _get_db_signature,
     add_foreign, sync_foreign, list_foreign, remove_foreign,
     _resolve_by_exact_name,
 )
-from _builder.kb_cluster import _jaccard, _tokenize_for_jaccard
+from _builder.kb.kb_cluster import _jaccard, _tokenize_for_jaccard
 
 
 def _make_test_db(db_path: str, functions: list = None, edges: list = None):
@@ -293,7 +293,7 @@ class TestCompositeQuery(unittest.TestCase):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_callees_of(self):
-        from _builder.c2d_phase2 import composite_query
+        from _builder.scanner_bridge.c2d_phase2 import composite_query
         result = composite_query(self.b_dir, "CALLEES_OF main")
         self.assertGreater(len(result["results"]), 0)
         self.assertEqual(result["results"][0]["callee_name"], "helper")
@@ -365,7 +365,7 @@ class TestCheckCompat(unittest.TestCase):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_check_compat_detects_signature_change(self):
-        from _builder.c2d_phase2 import check_compat
+        from _builder.scanner_bridge.c2d_phase2 import check_compat
         result = check_compat(self.b_dir, self.a_v2_dir, verbose=False)
         self.assertEqual(result["total_checked"], 1)
         self.assertEqual(result["signature_changed"], 1)
@@ -389,7 +389,7 @@ class TestExportMermaidMulti(unittest.TestCase):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_multi_project_graph(self):
-        from _builder.export_mermaid import export_mermaid_multi
+        from _builder.export.export_mermaid import export_mermaid_multi
         md = export_mermaid_multi(self.graph_dir)
         self.assertIn("graph TD", md)
         self.assertIn("A[", md)

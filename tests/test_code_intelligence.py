@@ -71,7 +71,7 @@ class TestReferencesOf(unittest.TestCase):
         )
 
     def test_returns_declaration_location(self):
-        from _builder.code_intelligence import references_of
+        from _builder.query.code_intelligence import references_of
         result = references_of(self.graph_dir, "foo")
         self.assertNotIn("error", result)
         decls = [l for f in result["by_file"] for l in f["locations"] if l["kind"] == "declaration"]
@@ -80,7 +80,7 @@ class TestReferencesOf(unittest.TestCase):
         self.assertEqual(decls[0]["line"], 10)
 
     def test_returns_call_locations(self):
-        from _builder.code_intelligence import references_of
+        from _builder.query.code_intelligence import references_of
         result = references_of(self.graph_dir, "foo")
         calls = [l for f in result["by_file"] for l in f["locations"] if l["kind"] == "call"]
         self.assertEqual(len(calls), 2)
@@ -92,19 +92,19 @@ class TestReferencesOf(unittest.TestCase):
         self.assertEqual(baz_call["condition"], "CONFIG_X")
 
     def test_returns_field_write_location(self):
-        from _builder.code_intelligence import references_of
+        from _builder.query.code_intelligence import references_of
         result = references_of(self.graph_dir, "foo")
         writes = [l for f in result["by_file"] for l in f["locations"] if l["kind"] == "write"]
         self.assertEqual(len(writes), 1)
         self.assertEqual(writes[0]["function"], "bar")
 
     def test_unknown_symbol_returns_error(self):
-        from _builder.code_intelligence import references_of
+        from _builder.query.code_intelligence import references_of
         result = references_of(self.graph_dir, "nonexistent")
         self.assertIn("error", result)
 
     def test_summary_counts_match_locations(self):
-        from _builder.code_intelligence import references_of
+        from _builder.query.code_intelligence import references_of
         result = references_of(self.graph_dir, "foo")
         s = result["summary"]
         total_kinds = s["declaration"] + s["calls"] + s["reads"] + s["writes"]
@@ -115,7 +115,7 @@ class TestReferencesOf(unittest.TestCase):
         'total' reflects all locations found (uncapped) — it's the raw
         count before grouping. Verify by_file is truncated but total
         reflects reality."""
-        from _builder.code_intelligence import references_of
+        from _builder.query.code_intelligence import references_of
         result = references_of(self.graph_dir, "foo", limit=1)
         # total is the uncapped count of all locations
         self.assertGreater(result["total"], 1)
@@ -136,7 +136,7 @@ class TestTraverseGraph(unittest.TestCase):
         )
 
     def test_bfs_visits_in_order(self):
-        from _builder.code_intelligence import traverse_graph
+        from _builder.query.code_intelligence import traverse_graph
         result = traverse_graph(self.graph_dir, "a", mode="bfs", max_depth=10, max_nodes=100)
         self.assertNotIn("error", result)
         # BFS from a should visit a, b, c, d, e in depth order
@@ -144,7 +144,7 @@ class TestTraverseGraph(unittest.TestCase):
         self.assertEqual(depths, [0, 1, 2, 3, 4])
 
     def test_dfs_visits_all(self):
-        from _builder.code_intelligence import traverse_graph
+        from _builder.query.code_intelligence import traverse_graph
         result = traverse_graph(self.graph_dir, "a", mode="dfs", max_depth=10, max_nodes=100)
         # DFS should also reach all 5 nodes (order may differ)
         self.assertEqual(len(result["nodes"]), 5)
@@ -152,20 +152,20 @@ class TestTraverseGraph(unittest.TestCase):
         self.assertEqual(node_ids, {"a", "b", "c", "d", "e"})
 
     def test_max_depth_truncates(self):
-        from _builder.code_intelligence import traverse_graph
+        from _builder.query.code_intelligence import traverse_graph
         result = traverse_graph(self.graph_dir, "a", mode="bfs", max_depth=2, max_nodes=100)
         # max_depth=2 → only nodes at depth 0, 1, 2 (a, b, c)
         depths = [n["depth"] for n in result["nodes"]]
         self.assertEqual(depths, [0, 1, 2])
 
     def test_max_nodes_truncates(self):
-        from _builder.code_intelligence import traverse_graph
+        from _builder.query.code_intelligence import traverse_graph
         result = traverse_graph(self.graph_dir, "a", mode="bfs", max_depth=10, max_nodes=2)
         self.assertEqual(len(result["nodes"]), 2)
 
     def test_contains_edges_excluded(self):
         """CONTAINS / IMPORTS edges should not be traversed."""
-        from _builder.code_intelligence import traverse_graph
+        from _builder.query.code_intelligence import traverse_graph
         graph_dir = _make_intel_graph(
             [{"id": "a", "name": "a"}, {"id": "b", "name": "b"}],
             [{"source": "a", "target": "b", "relation": "CONTAINS"}],
@@ -175,12 +175,12 @@ class TestTraverseGraph(unittest.TestCase):
         self.assertEqual(len(result["nodes"]), 1)
 
     def test_unknown_start_returns_error(self):
-        from _builder.code_intelligence import traverse_graph
+        from _builder.query.code_intelligence import traverse_graph
         result = traverse_graph(self.graph_dir, "nonexistent")
         self.assertIn("error", result)
 
     def test_returns_edges(self):
-        from _builder.code_intelligence import traverse_graph
+        from _builder.query.code_intelligence import traverse_graph
         result = traverse_graph(self.graph_dir, "a", max_depth=2, max_nodes=10)
         self.assertGreater(len(result["edges"]), 0)
         for e in result["edges"]:
@@ -216,7 +216,7 @@ class TestHubNodes(unittest.TestCase):
         )
 
     def test_returns_top_by_degree(self):
-        from _builder.code_intelligence import hub_nodes
+        from _builder.query.code_intelligence import hub_nodes
         result = hub_nodes(self.graph_dir, top_n=10)
         self.assertGreater(len(result), 0)
         # hub should be first (degree 5 = 3 in + 2 out)
@@ -226,25 +226,25 @@ class TestHubNodes(unittest.TestCase):
         self.assertEqual(result[0]["total_degree"], 5)
 
     def test_top_n_respected(self):
-        from _builder.code_intelligence import hub_nodes
+        from _builder.query.code_intelligence import hub_nodes
         result = hub_nodes(self.graph_dir, top_n=1)
         self.assertEqual(len(result), 1)
 
     def test_file_nodes_excluded(self):
-        from _builder.code_intelligence import hub_nodes
+        from _builder.query.code_intelligence import hub_nodes
         result = hub_nodes(self.graph_dir, top_n=100)
         names = [r["name"] for r in result]
         self.assertNotIn("x.c", names)
 
     def test_empty_nodes_excluded(self):
-        from _builder.code_intelligence import hub_nodes
+        from _builder.query.code_intelligence import hub_nodes
         result = hub_nodes(self.graph_dir, top_n=100)
         names = [r["name"] for r in result]
         self.assertNotIn("<cond>", names)
 
     def test_contains_edges_excluded_from_degree(self):
         """file:x.c → hub CONTAINS edge should NOT count toward hub's in_degree."""
-        from _builder.code_intelligence import hub_nodes
+        from _builder.query.code_intelligence import hub_nodes
         result = hub_nodes(self.graph_dir, top_n=100)
         hub_entry = next(r for r in result if r["name"] == "hub")
         # in_degree should be 3 (c1, c2, c3) — NOT 4 (which would include file:x.c)
@@ -267,7 +267,7 @@ class TestBridgeNodes(unittest.TestCase):
         )
 
     def test_returns_bridge_with_highest_centrality(self):
-        from _builder.code_intelligence import bridge_nodes
+        from _builder.query.code_intelligence import bridge_nodes
         result = bridge_nodes(self.graph_dir, top_n=10)
         self.assertGreater(len(result), 0)
         # 'bridge' should have the highest betweenness (it's the chokepoint)
@@ -276,13 +276,13 @@ class TestBridgeNodes(unittest.TestCase):
         self.assertGreater(top["betweenness"], 0)
 
     def test_top_n_respected(self):
-        from _builder.code_intelligence import bridge_nodes
+        from _builder.query.code_intelligence import bridge_nodes
         result = bridge_nodes(self.graph_dir, top_n=1)
         self.assertEqual(len(result), 1)
 
     def test_contains_edges_excluded_from_centrality(self):
         """CONTAINS / IMPORTS edges should not contribute to betweenness."""
-        from _builder.code_intelligence import bridge_nodes
+        from _builder.query.code_intelligence import bridge_nodes
         # File nodes are identified by node_type == "file" (not labels)
         graph_dir = _make_intel_graph(
             [{"id": "a", "name": "a"}, {"id": "b", "name": "b"},

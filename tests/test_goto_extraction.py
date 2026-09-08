@@ -236,7 +236,7 @@ class TestGotoBuilderAnnotation(unittest.TestCase):
     def _build_with_goto(self, goto_jumps, goto_labels, callee_args,
                          edges=None, func_name="test_func"):
         """Build a graph with goto metadata and check annotations."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         # Build a complete extraction with callee functions defined
         all_functions = [
             {"id": "root_test_func", "name": func_name,

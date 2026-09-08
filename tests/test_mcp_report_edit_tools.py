@@ -19,8 +19,10 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder import cgdb_schema
-from _builder import mcp_report_tools as m
+from _builder.cgdb import cgdb_schema
+
+from _builder.mcp import mcp_report_tools as m
+
 
 
 def _make_graph_dir(tokens=("t1", "t2", "t3", "t4")):

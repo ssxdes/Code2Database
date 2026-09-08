@@ -141,7 +141,7 @@ class TestGoInterfaceDispatchBuildPhase(unittest.TestCase):
     def test_dispatch_edges_added(self):
         """Full interface satisfaction: both types implement Write +
         Flush → both get DISPATCH edges."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_store_writer", "name": "Writer", "domain": "store",
@@ -200,7 +200,7 @@ class TestGoInterfaceDispatchBuildPhase(unittest.TestCase):
         """M5: a type that has the method but doesn't satisfy the FULL
         interface must NOT get a DISPATCH edge (Go structural
         satisfaction requires all methods)."""
-        from _builder.graph_build import build_graph
+        from _builder.graph.graph_build import build_graph
         extraction = {
             "functions": [
                 {"id": "root_store_writer", "name": "Writer", "domain": "store",

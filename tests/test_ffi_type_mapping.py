@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.ffi_bridge import (
+from _builder.misc.ffi_bridge import (
     PLATFORM_ABIS, _platform_abi, is_lossy_conversion,
     _infer_py_arg_type, infer_signature_from_call,
     detect_python_ffi,

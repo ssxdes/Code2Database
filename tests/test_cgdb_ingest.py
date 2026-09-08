@@ -12,9 +12,9 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.cgdb_ingest import extract_cgdb_batch, file_id_for
-from _builder.cgdb_records import IngestBatch, NodeRecord, EdgeRecord, TypeRecord
-from _builder.cgdb_store import SQLiteCGDBStore
+from _builder.cgdb.cgdb_ingest import extract_cgdb_batch, file_id_for
+from _builder.cgdb.cgdb_records import IngestBatch, NodeRecord, EdgeRecord, TypeRecord
+from _builder.cgdb.cgdb_store import SQLiteCGDBStore
 
 
 _TEST_C_SOURCE = textwrap.dedent("""\
@@ -198,7 +198,7 @@ class TestSqliteStoreCgdbIntegration(unittest.TestCase):
 
     def test_sqlite_store_creates_cgdb_tables(self):
         """SQLiteStore.connect() creates cgdb tables alongside legacy ones."""
-        from _builder.sqlite_store import SQLiteStore
+        from _builder.graph.sqlite_store import SQLiteStore
         db_path = os.path.join(self.tmpdir, "test.db")
         store = SQLiteStore(db_path)
         store.connect()
@@ -221,7 +221,7 @@ class TestSqliteStoreCgdbIntegration(unittest.TestCase):
 
     def test_sqlite_store_schema_version_bumped(self):
         """Schema version is bumped to 5 (cgdb schema applied)."""
-        from _builder.sqlite_store import SQLiteStore
+        from _builder.graph.sqlite_store import SQLiteStore
         db_path = os.path.join(self.tmpdir, "test.db")
         store = SQLiteStore(db_path)
         store.connect()

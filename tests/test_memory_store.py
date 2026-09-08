@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from _builder.memory_store import (
+from _builder.memory.memory_store import (
     MemoryStore,
     MERGE_SIMILARITY_THRESHOLD,
     MEMORY_SCHEMA_VERSION,
@@ -415,24 +415,24 @@ class TestMemoryMissLogging(MemoryStoreTestBase):
 
     def test_repeated_misses_surface_as_known_unknowns(self):
         # the KB db must exist for the feedback loop to record
-        from _builder.kb_index import _kb_connect
+        from _builder.kb.kb_index import _kb_connect
         conn = _kb_connect(self.store.graph_dir)
         conn.close()
         for _ in range(2):
             self.assertEqual(
                 self.store.search("totally unmatched query here"), [])
-        from _builder.kb_index import get_known_unknowns
+        from _builder.kb.kb_index import get_known_unknowns
         ku = get_known_unknowns(self.store.graph_dir)
         self.assertTrue(any(k["query"] == "totally unmatched query here"
                             and k["occurrences"] >= 2 for k in ku))
 
     def test_hits_are_not_logged(self):
-        from _builder.kb_index import _kb_connect
+        from _builder.kb.kb_index import _kb_connect
         conn = _kb_connect(self.store.graph_dir)
         conn.close()
         self.store.add("how does submit work", "doorbell", no_merge=True)
         self.store.search("submit")
-        from _builder.kb_index import get_known_unknowns
+        from _builder.kb.kb_index import get_known_unknowns
         ku = get_known_unknowns(self.store.graph_dir)
         self.assertFalse(any("submit" in k["query"] for k in ku))
 
@@ -443,12 +443,12 @@ class TestMemoryMissLogging(MemoryStoreTestBase):
             os.path.join(self.store.graph_dir, "code2database.db")))
 
     def test_read_only_never_logs(self):
-        from _builder.kb_index import _kb_connect
+        from _builder.kb.kb_index import _kb_connect
         conn = _kb_connect(self.store.graph_dir)
         conn.close()
         ro = type(self.store)(self.store.graph_dir, read_only=True)
         ro.search("unmatched via ro")
-        from _builder.kb_index import get_known_unknowns
+        from _builder.kb.kb_index import get_known_unknowns
         ku = get_known_unknowns(self.store.graph_dir)
         self.assertFalse(any("unmatched via ro" == k["query"] for k in ku))
 

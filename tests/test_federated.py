@@ -14,7 +14,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.federated import (
+from _builder.query.federated import (
     federate_register, federate_list, federate_remove,
     fed_search, fed_neighbors, fed_path, _load_graphs,
 )
@@ -137,8 +137,8 @@ class TestFederatedQueries(unittest.TestCase):
             def close(self):
                 closed_flags.append(self.name)
 
-        import _builder.federated as fed_mod
-        import _builder.graph_build as gb_mod
+        import _builder.query.federated as fed_mod
+        import _builder.graph.graph_build as gb_mod
         orig_load = gb_mod._load_full_graph
         def _fake_load(graph_dir):
             return _FakeGraph(graph_dir)

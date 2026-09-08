@@ -26,10 +26,12 @@ from contextlib import redirect_stdout, redirect_stderr
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder import code_slice, co_change, lock_coverage, key_paths
-from _builder.code_slice import data_flow_slice, usage_slice, cmd_code_slice
-from _builder.co_change import extract_co_change_edges, cmd_co_change
-from _builder.lock_coverage import (
+from _builder.analysis import code_slice, lock_coverage
+from _builder.graph import co_change
+from _builder.profile import key_paths
+from _builder.analysis.code_slice import data_flow_slice, usage_slice, cmd_code_slice
+from _builder.graph.co_change import extract_co_change_edges, cmd_co_change
+from _builder.analysis.lock_coverage import (
     analyze_lock_coverage, detect_races_with_lock_coverage,
     compute_caller_locks,
 )
@@ -342,7 +344,7 @@ class TestDetectRacesWithLockCoverage(unittest.TestCase):
 
     def test_disjoint_locksets_cross_thread_reported(self):
         G = None
-        from _builder.graph_build import _load_full_graph
+        from _builder.graph.graph_build import _load_full_graph
         G = _load_full_graph(self._graph())
         races = detect_races_with_lock_coverage(G, _PROFILE)
         self.assertTrue(races)
@@ -360,7 +362,7 @@ class TestDetectRacesWithLockCoverage(unittest.TestCase):
               "fields_written": [{"field_name": "shared",
                                    "struct_chain": "ctx->shared"}]}],
             [])
-        from _builder.graph_build import _load_full_graph
+        from _builder.graph.graph_build import _load_full_graph
         races = detect_races_with_lock_coverage(_load_full_graph(gd), _PROFILE)
         self.assertEqual(races, [])
 
@@ -375,7 +377,7 @@ class TestDetectRacesWithLockCoverage(unittest.TestCase):
               "fields_written": [{"field_name": "shared",
                                    "struct_chain": "ctx->shared"}]}],
             [])
-        from _builder.graph_build import _load_full_graph
+        from _builder.graph.graph_build import _load_full_graph
         races = detect_races_with_lock_coverage(_load_full_graph(gd), _PROFILE)
         self.assertEqual(races, [])
 
@@ -390,7 +392,7 @@ class TestComputeCallerLocks(unittest.TestCase):
               "callee_args": [{"callee": "callee", "call_line": 1}]},
              {"id": "callee", "name": "callee"}],
             [{"source": "caller", "target": "callee"}])
-        from _builder.graph_build import _load_full_graph
+        from _builder.graph.graph_build import _load_full_graph
         G = _load_full_graph(gd)
         locks = compute_caller_locks(G, "callee", _PROFILE)
         self.assertEqual(locks, {"m"})
@@ -425,7 +427,7 @@ class TestCmdExploreFlow(unittest.TestCase):
     def test_empty_query_returns_error_json(self):
         # cmd_explore_flow is @cached_query(capture_stdout=True) — the
         # wrapper RETURNS the captured JSON text
-        from _builder.explore import cmd_explore_flow
+        from _builder.query.explore import cmd_explore_flow
         ret, _, _ = _run(cmd_explore_flow, _ns(
             graph=self.graph_dir, query="   ", max_tokens=100,
             max_nodes=5, focus_domain=None, no_cache=True))
@@ -434,7 +436,7 @@ class TestCmdExploreFlow(unittest.TestCase):
         self.assertIn("Empty query", r["error"])
 
     def test_exact_symbol_match_returns_node_context(self):
-        from _builder.explore import cmd_explore_flow
+        from _builder.query.explore import cmd_explore_flow
         ret, _, _ = _run(cmd_explore_flow, _ns(
             graph=self.graph_dir, query="bdev_register", max_tokens=2000,
             max_nodes=10, focus_domain=None, no_cache=True))

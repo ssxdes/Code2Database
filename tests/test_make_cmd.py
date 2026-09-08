@@ -10,7 +10,7 @@ from unittest import mock
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'scripts')
 sys.path.insert(0, SCRIPTS_DIR)
 
-from _builder import make_cmd  # noqa: E402
+from _builder.build import make_cmd  # noqa: E402
 
 
 def _ns(**kw):
@@ -726,7 +726,7 @@ class TestDaemonConflictDetection(unittest.TestCase):
     def test_make_aborts_when_daemon_running(self):
         """make must exit(1) when daemon is running and --force not given."""
         self._patch_env()
-        with mock.patch("_builder.daemon.is_daemon_running",
+        with mock.patch("_builder.daemon.daemon.is_daemon_running",
                         return_value=True):
             with self.assertRaises(SystemExit) as cm:
                 args = _ns(source=self.source, graph=self.graph)
@@ -737,7 +737,7 @@ class TestDaemonConflictDetection(unittest.TestCase):
         """make --force must proceed even when daemon is running."""
         self._patch_env()
         calls = []
-        with mock.patch("_builder.daemon.is_daemon_running",
+        with mock.patch("_builder.daemon.daemon.is_daemon_running",
                         return_value=True), \
              mock.patch.object(
                  make_cmd.subprocess, "run",
@@ -752,7 +752,7 @@ class TestDaemonConflictDetection(unittest.TestCase):
         """Normal path: no daemon running, make proceeds."""
         self._patch_env()
         calls = []
-        with mock.patch("_builder.daemon.is_daemon_running",
+        with mock.patch("_builder.daemon.daemon.is_daemon_running",
                         return_value=False), \
              mock.patch.object(
                  make_cmd.subprocess, "run",

@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.query_cache import (  # noqa: E402
+from _builder.query.query_cache import (  # noqa: E402
     cached_query,
     invalidate_node,
     invalidate_all,

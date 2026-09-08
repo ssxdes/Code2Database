@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 import networkx as nx
 
-from _builder.concurrency_analysis import _detect_toctou_patterns
+from _builder.analysis.concurrency_analysis import _detect_toctou_patterns
 
 PROFILE = {"concurrency_patterns": {
     "lock_acquire_patterns": [r"mutex_lock\(&?(\w+)\)"],

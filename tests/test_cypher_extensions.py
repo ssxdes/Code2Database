@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 import networkx as nx
 
-from _builder.query_lang import (
+from _builder.query.query_lang import (
     parse_query, execute_query, Query, ReturnItem,
 )
 

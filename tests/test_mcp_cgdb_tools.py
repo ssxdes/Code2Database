@@ -81,21 +81,21 @@ class TestCgdbToolRegistration(unittest.TestCase):
 
     def test_all_cgdb_tools_registered(self):
         """All 19 expected cgdb tools are in the TOOLS dict."""
-        from _builder.mcp_server import TOOLS
+        from _builder.mcp.mcp_server import TOOLS
         for tool_name in EXPECTED_CGDB_TOOLS:
             self.assertIn(tool_name, TOOLS,
                           f"Missing cgdb tool: {tool_name}")
 
     def test_cgdb_tools_count(self):
         """At least 19 cgdb_* tools are registered."""
-        from _builder.mcp_server import TOOLS
+        from _builder.mcp.mcp_server import TOOLS
         cgdb_tools = [name for name in TOOLS if name.startswith("cgdb_")]
         self.assertGreaterEqual(len(cgdb_tools), 19,
                                 f"Expected 19 cgdb tools, got {len(cgdb_tools)}")
 
     def test_each_cgdb_tool_has_required_fields(self):
         """Each cgdb tool entry has description, inputSchema, and handler."""
-        from _builder.mcp_server import TOOLS
+        from _builder.mcp.mcp_server import TOOLS
         for name in EXPECTED_CGDB_TOOLS:
             spec = TOOLS[name]
             self.assertIn("description", spec, f"{name} missing description")
@@ -113,7 +113,8 @@ class TestCgdbToolRegistration(unittest.TestCase):
 
     def test_cgdb_handler_functions_exist(self):
         """Each registered handler corresponds to a _tool_cgdb_* function."""
-        from _builder import mcp_server
+        from _builder.mcp import mcp_server
+
         for name in EXPECTED_CGDB_TOOLS:
             handler = mcp_server.TOOLS[name]["handler"]
             handler_name = handler.__name__
@@ -134,7 +135,7 @@ class TestCgdbToolsNoDb(unittest.TestCase):
 
     def _call_tool(self, tool_name: str, args: dict):
         """Invoke a cgdb MCP tool by name and return its result."""
-        from _builder.mcp_server import TOOLS
+        from _builder.mcp.mcp_server import TOOLS
         handler = TOOLS[tool_name]["handler"]
         return handler(args, self.tmpdir)
 
@@ -271,8 +272,8 @@ class TestCgdbToolsEndToEnd(unittest.TestCase):
         self.assertNotIn('error', self.scan_result)
         # Build cgdb DB
         self.db_path = os.path.join(self.tmpdir, "code2database.db")
-        from _builder.cgdb_store import SQLiteCGDBStore
-        from _builder.cgdb_ingest import extract_cgdb_batch
+        from _builder.cgdb.cgdb_store import SQLiteCGDBStore
+        from _builder.cgdb.cgdb_ingest import extract_cgdb_batch
         self.store = SQLiteCGDBStore(self.db_path)
         self.store.create_schema()
         batch = extract_cgdb_batch(
@@ -292,7 +293,7 @@ class TestCgdbToolsEndToEnd(unittest.TestCase):
 
     def _call_tool(self, tool_name: str, args: dict):
         """Invoke a cgdb MCP tool by name with the fixture graph dir."""
-        from _builder.mcp_server import TOOLS
+        from _builder.mcp.mcp_server import TOOLS
         handler = TOOLS[tool_name]["handler"]
         return handler(args, self.tmpdir)
 

@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.daemon import Daemon
+from _builder.daemon.daemon import Daemon
 
 
 class TestSyncWorkerThread(unittest.TestCase):
@@ -264,7 +264,7 @@ class TestStartupGracePeriod(unittest.TestCase):
     def test_recovered_pending_bulk_deferred_until_grace_ends(self):
         """A crashed previous daemon's pending events must NOT trigger an
         immediate bulk sync on restart — it is deferred to grace end."""
-        from _builder.daemon import DaemonState, STATUS_SYNCING
+        from _builder.daemon.daemon import DaemonState, STATUS_SYNCING
         with tempfile.TemporaryDirectory() as tmp:
             DaemonState(pid=123, status=STATUS_SYNCING,
                         pending_events=7).write(tmp)

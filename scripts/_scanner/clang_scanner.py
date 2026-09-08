@@ -778,7 +778,7 @@ class ClangScanner(BaseScanner):
         # then for each node, find the innermost containing range's predicate.
         cgdb_predicates = []
         try:
-            from _builder.cgdb_config_predicates import (
+            from _builder.cgdb.cgdb_config_predicates import (
                 ConfigPredicateExtractor, UNCONDITIONAL,
             )
             source_text = ''
@@ -831,7 +831,7 @@ class ClangScanner(BaseScanner):
         # initializers for `.field = function` designators.
         cgdb_ops_bindings = []
         try:
-            from _builder.cgdb_ops_bind import OpsBindDeriver
+            from _builder.cgdb.cgdb_ops_bind import OpsBindDeriver
             deriver = OpsBindDeriver()
             deriver.derive_from_tu(
                 tu.cursor, add_node, cgdb_edges, cgdb_ops_bindings,
@@ -860,11 +860,11 @@ class ClangScanner(BaseScanner):
         cgdb_happens_before = []
         cgdb_conditions = []
         try:
-            from _builder.cgdb_analysis import (
+            from _builder.cgdb.cgdb_analysis import (
                 CFGExtractor, DataFlowExtractor, AliasExtractor,
                 ConditionExtractor,
             )
-            from _builder.cgdb_sync import SyncPrimitiveWriter
+            from _builder.cgdb.cgdb_sync import SyncPrimitiveWriter
             cfg_ext = CFGExtractor()
             df_ext = DataFlowExtractor()
             alias_ext = AliasExtractor()

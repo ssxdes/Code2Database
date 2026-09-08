@@ -21,7 +21,7 @@ from contextlib import redirect_stdout, redirect_stderr
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.validate import (
+from _builder.ops.validate import (
     ValidationResult, validate_edge_logic, validate_call_chain_accuracy,
     validate_data_consistency, validate_all, cmd_validate,
 )

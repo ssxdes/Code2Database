@@ -40,7 +40,7 @@ class TestWebUI(unittest.TestCase):
         cls.server = None
         cls.server_skip_reason = None
         try:
-            from _builder.web_ui import WebUIHandler
+            from _builder.misc.web_ui import WebUIHandler
             from http.server import HTTPServer
             # WebUIHandler is a BaseHTTPRequestHandler subclass; we need to
             # wrap it in an HTTPServer to actually serve. Some impls expose
@@ -113,7 +113,8 @@ class TestWebUIModuleImport(unittest.TestCase):
 
     def test_import(self):
         try:
-            from _builder import web_ui
+            from _builder.misc import web_ui
+
             self.assertTrue(hasattr(web_ui, "WebUIHandler") or
                             hasattr(web_ui, "cmd_web_ui") or
                             hasattr(web_ui, "main"))
@@ -145,13 +146,13 @@ class TestWebUIProjectContext(unittest.TestCase):
             _json.dump({"source_root": "/tmp",
                         "domains": {"test": "domain_test.json"}}, f)
         # Brief
-        from _builder.brief import brief_update, brief_extract
+        from _builder.kb.brief import brief_update, brief_extract
         brief_extract(cls.graph_dir)
         brief_update(cls.graph_dir, set_field="project", set_value="WP")
         brief_update(cls.graph_dir, add_section="hard_rules",
                      add_value='{"rule": "开启宏 Z", "type": "macro"}')
         # Memory
-        from _builder.memory_store import MemoryStore
+        from _builder.memory.memory_store import MemoryStore
         store = MemoryStore(cls.graph_dir)
         store.add("how does bdev register", "call register api",
                   category="bdev", author="alice", no_merge=True)
@@ -163,7 +164,7 @@ class TestWebUIProjectContext(unittest.TestCase):
             {"question": "bdev io submission flow", "answer": "io flow"},
         ])
 
-        from _builder.web_ui import GraphCache, _make_handler_class
+        from _builder.misc.web_ui import GraphCache, _make_handler_class
         from http.server import HTTPServer
         cls.port = _find_free_port()
         cls.server = HTTPServer(
@@ -298,7 +299,7 @@ class TestWebUIProjectContext(unittest.TestCase):
 
     def test_node_endpoint_returns_related_memories(self):
         # symbol-grounded veteran Q&A on the node page
-        from _builder.memory_store import MemoryStore
+        from _builder.memory.memory_store import MemoryStore
         store = MemoryStore(self.graph_dir)
         store.add("what does a do", "it calls b — beware reentrancy",
                   category="bdev", author="alice", no_merge=True,
@@ -317,7 +318,7 @@ class TestWebUIProjectContext(unittest.TestCase):
         self.assertIn("reentrancy", mem["answer"])
 
     def test_memory_search_symbol_filter(self):
-        from _builder.memory_store import MemoryStore
+        from _builder.memory.memory_store import MemoryStore
         store = MemoryStore(self.graph_dir)
         store.add("how does a work", "via b", category="bdev",
                   author="alice", no_merge=True, symbols=["a"])
@@ -369,7 +370,7 @@ class TestWebUIFreshnessBadge(unittest.TestCase):
                                "code2database_master.json"), "w") as f:
             _json.dump({"source_root": cls.tmpdir,
                         "domains": {"test": "domain_test.json"}}, f)
-        from _builder.web_ui import GraphCache, _make_handler_class
+        from _builder.misc.web_ui import GraphCache, _make_handler_class
         from http.server import HTTPServer
         cls.port = _find_free_port()
         cls.server = HTTPServer(
@@ -449,7 +450,7 @@ class TestWebUIArchitecture(unittest.TestCase):
                   "w", encoding="utf-8") as f:
             f.write(cls.flows_text)
 
-        from _builder.web_ui import GraphCache, _make_handler_class
+        from _builder.misc.web_ui import GraphCache, _make_handler_class
         from http.server import HTTPServer
         cls.port = _find_free_port()
         cls.server = HTTPServer(

@@ -73,7 +73,7 @@ class TestMergeProjectData(unittest.TestCase):
     """Unit: the merge helper must copy legacy keys AND every cgdb_* key."""
 
     def test_merges_legacy_and_cgdb_keys(self):
-        from _builder.build_multi import _merge_project_data
+        from _builder.build.build_multi import _merge_project_data
         joint = {"functions": [], "edges": [], "globals": {},
                  "vtables": [], "imports": []}
         data = _fake_scan_output("projA", 2)
@@ -93,7 +93,7 @@ class TestMergeProjectData(unittest.TestCase):
                          [{"name": "mutex_projA"}])
 
     def test_second_project_appends_not_replaces(self):
-        from _builder.build_multi import _merge_project_data
+        from _builder.build.build_multi import _merge_project_data
         joint = {"functions": [], "edges": [], "globals": {},
                  "vtables": [], "imports": []}
         _merge_project_data(joint, _fake_scan_output("projA", 2), "projA")
@@ -106,7 +106,7 @@ class TestMergeProjectData(unittest.TestCase):
         self.assertIn("projB.global_vars", joint["globals"])
 
     def test_project_without_cgdb_keys_is_fine(self):
-        from _builder.build_multi import _merge_project_data
+        from _builder.build.build_multi import _merge_project_data
         joint = {"functions": [], "edges": [], "globals": {},
                  "vtables": [], "imports": []}
         data = _fake_scan_output("plain", 1)
@@ -123,7 +123,7 @@ class TestBuildMultiCgdbMerge(unittest.TestCase):
     carry the merged cgdb_* data from every scanned project."""
 
     def _run_build_multi(self, capture):
-        import _builder.build_multi as bm
+        import _builder.build.build_multi as bm
         with tempfile.TemporaryDirectory() as tmp:
             src_a = os.path.join(tmp, "a"); os.makedirs(src_a)
             src_b = os.path.join(tmp, "b"); os.makedirs(src_b)
@@ -151,7 +151,7 @@ class TestBuildMultiCgdbMerge(unittest.TestCase):
 
             with mock.patch("code2database_scanner.scan_directory",
                             side_effect=fake_scan_directory), \
-                 mock.patch("_builder.graph_build.cmd_build",
+                 mock.patch("_builder.graph.graph_build.cmd_build",
                             side_effect=fake_cmd_build):
                 summary = bm.build_multi(mpath, outdir, verbose=False)
             return summary

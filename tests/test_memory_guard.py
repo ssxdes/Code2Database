@@ -19,8 +19,9 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder import memory_guard as mg
-from _builder.memory_guard import (
+from _builder.memory import memory_guard as mg
+
+from _builder.memory.memory_guard import (
     MemoryGuard, adaptive_batch_size, memory_safe_append,
     create_memory_guard, get_global_guard, set_global_guard,
     StreamingWriter, StreamingJsonObjectWriter,

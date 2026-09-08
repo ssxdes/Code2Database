@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.embeddings import (
+from _builder.kb.embeddings import (
     _char_ngrams, _build_vocab, _tfidf_vector, _cosine_similarity,
     NGramEmbeddings, build_embeddings_for_graph, get_or_build_embeddings,
     DEFAULT_NGRAM_SIZE,

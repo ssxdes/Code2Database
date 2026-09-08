@@ -1,4 +1,4 @@
-"""Smoke tests for _builder.runtime_guards.check_runtime_guards().
+"""Smoke tests for _builder.ops.runtime_guards.check_runtime_guards().
 
 Covers the 4 runtime-guard detection categories described in the module
 docstring (acquire/release, type predicates, identity predicates, lock
@@ -11,7 +11,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.runtime_guards import (
+from _builder.ops.runtime_guards import (
     check_runtime_guards,
     _strip_condition_wrapper,
     _detect_acquire_release,
@@ -23,7 +23,7 @@ class TestRuntimeGuardsImport(unittest.TestCase):
     """Verify the module and its primary entry point are importable."""
 
     def test_module_imports_cleanly(self):
-        import _builder.runtime_guards as rg
+        import _builder.ops.runtime_guards as rg
         self.assertTrue(hasattr(rg, 'check_runtime_guards'))
         self.assertTrue(callable(rg.check_runtime_guards))
 

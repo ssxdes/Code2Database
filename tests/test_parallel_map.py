@@ -1,4 +1,4 @@
-"""Tests for _builder.parallel helpers (map_nodes process/thread paths).
+"""Tests for _builder.build.parallel helpers (map_nodes process/thread paths).
 
 The map_nodes process path uses the spawn start method: callers
 typically hold the full graph/extraction payload in memory, and fork
@@ -17,7 +17,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.parallel import map_nodes, resolve_jobs
+from _builder.build.parallel import map_nodes, resolve_jobs
 
 
 def _top_level_worker(nid, nd):

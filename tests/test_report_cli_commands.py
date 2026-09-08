@@ -1,6 +1,6 @@
 """Smoke tests for the 13 report-layer CLI commands.
 
-Verifies that all 13 cmd_* handlers in _builder.cmd_report_tools are
+Verifies that all 13 cmd_* handlers in _builder.misc.cmd_report_tools are
 importable and callable, and that they are registered in the
 code2database_builder CLI parser. Smoke-test level — no DB setup, just
 import-time and registration checks.
@@ -15,7 +15,7 @@ import unittest
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'scripts')
 sys.path.insert(0, SCRIPTS_DIR)
 
-import _builder.cmd_report_tools as cr  # noqa: E402
+import _builder.misc.cmd_report_tools as cr  # noqa: E402
 import code2database_builder as cb       # noqa: E402
 
 

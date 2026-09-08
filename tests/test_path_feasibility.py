@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.path_feasibility import (  # noqa: E402
+from _builder.analysis.path_feasibility import (  # noqa: E402
     parse_condition,
     solve_with_heuristic,
     _split_conjunctions,

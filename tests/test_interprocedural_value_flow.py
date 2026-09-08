@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 import networkx as nx
 
-from _builder.value_flow import (
+from _builder.analysis.value_flow import (
     extract_aliases, resolve_alias, interprocedural_value_flow,
     _ALIAS_RE,
 )

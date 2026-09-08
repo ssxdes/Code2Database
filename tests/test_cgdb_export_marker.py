@@ -24,7 +24,7 @@ _HERE = os.path.dirname(__file__)
 SCRIPTS = os.path.normpath(os.path.join(_HERE, '..', 'scripts'))
 sys.path.insert(0, SCRIPTS)
 
-from _builder.graph_build import (
+from _builder.graph.graph_build import (
     _mark_cgdb_export_failed,
     _clear_cgdb_export_failed,
     _CGDB_EXPORT_FAILED_MARKER,
@@ -122,7 +122,7 @@ class TestBuildWiring(unittest.TestCase):
             with open(os.path.join(self.inject_dir, "sitecustomize.py"),
                       "w") as f:
                 f.write(
-                    "import _builder.cgdb_ingest as _ci\n"
+                    "import _builder.cgdb.cgdb_ingest as _ci\n"
                     "def _boom(*a, **k):\n"
                     "    raise RuntimeError('forced cgdb export failure')\n"
                     "_ci.extract_cgdb_batch = _boom\n")

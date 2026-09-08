@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 import networkx as nx
 
-from _builder.query import (
+from _builder.query.query import (
     _resolve_detailed_chain,
     _trace_simple_chain,
     _is_scenario_noise_target,

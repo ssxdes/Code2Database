@@ -50,7 +50,7 @@ def _make_race_graph(nodes_spec, edges_spec=None) -> str:
 
 def _load_graph(graph_dir):
     """Load the full graph from a fixture directory."""
-    from _builder.graph_build import _load_full_graph
+    from _builder.graph.graph_build import _load_full_graph
     return _load_full_graph(graph_dir)
 
 
@@ -58,21 +58,21 @@ class TestGetThreadContext(unittest.TestCase):
     """Tests for _get_thread_context."""
 
     def test_returns_model_and_entry_for_thread_entry(self):
-        from _builder.concurrency_analysis import _get_thread_context
+        from _builder.analysis.concurrency_analysis import _get_thread_context
         ndata = {"thread_model": "pthread", "thread_entry": True, "name": "worker"}
         model, entry = _get_thread_context(ndata)
         self.assertEqual(model, "pthread")
         self.assertEqual(entry, "worker")
 
     def test_returns_inherited_model_for_non_entry(self):
-        from _builder.concurrency_analysis import _get_thread_context
+        from _builder.analysis.concurrency_analysis import _get_thread_context
         ndata = {"thread_model_inherited": "pthread", "thread_entry": False, "name": "helper"}
         model, entry = _get_thread_context(ndata)
         self.assertEqual(model, "pthread")
         self.assertIsNone(entry)
 
     def test_returns_none_none_when_no_thread_attrs(self):
-        from _builder.concurrency_analysis import _get_thread_context
+        from _builder.analysis.concurrency_analysis import _get_thread_context
         model, entry = _get_thread_context({})
         self.assertIsNone(model)
         self.assertIsNone(entry)
@@ -83,30 +83,30 @@ class TestSameThreadContext(unittest.TestCase):
 
     def test_both_no_context_returns_true(self):
         """Two functions with no thread context are assumed same (avoid noise)."""
-        from _builder.concurrency_analysis import _same_thread_context
+        from _builder.analysis.concurrency_analysis import _same_thread_context
         self.assertTrue(_same_thread_context({}, {}))
 
     def test_same_entry_point_returns_true(self):
-        from _builder.concurrency_analysis import _same_thread_context
+        from _builder.analysis.concurrency_analysis import _same_thread_context
         a = {"thread_model": "pthread", "thread_entry": True, "name": "worker"}
         b = {"thread_model": "pthread", "thread_entry": True, "name": "worker"}
         self.assertTrue(_same_thread_context(a, b))
 
     def test_different_models_returns_false(self):
-        from _builder.concurrency_analysis import _same_thread_context
+        from _builder.analysis.concurrency_analysis import _same_thread_context
         a = {"thread_model": "pthread", "thread_entry": False}
         b = {"thread_model": "kthread", "thread_entry": False}
         self.assertFalse(_same_thread_context(a, b))
 
     def test_same_model_different_entries_returns_false(self):
         """Two pthreads with different entry functions → different contexts."""
-        from _builder.concurrency_analysis import _same_thread_context
+        from _builder.analysis.concurrency_analysis import _same_thread_context
         a = {"thread_model": "pthread", "thread_entry": True, "name": "worker1"}
         b = {"thread_model": "pthread", "thread_entry": True, "name": "worker2"}
         self.assertFalse(_same_thread_context(a, b))
 
     def test_one_has_context_other_doesnt_returns_false(self):
-        from _builder.concurrency_analysis import _same_thread_context
+        from _builder.analysis.concurrency_analysis import _same_thread_context
         a = {"thread_model": "pthread", "thread_entry": False}
         b = {}
         self.assertFalse(_same_thread_context(a, b))
@@ -129,7 +129,7 @@ class TestDetectDataRaces(unittest.TestCase):
         self.G = _load_graph(self.graph_dir)
 
     def test_write_write_race_detected(self):
-        from _builder.concurrency_analysis import detect_data_races
+        from _builder.analysis.concurrency_analysis import detect_data_races
         races = detect_data_races(self.G)
         self.assertEqual(len(races), 1)
         r = races[0]
@@ -141,7 +141,7 @@ class TestDetectDataRaces(unittest.TestCase):
 
     def test_same_thread_context_no_race(self):
         """Two writers in the SAME thread context should NOT race."""
-        from _builder.concurrency_analysis import detect_data_races
+        from _builder.analysis.concurrency_analysis import detect_data_races
         graph_dir = _make_race_graph([
             {"id": "w1", "name": "w1",
              "thread_model": "pthread", "thread_entry": True,
@@ -156,7 +156,7 @@ class TestDetectDataRaces(unittest.TestCase):
         self.assertEqual(len(races), 0)
 
     def test_read_write_race_is_high_severity(self):
-        from _builder.concurrency_analysis import detect_data_races
+        from _builder.analysis.concurrency_analysis import detect_data_races
         graph_dir = _make_race_graph([
             {"id": "reader", "name": "reader",
              "thread_model": "pthread", "thread_entry": True,
@@ -171,7 +171,7 @@ class TestDetectDataRaces(unittest.TestCase):
         self.assertEqual(races[0]["severity"], "high")
 
     def test_read_read_race_is_low_severity(self):
-        from _builder.concurrency_analysis import detect_data_races
+        from _builder.analysis.concurrency_analysis import detect_data_races
         graph_dir = _make_race_graph([
             {"id": "r1", "name": "r1",
              "thread_model": "pthread", "thread_entry": True,
@@ -186,7 +186,7 @@ class TestDetectDataRaces(unittest.TestCase):
         self.assertEqual(races[0]["severity"], "low")
 
     def test_struct_field_race_detected(self):
-        from _builder.concurrency_analysis import detect_data_races
+        from _builder.analysis.concurrency_analysis import detect_data_races
         graph_dir = _make_race_graph([
             {"id": "f1", "name": "f1",
              "thread_model": "pthread", "thread_entry": True,
@@ -202,7 +202,7 @@ class TestDetectDataRaces(unittest.TestCase):
         self.assertIn("state", races[0]["shared_resource"]["name"])
 
     def test_no_race_when_no_shared_resource(self):
-        from _builder.concurrency_analysis import detect_data_races
+        from _builder.analysis.concurrency_analysis import detect_data_races
         graph_dir = _make_race_graph([
             {"id": "a", "name": "a",
              "thread_model": "pthread", "thread_entry": True,
@@ -216,7 +216,7 @@ class TestDetectDataRaces(unittest.TestCase):
         self.assertEqual(len(races), 0)
 
     def test_target_func_filters_to_matching_function(self):
-        from _builder.concurrency_analysis import detect_data_races
+        from _builder.analysis.concurrency_analysis import detect_data_races
         graph_dir = _make_race_graph([
             {"id": "a", "name": "a",
              "thread_model": "pthread", "thread_entry": True,
@@ -240,13 +240,13 @@ class TestDetectDataRaces(unittest.TestCase):
             self.assertIn("a", functions)
 
     def test_target_func_not_found_returns_empty(self):
-        from _builder.concurrency_analysis import detect_data_races
+        from _builder.analysis.concurrency_analysis import detect_data_races
         races = detect_data_races(self.G, target_func="nonexistent")
         self.assertEqual(races, [])
 
     def test_races_sorted_by_severity(self):
         """High-severity races should come before low-severity."""
-        from _builder.concurrency_analysis import detect_data_races
+        from _builder.analysis.concurrency_analysis import detect_data_races
         graph_dir = _make_race_graph([
             # read-read → low
             {"id": "r1", "name": "r1", "thread_model": "pthread", "thread_entry": True,
@@ -270,7 +270,7 @@ class TestRaceSchema(unittest.TestCase):
     """Verify the race dict has all required fields."""
 
     def test_race_dict_schema(self):
-        from _builder.concurrency_analysis import detect_data_races
+        from _builder.analysis.concurrency_analysis import detect_data_races
         graph_dir = _make_race_graph([
             {"id": "a", "name": "a", "thread_model": "pthread", "thread_entry": True,
              "globals_written": [{"name": "x"}]},

@@ -83,7 +83,7 @@ class _ServerCtx:
 
     def start(self):
         try:
-            from _builder.mcp_http_server import _make_handler_class, \
+            from _builder.mcp.mcp_http_server import _make_handler_class, \
                 _SESSIONS, _SESSIONS_LOCK
             # Clear any leftover sessions from previous tests
             with _SESSIONS_LOCK:
@@ -323,7 +323,7 @@ class TestMcpHttpReadOnly(unittest.TestCase):
         self.assertEqual(status, 200)
         tool_names = {t["name"] for t in body["result"]["tools"]}
         # Write tools should NOT be in the list
-        from _builder.mcp_server import WRITE_TOOLS
+        from _builder.mcp.mcp_server import WRITE_TOOLS
         for wt in WRITE_TOOLS:
             self.assertNotIn(wt, tool_names,
                 f"Write tool {wt} should be hidden in read-only mode")
@@ -593,26 +593,26 @@ class TestDispatchShared(unittest.TestCase):
 
     def test_dispatch_ping(self):
         """dispatch_mcp_request returns a valid ping response."""
-        from _builder.mcp_server import dispatch_mcp_request
+        from _builder.mcp.mcp_server import dispatch_mcp_request
         resp = dispatch_mcp_request("ping", 1, {}, "/tmp", {})
         self.assertEqual(resp, {"jsonrpc": "2.0", "id": 1, "result": {}})
 
     def test_dispatch_initialize(self):
         """dispatch_mcp_request returns a valid initialize response."""
-        from _builder.mcp_server import dispatch_mcp_request
+        from _builder.mcp.mcp_server import dispatch_mcp_request
         resp = dispatch_mcp_request("initialize", 1, {}, "/tmp", {})
         self.assertEqual(resp["result"]["serverInfo"]["name"], "Code2Database")
         self.assertEqual(resp["result"]["protocolVersion"], "2024-11-05")
 
     def test_dispatch_tools_list(self):
         """dispatch_mcp_request returns 83 tools."""
-        from _builder.mcp_server import dispatch_mcp_request
+        from _builder.mcp.mcp_server import dispatch_mcp_request
         resp = dispatch_mcp_request("tools/list", 1, {}, "/tmp", {})
         self.assertEqual(len(resp["result"]["tools"]), 83)
 
     def test_dispatch_tools_list_read_only(self):
         """dispatch_mcp_request hides write tools in read-only mode."""
-        from _builder.mcp_server import dispatch_mcp_request, WRITE_TOOLS
+        from _builder.mcp.mcp_server import dispatch_mcp_request, WRITE_TOOLS
         resp = dispatch_mcp_request("tools/list", 1, {}, "/tmp", {},
                                     read_only=True)
         tool_names = {t["name"] for t in resp["result"]["tools"]}
@@ -621,28 +621,28 @@ class TestDispatchShared(unittest.TestCase):
 
     def test_dispatch_notification(self):
         """dispatch_mcp_request returns None for notifications."""
-        from _builder.mcp_server import dispatch_mcp_request
+        from _builder.mcp.mcp_server import dispatch_mcp_request
         resp = dispatch_mcp_request(
             "notifications/initialized", None, {}, "/tmp", {})
         self.assertIsNone(resp)
 
     def test_dispatch_method_not_found(self):
         """dispatch_mcp_request returns error for unknown method."""
-        from _builder.mcp_server import dispatch_mcp_request
+        from _builder.mcp.mcp_server import dispatch_mcp_request
         resp = dispatch_mcp_request("unknown/method", 1, {}, "/tmp", {})
         self.assertIn("error", resp)
         self.assertEqual(resp["error"]["code"], -32601)
 
     def test_dispatch_unknown_tool(self):
         """dispatch_mcp_request returns error for unknown tool."""
-        from _builder.mcp_server import dispatch_mcp_request
+        from _builder.mcp.mcp_server import dispatch_mcp_request
         resp = dispatch_mcp_request("tools/call", 1,
             {"name": "nonexistent", "arguments": {}}, "/tmp", {})
         self.assertIn("error", resp)
 
     def test_dispatch_write_tool_read_only(self):
         """dispatch_mcp_request rejects write tools in read-only mode."""
-        from _builder.mcp_server import dispatch_mcp_request
+        from _builder.mcp.mcp_server import dispatch_mcp_request
         resp = dispatch_mcp_request("tools/call", 1,
             {"name": "code2database_save_memory",
              "arguments": {"question": "q", "answer": "a"}},
@@ -656,7 +656,7 @@ class TestLazySQLiteGraphThreadSafety(unittest.TestCase):
     def test_concurrent_node_access(self):
         """Concurrent __contains__ and _get_node_attrs don't crash."""
         import sqlite3
-        from _builder.streaming_graph import LazySQLiteGraph
+        from _builder.graph.streaming_graph import LazySQLiteGraph
         tmpdir = tempfile.mkdtemp()
         db_path = os.path.join(tmpdir, "test.db")
         conn = sqlite3.connect(db_path)

@@ -155,8 +155,8 @@ class TestEnclosingSymbolEndToEnd(unittest.TestCase):
     def test_enclosing_persists_to_db(self):
         """Build a graph and verify enclosing_symbol_id is in cgdb_nodes."""
         import sqlite3
-        from _builder.cgdb_store import SQLiteCGDBStore
-        from _builder.cgdb_ingest import extract_cgdb_batch
+        from _builder.cgdb.cgdb_store import SQLiteCGDBStore
+        from _builder.cgdb.cgdb_ingest import extract_cgdb_batch
         from _scanner.clang_scanner import ClangScanner
 
         scanner = ClangScanner(is_cpp=False)

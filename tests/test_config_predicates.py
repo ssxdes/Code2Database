@@ -19,7 +19,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.cgdb_config_predicates import (
+from _builder.cgdb.cgdb_config_predicates import (
     ConfigPredicate, ConfigPredicateExtractor,
     UNCONDITIONAL, CONTRADICTORY,
     predicate_id_for, _extract_config_macros, _to_z3_form,

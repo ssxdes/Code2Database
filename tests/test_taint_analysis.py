@@ -50,17 +50,17 @@ class TestFnmatch(unittest.TestCase):
     """Tests for the local fnmatch wildcard matcher."""
 
     def test_exact_match(self):
-        from _builder.taint_analysis import fnmatch
+        from _builder.analysis.taint_analysis import fnmatch
         self.assertTrue(fnmatch("foo", "foo"))
 
     def test_star_matches_any_suffix(self):
-        from _builder.taint_analysis import fnmatch
+        from _builder.analysis.taint_analysis import fnmatch
         self.assertTrue(fnmatch("recv_msg", "recv*"))
         self.assertTrue(fnmatch("recv", "recv*"))
         self.assertFalse(fnmatch("send_msg", "recv*"))
 
     def test_question_matches_single_char(self):
-        from _builder.taint_analysis import fnmatch
+        from _builder.analysis.taint_analysis import fnmatch
         self.assertTrue(fnmatch("recv1", "recv?"))
         self.assertTrue(fnmatch("recvA", "recv?"))
         # ? matches exactly one char, not zero
@@ -70,7 +70,7 @@ class TestFnmatch(unittest.TestCase):
 
     def test_invalid_regex_falls_back_to_exact_match(self):
         """Invalid regex pattern (unbalanced parens) falls back to == comparison."""
-        from _builder.taint_analysis import fnmatch
+        from _builder.analysis.taint_analysis import fnmatch
         # Pattern with unbalanced paren would break re.fullmatch
         self.assertFalse(fnmatch("foo", "foo(bar"))
         self.assertTrue(fnmatch("foo(bar", "foo(bar"))
@@ -91,7 +91,7 @@ class TestTaintAnalysisBasic(unittest.TestCase):
 
     def test_direct_source_to_sink_flow(self):
         """Source→intermediate→sink: 2-hop DATA_FLOW path is found."""
-        from _builder.taint_analysis import taint_analysis
+        from _builder.analysis.taint_analysis import taint_analysis
         result = taint_analysis(self.graph_dir, ["recv"], ["memcpy"])
         self.assertEqual(result["total_flows"], 1)
         flow = result["flows"][0]
@@ -102,19 +102,19 @@ class TestTaintAnalysisBasic(unittest.TestCase):
         self.assertEqual(flow["path"], ["recv", "process", "memcpy"])
 
     def test_no_sink_present_returns_empty(self):
-        from _builder.taint_analysis import taint_analysis
+        from _builder.analysis.taint_analysis import taint_analysis
         result = taint_analysis(self.graph_dir, ["recv"], ["nonexistent_sink"])
         self.assertEqual(result["total_flows"], 0)
         self.assertEqual(result["flows"], [])
 
     def test_no_source_present_returns_empty(self):
-        from _builder.taint_analysis import taint_analysis
+        from _builder.analysis.taint_analysis import taint_analysis
         result = taint_analysis(self.graph_dir, ["nonexistent_src"], ["memcpy"])
         self.assertEqual(result["total_flows"], 0)
 
     def test_output_schema(self):
         """Verify the result dict has all expected keys."""
-        from _builder.taint_analysis import taint_analysis
+        from _builder.analysis.taint_analysis import taint_analysis
         result = taint_analysis(self.graph_dir, ["recv"], ["memcpy"])
         for key in ("sources", "sinks", "sanitizers", "flows",
                     "total_flows", "unsanitized_flows", "sanitized_flows"):
@@ -143,7 +143,7 @@ class TestTaintAnalysisSanitizer(unittest.TestCase):
 
     def test_sanitized_path_marked_sanitized(self):
         """Flow through 'sanitize' node should be flagged sanitized."""
-        from _builder.taint_analysis import taint_analysis
+        from _builder.analysis.taint_analysis import taint_analysis
         result = taint_analysis(
             self.graph_dir, ["src"], ["sink"], sanitizers=["sanitize"])
         self.assertEqual(result["total_flows"], 2)
@@ -156,7 +156,7 @@ class TestTaintAnalysisSanitizer(unittest.TestCase):
         self.assertIn("sanitize", sanitized_flows[0]["path"])
 
     def test_no_sanitizers_all_unsanitized(self):
-        from _builder.taint_analysis import taint_analysis
+        from _builder.analysis.taint_analysis import taint_analysis
         result = taint_analysis(self.graph_dir, ["src"], ["sink"])
         self.assertEqual(result["total_flows"], 2)
         self.assertEqual(result["unsanitized_flows"], 2)
@@ -177,7 +177,7 @@ class TestTaintAnalysisEdgeTypes(unittest.TestCase):
 
     def test_only_taint_edges_followed(self):
         """CONTAINS edges should NOT propagate taint; INVOKES should."""
-        from _builder.taint_analysis import taint_analysis
+        from _builder.analysis.taint_analysis import taint_analysis
         result = taint_analysis(self.graph_dir, ["src"], ["sink"])
         # src → mid (CONTAINS) is NOT followed, so no path to sink via src
         # But mid → sink (INVOKES) is followed IF we reach mid somehow.
@@ -189,7 +189,7 @@ class TestTaintAnalysisMaxDepth(unittest.TestCase):
     """Tests for max_depth cutoff."""
 
     def test_max_depth_truncates_long_paths(self):
-        from _builder.taint_analysis import taint_analysis
+        from _builder.analysis.taint_analysis import taint_analysis
         # Build a 5-hop chain: a → b → c → d → e → sink
         graph_dir = _make_taint_graph(
             [("a", "a", "/x.c"), ("b", "b", "/x.c"), ("c", "c", "/x.c"),
@@ -210,7 +210,7 @@ class TestTaintAnalysisSourceIsSink(unittest.TestCase):
     """Tests for the edge case where source == sink (excluded by `node != source_id`)."""
 
     def test_source_equal_to_sink_not_reported(self):
-        from _builder.taint_analysis import taint_analysis
+        from _builder.analysis.taint_analysis import taint_analysis
         graph_dir = _make_taint_graph(
             [("x", "x", "/x.c")],  # x is both source AND sink
             [],
@@ -224,7 +224,7 @@ class TestTaintAnalysisWildcard(unittest.TestCase):
     """Tests for wildcard source/sink patterns."""
 
     def test_wildcard_source_matches_multiple(self):
-        from _builder.taint_analysis import taint_analysis
+        from _builder.analysis.taint_analysis import taint_analysis
         graph_dir = _make_taint_graph(
             [("recv_msg", "recv_msg", "/x.c"),
              ("recv_data", "recv_data", "/x.c"),

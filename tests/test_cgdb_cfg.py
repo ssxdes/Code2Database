@@ -50,7 +50,7 @@ class TestCFGExtractorUnit(unittest.TestCase):
 
     def test_extract_returns_blocks_and_edges(self):
         """CFGExtractor.extract returns non-empty (blocks, edges) tuple."""
-        from _builder.cgdb_analysis import CFGExtractor
+        from _builder.cgdb.cgdb_analysis import CFGExtractor
         ext = CFGExtractor()
         blocks, edges = ext.extract(self.c_path, "foo", 12345)
         self.assertGreater(len(blocks), 0, "expected basic blocks for foo()")
@@ -58,7 +58,7 @@ class TestCFGExtractorUnit(unittest.TestCase):
 
     def test_extract_has_entry_and_exit_blocks(self):
         """The CFG has exactly one ENTRY and one EXIT block."""
-        from _builder.cgdb_analysis import CFGExtractor
+        from _builder.cgdb.cgdb_analysis import CFGExtractor
         ext = CFGExtractor()
         blocks, _ = ext.extract(self.c_path, "foo", 12345)
         entries = [b for b in blocks if b.is_entry]
@@ -68,7 +68,7 @@ class TestCFGExtractorUnit(unittest.TestCase):
 
     def test_extract_emits_branch_edges(self):
         """The if/else produces at least one true_branch and one false_branch edge."""
-        from _builder.cgdb_analysis import CFGExtractor
+        from _builder.cgdb.cgdb_analysis import CFGExtractor
         ext = CFGExtractor()
         _, edges = ext.extract(self.c_path, "foo", 12345)
         kinds = {e.kind for e in edges}
@@ -77,7 +77,7 @@ class TestCFGExtractorUnit(unittest.TestCase):
 
     def test_block_ids_are_stable_across_runs(self):
         """Same source + function_id produces same block IDs."""
-        from _builder.cgdb_analysis import CFGExtractor
+        from _builder.cgdb.cgdb_analysis import CFGExtractor
         ext = CFGExtractor()
         blocks1, _ = ext.extract(self.c_path, "foo", 12345)
         blocks2, _ = ext.extract(self.c_path, "foo", 12345)
@@ -87,7 +87,7 @@ class TestCFGExtractorUnit(unittest.TestCase):
 
     def test_block_ids_fit_in_signed_64bit(self):
         """All block IDs fit in SQLite signed 64-bit INTEGER."""
-        from _builder.cgdb_analysis import CFGExtractor
+        from _builder.cgdb.cgdb_analysis import CFGExtractor
         ext = CFGExtractor()
         blocks, _ = ext.extract(self.c_path, "foo", 12345)
         for b in blocks:
@@ -96,7 +96,7 @@ class TestCFGExtractorUnit(unittest.TestCase):
 
     def test_block_function_id_propagates(self):
         """All blocks carry the func_node_id passed to extract()."""
-        from _builder.cgdb_analysis import CFGExtractor
+        from _builder.cgdb.cgdb_analysis import CFGExtractor
         ext = CFGExtractor()
         blocks, _ = ext.extract(self.c_path, "foo", 99999)
         for b in blocks:
@@ -104,7 +104,7 @@ class TestCFGExtractorUnit(unittest.TestCase):
 
     def test_edge_kinds_match_schema_check(self):
         """All edge kinds are in the schema CHECK constraint set."""
-        from _builder.cgdb_analysis import CFGExtractor
+        from _builder.cgdb.cgdb_analysis import CFGExtractor
         ext = CFGExtractor()
         _, edges = ext.extract(self.c_path, "foo", 12345)
         allowed = {'fallthrough', 'true_branch', 'false_branch', 'exception'}
@@ -113,7 +113,7 @@ class TestCFGExtractorUnit(unittest.TestCase):
 
     def test_extract_at_least_six_blocks_for_if_else(self):
         """if/else fixture produces >= 6 blocks (ENTRY, EXIT, if-header, then, else, merge)."""
-        from _builder.cgdb_analysis import CFGExtractor
+        from _builder.cgdb.cgdb_analysis import CFGExtractor
         ext = CFGExtractor()
         blocks, _ = ext.extract(self.c_path, "foo", 12345)
         self.assertGreaterEqual(len(blocks), 4,
@@ -130,7 +130,7 @@ class TestCFGExtractorUnit(unittest.TestCase):
         body size.
         """
         from clang.cindex import Index, CursorKind
-        from _builder.cgdb_analysis import CFGExtractor
+        from _builder.cgdb.cgdb_analysis import CFGExtractor
         ext = CFGExtractor()
 
         index = Index.create()
@@ -461,7 +461,7 @@ class TestAliasExtractorStub(unittest.TestCase):
 
     def test_alias_extractor_returns_empty(self):
         """AliasExtractor.extract_from_ast returns [] for MVP."""
-        from _builder.cgdb_analysis import AliasExtractor
+        from _builder.cgdb.cgdb_analysis import AliasExtractor
         ext = AliasExtractor()
         # Pass None for cursor — extract_from_ast should handle gracefully
         result = ext.extract_from_ast(None, 12345, lambda c, k: 0)

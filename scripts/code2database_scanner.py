@@ -461,7 +461,7 @@ def _extract_state_access_then_drop_body_text(functions: list,
     Returns the number of functions that had body_text dropped.
     """
     try:
-        from _builder.graph_build import _extract_state_access
+        from _builder.graph.graph_build import _extract_state_access
     except ImportError:
         # Builder module unavailable — just drop body_text without state_access.
         dropped = 0
@@ -767,7 +767,7 @@ def scan_directory(source_root: str, lang: str = "auto",
             # purposes, including describe-node --detail full).
             if all_functions:
                 try:
-                    from _builder.graph_build import _extract_state_access
+                    from _builder.graph.graph_build import _extract_state_access
                     # Reuse the compiled globals regex across flushes instead
                     # of recompiling the large alternation every flush. The set
                     # of global variable names grows monotonically as more
@@ -934,7 +934,7 @@ def scan_directory(source_root: str, lang: str = "auto",
             if not all_functions:
                 return
             if memory_guard and memory_guard.is_memory_low():
-                from _builder.graph_build import _extract_state_access
+                from _builder.graph.graph_build import _extract_state_access
                 # Use the same cumulative-name approach as the split path
                 # (line 779+). The previous count-based cache (_cur_gv_count >
                 # _cached_globals_count) was broken: if globals are added and
@@ -1130,7 +1130,7 @@ def scan_directory(source_root: str, lang: str = "auto",
     # respects C2D_MAX_WORKERS env var and --max-workers CLI flag.
     # Was hardcoded to min(cpu, 8) — same bottleneck as parallel.py.
     try:
-        from _builder.parallel import resolve_jobs
+        from _builder.build.parallel import resolve_jobs
         workers = resolve_jobs(workers, max_workers_cap=max_workers)
     except ImportError:
         if workers == 0:
@@ -1814,7 +1814,7 @@ def scan_directory(source_root: str, lang: str = "auto",
             }
 
         # Original monolithic streaming path for smaller projects
-        from _builder.memory_guard import StreamingJsonObjectWriter
+        from _builder.memory.memory_guard import StreamingJsonObjectWriter
         writer = StreamingJsonObjectWriter(streaming_output, chunk_size=500)
         writer.begin()
         writer.write_scalar("source_root", source_root)
@@ -2320,7 +2320,7 @@ def cmd_scan(args):
     # Initialize memory guard if available
     memory_guard = None
     try:
-        from _builder.memory_guard import MemoryGuard, set_global_guard
+        from _builder.memory.memory_guard import MemoryGuard, set_global_guard
         warn_thresh = getattr(args, 'memory_warn_threshold', 0.75)
         crit_thresh = getattr(args, 'memory_crit_threshold', 0.85)
         memory_guard = MemoryGuard(
@@ -2771,7 +2771,7 @@ def cmd_scan(args):
             import tempfile
             with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=True,
                                              encoding='utf-8') as _tf:
-                from _builder.memory_guard import StreamingJsonObjectWriter
+                from _builder.memory.memory_guard import StreamingJsonObjectWriter
                 _writer = StreamingJsonObjectWriter(_tf.name, chunk_size=500)
                 _writer.begin()
                 for key, value in result.items():
@@ -3018,7 +3018,7 @@ def cmd_discover(args):
 
 def cmd_validate(args):
     """Validate build output files for correctness."""
-    from _builder.validate import cmd_validate as _cmd_validate
+    from _builder.ops.validate import cmd_validate as _cmd_validate
     _cmd_validate(args)
 
 

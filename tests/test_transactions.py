@@ -29,7 +29,7 @@ class TestTransactionsE2E(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp(prefix="c2d_tx_test_")
         self.db_path = os.path.join(self.tmpdir, "code2database.db")
         self.conn = sqlite3.connect(self.db_path)
-        from _builder.cgdb_schema import apply_cgdb_schema
+        from _builder.cgdb.cgdb_schema import apply_cgdb_schema
         apply_cgdb_schema(self.conn)
         # Create a test source file
         self.src_path = os.path.join(self.tmpdir, "test.c")
@@ -74,7 +74,7 @@ class TestTransactionsE2E(unittest.TestCase):
 
     def test_render_round_trip(self):
         """SourceRenderer.render() should produce bytes matching disk."""
-        from _builder.source_renderer import render_source
+        from _builder.export.source_renderer import render_source
         result = render_source(self.conn, self.file_id)
         self.assertIsNone(result.error)
         self.assertEqual(result.sha256, self.disk_sha)
@@ -83,14 +83,14 @@ class TestTransactionsE2E(unittest.TestCase):
 
     def test_verify_consistency_pass(self):
         """verify_consistency should return ok=True when DB matches disk."""
-        from _builder.source_renderer import verify_consistency
+        from _builder.export.source_renderer import verify_consistency
         result = verify_consistency(self.conn, self.file_id)
         self.assertTrue(result.ok)
         self.assertEqual(result.db_sha256, result.disk_sha256)
 
     def test_verify_consistency_mismatch_detected(self):
         """Tampering with disk should be detected and recorded in alignment_errors."""
-        from _builder.source_renderer import verify_consistency
+        from _builder.export.source_renderer import verify_consistency
         # Tamper with disk
         with open(self.src_path, "wb") as f:
             f.write(b"TAMPERED CONTENT NOT MATCHING DB")
@@ -107,7 +107,7 @@ class TestTransactionsE2E(unittest.TestCase):
 
     def test_writeback_pipeline_commit(self):
         """WritebackPipeline begin/commit lifecycle."""
-        from _builder.writeback_pipeline import WritebackPipeline
+        from _builder.ops.writeback_pipeline import WritebackPipeline
         pipe = WritebackPipeline(self.conn, self.tmpdir, self.tmpdir)
         tx_id = pipe.begin(self.file_id)
         self.assertIsNotNone(tx_id)
@@ -120,7 +120,7 @@ class TestTransactionsE2E(unittest.TestCase):
 
     def test_commit_db_transaction_module_level(self):
         """commit_db_transaction module-level function."""
-        from _builder.writeback_pipeline import (
+        from _builder.ops.writeback_pipeline import (
             WritebackPipeline, commit_db_transaction
         )
         pipe = WritebackPipeline(self.conn, self.tmpdir, self.tmpdir)
@@ -132,7 +132,7 @@ class TestTransactionsE2E(unittest.TestCase):
 
     def test_rollback_db_transaction(self):
         """rollback_db_transaction should clear tx state."""
-        from _builder.writeback_pipeline import (
+        from _builder.ops.writeback_pipeline import (
             WritebackPipeline, rollback_db_transaction
         )
         pipe = WritebackPipeline(self.conn, self.tmpdir, self.tmpdir)
@@ -148,8 +148,8 @@ class TestTransactionsE2E(unittest.TestCase):
 
     def test_edit_token_and_writeback(self):
         """Edit a token via edit_token, then commit_db_transaction."""
-        from _builder.writeback_pipeline import WritebackPipeline
-        from _builder.mcp_report_tools import _tool_edit_token
+        from _builder.ops.writeback_pipeline import WritebackPipeline
+        from _builder.mcp.mcp_report_tools import _tool_edit_token
         # Edit token id 4 (the '42' literal) to '99'
         result = _tool_edit_token(
             {"token_id": 4, "new_text": "99"}, self.tmpdir
@@ -177,7 +177,7 @@ class TestTransactionsRecovery(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp(prefix="c2d_recovery_test_")
         self.db_path = os.path.join(self.tmpdir, "code2database.db")
         self.conn = sqlite3.connect(self.db_path)
-        from _builder.cgdb_schema import apply_cgdb_schema
+        from _builder.cgdb.cgdb_schema import apply_cgdb_schema
         apply_cgdb_schema(self.conn)
 
     def tearDown(self):

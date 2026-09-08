@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 import networkx as nx  # noqa: E402
 
-from _builder.explain import (  # noqa: E402
+from _builder.misc.explain import (  # noqa: E402
     explain_label,
     why_ambiguous,
     LABEL_EXPLANATIONS,

@@ -268,7 +268,7 @@ class TestOpsBindEndToEnd(unittest.TestCase):
             "--build-config", "auto",
             "--storage", "sqlite",
         ])
-        from _builder.cgdb_store import SQLiteCGDBStore
+        from _builder.cgdb.cgdb_store import SQLiteCGDBStore
         store = SQLiteCGDBStore(os.path.join(self.outdir, "code2database.db"))
         try:
             impls = store.find_ops_impls('read_iter', '')

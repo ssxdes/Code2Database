@@ -31,7 +31,8 @@ NODE_BIN = shutil.which("node")
 def _ui_js() -> str:
     """Return the app <script> block (the last one; earlier ones just
     load cytoscape with a CDN fallback)."""
-    from _builder import web_ui
+    from _builder.misc import web_ui
+
     blocks = re.findall(r"<script>(.*?)</script>", web_ui._HTML_UI, flags=re.S)
     if not blocks:
         raise AssertionError("no <script> blocks found in _HTML_UI")

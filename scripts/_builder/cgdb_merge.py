@@ -395,4 +395,19 @@ def cmd_cgdb_merge_knowledge(args):
     if result.knowledge_entries_needs_review > 0:
         print(f"\n⚠ {result.knowledge_entries_needs_review} entries need review")
         print("  Review the target project brief (knowledge-brief) manually.")
+
+    # L7: _load_knowledge() is a documented stub (always returns [])
+    # because the MD knowledge system was retired — knowledge is now
+    # the per-project brief.json. Surface this so the user doesn't
+    # think the merge silently failed.
+    if merge_know and result.knowledge_entries_merged == 0 and not dry_run:
+        print("\nℹ Knowledge merge produced 0 entries: the MD knowledge system")
+        print("  was retired — knowledge is now the per-project brief.json.")
+        print("  Briefs are curated per project and are NOT auto-merged.")
+        print("  To share knowledge across projects:")
+        print("    • import-foreign-knowledge — copy a foreign brief locally")
+        print("    • brief-suggest — mine high-weight memories as brief candidates")
+        print("    • kb-global-share / kb-global-import — cross-project KB")
+        if merge_mem:
+            print("  (Memory entries above WERE merged — only knowledge is retired.)")
     return 0

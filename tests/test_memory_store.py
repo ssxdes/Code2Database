@@ -1028,5 +1028,36 @@ class TestCompact(MemoryStoreTestBase):
         self.assertEqual(summary["compact"]["merged_groups"], 1)
 
 
+class TestCjkDetection(unittest.TestCase):
+    """M4: _has_cjk / _simple_tokenize must cover Japanese and Korean
+    script ranges, not just CJK ideographs."""
+
+    def test_hiragana_detected(self):
+        from _builder.utils import _has_cjk
+        self.assertTrue(_has_cjk("こんにちは"))
+
+    def test_katakana_detected(self):
+        from _builder.utils import _has_cjk
+        self.assertTrue(_has_cjk("カタカナ"))
+
+    def test_hangul_detected(self):
+        from _builder.utils import _has_cjk
+        self.assertTrue(_has_cjk("한국어"))
+
+    def test_latin_not_cjk(self):
+        from _builder.utils import _has_cjk
+        self.assertFalse(_has_cjk("hello world"))
+
+    def test_simple_tokenize_extracts_hangul(self):
+        from _builder.utils import _simple_tokenize
+        tokens = _simple_tokenize("한국어 query")
+        self.assertTrue(any("한" in t for t in tokens))
+
+    def test_cjk_extension_b_detected(self):
+        from _builder.utils import _has_cjk
+        # U+20000 (CJK Extension B) — 𠀀
+        self.assertTrue(_has_cjk("𠀀test"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -834,7 +834,20 @@ def _resolve_invoked_id(callee_name: str, domain: str, id_registry: dict,
 
 
 
-_CJK_RE = re.compile(r'[一-鿿㐀-䶿]')
+_CJK_RE = re.compile(
+    '['
+    '\u4e00-\u9fff'           # CJK Unified Ideographs (main block)
+    '\u3400-\u4dbf'           # CJK Extension A
+    '\u3040-\u309f'           # Hiragana
+    '\u30a0-\u30ff'           # Katakana
+    '\uac00-\ud7af'           # Hangul Syllables
+    '\u1100-\u11ff'           # Hangul Jamo
+    '\uff00-\uffef'           # Fullwidth / Halfwidth Forms
+    '\uf900-\ufaff'           # CJK Compatibility Ideographs
+    '\U00020000-\U0002a6df'   # CJK Extension B
+    '\U0002a700-\U0002ebef'   # CJK Extensions C-F
+    ']'
+)
 
 
 def _has_cjk(text) -> bool:
@@ -867,7 +880,7 @@ def _simple_tokenize(text: str) -> set:
     latin = re.findall(r'[a-zA-Z0-9_]+', text.lower())
     tokens.update(latin)
     # CJK characters (each as individual token for broad matching)
-    cjk = re.findall(r'[一-鿿㐀-䶿]', text)
+    cjk = _CJK_RE.findall(text)
     tokens.update(cjk)
     # Also add CJK bigrams for better matching
     for i in range(len(cjk) - 1):

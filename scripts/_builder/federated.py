@@ -117,10 +117,16 @@ def _load_graphs(registry: Optional[str] = None, names: Optional[set] = None):
                   file=sys.stderr)
             continue
         if G is not None:
-            yield name, graph_dir, G
-            # Release the graph's resources (LazySQLiteGraph holds an
-            # open sqlite connection) before loading the next one.
-            _close_graph_if_needed(G)
+            try:
+                yield name, graph_dir, G
+            finally:
+                # Release the graph's resources (LazySQLiteGraph holds an
+                # open sqlite connection) before loading the next one.
+                # Using try/finally ensures cleanup even when the caller
+                # breaks out of the loop early (return/break) — the
+                # generator's close() (triggered by GC or explicit close)
+                # throws GeneratorExit, which finally catches.
+                _close_graph_if_needed(G)
 
 
 def _close_graph_if_needed(G):

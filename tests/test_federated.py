@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 from _builder.federated import (
     federate_register, federate_list, federate_remove,
-    fed_search, fed_neighbors, fed_path,
+    fed_search, fed_neighbors, fed_path, _load_graphs,
 )
 
 
@@ -119,6 +119,44 @@ class TestFederatedQueries(unittest.TestCase):
         results = fed_search(
             'x', registry=os.path.join(self.tmp.name, 'absent.json'))
         self.assertEqual(results, [])
+
+    def test_generator_early_exit_closes_graph(self):
+        """Early return from fed_search must not leak the last graph's
+        SQLite connection — the try/finally in _load_graphs ensures
+        close() runs even when the caller abandons the generator."""
+        closed_flags = []
+
+        class _FakeGraph:
+            def __init__(self, name):
+                self.name = name
+            def nodes(self, data=False):
+                if data:
+                    yield (self.name + '_n1',
+                       {'name': self.name, 'is_empty': False,
+                        'node_type': 'func', 'domain': 'd'})
+            def close(self):
+                closed_flags.append(self.name)
+
+        import _builder.federated as fed_mod
+        import _builder.graph_build as gb_mod
+        orig_load = gb_mod._load_full_graph
+        def _fake_load(graph_dir):
+            return _FakeGraph(graph_dir)
+        gb_mod._load_full_graph = _fake_load
+        try:
+            for i, proj in enumerate(['gA', 'gB', 'gC']):
+                gd = os.path.join(self.tmp.name, proj)
+                _write_graph(gd, proj, [], [])
+                federate_register(proj, gd, registry=self.registry)
+            results = fed_search('gA', top=1, registry=self.registry)
+            self.assertEqual(len(results), 1)
+            # gA's graph was yielded and the generator was abandoned
+            # after the caller returned early. try/finally must have
+            # closed it — check that at least gA's dir was closed.
+            self.assertTrue(any('gA' in c for c in closed_flags),
+                            f"gA not closed: {closed_flags}")
+        finally:
+            gb_mod._load_full_graph = orig_load
 
 
 if __name__ == "__main__":

@@ -36,20 +36,36 @@ def _registry_path(registry: Optional[str] = None) -> str:
 def _load_registry(registry: Optional[str] = None) -> dict:
     path = _registry_path(registry)
     try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
+        # L2: shared flock so we don't read a half-written file
+        import fcntl
+        lock_path = path + ".lock"
+        with open(lock_path, "a+") as lock_fd:
+            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_SH)
+            try:
+                with open(path, encoding="utf-8") as f:
+                    data = json.load(f)
+                return data if isinstance(data, dict) else {}
+            finally:
+                fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
     except (OSError, ValueError):
         return {}
 
 
 def _save_registry(data: dict, registry: Optional[str] = None) -> None:
+    """Atomically write the registry under a flock so concurrent
+    register/remove calls don't corrupt it."""
     path = _registry_path(registry)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
+    # L2: flock around the write to prevent concurrent corruption
+    import fcntl
+    lock_path = path + ".lock"
+    with open(lock_path, "a+") as lock_fd:
+        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
 
 
 def federate_register(name: str, graph_dir: str,

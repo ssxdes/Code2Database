@@ -93,14 +93,22 @@ def federate_list(registry: Optional[str] = None) -> dict:
     return _load_registry(registry)
 
 
-def _load_graphs(registry: Optional[str] = None):
-    """Yield (name, graph_dir, G) for every registered graph that loads."""
+def _load_graphs(registry: Optional[str] = None, names: Optional[set] = None):
+    """Yield (name, graph_dir, G) for every registered graph that loads.
+
+    L3: when `names` is given, only those graphs load — callers that
+    know which graph they want avoid loading every entry in a large
+    registry. Each graph is deterministically released before the
+    next advances (LazySQLiteGraph connections close on GC; this
+    makes it explicit)."""
     try:
         from _builder.graph_build import _load_full_graph
     except ImportError:
         sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
         from _builder.graph_build import _load_full_graph
     for name, entry in sorted(federate_list(registry).items()):
+        if names is not None and name not in names:
+            continue
         graph_dir = entry.get("graph_dir", "")
         try:
             G = _load_full_graph(graph_dir)
@@ -110,6 +118,19 @@ def _load_graphs(registry: Optional[str] = None):
             continue
         if G is not None:
             yield name, graph_dir, G
+            # Release the graph's resources (LazySQLiteGraph holds an
+            # open sqlite connection) before loading the next one.
+            _close_graph_if_needed(G)
+
+
+def _close_graph_if_needed(G):
+    """Best-effort close of a graph's resources (connection, etc.)."""
+    close = getattr(G, "close", None)
+    if callable(close):
+        try:
+            close()
+        except Exception:
+            pass
 
 
 def _resolve(G, name_or_id: str):
@@ -126,7 +147,8 @@ def _resolve(G, name_or_id: str):
 
 
 def fed_search(query: str, top: int = 20,
-               registry: Optional[str] = None) -> list:
+               registry: Optional[str] = None,
+               graphs: Optional[set] = None) -> list:
     """Search node names across every registered graph.
 
     Results are annotated with their source graph; same-named symbols
@@ -134,7 +156,7 @@ def fed_search(query: str, top: int = 20,
     search cannot give)."""
     results = []
     q = query.lower()
-    for name, graph_dir, G in _load_graphs(registry):
+    for name, graph_dir, G in _load_graphs(registry, names=graphs):
         for nid, nd in G.nodes(data=True):
             if nd.get("is_empty", False) or nd.get("node_type") == "file":
                 continue
@@ -157,14 +179,15 @@ def fed_search(query: str, top: int = 20,
 
 def fed_neighbors(name_or_id: str, depth: int = 1, max_nodes: int = 100,
                   resolve_by_name: bool = False,
-                  registry: Optional[str] = None) -> list:
+                  registry: Optional[str] = None,
+                  graphs: Optional[set] = None) -> list:
     """Neighbors of a node in EVERY graph that contains it.
 
     Returns one entry per containing graph: {graph, nodes, edges}.
     With resolve_by_name, a bare function name resolves in each graph
     independently (the same symbol is a different node per project)."""
     out = []
-    for gname, graph_dir, G in _load_graphs(registry):
+    for gname, graph_dir, G in _load_graphs(registry, names=graphs):
         nid = name_or_id if name_or_id in G else (
             _resolve(G, name_or_id) if resolve_by_name else None)
         if nid is None:
@@ -209,14 +232,15 @@ def fed_neighbors(name_or_id: str, depth: int = 1, max_nodes: int = 100,
 
 
 def fed_path(from_name: str, to_name: str, resolve_by_name: bool = False,
-             registry: Optional[str] = None) -> list:
+             registry: Optional[str] = None,
+             graphs: Optional[set] = None) -> list:
     """Shortest call path between two nodes, per graph containing both.
 
     Returns [{graph, path: [node ids]}] — only graphs where BOTH
     endpoints resolve."""
     from collections import deque
     out = []
-    for gname, graph_dir, G in _load_graphs(registry):
+    for gname, graph_dir, G in _load_graphs(registry, names=graphs):
         def _endpoints():
             a = from_name if from_name in G else (
                 _resolve(G, from_name) if resolve_by_name else None)

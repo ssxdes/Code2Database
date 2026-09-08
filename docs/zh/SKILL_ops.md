@@ -91,7 +91,7 @@ LLM 执行任何修改 code graph database的命令时，**必须先获得用户
 | `doc-mark-stale` | 标记某节点文档为陈旧（**需用户确认**） |
 | `update-node` | LLM 增量补充节点属性（**需用户确认**，非破坏性） |
 | `update-edge` | LLM 增量补充边属性（**需用户确认**，非破坏性） |
-| `serve` | MCP 服务器模式（stdio，83 个工具 (55 base + 28 design-report)：36 code2database_* + 19 cgdb_*） |
+| `serve` | MCP 服务器模式（stdio 或 HTTP，83 个工具 (55 base + 28 design-report)：36 code2database_* + 19 cgdb_*）。HTTP：`--transport http --host 0.0.0.0 --port 8765 --token SECRET --read-only` |
 | `kb-rebuild-index` | 从 memory.db + brief.json 重建统一 FTS5 索引（build/update 后运行） |
 | `kb-cluster` | 聚类相似 kb 条目 + 链接 principle |
 | `kb-audit` | KB 审计：counts by kind / stale / low-confidence / citations |

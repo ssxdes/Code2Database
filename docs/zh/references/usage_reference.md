@@ -1010,7 +1010,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `search-memory` | Search memory for similar questions; `--symbol` filters by grounded symbol |
 | `semantic-search` | Neural semantic search: FTS5 BM25 + neural embedding + RRF fusion |
 | `semantic-status` | Check if semantic update is recommended |
-| `serve` | Start MCP server for LLM agent queries (stdio transport) |
+| `serve` | 启动 MCP 服务器供 LLM 代理查询（stdio 或 HTTP 传输；`--transport http --host 0.0.0.0 --port 8765 --token SECRET --read-only`） |
 | `sync` | Sync local code2db-out with git-tracked version (local wins) |
 | `taint-analysis` | Taint analysis: source/sink/sanitizer propagation through DATA_FLOW edges |
 | `think-chain` | Generate complete call chains for structured analysis |

@@ -100,10 +100,18 @@ C/C++ | Go | Python | Java | Rust | ASM（6 + ASM，C/C++ 共享扫描器）
 ## MCP 服务器
 
 ```bash
+# 本地（stdio）— 用于 Claude Desktop、Cursor 本地等
 python3 scripts/code2database_builder.py serve --graph code2db-out/
+
+# 远程（HTTP）— 跨网络访问，共享 memory/knowledge
+python3 scripts/code2database_builder.py serve --graph code2db-out/ \
+    --transport http --host 0.0.0.0 --port 8765 \
+    --token my-secret --read-only
 ```
 
 83 工具 (55 base + 28 design-report)：36 个 `code2database_*`（含 `code2database_session_init` 一站式会话上下文、`code2database_save_memory` MCP 侧经验沉淀、`code2database_kb_query` 跨 memory+knowledge 查询）+ 19 个 `cgdb_*`（clang 语义层）。
+
+HTTP 传输（`--transport http`）让远程 MCP 客户端跨网络访问代码图谱和共享 memory/knowledge 库。全部 83 个工具可用，多个客户端共享同一个 `memory/memory.db`——一个 agent 沉淀的经验对其他 agent 立即可见。使用 `--token` 做 Bearer 认证，`--read-only` 在公开端点禁用写入工具。部署配置见 `deploy/` 目录。
 
 ## 约束
 

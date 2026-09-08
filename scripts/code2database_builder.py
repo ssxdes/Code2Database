@@ -1940,8 +1940,31 @@ def main():
     p_ss.add_argument("--graph", required=True, help="Call graph output directory")
 
     # serve (MCP server mode)
-    p_serve = sub.add_parser("serve", help="Start MCP server for LLM agent queries (stdio transport)")
+    p_serve = sub.add_parser("serve",
+        help="Start MCP server for LLM agent queries (stdio or HTTP transport)")
     p_serve.add_argument("--graph", required=True, help="Call graph output directory")
+    p_serve.add_argument("--transport", choices=["stdio", "http"],
+        default="stdio",
+        help="Transport mode: stdio (local, default) or http (remote, cross-network)")
+    p_serve.add_argument("--host", default="0.0.0.0",
+        help="HTTP bind address (default 0.0.0.0 = all interfaces; "
+             "use 127.0.0.1 for localhost-only)")
+    p_serve.add_argument("--port", type=int, default=8765,
+        help="HTTP listen port (default 8765)")
+    p_serve.add_argument("--token", default=None,
+        help="Bearer token for HTTP auth (env: C2D_MCP_TOKEN). "
+             "REQUIRED for http transport on a public network — without it "
+             "anyone can query your graph and write memories.")
+    p_serve.add_argument("--read-only", action="store_true",
+        help="Hide write tools (save_memory, commit/rollback_db_transaction, "
+             "insert/delete_node, add_function, edit/insert/delete_token). "
+             "Recommended for remote query-only deployments.")
+    p_serve.add_argument("--max-clients", type=int, default=32,
+        help="Max concurrent HTTP requests (default 32)")
+    p_serve.add_argument("--tls-cert", default=None,
+        help="Path to TLS certificate PEM file (enables HTTPS)")
+    p_serve.add_argument("--tls-key", default=None,
+        help="Path to TLS private key PEM file (enables HTTPS)")
 
     # get-code-snippet
     p_snippet = sub.add_parser("get-code-snippet",

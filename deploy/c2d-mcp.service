@@ -1,0 +1,61 @@
+# /etc/systemd/system/c2d-mcp.service
+#
+# Code2Database MCP HTTP Server — remote access for LLM agents.
+#
+# Installation:
+#   1. Copy this file to /etc/systemd/system/c2d-mcp.service
+#   2. Edit GRAPH_DIR, WorkingDirectory, and ExecStart paths below
+#   3. Set the auth token in the Environment= line
+#   4. Run: systemctl daemon-reload && systemctl enable --now c2d-mcp
+#
+# Logs:
+#   journalctl -u c2d-mcp -f
+#
+# Health check:
+#   curl http://localhost:8765/health
+
+[Unit]
+Description=Code2Database MCP Server (HTTP transport)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+
+# --- Edit these paths for your installation ---
+WorkingDirectory=/opt/Code2Database
+Environment=GRAPH_DIR=/opt/Code2Database/code2db-out
+Environment=C2D_MCP_TOKEN=change-this-to-a-strong-secret
+Environment=PYTHONPATH=/opt/Code2Database/scripts
+
+ExecStart=/usr/bin/python3 /opt/Code2Database/scripts/code2database_builder.py \
+    serve \
+    --graph ${GRAPH_DIR} \
+    --transport http \
+    --host 127.0.0.1 \
+    --port 8765 \
+    --token ${C2D_MCP_TOKEN} \
+    --read-only
+
+# --read-only hides write tools (save_memory, db transactions, token edits).
+# Remove it if you want remote clients to be able to save memories and edit
+# the graph database. For query-only deployments, keep it.
+
+# Restart on crash
+Restart=always
+RestartSec=5
+TimeoutStopSec=10
+
+# Resource limits (adjust for your hardware)
+LimitNOFILE=4096
+MemoryMax=4G
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=${GRAPH_DIR}
+
+[Install]
+WantedBy=multi-user.target

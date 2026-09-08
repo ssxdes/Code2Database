@@ -495,7 +495,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 
 | Command | Description |
 |---------|-------------|
-| `serve` | Start MCP server (stdio transport, 83 tools: 36 `code2database_*` + 19 `cgdb_*` + 28 design-report) |
+| `serve` | Start MCP server (stdio or HTTP transport, 83 tools: 36 `code2database_*` + 19 `cgdb_*` + 28 design-report) |
 
 All query commands support `--json` for structured output and `--max-tokens` for budget control.
 
@@ -506,10 +506,18 @@ All query commands support `--json` for structured output and `--max-tokens` for
 Launch Code2Database as an MCP server to give any MCP-compatible agent (Claude Code, Codex, etc.) real-time access to your code graph:
 
 ```bash
+# Local (stdio) — single client, zero config
 python3 scripts/code2database_builder.py serve --graph code2db-out/
+
+# Remote (HTTP) — multi-client, cross-network, shared memory
+python3 scripts/code2database_builder.py serve --graph code2db-out/ \
+    --transport http --host 0.0.0.0 --port 8765 \
+    --token my-secret --read-only
 ```
 
-Exposes **83 MCP tools (55 base + 28 design-report)** over stdio transport: 36 `code2database_*` tools (including `code2database_explore`, `code2database_trace`, `code2database_describe`, `code2database_blast_radius`, `code2database_concurrency`, `code2database_data_lifecycle`) plus 19 `cgdb_*` tools that query the cgdb (code graph database) layer directly when the clang extraction backend is enabled (typed vtable dispatch, CFG, data flow, sync primitives, config predicates, time-travel versions). The agent can query the graph directly without re-reading source files — surgical context in one tool call.
+Exposes **83 MCP tools (55 base + 28 design-report)**: 36 `code2database_*` tools (including `code2database_explore`, `code2database_trace`, `code2database_describe`, `code2database_blast_radius`, `code2database_concurrency`, `code2database_data_lifecycle`) plus 19 `cgdb_*` tools that query the cgdb (code graph database) layer directly when the clang extraction backend is enabled (typed vtable dispatch, CFG, data flow, sync primitives, config predicates, time-travel versions). The agent can query the graph directly without re-reading source files — surgical context in one tool call.
+
+**HTTP transport** (`--transport http`) enables remote access over the network. All 83 tools are available via POST `/mcp` (Streamable HTTP, MCP spec compliant). Multiple clients share the same `memory/memory.db` — experiences saved by one agent are immediately visible to others. Use `--token` for Bearer auth (required for public endpoints), `--read-only` to disable write tools, and `--max-clients` to limit concurrency. See `deploy/` for systemd + nginx configs.
 
 ---
 

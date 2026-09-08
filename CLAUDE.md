@@ -144,10 +144,16 @@ python3 scripts/code2database_scanner.py scan --source /path --extraction-backen
 ## MCP Server
 
 ```bash
+# Local (stdio)
 python3 scripts/code2database_builder.py serve --graph code2db-out/
+
+# Remote (HTTP) — cross-network, shared memory
+python3 scripts/code2database_builder.py serve --graph code2db-out/ \
+    --transport http --host 0.0.0.0 --port 8765 \
+    --token my-secret --read-only
 ```
 
-Exposes 81 MCP tools (53 base + 28 design-report) (34 `code2database_*` + 19 `cgdb_*`) over stdio transport for real-time LLM agent queries. The 19 `cgdb_*` tools query the cgdb (code graph database) layer directly when the clang extraction backend is enabled. Daemon mode provides additional freshness tools via Unix socket at `/tmp/code2database-daemon-<project>.sock`:
+Exposes 83 MCP tools (55 base + 28 design-report) (36 `code2database_*` + 19 `cgdb_*`) over stdio (local) or Streamable HTTP (remote) transport for real-time LLM agent queries. The 19 `cgdb_*` tools query the cgdb (code graph database) layer directly when the clang extraction backend is enabled. HTTP mode supports Bearer auth, read-only mode, TLS, session management, and concurrent multi-client access with shared memory.db. See `deploy/` for systemd + nginx configs. Daemon mode provides additional freshness tools via Unix socket at `/tmp/code2database-daemon-<project>.sock`:
 
 ```bash
 # Query daemon freshness before important MCP queries

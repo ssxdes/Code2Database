@@ -31,6 +31,7 @@ import json
 import sys
 import os
 import atexit
+import threading
 from pathlib import Path
 
 from _builder.token_budget import estimate_tokens
@@ -41,7 +42,12 @@ import logging
 # every MCP tool call. Keyed by graph_dir. LazySQLiteGraph holds an open
 # SQLite connection, so reusing it eliminates per-call connection setup
 # (which can be 1-2s on large graphs).
+#
+# In HTTP transport mode, multiple concurrent requests share this cache.
+# The RLock protects both the dict mutation and the lazy-load path so
+# that two threads don't race on _load_full_graph for the same graph_dir.
 _GRAPH_CACHE = {}
+_GRAPH_CACHE_LOCK = threading.RLock()
 
 
 def _get_graph(graph_dir: str):
@@ -51,12 +57,13 @@ def _get_graph(graph_dir: str):
     persistent SQLite connection. For small graphs, loads eagerly into
     NetworkX (also cached).
     """
-    if graph_dir in _GRAPH_CACHE:
-        return _GRAPH_CACHE[graph_dir]
-    from _builder.graph_build import _load_full_graph
-    G = _load_full_graph(graph_dir)
-    _GRAPH_CACHE[graph_dir] = G
-    return G
+    with _GRAPH_CACHE_LOCK:
+        if graph_dir in _GRAPH_CACHE:
+            return _GRAPH_CACHE[graph_dir]
+        from _builder.graph_build import _load_full_graph
+        G = _load_full_graph(graph_dir)
+        _GRAPH_CACHE[graph_dir] = G
+        return G
 
 
 # Re-export the shared path resolver so existing callers in this module
@@ -67,15 +74,16 @@ from _builder.utils import resolve_source_file as _resolve_source_file
 
 def _close_cached_graphs():
     """Close any cached graph connections on exit."""
-    for graph_dir, G in list(_GRAPH_CACHE.items()):
-        try:
-            close = getattr(G, "close", None)
-            if callable(close):
-                close()
-        except Exception:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
-            pass
-    _GRAPH_CACHE.clear()
+    with _GRAPH_CACHE_LOCK:
+        for graph_dir, G in list(_GRAPH_CACHE.items()):
+            try:
+                close = getattr(G, "close", None)
+                if callable(close):
+                    close()
+            except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                pass
+        _GRAPH_CACHE.clear()
 
 
 atexit.register(_close_cached_graphs)
@@ -88,7 +96,8 @@ def _drop_cgdb_store(graph_dir: str):
     in WAL mode an abandoned open connection can pin the WAL and block
     other writers.
     """
-    store = _CGDB_STORE_CACHE.pop(graph_dir, None)
+    with _CGDB_STORE_CACHE_LOCK:
+        store = _CGDB_STORE_CACHE.pop(graph_dir, None)
     if store is not None:
         try:
             store.close()
@@ -1243,6 +1252,7 @@ def _tool_unbalanced_alloc_free(args: dict, graph_dir: str) -> dict:
 # ---------------------------------------------------------------------------
 
 _CGDB_STORE_CACHE: dict = {}
+_CGDB_STORE_CACHE_LOCK = threading.RLock()
 
 
 def _cgdb_store(graph_dir: str):
@@ -1262,27 +1272,28 @@ def _cgdb_store(graph_dir: str):
         # Drop any stale cache entry (closing its connection).
         _drop_cgdb_store(graph_dir)
         return None
-    cached = _CGDB_STORE_CACHE.get(graph_dir)
-    if cached is not None:
-        # Sanity-check that the cached store's connection is still live.
+    with _CGDB_STORE_CACHE_LOCK:
+        cached = _CGDB_STORE_CACHE.get(graph_dir)
+        if cached is not None:
+            # Sanity-check that the cached store's connection is still live.
+            try:
+                cached._ensure_conn().execute("SELECT 1").fetchone()
+                return cached
+            except sqlite3.Error:
+                _drop_cgdb_store(graph_dir)
         try:
-            cached._ensure_conn().execute("SELECT 1").fetchone()
-            return cached
+            from _builder.cgdb_store import SQLiteCGDBStore
+            store = SQLiteCGDBStore(db_path)
+            conn = store._ensure_conn()
+            conn.execute("SELECT 1 FROM cgdb_nodes LIMIT 1").fetchone()
+            _CGDB_STORE_CACHE[graph_dir] = store
+            return store
         except sqlite3.Error:
-            _drop_cgdb_store(graph_dir)
-    try:
-        from _builder.cgdb_store import SQLiteCGDBStore
-        store = SQLiteCGDBStore(db_path)
-        conn = store._ensure_conn()
-        conn.execute("SELECT 1 FROM cgdb_nodes LIMIT 1").fetchone()
-        _CGDB_STORE_CACHE[graph_dir] = store
-        return store
-    except sqlite3.Error:
-        # Expected when cgdb tables are absent (tree-sitter builds) or the
-        # db doesn't exist — narrow to sqlite3.Error so programming errors
-        # (AttributeError/NameError from typos) surface instead of being
-        # swallowed as 'cgdb unavailable'.
-        return None
+            # Expected when cgdb tables are absent (tree-sitter builds) or the
+            # db doesn't exist — narrow to sqlite3.Error so programming errors
+            # (AttributeError/NameError from typos) surface instead of being
+            # swallowed as 'cgdb unavailable'.
+            return None
 
 
 def _tool_cgdb_search_symbols(args: dict, graph_dir: str) -> list:
@@ -2256,11 +2267,135 @@ except ImportError:
         len(TOOLS))
 
 
+# Tools that modify state (graph DB, memory DB, tokens).  When the server
+# is started with --read-only, these are hidden from tools/list and
+# rejected on tools/call.  This protects production knowledge bases from
+# accidental writes by remote clients.
+WRITE_TOOLS = frozenset({
+    "code2database_save_memory",
+    "commit_db_transaction",
+    "rollback_db_transaction",
+    "insert_node_after",
+    "delete_node",
+    "add_function",
+    "edit_token",
+    "insert_token",
+    "delete_token",
+})
+
+
 # ---------------------------------------------------------------------------
-# MCP server main loop
+# Shared JSON-RPC dispatch — used by both stdio and HTTP transports
 # ---------------------------------------------------------------------------
 
-def run_mcp_server(graph_dir: str):
+def _build_tools_list(read_only: bool = False) -> list:
+    """Build the tools/list response array, optionally filtering write tools."""
+    tools_list = []
+    for name, tool_def in TOOLS.items():
+        if read_only and name in WRITE_TOOLS:
+            continue
+        tools_list.append({
+            "name": name,
+            "description": tool_def["description"],
+            "inputSchema": tool_def["inputSchema"],
+        })
+    return tools_list
+
+
+def _handle_initialize(msg_id) -> dict:
+    """Build the initialize response."""
+    return {"jsonrpc": "2.0", "id": msg_id, "result": {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {"tools": {"listChanged": False}},
+        "serverInfo": {"name": "Code2Database", "version": "2.0.0"},
+    }}
+
+
+def _handle_tools_call(msg_id, params, graph_dir, mcp_stats,
+                       read_only: bool = False) -> dict:
+    """Dispatch a tools/call request. Returns a complete JSON-RPC response.
+
+    On success the result content is a JSON-serialised string (matching
+    the stdio transport's behaviour).  On error the isError flag is set.
+    Token usage is tracked in *mcp_stats* (mutated in place).
+    """
+    tool_name = params.get("name", "")
+    tool_args = params.get("arguments", {})
+
+    if tool_name not in TOOLS:
+        return {"jsonrpc": "2.0", "id": msg_id,
+                "error": {"code": -32601,
+                          "message": f"Unknown tool: {tool_name}"}}
+
+    if read_only and tool_name in WRITE_TOOLS:
+        return {"jsonrpc": "2.0", "id": msg_id,
+                "result": {"content": [{"type": "text",
+                     "text": json.dumps({"error":
+                     f"Tool '{tool_name}' is disabled in read-only mode"})}],
+                     "isError": True}}
+
+    try:
+        handler = TOOLS[tool_name]["handler"]
+        result = handler(tool_args, graph_dir)
+        result_json = json.dumps(result, ensure_ascii=False, indent=2)
+        tokens = estimate_tokens(result_json)
+        mcp_stats["total_calls"] += 1
+        mcp_stats["total_output_tokens"] += tokens
+        mcp_stats["by_tool"].setdefault(tool_name, {"calls": 0, "tokens": 0})
+        mcp_stats["by_tool"][tool_name]["calls"] += 1
+        mcp_stats["by_tool"][tool_name]["tokens"] += tokens
+        if isinstance(result, dict):
+            result["_token_count"] = tokens
+        return {"jsonrpc": "2.0", "id": msg_id,
+                "result": {"content": [{"type": "text",
+                    "text": json.dumps(result, ensure_ascii=False, indent=2)}]}}
+    except Exception as e:
+        logging.getLogger(__name__).debug("tool error", exc_info=True)
+        return {"jsonrpc": "2.0", "id": msg_id,
+                "result": {"content": [{"type": "text",
+                    "text": json.dumps({"error": str(e)})}],
+                    "isError": True}}
+
+
+def dispatch_mcp_request(method, msg_id, params, graph_dir, mcp_stats,
+                         read_only: bool = False):
+    """Handle a single JSON-RPC request.
+
+    Returns:
+        dict — a complete JSON-RPC response (to be sent as HTTP body or
+               written to stdout).
+        None  — the method is a notification (no response expected, e.g.
+                ``notifications/initialized``).
+    """
+    if method == "initialize":
+        return _handle_initialize(msg_id)
+
+    if method == "notifications/initialized":
+        return None
+
+    if method == "tools/list":
+        return {"jsonrpc": "2.0", "id": msg_id,
+                "result": {"tools": _build_tools_list(read_only)}}
+
+    if method == "tools/call":
+        return _handle_tools_call(msg_id, params, graph_dir,
+                                  mcp_stats, read_only)
+
+    if method == "ping":
+        return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
+
+    if msg_id is not None:
+        return {"jsonrpc": "2.0", "id": msg_id,
+                "error": {"code": -32601,
+                          "message": f"Method not found: {method}"}}
+    return None
+
+
+# ---------------------------------------------------------------------------
+# MCP server main loop (stdio transport)
+# ---------------------------------------------------------------------------
+
+def run_mcp_server(graph_dir: str, read_only: bool = False):
     """Run MCP server over stdio transport."""
     # Token tracking
     mcp_stats = {"total_calls": 0, "total_output_tokens": 0, "by_tool": {}}
@@ -2289,79 +2424,10 @@ def run_mcp_server(graph_dir: str):
         msg_id = msg.get("id")
         params = msg.get("params", {})
 
-        if method == "initialize":
-            initialized = True
-            result = {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {
-                    "tools": {"listChanged": False},
-                },
-                "serverInfo": {
-                    "name": "Code2Database",
-                    "version": "2.0.0",
-                },
-            }
-            _write_message({"jsonrpc": "2.0", "id": msg_id, "result": result})
-
-        elif method == "notifications/initialized":
-            pass  # No response needed
-
-        elif method == "tools/list":
-            tools_list = []
-            for name, tool_def in TOOLS.items():
-                tools_list.append({
-                    "name": name,
-                    "description": tool_def["description"],
-                    "inputSchema": tool_def["inputSchema"],
-                })
-            _write_message({"jsonrpc": "2.0", "id": msg_id, "result": {"tools": tools_list}})
-
-        elif method == "tools/call":
-            tool_name = params.get("name", "")
-            tool_args = params.get("arguments", {})
-
-            if tool_name not in TOOLS:
-                _write_message({
-                    "jsonrpc": "2.0", "id": msg_id,
-                    "error": {"code": -32601, "message": f"Unknown tool: {tool_name}"}
-                })
-                continue
-
-            try:
-                handler = TOOLS[tool_name]["handler"]
-                result = handler(tool_args, graph_dir)
-                # Track token consumption
-                result_json = json.dumps(result, ensure_ascii=False, indent=2)
-                tokens = estimate_tokens(result_json)
-                mcp_stats["total_calls"] += 1
-                mcp_stats["total_output_tokens"] += tokens
-                mcp_stats["by_tool"].setdefault(tool_name, {"calls": 0, "tokens": 0})
-                mcp_stats["by_tool"][tool_name]["calls"] += 1
-                mcp_stats["by_tool"][tool_name]["tokens"] += tokens
-                if isinstance(result, dict):
-                    result["_token_count"] = tokens
-                _write_message({
-                    "jsonrpc": "2.0", "id": msg_id,
-                    "result": {"content": [{"type": "text",
-                                           "text": json.dumps(result, ensure_ascii=False, indent=2)}]}
-                })
-            except Exception as e:
-                _write_message({
-                    "jsonrpc": "2.0", "id": msg_id,
-                    "result": {"content": [{"type": "text",
-                                           "text": json.dumps({"error": str(e)})}],
-                              "isError": True}
-                })
-
-        elif method == "ping":
-            _write_message({"jsonrpc": "2.0", "id": msg_id, "result": {}})
-
-        else:
-            if msg_id is not None:
-                _write_message({
-                    "jsonrpc": "2.0", "id": msg_id,
-                    "error": {"code": -32601, "message": f"Method not found: {method}"}
-                })
+        response = dispatch_mcp_request(
+            method, msg_id, params, graph_dir, mcp_stats, read_only)
+        if response is not None:
+            _write_message(response)
 
 
 def cmd_serve(args):
@@ -2371,6 +2437,13 @@ def cmd_serve(args):
     code2database_master.json). Large projects (>100K functions) must use
     --storage sqlite, and without this fallback the MCP server cannot
     start for them — breaking LLM agent integration.
+
+    Transport selection:
+      - ``stdio`` (default): JSON-RPC over stdin/stdout — for local
+        single-client usage (Claude Desktop, Cursor local).
+      - ``http``: Streamable HTTP transport — for remote multi-client
+        access over the network.  See ``--host``, ``--port``,
+        ``--token``, ``--read-only`` flags.
     """
     graph_dir = args.graph
     has_master = os.path.exists(os.path.join(graph_dir, "code2database_master.json"))
@@ -2379,4 +2452,23 @@ def cmd_serve(args):
         print(f"Error: No invocation graph found at {graph_dir} "
               f"(need code2database_master.json or code2database.db)", file=sys.stderr)
         sys.exit(1)
-    run_mcp_server(graph_dir)
+
+    transport = getattr(args, "transport", "stdio")
+    read_only = getattr(args, "read_only", False)
+
+    if transport == "http":
+        from _builder.mcp_http_server import run_mcp_server_http
+        host = getattr(args, "host", "0.0.0.0")
+        port = getattr(args, "port", 8765)
+        token = getattr(args, "token", None)
+        if not token:
+            token = os.environ.get("C2D_MCP_TOKEN")
+        tls_cert = getattr(args, "tls_cert", None)
+        tls_key = getattr(args, "tls_key", None)
+        max_clients = getattr(args, "max_clients", 32)
+        run_mcp_server_http(
+            graph_dir=graph_dir, host=host, port=port, token=token,
+            read_only=read_only, tls_cert=tls_cert, tls_key=tls_key,
+            max_clients=max_clients)
+    else:
+        run_mcp_server(graph_dir, read_only=read_only)

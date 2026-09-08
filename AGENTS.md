@@ -46,6 +46,7 @@ Capabilities:
 - BUG benchmark — GraphInvestigator vs GrepInvestigator (`bug-benchmark`)
 - Profile health (0-100 across 7 categories) + auto-evolution + git/svn HEAD binding (`profile-health`, `profile-evolve`, `profile-bind-version`)
 - LSP server — exposes pre-built C2D graph as a read-only Language Server Protocol server for IDE integration (`lsp-server`)
+- MCP server — exposes 83 tools (36 `code2database_*` + 19 `cgdb_*` + 28 design-report) over stdio (local) or Streamable HTTP (remote, `serve --transport http`). HTTP mode supports Bearer token auth, `--read-only` write-tool suppression, `--max-clients` concurrency limit, TLS, session management. Multiple remote clients share the same `memory/memory.db` — experiences saved by one agent are immediately visible to others. See `deploy/` for systemd + nginx configs
 - Doc-code dual-source truth alignment — return value / param / signature / stale-doc mismatch detection (`doc-code-check`, `doc-mark-stale`, `doc-alignment-report`, `doc-signature-diff`)
 - Background daemon — inotify + polling fallback, Unix socket API, circuit breaker, transactional sync, auto output file rebuild (`daemon-start`/`stop`/`status`/`force-refresh`/`pause`/`resume`/`wait-sync`/`logs`/`reload`/`list-projects`)
 
@@ -125,7 +126,7 @@ Capability modules have dedicated unit tests in `tests/` covering:
 - Update command (confirmation gate, attribute parsing, backend detection)
 - Profile generation (auto-profile, project-type detection, struct_op_types)
 
-**Test suite**: 2365 tests across 127 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails. Tests that drive a real scanner subprocess must pin `--memory-limit 9999` (and raised `--memory-warn/crit-threshold`) — MemoryGuard reads SYSTEM memory, so its auto cap (total RAM × 0.8) can cancel even a tiny scan on a busy machine, and make now fails fast on the leftover checkpoint. tests/test_web_ui_js.py extracts the shipped `<script>` block and runs it under Node.js — skipped when node is not on PATH. tests/test_skill_manifest.py introspects both argparse trees and pins skill.json/skill_analysis.json command lists against them — so adding a CLI command without updating the manifests fails CI.)
+**Test suite**: 2401 tests across 128 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails. Tests that drive a real scanner subprocess must pin `--memory-limit 9999` (and raised `--memory-warn/crit-threshold`) — MemoryGuard reads SYSTEM memory, so its auto cap (total RAM × 0.8) can cancel even a tiny scan on a busy machine, and make now fails fast on the leftover checkpoint. tests/test_web_ui_js.py extracts the shipped `<script>` block and runs it under Node.js — skipped when node is not on PATH. tests/test_skill_manifest.py introspects both argparse trees and pins skill.json/skill_analysis.json command lists against them — so adding a CLI command without updating the manifests fails CI.)
 
 ## Language Support
 

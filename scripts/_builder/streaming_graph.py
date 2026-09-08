@@ -803,6 +803,7 @@ class LazySQLiteGraph:
 
     def __init__(self, db_path: str):
         import sqlite3
+        import threading
         from collections import OrderedDict
         self._db_path = db_path
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
@@ -815,6 +816,7 @@ class LazySQLiteGraph:
         self._conn.execute("PRAGMA cache_size=-65536")  # 64MB
         self._conn.execute("PRAGMA temp_store=MEMORY")
         self._conn.execute("PRAGMA mmap_size=268435456")  # 256MB mmap
+        self._lock = threading.RLock()
         self._node_cache = OrderedDict()
         self._node_cache_max = 10000
         self._edge_cache = OrderedDict()
@@ -843,21 +845,22 @@ class LazySQLiteGraph:
         self.adj = {}
 
     def __contains__(self, node_id) -> bool:
-        if node_id in self._node_cache:
-            self._node_cache.move_to_end(node_id)
-            return True
-        if node_id in self._node_neg_cache:
+        with self._lock:
+            if node_id in self._node_cache:
+                self._node_cache.move_to_end(node_id)
+                return True
+            if node_id in self._node_neg_cache:
+                return False
+            row = self._conn.execute(
+                "SELECT 1 FROM functions WHERE id=? LIMIT 1", (node_id,)).fetchone()
+            if row is not None:
+                return True
+            if len(self._node_neg_cache) >= self._node_neg_cache_max:
+                _evict = self._node_neg_cache_max // 4
+                for _ in range(_evict):
+                    self._node_neg_cache.popitem(last=False)
+            self._node_neg_cache[node_id] = True
             return False
-        row = self._conn.execute(
-            "SELECT 1 FROM functions WHERE id=? LIMIT 1", (node_id,)).fetchone()
-        if row is not None:
-            return True
-        if len(self._node_neg_cache) >= self._node_neg_cache_max:
-            _evict = self._node_neg_cache_max // 4
-            for _ in range(_evict):
-                self._node_neg_cache.popitem(last=False)
-        self._node_neg_cache[node_id] = True
-        return False
 
     def has_node(self, node_id: str) -> bool:
         return node_id in self
@@ -876,15 +879,16 @@ class LazySQLiteGraph:
         raise TypeError(f"Unsupported key type: {type(key)}")
 
     def _get_node_attrs(self, nid: str) -> dict:
-        if nid in self._node_cache:
-            self._node_cache.move_to_end(nid)
-            return self._node_cache[nid]
-        attrs = self._fetch_node(nid)
-        if attrs:
-            if len(self._node_cache) >= self._node_cache_max:
-                self._node_cache.popitem(last=False)
-            self._node_cache[nid] = attrs
-        return attrs
+        with self._lock:
+            if nid in self._node_cache:
+                self._node_cache.move_to_end(nid)
+                return self._node_cache[nid]
+            attrs = self._fetch_node(nid)
+            if attrs:
+                if len(self._node_cache) >= self._node_cache_max:
+                    self._node_cache.popitem(last=False)
+                self._node_cache[nid] = attrs
+            return attrs
 
     def _fetch_node(self, nid: str) -> dict:
         import json as _json
@@ -985,18 +989,19 @@ class LazySQLiteGraph:
 
     def has_edge(self, u: str, v: str) -> bool:
         cache_key = (u, v)
-        if cache_key in self._edge_cache:
-            self._edge_cache.move_to_end(cache_key)
-            return self._edge_cache[cache_key] is not None
-        row = self._conn.execute(
-            "SELECT 1 FROM edges WHERE invoker_id=? AND invoked_id=? LIMIT 1",
-            (u, v)).fetchone()
-        exists = row is not None
-        if not exists:
-            if len(self._edge_cache) >= self._edge_cache_max:
-                self._edge_cache.popitem(last=False)
-            self._edge_cache[cache_key] = None
-        return exists
+        with self._lock:
+            if cache_key in self._edge_cache:
+                self._edge_cache.move_to_end(cache_key)
+                return self._edge_cache[cache_key] is not None
+            row = self._conn.execute(
+                "SELECT 1 FROM edges WHERE invoker_id=? AND invoked_id=? LIMIT 1",
+                (u, v)).fetchone()
+            exists = row is not None
+            if not exists:
+                if len(self._edge_cache) >= self._edge_cache_max:
+                    self._edge_cache.popitem(last=False)
+                self._edge_cache[cache_key] = None
+            return exists
 
     def get_body_text(self, nid: str) -> str:
         """Lazily decompress and return body_text for a node.
@@ -1022,47 +1027,48 @@ class LazySQLiteGraph:
 
     def get_edge_data(self, u: str, v: str) -> dict:
         cache_key = (u, v)
-        if cache_key in self._edge_cache:
-            self._edge_cache.move_to_end(cache_key)
-            return self._edge_cache[cache_key] or {}
-        import json as _json
-        row = self._conn.execute(
-            "SELECT * FROM edges WHERE invoker_id=? AND invoked_id=? LIMIT 1",
-            (u, v)).fetchone()
-        if not row:
+        with self._lock:
+            if cache_key in self._edge_cache:
+                self._edge_cache.move_to_end(cache_key)
+                return self._edge_cache[cache_key] or {}
+            import json as _json
+            row = self._conn.execute(
+                "SELECT * FROM edges WHERE invoker_id=? AND invoked_id=? LIMIT 1",
+                (u, v)).fetchone()
+            if not row:
+                if len(self._edge_cache) >= self._edge_cache_max:
+                    evict_count = self._edge_cache_max // 4
+                    for k in list(self._edge_cache.keys())[:evict_count]:
+                        del self._edge_cache[k]
+                self._edge_cache[cache_key] = None
+                return {}
+            row_dict = dict(row)
+            evidence = []
+            ev_raw = row_dict.get("evidence")
+            if ev_raw:
+                try:
+                    evidence = _json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
+                except (_json.JSONDecodeError, TypeError):
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                    pass
+            attrs = {
+                "call_order": row_dict.get("call_order"),
+                "call_condition": row_dict.get("call_condition", "") or "",
+                "concurrency": row_dict.get("concurrency", "") or "",
+                "confidence": row_dict.get("confidence", "EXTRACTED") or "EXTRACTED",
+                "confidence_score": row_dict.get("confidence_score") if row_dict.get("confidence_score") is not None else 1.0,
+                "source": row_dict.get("source", "ast") or "ast",
+                "evidence": evidence,
+                "relation": row_dict.get("relation", "INVOKES") or "INVOKES",
+                "vtable_type": row_dict.get("vtable_type", "") or "",
+                "vtable_bound_module": row_dict.get("vtable_bound_module", "") or "",
+            }
             if len(self._edge_cache) >= self._edge_cache_max:
                 evict_count = self._edge_cache_max // 4
                 for k in list(self._edge_cache.keys())[:evict_count]:
                     del self._edge_cache[k]
-            self._edge_cache[cache_key] = None
-            return {}
-        row_dict = dict(row)
-        evidence = []
-        ev_raw = row_dict.get("evidence")
-        if ev_raw:
-            try:
-                evidence = _json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
-            except (_json.JSONDecodeError, TypeError):
-                logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                pass
-        attrs = {
-            "call_order": row_dict.get("call_order"),
-            "call_condition": row_dict.get("call_condition", "") or "",
-            "concurrency": row_dict.get("concurrency", "") or "",
-            "confidence": row_dict.get("confidence", "EXTRACTED") or "EXTRACTED",
-            "confidence_score": row_dict.get("confidence_score") if row_dict.get("confidence_score") is not None else 1.0,
-            "source": row_dict.get("source", "ast") or "ast",
-            "evidence": evidence,
-            "relation": row_dict.get("relation", "INVOKES") or "INVOKES",
-            "vtable_type": row_dict.get("vtable_type", "") or "",
-            "vtable_bound_module": row_dict.get("vtable_bound_module", "") or "",
-        }
-        if len(self._edge_cache) >= self._edge_cache_max:
-            evict_count = self._edge_cache_max // 4
-            for k in list(self._edge_cache.keys())[:evict_count]:
-                del self._edge_cache[k]
-        self._edge_cache[cache_key] = attrs
-        return attrs
+            self._edge_cache[cache_key] = attrs
+            return attrs
 
     def _query_node_domains(self) -> dict:
         """Lightweight query for domain classification — no full json.loads.
@@ -1130,35 +1136,37 @@ class LazySQLiteGraph:
         return in_d + out_d
 
     def predecessors(self, node_id: str):
-        cached = self._pred_cache.get(node_id)
-        if cached is not None:
-            self._pred_cache.move_to_end(node_id)
-            yield from cached
-            return
-        cur = self._conn.execute(
-            "SELECT invoker_id FROM edges WHERE invoked_id=? "
-            "AND relation NOT IN ('CONTAINS', 'IMPORTS')",
-            (node_id,))
-        result = [row[0] for row in cur]
-        if len(self._pred_cache) >= self._pred_cache_max:
-            self._pred_cache.popitem(last=False)
-        self._pred_cache[node_id] = result
+        with self._lock:
+            cached = self._pred_cache.get(node_id)
+            if cached is not None:
+                self._pred_cache.move_to_end(node_id)
+                yield from cached
+                return
+            cur = self._conn.execute(
+                "SELECT invoker_id FROM edges WHERE invoked_id=? "
+                "AND relation NOT IN ('CONTAINS', 'IMPORTS')",
+                (node_id,))
+            result = [row[0] for row in cur]
+            if len(self._pred_cache) >= self._pred_cache_max:
+                self._pred_cache.popitem(last=False)
+            self._pred_cache[node_id] = result
         yield from result
 
     def successors(self, node_id: str):
-        cached = self._succ_cache.get(node_id)
-        if cached is not None:
-            self._succ_cache.move_to_end(node_id)
-            yield from cached
-            return
-        cur = self._conn.execute(
-            "SELECT invoked_id FROM edges WHERE invoker_id=? "
-            "AND relation NOT IN ('CONTAINS', 'IMPORTS')",
-            (node_id,))
-        result = [row[0] for row in cur]
-        if len(self._succ_cache) >= self._succ_cache_max:
-            self._succ_cache.popitem(last=False)
-        self._succ_cache[node_id] = result
+        with self._lock:
+            cached = self._succ_cache.get(node_id)
+            if cached is not None:
+                self._succ_cache.move_to_end(node_id)
+                yield from cached
+                return
+            cur = self._conn.execute(
+                "SELECT invoked_id FROM edges WHERE invoker_id=? "
+                "AND relation NOT IN ('CONTAINS', 'IMPORTS')",
+                (node_id,))
+            result = [row[0] for row in cur]
+            if len(self._succ_cache) >= self._succ_cache_max:
+                self._succ_cache.popitem(last=False)
+            self._succ_cache[node_id] = result
         yield from result
 
     def in_edges(self, node_id: str, data: bool = False):
@@ -1237,14 +1245,15 @@ class LazySQLiteGraph:
         # calls G.edges(data=True) (summary, domain-breakdown,
         # cycle-detection) re-runs SELECT * FROM edges + JSON parse on
         # 97K+ edges — 3-5s each, all under the GraphCache global lock.
-        if data:
-            if self._edges_data_cache is None:
-                self._edges_data_cache = list(self._edges_data_iter())
-            yield from self._edges_data_cache
-        else:
-            if self._edges_nodata_cache is None:
-                self._edges_nodata_cache = list(self._edges_nodata_iter())
-            yield from self._edges_nodata_cache
+        with self._lock:
+            if data:
+                if self._edges_data_cache is None:
+                    self._edges_data_cache = list(self._edges_data_iter())
+                yield from self._edges_data_cache
+            else:
+                if self._edges_nodata_cache is None:
+                    self._edges_nodata_cache = list(self._edges_nodata_iter())
+                yield from self._edges_nodata_cache
 
     def _edges_data_iter(self):
         cur = self._conn.execute(
@@ -1290,13 +1299,14 @@ class LazySQLiteGraph:
         raise NotImplementedError("LazySQLiteGraph is read-only")
 
     def close(self):
-        self._edges_data_cache = None
-        self._edges_nodata_cache = None
-        try:
-            self._conn.close()
-        except Exception:
-            logging.getLogger(__name__).warning(
-                "streaming_graph: close() failed", exc_info=True)
+        with self._lock:
+            self._edges_data_cache = None
+            self._edges_nodata_cache = None
+            try:
+                self._conn.close()
+            except Exception:
+                logging.getLogger(__name__).warning(
+                    "streaming_graph: close() failed", exc_info=True)
 
     def __del__(self):
         try:

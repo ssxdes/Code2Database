@@ -91,7 +91,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 | `doc-mark-stale` | Mark a node's doc as stale (**requires user confirmation**) |
 | `update-node` | LLM-driven incremental node attribute supplement (**requires user confirmation**, non-destructive) |
 | `update-edge` | LLM-driven incremental edge attribute supplement (**requires user confirmation**, non-destructive) |
-| `serve` | MCP server mode (stdio, 83 tools: 36 code2database_* + 19 cgdb_* + 28 design-report) |
+| `serve` | MCP server mode (stdio or HTTP, 83 tools: 36 code2database_* + 19 cgdb_* + 28 design-report). HTTP: `--transport http --host 0.0.0.0 --port 8765 --token SECRET --read-only` |
 | `kb-rebuild-index` | Rebuild unified FTS5 index from memory.db + brief.json (run after build/update) |
 | `kb-cluster` | Cluster similar kb items + link principle refs |
 | `kb-audit` | KB audit: counts by kind / stale / low-confidence / citations |

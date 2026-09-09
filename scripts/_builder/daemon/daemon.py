@@ -1770,7 +1770,14 @@ class Daemon:
             "stale_files": touched_only,
         }
         fresh_path = Path(self.graph_dir) / ".code2database_freshness.json"
-        tmp_path = fresh_path.with_suffix(".json.tmp")
+        # Audit issue 15 (LOW): use a per-writer tmp filename (pid +
+        # thread id) to prevent concurrent rename races. The main daemon
+        # status writer (line 179) already does this; the freshness
+        # marker writer was missed. _rebuild_output_files is currently
+        # only called from a single sync-worker thread, but if future
+        # refactoring makes it concurrent, the fixed tmp name would race.
+        tmp_path = fresh_path.with_suffix(
+            f".json.tmp.{os.getpid()}.{threading.get_ident()}")
         tmp_path.write_text(json.dumps(freshness, indent=2),
                             encoding="utf-8")
         os.replace(str(tmp_path), str(fresh_path))

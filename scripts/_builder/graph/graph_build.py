@@ -4936,10 +4936,24 @@ def cmd_build(args):
                                     f"(sha256 ok)"
                                 )
                             elif _l1_stats.get("error"):
-                                _l1_msg = (
-                                    f"[l1] WARNING: {os.path.basename(_fp)}: "
-                                    f"{_l1_stats['error']}"
-                                )
+                                # Audit issue L5 (MEDIUM): external
+                                # dependency files (not in this source
+                                # tree — expected for subset builds like
+                                # libstorage) are flagged file_not_found
+                                # by l1_ingest and logged at INFO, not
+                                # WARNING.  Other errors (permission
+                                # denied, I/O error) stay at WARNING.
+                                if _l1_stats.get("file_not_found"):
+                                    _l1_msg = (
+                                        f"[l1] INFO: {os.path.basename(_fp)}: "
+                                        f"not in this source tree — "
+                                        f"skipped (external dependency)"
+                                    )
+                                else:
+                                    _l1_msg = (
+                                        f"[l1] WARNING: {os.path.basename(_fp)}: "
+                                        f"{_l1_stats['error']}"
+                                    )
                             else:
                                 _l1_msg = (
                                     f"[l1] {os.path.basename(_fp)}: "

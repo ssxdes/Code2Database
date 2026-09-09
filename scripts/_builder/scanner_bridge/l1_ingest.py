@@ -441,7 +441,16 @@ def ingest_l1(
         with open(file_path, "rb") as f:
             source_bytes = f.read()
     except OSError as exc:
-        stats["error"] = f"cannot read file: {exc}"
+        # Audit issue L5 (MEDIUM): distinguish FileNotFoundError (external
+        # dependency file not in this source tree — expected for subset
+        # builds like libstorage) from other OSError (permission denied,
+        # I/O error, etc.). The caller (graph_build.py) logs 'file_not_
+        # found' at INFO level (expected) vs 'error' at WARNING (real).
+        if isinstance(exc, FileNotFoundError):
+            stats["error"] = f"file not found: {exc}"
+            stats["file_not_found"] = True
+        else:
+            stats["error"] = f"cannot read file: {exc}"
         return stats
 
     disk_sha = hashlib.sha256(source_bytes).hexdigest()
@@ -926,7 +935,13 @@ def _ingest_l1_fallback(
         with open(file_path, "rb") as f:
             source_bytes = f.read()
     except OSError as exc:
-        stats["error"] = f"cannot read file: {exc}"
+        # Audit issue L5: distinguish file-not-found (expected for
+        # external deps in subset builds) from other OSError.
+        if isinstance(exc, FileNotFoundError):
+            stats["error"] = f"file not found: {exc}"
+            stats["file_not_found"] = True
+        else:
+            stats["error"] = f"cannot read file: {exc}"
         return stats
 
     disk_sha = hashlib.sha256(source_bytes).hexdigest()

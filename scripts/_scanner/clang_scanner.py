@@ -318,8 +318,21 @@ class ClangScanner(BaseScanner):
                 file_path = entry.get('file', '') or ''
                 if not file_path:
                     continue
-                file_path = os.path.abspath(file_path)
                 directory = entry.get('directory', '') or ''
+                # Clang Compilation Database spec: if 'file' is a relative
+                # path, it MUST be resolved against the entry's 'directory'
+                # field (not the current working directory).  Using
+                # os.path.abspath() alone resolves against CWD, so for
+                # kernel/glibc/gcc-style entries like
+                #   {"directory": "/build", "file": "src/foo.c"}
+                # the file would never match a real TU and clang would fall
+                # back to default args, dropping project-specific includes
+                # and macros.
+                if directory and not os.path.isabs(file_path):
+                    file_path = os.path.normpath(
+                        os.path.join(directory, file_path))
+                else:
+                    file_path = os.path.abspath(file_path)
                 # Prefer 'arguments' (list form, no shell splitting needed);
                 # fall back to 'command' (string form, requires splitting).
                 args_list = entry.get('arguments')

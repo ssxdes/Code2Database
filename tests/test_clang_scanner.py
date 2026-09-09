@@ -208,5 +208,64 @@ class TestDualBackendScanner(unittest.TestCase):
         self.assertGreater(len(result.get('cgdb_edges', [])), 0)
 
 
+class TestCompileCommandsPathResolution(unittest.TestCase):
+    """compile_commands.json 'file' relative paths must resolve against
+    'directory' (per Clang Compilation Database spec), not CWD.
+
+    Regression for audit issue 17: prior code used os.path.abspath(file_path)
+    which resolved against CWD, so any entry with a relative file path
+    (kernel/glibc/gcc-style) never matched a real TU and clang fell back
+    to default args.
+    """
+
+    def test_relative_file_resolved_against_directory(self):
+        import json
+        from _scanner.clang_scanner import ClangScanner
+        with tempfile.TemporaryDirectory() as td:
+            # Build a fake source tree: <td>/src/foo.c
+            src_dir = os.path.join(td, "src")
+            os.makedirs(src_dir)
+            c_file = os.path.join(src_dir, "foo.c")
+            with open(c_file, "w") as f:
+                f.write("int foo(void) { return 0; }\n")
+            # compile_commands.json with RELATIVE file path + directory
+            cc_path = os.path.join(td, "compile_commands.json")
+            with open(cc_path, "w") as f:
+                json.dump([{
+                    "directory": td,
+                    "file": "src/foo.c",
+                    "arguments": ["clang", "-I", "include", "src/foo.c"],
+                }], f)
+            sc = ClangScanner(is_cpp=False, compile_commands_path=cc_path)
+            sc._load_compile_commands()
+            # The cache key should be the absolute path resolved against
+            # 'directory', NOT against CWD.
+            expected_key = os.path.normpath(os.path.join(td, "src", "foo.c"))
+            self.assertIn(expected_key, sc._compile_db_cache,
+                          "relative file path was not resolved against "
+                          "'directory' field — clang would never match "
+                          "the TU and fall back to default args")
+            # Sanity: the cache value should retain the -I include flag
+            self.assertIn("-I", sc._compile_db_cache[expected_key])
+
+    def test_absolute_file_path_unchanged(self):
+        import json
+        from _scanner.clang_scanner import ClangScanner
+        with tempfile.TemporaryDirectory() as td:
+            c_file = os.path.join(td, "foo.c")
+            with open(c_file, "w") as f:
+                f.write("int foo(void) { return 0; }\n")
+            cc_path = os.path.join(td, "compile_commands.json")
+            with open(cc_path, "w") as f:
+                json.dump([{
+                    "directory": td,
+                    "file": c_file,
+                    "arguments": ["clang", "-DFOO=1", c_file],
+                }], f)
+            sc = ClangScanner(is_cpp=False, compile_commands_path=cc_path)
+            sc._load_compile_commands()
+            self.assertIn(c_file, sc._compile_db_cache)
+
+
 if __name__ == "__main__":
     unittest.main()

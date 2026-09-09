@@ -64,19 +64,19 @@ python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_s
 python3 scripts/code2database_builder.py serve    # MCP 服务器（83 工具）
 ```
 
-## 核心命令（25 个）
+## 核心命令（26 个）
 
 | 命令 | 用途 | 查询层 |
 |------|------|--------|
-| `query` | 自然语言意图查询（kb hint 输出到 stderr；`--with-hints` 包装 stdout） | Memory→Knowledge→Graph |
+| `query` | Cypher 子集查询（`MATCH (n:Function) WHERE n.name='foo' RETURN n.id`）。自然语言用 `intent-query`（审计问题 6） | Graph |
 | `kb-query` | 跨 memory + knowledge 的统一 FTS5+BM25 查询 | Memory+Knowledge |
 | `describe` | 节点详情 + 源码片段 + memory_refs + knowledge_refs | Graph→Source |
 | `trace` | A→B 调用链（含条件） | Graph |
 | `impact` | 改了 X 会影响什么？ | Graph |
-| `find` | 按模式查找（不变式、宏） | Graph |
-| `flow` | 数据/值/参数流 | Graph |
-| `concurrency` | 竞争/死锁检测 | Graph |
-| `context` | 获取位置周围上下文 | Graph |
+| `find` | 按模式查找不变式（`--var`/`--value`/`--kind`）。查找宏用 `find-macros`（审计问题 5） | Graph |
+| `flow` | 值流（DATA_FLOW/RETURN_FLOW 边）。数据依赖用 `data-dep`；参数流用 `param-flow`（审计问题 4） | Graph |
+| `concurrency` | 列出并发风险对（函数级）。真正的竞争检测用 `detect-races`（审计问题 7） | Graph |
+| `context` | 按 ID/名称描述节点（`describe-node` 的别名）。非基于位置（审计问题 9） | Graph |
 | `make` | 一键建库：env-check（缺件前置报出）+ 扫描构建 + 全部派生产物与导出 | — |
 | `build` | 扫描 + 构建图（手动，make 已封装） | — |
 | `update` | 增量重扫 | — |
@@ -92,8 +92,8 @@ python3 scripts/code2database_builder.py serve    # MCP 服务器（83 工具）
 | `serve` | 启动 MCP 服务器（83 工具 (55 base + 28 design-report)） | 全部 |
 | `web-ui` | 交互式浏览器（cytoscape.js） | 全部 |
 | `tx-begin` | 开始事务 | Ops |
-| `daemon` | 后台自动同步 | Ops |
-| `health` | 图谱新鲜度 + profile 健康 | — |
+| `daemon` | 显示守护进程状态（`daemon-status` 的别名；启动同步用 `daemon-start`）（审计问题 3） | Ops |
+| `health` | Profile 健康评分（需要 `--source`）。图谱新鲜度用 `daemon-status` 或 `session-init`（审计问题 8） | — |
 
 全部 249 个 CLI 命令仍可访问；上述 25 个覆盖 ~95% 的 agent 工作流。
 

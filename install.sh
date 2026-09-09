@@ -375,12 +375,16 @@ fi
 #    semantic_enhancement.md, endpoint_pipeline.md, cross_skill_collaboration.md,
 #    memory_knowledge.md (referenced by SKILL_ops.md and SKILL_analysis.md
 #    which inherit from core's references/)
-#    NOT installed: json_schema.md, usage_examples.md (not referenced from SKILL.md)
+#    Audit issue 11: SKILL_ops.md and SKILL_analysis.md also reference
+#    json_schema.md and usage_examples.md — install them too.
+#    Audit issue 10: SKILL_ops.md references RUNTIME_CONFIG.md and
+#    PROFILE_MANUAL.md — install them at the skill root (they live at
+#    docs/<lang>/, not docs/<lang>/references/).
 REF_DIR="$INSTALL_DIR/references"
 mkdir -p "$REF_DIR"
 for ref_file in usage_reference.md label_rules.md data_model.md \
     semantic_enhancement.md endpoint_pipeline.md cross_skill_collaboration.md \
-    memory_knowledge.md; do
+    memory_knowledge.md json_schema.md usage_examples.md; do
     if [ -f "$SCRIPT_DIR/docs/$LANG/references/$ref_file" ]; then
         copy_to "$SCRIPT_DIR/docs/$LANG/references/$ref_file" "$REF_DIR/$ref_file"
     elif [ -f "$SCRIPT_DIR/docs/en/references/$ref_file" ]; then
@@ -388,7 +392,19 @@ for ref_file in usage_reference.md label_rules.md data_model.md \
         copy_to "$SCRIPT_DIR/docs/en/references/$ref_file" "$REF_DIR/$ref_file"
     fi
 done
-ok "References (7 files) [core]"
+ok "References (9 files) [core]"
+
+# Audit issue 10: RUNTIME_CONFIG.md and PROFILE_MANUAL.md live at
+# docs/<lang>/ (not references/) — install them at the skill root so
+# SKILL_ops.md's reference path resolves correctly.
+for doc_file in RUNTIME_CONFIG.md PROFILE_MANUAL.md; do
+    if [ -f "$SCRIPT_DIR/docs/$LANG/$doc_file" ]; then
+        copy_to "$SCRIPT_DIR/docs/$LANG/$doc_file" "$INSTALL_DIR/$doc_file"
+    elif [ -f "$SCRIPT_DIR/docs/en/$doc_file" ]; then
+        copy_to "$SCRIPT_DIR/docs/en/$doc_file" "$INSTALL_DIR/$doc_file"
+    fi
+done
+ok "RUNTIME_CONFIG.md + PROFILE_MANUAL.md [core]"
 
 # 3. Scripts — all needed for commands to work (only installed in core skill)
 mkdir -p "$INSTALL_DIR/scripts"

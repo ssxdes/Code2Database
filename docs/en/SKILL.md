@@ -64,19 +64,19 @@ python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_s
 python3 scripts/code2database_builder.py serve    # MCP server (83 tools)
 ```
 
-## Core Commands (25)
+## Core Commands (26)
 
 | Command | Purpose | Query Layer |
 |---------|---------|-------------|
-| `query` | Natural-language intent query (kb hints to stderr; `--with-hints` wraps stdout) | Memory→Knowledge→Graph |
+| `query` | Cypher-subset query (`MATCH (n:Function) WHERE n.name='foo' RETURN n.id`). For natural-language, use `intent-query` (audit issue 6) | Graph |
 | `kb-query` | Unified FTS5+BM25 across memory + knowledge | Memory+Knowledge |
 | `describe` | Node details + source snippet + memory_refs + knowledge_refs | Graph→Source |
 | `trace` | Call chain A→B with conditions | Graph |
 | `impact` | What breaks if I change X? | Graph |
-| `find` | Search by pattern (invariants, macros) | Graph |
-| `flow` | Data/value/param flow | Graph |
-| `concurrency` | Race/deadlock detection | Graph |
-| `context` | Get context around a location | Graph |
+| `find` | Find invariants by pattern (`--var`/`--value`/`--kind`). For macros, use `find-macros` (audit issue 5) | Graph |
+| `flow` | Value flow (DATA_FLOW/RETURN_FLOW edges). For data deps use `data-dep`; for params use `param-flow` (audit issue 4) | Graph |
+| `concurrency` | List concurrency risk pairs (function-level). For race detection use `detect-races` (audit issue 7) | Graph |
+| `context` | Describe a node by ID/name (alias for `describe-node`). Not location-based (audit issue 9) | Graph |
 | `make` | One-click ingestion: env-check (fail fast) then scan + build + all derived artifacts + exports | — |
 | `build` | Scan + build graph (manual, make wraps it) | — |
 | `update` | Incremental re-scan | — |
@@ -92,8 +92,8 @@ python3 scripts/code2database_builder.py serve    # MCP server (83 tools)
 | `serve` | Start MCP server (83 tools) | All |
 | `web-ui` | Interactive browser (cytoscape.js) | All |
 | `tx-begin` | Start a transaction | Ops |
-| `daemon` | Background auto-sync | Ops |
-| `health` | Graph freshness + profile health | — |
+| `daemon` | Show daemon status (alias for `daemon-status`; to start sync use `daemon-start`) (audit issue 3) | Ops |
+| `health` | Profile health score (requires `--source`). For graph freshness use `daemon-status` or `session-init` (audit issue 8) | — |
 
 All 249 CLI commands remain accessible; the 25 above cover ~95% of agent workflows.
 

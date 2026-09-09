@@ -17,6 +17,7 @@
     "Code2Database-ops"
   ],
   "tier_1_commands": [
+    "session-init",
     "query",
     "kb-query",
     "describe",
@@ -382,7 +383,7 @@
   "cgdb_schema_version": 4,
   "query_priority_chain": "Memory (recall) -> Knowledge (know) -> Graph (query/describe/trace) -> Source (describe --code)",
   "total_commands": 241,
-  "core_commands": 25,
+  "core_commands": 26,
   "sqlite_schema_version": 13,
   "scanner_commands": [
     "auto-profile",

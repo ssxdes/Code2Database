@@ -152,8 +152,7 @@ When you detect a question about **simple browsing, scanning, building, or gener
 | `references/ops_commands.md` | Full syntax for all ops commands (transactions, daemon, profile, doc-code, exports, plugins, memory, embeddings) |
 | `RUNTIME_CONFIG.md` | Runtime tuning (invariants, auto_enhance, transactions, ffi, web_ui, benchmark, profile_health, doc_code, daemon sections) |
 | `PROFILE_MANUAL.md` | Profile authoring (skip_names, callback_detection, struct_op_types, registration_macros, domain_rules, threading_models) |
-| `references/memory_knowledge.md` | Memory and knowledge management details |
 
-**Inherited from parent** (`/Code2Database`): `references/usage_reference.md`, `references/label_rules.md`, `references/data_model.md`, `references/json_schema.md`, `references/usage_examples.md`.
+**Inherited from parent** (`/Code2Database`): `references/usage_reference.md`, `references/label_rules.md`, `references/data_model.md`, `references/json_schema.md`, `references/usage_examples.md`, `references/memory_knowledge.md`. These are available at the parent skill's references directory.
 
 **Internal files** (do NOT load into agent context): `OVERVIEW.md`, `scripts/`, `config/profiles/`. These are implementation details for tool developers, not needed for usage.

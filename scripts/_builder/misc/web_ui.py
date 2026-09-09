@@ -1019,7 +1019,24 @@ function initCy() {
     if (cond) tip += ' · ' + cond;
     document.getElementById('stats').textContent = tip;
   });
+  // Node hover — shows name + labels + domain at low zoom where
+  // labels are hidden, so users can identify nodes without clicking.
+  cy.on('mouseover', 'node', function(evt) {
+    const n = evt.target;
+    const name = n.data('name') || n.id();
+    const lbls = n.data('labels') || [];
+    const comm = n.data('community') || '';
+    let tip = name;
+    if (lbls.length) tip += ' · ' + lbls.join(',');
+    if (comm) tip += ' · ' + comm;
+    document.getElementById('stats').textContent = tip;
+  });
   cy.on('mouseout', 'edge', function() {
+    if (window._lastStatsHtml) {
+      document.getElementById('stats').innerHTML = window._lastStatsHtml;
+    }
+  });
+  cy.on('mouseout', 'node', function() {
     if (window._lastStatsHtml) {
       document.getElementById('stats').innerHTML = window._lastStatsHtml;
     }

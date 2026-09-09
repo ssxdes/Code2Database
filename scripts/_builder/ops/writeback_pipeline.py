@@ -481,7 +481,14 @@ class WritebackPipeline:
             return False, f"atomic write failed: {exc}"
 
     def _git_commit(self, file_path: str, message: str) -> tuple[bool, Optional[str]]:
-        """Stage + commit a single file. Returns (ok, commit_sha)."""
+        """Stage + commit a single file. Returns (ok, commit_sha).
+
+        Audit issue 29 (LOW): previously hardcoded --no-verify, bypassing
+        pre-commit hooks. On a public MCP server this could allow clients
+        to commit code that fails linting/formatting checks. Now respects
+        hooks by default; callers that need to bypass can pass
+        git_no_verify=True.
+        """
         try:
             # Stage the file
             subprocess.run(
@@ -489,10 +496,13 @@ class WritebackPipeline:
                 capture_output=True, timeout=30,
                 cwd=self.source_root
             )
-            # Commit
+            # Commit — respect pre-commit hooks by default (no --no-verify)
+            commit_cmd = ["git", "commit", "-m", message]
+            if getattr(self, "git_no_verify", False):
+                commit_cmd.append("--no-verify")
             proc = subprocess.run(
-                ["git", "commit", "-m", message, "--no-verify"],
-                capture_output=True, timeout=30,
+                commit_cmd,
+                capture_output=True, timeout=60,
                 cwd=self.source_root
             )
             if proc.returncode != 0:

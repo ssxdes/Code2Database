@@ -377,6 +377,42 @@ class TestResolveSourceFileGraphDir(unittest.TestCase):
         bogus = 'nonexistent.c'
         self.assertEqual(resolve_source_file(bogus, empty_graph_dir), bogus)
 
+    def test_rejects_path_traversal_with_dotdot(self):
+        """Regression for audit issue 18: a malicious code2database.db
+        with source_file='../../../etc/passwd' must NOT resolve to a
+        path outside source_root. Previously, os.path.join(source_root,
+        '../../../etc/passwd') would traverse up and os.path.exists()
+        would return True for any real file — leaking arbitrary files.
+        """
+        from _builder.utils import resolve_source_file, _SOURCE_ROOT_CACHE
+        _SOURCE_ROOT_CACHE.pop(self.graph_dir, None)
+        # Create a real file outside source_root to prove the guard
+        # would have leaked it without the fix.
+        outside = os.path.join(self.tmpdir, 'secret.txt')
+        with open(outside, 'w') as f:
+            f.write('SECRET')
+        # Compute a ../../../ path from source_root to 'secret.txt'.
+        rel = os.path.relpath(outside, self.source_root)
+        self.assertIn('..', rel.split(os.sep),
+                      "test setup: rel path should traverse")
+        resolved = resolve_source_file(rel, self.graph_dir)
+        self.assertEqual(resolved, "",
+                         "path-traversal attempt must be rejected, got %r"
+                         % resolved)
+
+    def test_rejects_absolute_path_outside_source_root(self):
+        """An absolute path that exists but is outside source_root must
+        not be returned (audit issue 18)."""
+        from _builder.utils import resolve_source_file, _SOURCE_ROOT_CACHE
+        _SOURCE_ROOT_CACHE.pop(self.graph_dir, None)
+        outside = os.path.join(self.tmpdir, 'outside.c')
+        with open(outside, 'w') as f:
+            f.write('int x;')
+        resolved = resolve_source_file(outside, self.graph_dir)
+        self.assertEqual(resolved, "",
+                         "absolute path outside source_root must be rejected, "
+                         "got %r" % resolved)
+
 
 if __name__ == '__main__':
     unittest.main()

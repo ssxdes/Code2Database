@@ -56,11 +56,20 @@ def resolve_source_file(file_path: str, graph_dir: str) -> str:
          /proj/.code2database/).
     Returns the original file_path if no resolution succeeds (caller's
     open() will then raise OSError naturally).
+
+    Path-traversal protection (audit issue 18): if file_path (or its
+    resolved form) escapes source_root via '..' segments, the resolved
+    path is rejected. This prevents a malicious code2database.db with
+    source_file='../../../etc/passwd' from tricking an MCP tool into
+    reading arbitrary files outside the project tree.
     """
     if not file_path:
         return file_path
-    if os.path.isabs(file_path) and os.path.exists(file_path):
-        return file_path
+    # Path-traversal protection (audit issue 18): if file_path (or its
+    # resolved form) escapes source_root via '..' segments, the resolved
+    # path is rejected. This prevents a malicious code2database.db with
+    # source_file='../../../etc/passwd' from tricking an MCP tool into
+    # reading arbitrary files outside the project tree.
     source_root = _SOURCE_ROOT_CACHE.get(graph_dir, "")
     if source_root == "" and graph_dir not in _SOURCE_ROOT_CACHE:
         master_path = os.path.join(graph_dir, "code2database_master.json")
@@ -74,16 +83,56 @@ def resolve_source_file(file_path: str, graph_dir: str) -> str:
         if not source_root:
             source_root = os.path.dirname(graph_dir.rstrip(os.sep)) or ""
         _SOURCE_ROOT_CACHE[graph_dir] = source_root
+
+    def _contained(candidate: str) -> bool:
+        """True iff candidate path is inside source_root (after realpath)."""
+        if not candidate or not source_root:
+            return False
+        try:
+            cand_norm = os.path.realpath(candidate)
+            root_norm = os.path.realpath(source_root)
+            # Ensure root ends with sep so '/proj' doesn't match '/project'.
+            if not root_norm.endswith(os.sep):
+                root_norm += os.sep
+            if not cand_norm.startswith(root_norm):
+                logging.getLogger(__name__).warning(
+                    "resolve_source_file: rejecting path outside source_root: "
+                    "%r (resolved %r, root %r)", file_path, cand_norm, root_norm)
+                return False
+        except (OSError, ValueError):
+            return False
+        return True
+
+    # 1. Absolute path that exists AND is contained in source_root:
+    #    return as-is (preserves the 'portable absolute path' case).
+    if os.path.isabs(file_path) and os.path.exists(file_path):
+        if _contained(file_path):
+            return file_path
+        # Absolute path outside source_root — refuse (audit issue 18).
+        # Fall through to source_root-relative resolution below.
+
+    # 2. Relative path: join with source_root, check existence + containment.
     if source_root:
         if not os.path.isabs(file_path):
             cand = os.path.join(source_root, file_path)
-            if os.path.exists(cand):
+            if os.path.exists(cand) and _contained(cand):
                 return cand
         else:
+            # Absolute path that wasn't contained: try basename under
+            # source_root as a last resort (handles the case where a path
+            # was stored with a different root prefix).
             cand = os.path.join(source_root, os.path.basename(file_path))
-            if os.path.exists(cand):
+            if os.path.exists(cand) and _contained(cand):
                 return cand
-    return file_path
+
+    # 3. Fallback: return the original file_path only if it's a simple
+    #    relative filename (no '..' segments, not absolute) — these pose
+    #    no traversal risk and the caller's open() will fail naturally if
+    #    the file doesn't exist. Absolute paths and anything containing
+    #    '..' are NOT returned as-is, to prevent path traversal.
+    if not os.path.isabs(file_path) and '..' not in file_path.split(os.sep):
+        return file_path
+    return ""
 
 
 def _ensure_mutable_graph(G, command_name: str = "this command"):

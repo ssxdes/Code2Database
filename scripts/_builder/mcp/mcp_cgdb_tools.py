@@ -101,9 +101,24 @@ def _tool_cgdb_get_source(args: dict, graph_dir: str) -> dict:
         return result
     # Resolve relative paths via source_root (cgdb_files.path may be relative).
     resolved_path = _resolve_source_file(file_path, graph_dir)
+    if not resolved_path:
+        result["source_text"] = snippet
+        result["source"] = "file_resolution_failed"
+        return result
     try:
+        # Cap file size to prevent unbounded memory use (audit issue 18):
+        # a malicious or pathological source file (e.g. a generated .c
+        # shipped with a toolchain) could otherwise OOM the MCP server.
+        # 8 MB is enough for any hand-written TU (the Linux kernel's
+        # largest .c is ~700 KB).
+        _MAX_SOURCE_BYTES = 8 * 1024 * 1024
         with open(resolved_path, "rb") as fh:
-            raw = fh.read()
+            raw = fh.read(_MAX_SOURCE_BYTES + 1)
+        if len(raw) > _MAX_SOURCE_BYTES:
+            result["source_text"] = snippet
+            result["source"] = ("file_too_large: %d bytes > %d limit"
+                                % (len(raw), _MAX_SOURCE_BYTES))
+            return result
     except OSError as exc:
         result["source_text"] = snippet
         result["source"] = f"file_read_failed: {exc}"

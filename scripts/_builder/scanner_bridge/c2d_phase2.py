@@ -25,6 +25,13 @@ def composite_query(graph_dir: str, query: str,
     or 'CALLERS_OF <name>' or 'CALLEES_OF <name>'.
 
     Returns: {results: [...], attached_c2ds: [...]}
+
+    Security (audit issue 19): only foreign C2D paths registered in the
+    local watched_c2ds table (via `c2d-add-foreign`) may be ATTACHed.
+    Without this check, an MCP client could pass any filesystem path
+    (e.g. /home/user/private/other-project) and ATTACH its
+    code2database.db, reading arbitrary project data. mode=ro in the
+    ATTACH URI only blocks writes, not reads.
     """
     conn = _connect(graph_dir)
     summary: Dict[str, Any] = {
@@ -33,11 +40,41 @@ def composite_query(graph_dir: str, query: str,
         "attached_c2ds": [],
     }
     try:
-        # Attach foreign dbs
+        # Attach foreign dbs — but only paths the user explicitly
+        # registered via `c2d-add-foreign` first (audit issue 19).
         if foreign_c2ds:
+            # Normalize once: realpath resolves symlinks and ../ segments
+            # so an attacker can't dodge the watched_c2ds row by using a
+            # different textual form of the same path.
+            registered = set()
+            try:
+                rows = conn.execute(
+                    "SELECT c2d_path FROM watched_c2ds").fetchall()
+                for (p,) in rows:
+                    if p:
+                        try:
+                            registered.add(os.path.realpath(p))
+                        except OSError:
+                            registered.add(p)
+            except sqlite3.OperationalError:
+                # watched_c2ds table not yet created — no registrations
+                # exist, so all foreign paths must be refused.
+                pass
+            rejected = []
             for i, fpath in enumerate(foreign_c2ds):
                 fdb = _foreign_db_path(fpath)
                 if not os.path.exists(fdb):
+                    continue
+                try:
+                    rp = os.path.realpath(fpath)
+                except OSError:
+                    rp = fpath
+                if rp not in registered:
+                    rejected.append(fpath)
+                    logging.getLogger(__name__).warning(
+                        "composite_query: refusing to ATTACH unregistered "
+                        "foreign C2D %r (not in watched_c2ds — register "
+                        "via c2d-add-foreign first)", fpath)
                     continue
                 alias = f"foreign_{i}"
                 conn.execute(
@@ -47,6 +84,8 @@ def composite_query(graph_dir: str, query: str,
                     "alias": alias,
                     "path": fpath,
                 })
+            if rejected:
+                summary["rejected_unregistered"] = rejected
         # Parse simplified query
         query_upper = query.strip().upper()
         if query_upper.startswith("CALLERS_OF "):

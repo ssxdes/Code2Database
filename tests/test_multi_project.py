@@ -298,6 +298,74 @@ class TestCompositeQuery(unittest.TestCase):
         self.assertGreater(len(result["results"]), 0)
         self.assertEqual(result["results"][0]["callee_name"], "helper")
 
+    def test_unregistered_foreign_c2d_rejected(self):
+        """Audit issue 19: composite_query must refuse to ATTACH a foreign
+        C2D path that wasn't registered via c2d-add-foreign (i.e. is not
+        in watched_c2ds). Without this, an MCP client could pass any path
+        and ATTACH its code2database.db, leaking arbitrary project data.
+        """
+        from _builder.scanner_bridge.c2d_phase2 import composite_query
+        # Make a 'victim' db that we are NOT authorized to read.
+        victim_dir = os.path.join(self.tmpdir, "victim")
+        os.makedirs(victim_dir, exist_ok=True)
+        victim_db = os.path.join(victim_dir, "code2database.db")
+        _make_test_db(victim_db, functions=[
+            {"id": "V_secret", "name": "secret", "domain": "V", "line": 1},
+        ])
+        # Ensure watched_c2ds table exists but is empty for our graph_dir.
+        b_db = os.path.join(self.b_dir, "code2database.db")
+        conn = sqlite3.connect(b_db)
+        conn.executescript(
+            "CREATE TABLE IF NOT EXISTS watched_c2ds ("
+            "  c2d_path TEXT PRIMARY KEY, project_name TEXT, "
+            "  db_mtime_at_sync TEXT, db_size_at_sync INTEGER, "
+            "  functions_count_at_sync INTEGER, last_synced_at TEXT NOT NULL, "
+            "  sync_status TEXT NOT NULL DEFAULT 'unknown')")
+        conn.commit()
+        conn.close()
+        # Try to query with the unregistered victim path.
+        result = composite_query(
+            self.b_dir, "CALLEES_OF main",
+            foreign_c2ds=[victim_dir])
+        self.assertEqual(result["attached_c2ds"], [],
+                         "unregistered foreign C2D must NOT be ATTACHed")
+        # Sanity: error info should record the rejection.
+        self.assertIn(victim_dir,
+                      result.get("rejected_unregistered", [victim_dir]))
+
+    def test_registered_foreign_c2d_allowed(self):
+        """When a foreign C2D path IS in watched_c2ds (registered via
+        c2d-add-foreign), composite_query may ATTACH it. This is the
+        positive-control counterpart to test_unregistered_foreign_c2d_rejected.
+        """
+        from _builder.scanner_bridge.c2d_phase2 import composite_query
+        victim_dir = os.path.join(self.tmpdir, "victim")
+        os.makedirs(victim_dir, exist_ok=True)
+        victim_db = os.path.join(victim_dir, "code2database.db")
+        _make_test_db(victim_db, functions=[
+            {"id": "V_secret", "name": "secret", "domain": "V", "line": 1},
+        ])
+        b_db = os.path.join(self.b_dir, "code2database.db")
+        conn = sqlite3.connect(b_db)
+        conn.executescript(
+            "CREATE TABLE IF NOT EXISTS watched_c2ds ("
+            "  c2d_path TEXT PRIMARY KEY, project_name TEXT, "
+            "  db_mtime_at_sync TEXT, db_size_at_sync INTEGER, "
+            "  functions_count_at_sync INTEGER, last_synced_at TEXT NOT NULL, "
+            "  sync_status TEXT NOT NULL DEFAULT 'unknown')")
+        conn.execute(
+            "INSERT INTO watched_c2ds (c2d_path, last_synced_at, "
+            "sync_status) VALUES (?, ?, ?)",
+            (victim_dir, "2026-09-09T00:00:00", "ok"))
+        conn.commit()
+        conn.close()
+        result = composite_query(
+            self.b_dir, "CALLEES_OF main",
+            foreign_c2ds=[victim_dir])
+        self.assertEqual(len(result["attached_c2ds"]), 1,
+                         "registered foreign C2D must be ATTACHed")
+        self.assertEqual(result["attached_c2ds"][0]["path"], victim_dir)
+
 
 class TestCheckCompat(unittest.TestCase):
     def setUp(self):

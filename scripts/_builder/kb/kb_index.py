@@ -834,7 +834,16 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
         except sqlite3.Error:
             rows = []
         sim_scores: Dict[int, float] = {}
-        if not rows and _has_cjk(query):
+        # Audit issue 41 (LOW): CJK fallback previously only triggered
+        # when FTS5 returned ZERO results (`not rows`). For CJK+Latin
+        # mixed queries, the Latin token could produce partial FTS5
+        # hits, suppressing the CJK similarity scan — missing paragraphs
+        # whose content was purely CJK. The memory_store already uses
+        # `not fts_rows or _has_cjk(query)` (always runs similarity for
+        # CJK queries); kb_index now matches that behavior.
+        # Also added a LIMIT to the candidate scan so large knowledge
+        # bases don't do a full table scan.
+        if not rows or _has_cjk(query):
             # CJK fallback: the unicode61 tokenizer folds each CJK run
             # into one token, so a Chinese query never token-matches
             # (pure-CJK queries even escape to an empty FTS phrase and
@@ -847,6 +856,9 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
                 placeholders = ",".join("?" for _ in kinds)
                 sql2 += f"AND kb_paragraphs.kind IN ({placeholders}) "
                 params2.extend(kinds)
+            # Cap candidates to avoid full table scan on large KBs.
+            # Scored and sorted below; top_n limits final output.
+            sql2 += "ORDER BY kb_paragraphs.weight DESC LIMIT 500"
             cand = conn.execute(sql2, params2).fetchall()
             q_tokens = _simple_tokenize(query)
             scored_cand = []
@@ -860,7 +872,14 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
             scored_cand.sort(key=lambda x: -x[0])
             for s, r in scored_cand[:top_n]:
                 sim_scores[r["id"]] = s
-            rows = [r for _, r in scored_cand[:top_n]]
+            # Merge: prefer FTS5 hits (already in `rows`), then add
+            # similarity hits not already present.
+            existing_ids = {r["id"] for r in rows}
+            for r in scored_cand[:top_n]:
+                if r["id"] not in existing_ids:
+                    rows.append(r)
+                    if len(rows) >= top_n:
+                        break
         max_chars = max_tokens * 4
         results = []
         for r in rows:

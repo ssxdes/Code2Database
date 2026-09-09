@@ -695,7 +695,16 @@ def main():
     # build
     # build-update (precise per-file SQLite graph update)
     p_bu2 = sub.add_parser("build-update",
-                           help="Update the SQLite graph from disk changes (per-file, no full rebuild)")
+                           help="Update the SQLite graph from disk changes (per-file, no full rebuild)",
+                           description=(
+                               "Precise per-file SQLite graph update from disk changes. "
+                               "Detects changed/added/deleted files via content-hash, expands "
+                               "C/C++ header changes via #include closure, and skips format-only "
+                               "edits structurally (ast_hash comparison).\n\n"
+                               "LIMITATION: cross-file call edges pointing into a renamed/deleted "
+                               "function are deleted but not recreated (the calling files aren't "
+                               "rescanned). Run a full 'build' to recover cross-file edges after "
+                               "large refactors. See SKILL.md for details."))
     p_bu2.add_argument("--source", required=True, help="Source directory to scan for changes")
     p_bu2.add_argument("--graph", required=True, help="Call graph output directory (must be SQLite-backed)")
     p_bu2.add_argument("--extraction-backend", default=None,

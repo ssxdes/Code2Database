@@ -142,6 +142,12 @@ HTTP 传输（`--transport http`）让远程 MCP 客户端跨网络访问代码�
   友好错误提示使用 `daemon-start` 或 `build`。用 `daemon-start` 做增量同步，或用
   `build-update --source 源码目录 --graph 图目录` 对 SQLite 图做精确的按文件更新
   （content-hash 检测 + #include 闭包；纯格式改动按结构跳过）。
+- **`build-update` 跨文件边限制**（审计问题 23）：`build-update` 只重扫变更的文件。
+  当文件 A 中的函数被重命名或删除时，其他文件指向 A 旧函数的调用边会被删除
+  （通过 `_delete_legacy_rows`），但**不会重建**——因为调用方文件没有被重扫，
+  新的函数 ID（内嵌文件路径）不会匹配。指向变更文件的跨文件调用边在运行完整
+  `build` 之前会永久丢失。对于频繁跨文件重构的项目，优先使用 `daemon-start`
+  （通过守护进程的事务同步处理此场景），或定期安排完整构建。
 - 并发分析（`detect-races`、`concurrency-analyze`）是函数级而非访问点级。
   TOCTOU 竞态不被检测。锁检测用 regex 而非 CFG。结果可能有误报/漏报——
   用 `lock-coverage` 做更细粒度分析。

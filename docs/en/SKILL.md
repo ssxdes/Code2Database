@@ -144,6 +144,15 @@ HTTP transport (`--transport http`) enables remote MCP clients to access your co
   `build-update --source SRC --graph DIR` for a precise per-file update of the
   SQLite graph (content-hash detection + #include closure; format-only edits
   are skipped structurally).
+- **`build-update` cross-file edge limitation** (audit issue 23): `build-update`
+  rescans only changed files. When a function is renamed or deleted in file A,
+  edges from *other* files that called A's old function are deleted (via
+  `_delete_legacy_rows`) but **not recreated** — the calling files aren't
+  rescanned, so the new function ID (which embeds the file path) won't match.
+  Cross-file call edges pointing into the changed file are permanently lost
+  until a full `build` is run. For projects with frequent cross-file refactors,
+  prefer `daemon-start` (which handles this via the daemon's transactional
+  sync) or schedule periodic full builds.
 - Concurrency analysis (`detect-races`, `concurrency-analyze`) is function-level,
   not access-site-level. TOCTOU races are NOT detected. Lock detection uses regex,
   not CFG. Results may have false positives/negatives — use `lock-coverage` for

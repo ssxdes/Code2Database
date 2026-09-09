@@ -88,9 +88,10 @@ let syncCyCalls = 0;
 function runLayout() {}
 function applyCommunityColors() {}
 function syncCyFromModel() { syncCyCalls++; }
-// Minimal document stub — syncCyFromModel touches the edge-legend element.
+// Minimal document stub — syncCyFromModel touches stats + edge-legend.
+const window = { _lastStatsHtml: '' };
 const document = {
-  getElementById: () => ({ style: {} }),
+  getElementById: (id) => ({ style: {}, innerHTML: '' }),
 };
 
 function _mkEle(id, data) {

@@ -1069,6 +1069,16 @@ function syncCyFromModel() {
   if (edgeLegend) {
     edgeLegend.style.display = Object.keys(allEdges).length > 0 ? 'block' : 'none';
   }
+  // Update stats to show visible vs total so users know how much of
+  // the graph they're currently viewing after focus/expand/collapse.
+  const visN = Object.keys(allNodes).length;
+  const visE = Object.keys(allEdges).length;
+  const base = window._lastStatsHtml || '';
+  const composed = base
+    ? base + ' · showing ' + visN + ' nodes / ' + visE + ' edges'
+    : visN + ' nodes · ' + visE + ' edges';
+  document.getElementById('stats').innerHTML = composed;
+  window._lastStatsHtml = base;
 }
 
 function applyFocusContext(focusId) {

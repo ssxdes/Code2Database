@@ -393,23 +393,36 @@ class GraphCache:
 
     def get_code_snippet(self, node_id: str, context_lines: int = 10) -> str:
         """Return source code around a function node."""
+        payload = self.get_code_payload(node_id, context_lines)
+        return payload.get("code", "")
+
+    def get_code_payload(self, node_id: str, context_lines: int = 10) -> Dict:
+        """Return source code around a function node with file + line metadata.
+
+        The page-in code panel uses ``file``/``line`` to title the panel
+        so the user can jump to the same location in an editor. The
+        legacy ``get_code_snippet`` is preserved as a thin wrapper so
+        existing callers (incl. tests) keep working.
+        """
         with self._lock:
             if node_id not in self.G:
-                return ""
+                return {"code": "", "file": "", "line": 0}
             nd = self.G.nodes[node_id]
             source_file = nd.get("source_file", "")
             line = nd.get("line", 0)
             if not source_file or not line:
-                return nd.get("body_text", "")[:2000]
+                return {"code": nd.get("body_text", "")[:2000],
+                        "file": source_file, "line": line}
             try:
                 with open(source_file, "r", encoding="utf-8", errors="replace") as f:
                     lines = f.readlines()
                 start = max(0, line - context_lines - 1)
                 end = min(len(lines), line + context_lines)
                 snippet = "".join(lines[start:end])
-                return snippet[:4000]  # Cap for API response
+                return {"code": snippet[:4000], "file": source_file, "line": line}
             except OSError:
-                return nd.get("body_text", "")[:2000]
+                return {"code": nd.get("body_text", "")[:2000],
+                        "file": source_file, "line": line}
 
     def list_domains(self) -> List[Dict]:
         """Return list of domains with node/edge counts."""

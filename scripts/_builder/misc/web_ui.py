@@ -185,8 +185,8 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 if not node_id:
                     self._send_json(400, {"error": "node required"})
                     return
-                code = self.cache.get_code_snippet(node_id)
-                self._send_json(200, {"code": code})
+                payload = self.cache.get_code_payload(node_id)
+                self._send_json(200, payload)
                 return
             if path == "/api/domains":
                 self._send_json(200, {"domains": self.cache.list_domains()})
@@ -563,6 +563,28 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 #search-results .sr-item:hover .sr-loc, #search-results .sr-item.active .sr-loc { color: #dbeafe; }
 .call-loc { font-size: 10px; color: #6b7280; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; max-width: 180px; }
+
+/* Source code panel — replaces the alert()-based viewer.
+   Sits alongside the sidebar (right side), supports full scroll +
+   text selection, and shows the file path + line range so users can
+   locate the snippet in their editor. */
+#code-panel { position: absolute; right: 320px; top: 42px; bottom: 0; width: 480px;
+  background: var(--card); border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border); display: none; flex-direction: column;
+  z-index: var(--z-sidebar); }
+#code-panel.visible { display: flex; }
+#code-panel-header { display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px; border-bottom: 1px solid var(--border); gap: 6px; }
+#code-panel-title { font-size: 11px; color: var(--muted-fg); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; flex: 1; font-family: monospace; }
+#code-panel-actions { display: flex; gap: 4px; flex-shrink: 0; }
+#code-panel-actions button { padding: 2px 8px; background: var(--primary); color: #fff;
+  border: none; border-radius: 4px; cursor: pointer; font-size: 11px; }
+#code-panel-actions button:hover { opacity: 0.85; }
+#code-content { white-space: pre; font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 12px; line-height: 1.5; overflow: auto; padding: 8px 12px;
+  color: var(--fg); flex: 1; user-select: text; }
+#code-empty { padding: 20px; color: var(--muted-fg); font-size: 12px; text-align: center; }
 </style>
 </head>
 <body>
@@ -604,6 +626,17 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
   <div id="node-details"></div>
 </div>
 <div id="legend" style="display:none"></div>
+<div id="code-panel" role="complementary" aria-label="Source code">
+  <div id="code-panel-header">
+    <span id="code-panel-title">Source</span>
+    <span id="code-panel-actions">
+      <button onclick="copyCode()" aria-label="Copy code">Copy</button>
+      <button onclick="closeCodePanel()" aria-label="Close panel">&times;</button>
+    </span>
+  </div>
+  <pre id="code-content"></pre>
+  <div id="code-empty" style="display:none">No source available</div>
+</div>
 <div id="filter-panel">
   <label><input type="checkbox" class="filter-label" value="API_entry" checked> API Entry</label>
   <label><input type="checkbox" class="filter-label" value="out_end" checked> External</label>
@@ -1110,7 +1143,42 @@ async function loadNodeDetails(nodeId) {
 
 async function loadCode(nodeId) {
   const data = await api('/api/code?node=' + encodeURIComponent(nodeId));
-  alert(data.code ? data.code.substring(0, 2000) : '(no source available)');
+  const panel = document.getElementById('code-panel');
+  const content = document.getElementById('code-content');
+  const empty = document.getElementById('code-empty');
+  const title = document.getElementById('code-panel-title');
+  const code = data.code || '';
+  if (code) {
+    content.textContent = code;
+    content.style.display = 'block';
+    empty.style.display = 'none';
+  } else {
+    content.style.display = 'none';
+    empty.style.display = 'block';
+  }
+  // Show file path + line range in the title bar so users can jump
+  // to the same location in their editor. The backend returns the
+  // source file and the node's starting line.
+  const fileLabel = data.file ? data.file.split('/').pop() : '';
+  const lineLabel = data.line ? (':' + data.line) : '';
+  title.textContent = fileLabel ? (fileLabel + lineLabel) : (nodeId || 'Source');
+  title.title = data.file ? (data.file + lineLabel) : '';
+  panel.classList.add('visible');
+}
+
+function closeCodePanel() {
+  document.getElementById('code-panel').classList.remove('visible');
+}
+
+function copyCode() {
+  const content = document.getElementById('code-content');
+  if (!content.textContent) return;
+  navigator.clipboard.writeText(content.textContent).then(() => {
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = orig; }, 1200);
+  });
 }
 
 // Blast-radius overlay (impact as visual highlight)
@@ -1521,6 +1589,7 @@ document.addEventListener('keydown', e => {
       document.getElementById('arch-modal').style.display = 'none';
       document.getElementById('ctx-menu').style.display = 'none';
       document.getElementById('filter-panel').style.display = 'none';
+      closeCodePanel();
       break;
     case 'Enter':
       if (activeNodeId) focusNode(activeNodeId, parseInt(document.getElementById('depth-slider').value));

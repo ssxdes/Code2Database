@@ -377,25 +377,55 @@ def _merge_project_data(joint_extraction: Dict[str, Any],
     # metadata, includes, ...). Generic on purpose: any NEW cgdb_* key
     # the scanner starts emitting gets merged without another fix here.
     _legacy_keys = {"functions", "edges", "globals", "vtables", "imports"}
+    # Audit issue L6 (LOW): these scanner-output keys are consumed by
+    # graph_build / build_phases (vtable dispatch, fn_ptr dispatch,
+    # macro dispatch, state_access, struct_defs, container_of, etc.)
+    # but were not in the legacy whitelist — multi-project builds
+    # silently dropped them, breaking vtable/fn_ptr/macro dispatch for
+    # merged sub-projects.
+    _scanner_passthrough_keys = {
+        "field_assignments", "vtable_registrations", "fn_ptr_calls",
+        "macro_registrations", "struct_defs", "container_of_usages",
+        "conversion_funcs", "passthrough_reg_funcs",
+        # Informational / scanner-internal — passthrough so the joint
+        # extraction carries them for logging, but the builder doesn't
+        # gate on them.
+        "scan_warnings", "scan_errors", "_stopped_early",
+        "_body_text_dropped", "lang_stats", "domains", "import_edges",
+        "token_paste_functions", "conditions",
+    }
     for k, v in project_data.items():
         if not k.startswith("cgdb_") or not isinstance(v, list):
             continue
         if v:
             joint_extraction.setdefault(k, []).extend(v)
+    # Passthrough the scanner keys the builder actually consumes.
+    for k in _scanner_passthrough_keys:
+        v = project_data.get(k)
+        if v is None:
+            continue
+        if isinstance(v, list):
+            if v:
+                joint_extraction.setdefault(k, []).extend(v)
+        elif isinstance(v, dict):
+            joint_extraction.setdefault(k, {}).update(v)
+        else:
+            joint_extraction[k] = v
     # Warn about unknown keys so future scanner output is not silently lost
     import logging
     _logger = logging.getLogger(__name__)
     for k in project_data:
-        if k in _legacy_keys or k.startswith("cgdb_"):
+        if k in _legacy_keys or k.startswith("cgdb_") or k in _scanner_passthrough_keys:
             continue
         if k in ("extraction_backend", "extraction_version", "scanner_version",
                  "source_root", "scan_time", "profile"):
             continue
         _logger.warning(
             "_merge_project_data: project '%s' emitted key '%s' which "
-            "is neither a legacy key nor cgdb_* — DROPPED. If this is a "
-            "new scanner output, prefix it with 'cgdb_' or add it to "
-            "the legacy list.", project_name, k)
+            "is neither a legacy key, cgdb_*, nor a known scanner "
+            "passthrough key — DROPPED. If this is a new scanner "
+            "output, prefix it with 'cgdb_' or add it to "
+            "_scanner_passthrough_keys.", project_name, k)
 
 
 def build_multi(manifest_path: str, outdir: str, jobs: int = 0,

@@ -509,10 +509,18 @@ def _verify_scan_completed(source, graph_dir, extraction_path):
                 "extraction is PARTIAL. Free memory or re-run with "
                 "--large-project / -j 1; the checkpoint resumes the "
                 "remaining files" % checkpoint)
-    if not os.path.isfile(extraction_path):
+    # Audit issue L3 (MEDIUM): check for both monolithic extraction.json
+    # AND split extraction.json.d/ directory. --large-project mode writes
+    # to the split directory (per-file chunks) instead of the monolithic
+    # file; the previous check only looked for the monolithic file and
+    # emitted a false "scan produced no extraction" warning even when
+    # the scan succeeded (SPDK: 14847 functions, DPDK: 46931 functions).
+    if not os.path.isfile(extraction_path) and \
+            not os.path.isdir(extraction_path + ".d"):
         warnings.append(
-            "scan produced no extraction at %s — the build step will "
-            "decide whether this is fatal" % extraction_path)
+            "scan produced no extraction at %s (or %s.d/) — the build "
+            "step will decide whether this is fatal"
+            % (extraction_path, extraction_path))
     else:
         try:
             with open(extraction_path, encoding="utf-8") as f:

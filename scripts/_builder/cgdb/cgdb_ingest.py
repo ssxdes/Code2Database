@@ -126,9 +126,16 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             attrs['body_text'] = n['body_text']
         # L3.5: propagate config_predicate_id from the scan-result node dict
         # (set by ClangScanner via ConfigPredicateExtractor.pass3_predicate_for_range).
+        # Treat 0 (the scanner's "no predicate" sentinel) as NULL — the
+        # cgdb_nodes.config_predicate_id FK references config_predicates(id),
+        # whose primary key starts at 1, so 0 is never a valid reference.
+        # With PRAGMA foreign_keys = ON, INSERTing a 0 trips FK violation
+        # (audit issue 21 surfaced this).
         config_predicate_id = n.get('config_predicate_id')
-        if config_predicate_id is not None:
+        if config_predicate_id:
             config_predicate_id = int(config_predicate_id)
+        else:
+            config_predicate_id = None
         # L1+5.4.2: propagate enclosing_symbol_id (set by ClangScanner via
         # cursor.semantic_parent walk). 0/None = file/TU scope.
         enclosing_symbol_id = n.get('enclosing_symbol_id') or 0
@@ -248,9 +255,13 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
     _EDGE_KIND_LEGACY_MAP = {'CALLS': 'INVOKES'}
     for e in scan_result.get('cgdb_edges', []):
         # L3.5: propagate config_predicate_id from edge dict (if set by scanner)
+        # Treat 0 as NULL — see node note above (config_predicates PK starts
+        # at 1, so 0 is never a valid FK target).
         edge_pred_id = e.get('config_predicate_id')
-        if edge_pred_id is not None:
+        if edge_pred_id:
             edge_pred_id = int(edge_pred_id)
+        else:
+            edge_pred_id = None
         # L7: propagate edge_id (deterministic ID for OPS_BIND edges so that
         # ops_bindings.edge_id FK is stable across runs).
         edge_id = e.get('edge_id')

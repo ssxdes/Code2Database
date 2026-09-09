@@ -210,6 +210,16 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             self._conn.execute("PRAGMA cache_size = -65536")
             self._conn.execute("PRAGMA temp_store = MEMORY")
             self._conn.execute("PRAGMA mmap_size = 268435456")
+        elif not self._owns_conn:
+            # Shared connection from SQLiteStore — re-assert FK pragma.
+            # SQLiteStore.connect() now sets PRAGMA foreign_keys = ON, but
+            # older graphs created before that fix, or connections opened
+            # by other callers, may still default to OFF.  The pragma is
+            # idempotent and cheap.  See audit issue 21.
+            try:
+                self._conn.execute("PRAGMA foreign_keys = ON")
+            except sqlite3.ProgrammingError:
+                pass  # closed connection — caller will see it on next use
         return self._conn
 
     def close(self) -> None:

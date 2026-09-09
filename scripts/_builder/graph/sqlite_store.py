@@ -68,6 +68,15 @@ class SQLiteStore:
         self._conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
         self._conn.execute("PRAGMA temp_store=MEMORY")   # Keep temp tables in RAM
         self._conn.execute("PRAGMA mmap_size=268435456")  # 256MB memory-mapped I/O
+        # Enforce FK constraints on the shared connection.  SQLite defaults
+        # to foreign_keys=OFF for backward compat; without this, edges /
+        # field_access / global_access FK declarations are not enforced and
+        # incremental updates can leave dangling references (edge →
+        # non-existent function node).  When SQLiteCGDBStore reuses this
+        # connection (passed as conn=...), _ensure_conn() returns early
+        # without re-applying the pragma — so the pragma must be set here
+        # on the underlying connection.  See audit issue 21.
+        self._conn.execute("PRAGMA foreign_keys = ON")
         self._migration_ok = True
         self._migrate_schema()
         self._create_tables()

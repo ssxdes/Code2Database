@@ -153,6 +153,20 @@ class TestWipeCgdbDataOnMissingTables(unittest.TestCase):
         d, db = _tmp_db()
         store = SQLiteStore(db)
         store.connect()
+        # config_predicates.root_expr_id has a FK to cgdb_nodes(id); since
+        # PRAGMA foreign_keys = ON is now set by SQLiteStore.connect(), we
+        # must satisfy that FK by inserting a placeholder node first.
+        # cgdb_nodes.first_seen_version / last_seen_version FK to
+        # graph_versions.version_id, so insert that too.
+        store._conn.execute(
+            "INSERT INTO graph_versions (version_id, commit_hash, compiled_at) "
+            "VALUES (1, 'init', 0)")
+        store._conn.execute(
+            "INSERT INTO cgdb_files (id, path, language, sha256) "
+            "VALUES (1, '/x.c', 'c', 'x')")
+        store._conn.execute(
+            "INSERT INTO cgdb_nodes (id, kind, name, fqn, file_id) "
+            "VALUES (1, 'function', 'placeholder', 'placeholder', 1)")
         store._conn.execute(
             "INSERT INTO config_predicates (root_expr_id, text_form) "
             "VALUES (1, 'CONFIG_X')")
@@ -206,6 +220,51 @@ class TestDeleteFileRecordsWithL1(unittest.TestCase):
                 self.assertEqual(n, 0, f"{tbl} not cleaned")
         finally:
             store.close()
+
+
+class TestForeignKeysEnforcedOnSharedConnection(unittest.TestCase):
+    """Regression for audit issue 21 (HIGH): SQLiteStore.connect() did
+    not set PRAGMA foreign_keys = ON. SQLiteCGDBStore reusing this
+    connection (passed as conn=...) returned early from _ensure_conn
+    without applying the pragma — so FK constraints on edges /
+    field_access / global_access were never enforced, and incremental
+    updates could leave dangling references.
+    """
+
+    def test_sqlite_store_connect_sets_foreign_keys_on(self):
+        from _builder.graph.sqlite_store import SQLiteStore
+        d, db = _tmp_db()
+        store = SQLiteStore(db)
+        store.connect()
+        try:
+            row = store._conn.execute(
+                "PRAGMA foreign_keys").fetchone()
+            self.assertEqual(row[0], 1,
+                             "SQLiteStore.connect() must enable "
+                             "PRAGMA foreign_keys = ON")
+        finally:
+            store.close()
+
+    def test_cgdb_store_shared_conn_reasserts_foreign_keys(self):
+        # Simulate a connection that has FK OFF (e.g. opened by an
+        # older SQLiteStore without the fix, then handed to CGDBStore).
+        from _builder.cgdb.cgdb_schema import apply_cgdb_schema
+        from _builder.cgdb.cgdb_store import SQLiteCGDBStore
+        from _builder.graph.sqlite_store import SQLiteStore
+        d, db = _tmp_db()
+        store = SQLiteStore(db)
+        store.connect()
+        # Manually disable FK to simulate the pre-fix state.
+        store._conn.execute("PRAGMA foreign_keys = OFF")
+        self.assertEqual(
+            store._conn.execute("PRAGMA foreign_keys").fetchone()[0], 0)
+        # CGDBStore takes the shared conn — _ensure_conn must re-assert ON.
+        cgdb_store = SQLiteCGDBStore(db, conn=store._conn)
+        cgdb_store._ensure_conn()
+        row = store._conn.execute("PRAGMA foreign_keys").fetchone()
+        self.assertEqual(row[0], 1,
+                         "shared connection must have FK re-asserted by "
+                         "SQLiteCGDBStore._ensure_conn()")
 
 
 if __name__ == "__main__":

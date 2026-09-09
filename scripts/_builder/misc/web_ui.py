@@ -791,7 +791,13 @@ function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;'
 function jsAttr(s) { return escapeHtml(JSON.stringify(String(s == null ? '' : s))); }
 
 async function loadSummary() {
-  const s = await api('/api/graph/summary');
+  let s;
+  try {
+    s = await api('/api/graph/summary');
+  } catch (e) {
+    document.getElementById('stats').textContent = 'Failed to load graph summary: ' + e;
+    return;
+  }
   window._lastSummary = s;
   let statsHtml = s.node_count + ' nodes · ' + s.edge_count + ' edges';
   // Staleness badge: source files vs scan manifest
@@ -1671,18 +1677,19 @@ function hideSearchResults() {
 async function search() {
   const q = document.getElementById('search').value.trim();
   if (!q) return;
-  const data = await api('/api/search?q=' + encodeURIComponent(q));
-  const results = data.results || [];
-  if (!results.length) {
-    hideSearchResults();
-    document.getElementById('stats').textContent = 'No matches for: ' + q;
-    return;
-  }
-  if (results.length === 1) {
-    hideSearchResults();
-    focusNode(results[0].id, 2);
-    return;
-  }
+  try {
+    const data = await api('/api/search?q=' + encodeURIComponent(q));
+    const results = data.results || [];
+    if (!results.length) {
+      hideSearchResults();
+      document.getElementById('stats').textContent = 'No matches for: ' + q;
+      return;
+    }
+    if (results.length === 1) {
+      hideSearchResults();
+      focusNode(results[0].id, 2);
+      return;
+    }
   // Disambiguation list: same-named functions in different files used
   // to be indistinguishable (the UI auto-jumped to the first match).
   const resEl = document.getElementById('search-results');
@@ -1722,6 +1729,10 @@ async function search() {
     resEl.appendChild(div);
   });
   resEl.style.display = 'block';
+  } catch (e) {
+    hideSearchResults();
+    document.getElementById('stats').textContent = 'Search failed: ' + e;
+  }
 }
 
 // Event listeners

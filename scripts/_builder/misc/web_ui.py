@@ -55,7 +55,7 @@ from _builder.utils import normalize_str_field
 
 _log = logging.getLogger(__name__)
 
-from _builder.misc.graph_cache import GraphCache
+from _builder.misc.graph_cache import GraphCache, _HIGHLIGHT_PATH
 
 class WebUIHandler(BaseHTTPRequestHandler):
     """HTTP request handler serving the API + the HTML UI."""

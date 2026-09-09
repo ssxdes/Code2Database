@@ -213,6 +213,18 @@ class MemoryStore:
 
     def _connect(self) -> sqlite3.Connection:
         if self.read_only:
+            # Audit issue 38 (MEDIUM): if memory.db doesn't exist, the
+            # mode=ro connect below raises OperationalError; the previous
+            # fallback sqlite3.connect(self.db_path) CREATED the file
+            # (and its parent dirs via makedirs in __init__), defeating
+            # read_only mode entirely — session-init would leave an
+            # empty memory.db as a side effect. Now: if the file doesn't
+            # exist, raise so the caller (session-init) can skip the
+            # memory layer cleanly.
+            if not os.path.exists(self.db_path):
+                raise sqlite3.OperationalError(
+                    f"memory.db not found at {self.db_path} — read-only "
+                    "session-init must not create it")
             try:
                 conn = sqlite3.connect(
                     f"file:{self.db_path}?mode=ro", uri=True,
@@ -220,7 +232,8 @@ class MemoryStore:
             except sqlite3.OperationalError:
                 # e.g. WAL leftovers the reader cannot mmap — degrade
                 # to a normal connection; the API layer still never
-                # issues writes in read_only mode.
+                # issues writes in read_only mode. The file exists
+                # (checked above) so this connect won't create it.
                 conn = sqlite3.connect(self.db_path, timeout=10.0)
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA busy_timeout=5000")

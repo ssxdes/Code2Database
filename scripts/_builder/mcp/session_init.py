@@ -41,7 +41,12 @@ def build_session_context(graph_dir: str, memory_top: int = 10) -> dict:
     memory: Dict[str, Any] = {"stats": None, "digest": []}
     try:
         from _builder.memory.memory_store import MemoryStore
-        store = MemoryStore(graph_dir)
+        # Audit issue 38 (MEDIUM): session-init is a read-only status
+        # query — it must NOT create memory.db as a side effect. Without
+        # read_only=True, MemoryStore.__init__ called os.makedirs and
+        # _init_schema(), leaving an empty memory/ dir + memory.db file
+        # even when the user only ran session-init to check status.
+        store = MemoryStore(graph_dir, read_only=True)
         memory["stats"] = store.stats()
         memory["digest"] = store.digest(limit=memory_top)
     except Exception as e:
@@ -110,10 +115,18 @@ def build_session_context(graph_dir: str, memory_top: int = 10) -> dict:
                          "macros/branches if any exist")
         for qp in (brief.get("query_paths") or [])[:5]:
             hints.append(qp)
-    if memory["stats"] and memory["stats"].get("active_entries", 0) == 0:
+    # Suggest save-memory when the store is empty OR doesn't exist yet
+    # (read_only session-init no longer creates memory.db — audit issue 38).
+    if memory.get("stats") and memory["stats"].get("active_entries", 0) == 0:
         hints.append("Memory store is empty — save the first Q&A with "
                      "`save-memory --question ... --answer ... "
                      "--category path/to/topic --author you`")
+    elif memory.get("stats") is None and "error" in memory:
+        # Store doesn't exist yet (OperationalError from read-only connect).
+        hints.append("No memory store yet — save the first Q&A with "
+                     "`save-memory --question ... --answer ... "
+                     "--category path/to/topic --author you` "
+                     "(this will create memory/memory.db)")
     if drift:
         hints.append(drift + " — run `brief-update --refresh-stats` "
                      "after reviewing")

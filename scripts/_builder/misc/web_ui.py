@@ -1395,20 +1395,39 @@ function toggleCommunity(commId) {
   });
 }
 
-// Dark mode toggle
+// Dark mode toggle — persists to localStorage so a page refresh
+// keeps the user's preference instead of always defaulting to dark.
 function toggleDark() {
   const root = document.documentElement;
   const btn = document.getElementById('dark-btn');
-  if (root.classList.contains('light')) {
+  const isLight = root.classList.contains('light');
+  if (isLight) {
     root.classList.remove('light');
     btn.setAttribute('aria-pressed', 'true');
     btn.textContent = 'Dark';
+    try { localStorage.setItem('c2d-theme', 'dark'); } catch (e) {}
   } else {
     root.classList.add('light');
     btn.setAttribute('aria-pressed', 'false');
     btn.textContent = 'Light';
+    try { localStorage.setItem('c2d-theme', 'light'); } catch (e) {}
   }
 }
+
+// Apply saved theme on load — called before the first paint to
+// avoid a flash of the wrong theme.
+(function applySavedTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem('c2d-theme'); } catch (e) {}
+  if (saved === 'light') {
+    document.documentElement.classList.add('light');
+    const btn = document.getElementById('dark-btn');
+    if (btn) {
+      btn.setAttribute('aria-pressed', 'false');
+      btn.textContent = 'Light';
+    }
+  }
+})();
 
 // Node type filter
 function applyFilters() {

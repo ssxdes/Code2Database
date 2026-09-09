@@ -340,6 +340,28 @@ def build_update(source_root: str, graph_dir: str,
     if not affected and not deleted:
         return report
 
+    # Acquire an exclusive write_lock so concurrent writers (the daemon's
+    # _run_transactional_sync uses the same lock; another user-invoked
+    # build-update would too) serialize.  Without this lock the user-CLI
+    # path opened its own sqlite connection and raced the daemon's write
+    # path: SQLite's busy_timeout=5000 only waits 5s, then raises
+    # 'database is locked'.  See audit issue 20.
+    from _builder.ops.transactions import write_lock
+    with write_lock(graph_dir, timeout=30.0):
+        return _build_update_locked(
+            source_root, graph_dir, db_path,
+            affected, deleted, hdr_changed, changes,
+            report=report,
+            extraction_backend=extraction_backend,
+            dry_run=dry_run)
+
+
+def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
+                         affected: set, deleted: list, hdr_changed: list,
+                         changes: dict, report: dict,
+                         extraction_backend: str = None,
+                         dry_run: bool = False) -> dict:
+    """Inner half of build_update — caller already holds write_lock."""
     from _builder.graph.sqlite_store import SQLiteStore
     from _builder.cgdb.cgdb_store import SQLiteCGDBStore
     from _builder.cgdb.cgdb_ingest import extract_cgdb_batch

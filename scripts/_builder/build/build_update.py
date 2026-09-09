@@ -407,19 +407,27 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
             # write nothing.
             new_ast = _compute_ast_hash(result)
             prev_ast = None
+            matched_form = None
             for form in _stored_forms(fp, source_root):
                 row = conn.execute(
                     "SELECT ast_hash FROM cgdb_files WHERE path = ?",
                     (form,)).fetchone()
                 if row and row[0]:
                     prev_ast = row[0]
+                    matched_form = form
                     break
             if prev_ast == new_ast:
                 disk_hash = _content_hash(fp)
+                # Audit issue 22 (MEDIUM): UPDATE must use the same path
+                # form that the SELECT matched. Using fp (absolute) when
+                # the stored row has a relative path matched 0 rows,
+                # leaving content_hash stale — the file was re-detected
+                # as 'changed' on every build_update run, defeating the
+                # format-only skip optimization.
                 conn.execute(
                     "UPDATE cgdb_files SET content_hash = ?, sha256 = ?, "
                     "ast_hash = ? WHERE path = ?",
-                    (disk_hash, disk_hash, new_ast, fp))
+                    (disk_hash, disk_hash, new_ast, matched_form))
                 report["format_only_skipped"] += 1
                 continue
             report["removed_functions"] += _delete_legacy_rows(

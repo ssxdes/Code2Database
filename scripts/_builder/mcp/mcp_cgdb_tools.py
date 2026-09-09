@@ -6,6 +6,7 @@
 import os
 import logging
 from _builder.mcp.mcp_cache import _cgdb_store, _mcp_coerce_int, _mcp_coerce_str
+from _builder.utils import resolve_source_file as _resolve_source_file
 
 
 def _tool_cgdb_search_symbols(args: dict, graph_dir: str) -> list:

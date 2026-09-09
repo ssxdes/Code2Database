@@ -6,8 +6,10 @@
 import json
 import os
 import logging
+from pathlib import Path
 from _builder.token_budget import estimate_tokens
 from _builder.mcp.mcp_cache import _get_graph, _mcp_coerce_str, _mcp_coerce_int
+from _builder.utils import resolve_source_file as _resolve_source_file
 
 
 def _tool_load(args: dict, graph_dir: str) -> dict:

@@ -94,7 +94,12 @@ def load_brief(graph_dir: str) -> Optional[dict]:
 
 
 def save_brief(graph_dir: str, brief: dict) -> str:
-    """Atomically write the brief (tmp + rename, like the old store)."""
+    """Atomically write the brief (tmp + rename, like the old store).
+
+    Audit issue 39 (MEDIUM): also sync the brief content to kb_paragraphs
+    so kb-query / describe-node see the new knowledge immediately,
+    without waiting for a manual kb-rebuild-index.
+    """
     path = brief_path(graph_dir)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     brief["schema_version"] = BRIEF_SCHEMA_VERSION
@@ -104,6 +109,16 @@ def save_brief(graph_dir: str, brief: dict) -> str:
         json.dumps(brief, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8")
     os.replace(tmp, path)
+    # Best-effort kb_index sync — failure here is logged but doesn't
+    # fail the brief write (the file IS the source of truth; a later
+    # kb-rebuild-index would catch up).
+    try:
+        from _builder.kb.kb_index import sync_brief_to_kb
+        sync_brief_to_kb(graph_dir, brief)
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "save_brief: kb_index sync skipped (%s) — run "
+            "`kb-rebuild-index` to refresh FTS", exc, exc_info=True)
     return path
 
 

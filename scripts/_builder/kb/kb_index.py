@@ -657,6 +657,57 @@ def delete_kb_paragraphs_by_source(graph_dir: str, source_file: str) -> int:
         conn.close()
 
 
+def sync_brief_to_kb(graph_dir: str, brief: dict) -> int:
+    """Incrementally sync brief content into kb_paragraphs.
+
+    Drops existing rows where source_file='brief.json' (the canonical
+    brief path) and re-inserts from _brief_sections_as_paragraphs.
+    Called by save_brief() so kb-query / describe-node see the updated
+    knowledge immediately, without waiting for a full kb-rebuild-index.
+
+    Audit issue 39 (MEDIUM): save_brief wrote brief.json but didn't
+    trigger kb_index sync — new paragraphs didn't appear in FTS5 until
+    a manual kb-rebuild-index run.
+    """
+    conn = _kb_connect(graph_dir)
+    if conn is None:
+        return 0
+    try:
+        project = brief.get("project", "") if isinstance(brief, dict) else ""
+        paragraphs = _brief_sections_as_paragraphs(
+            brief or {}, "brief.json", project)
+        # Drop existing rows for the canonical brief path.
+        conn.execute(
+            "DELETE FROM kb_paragraphs WHERE source_file = ?",
+            ("brief.json",))
+        # Insert the new paragraphs.
+        for p in paragraphs:
+            conn.execute(
+                "INSERT INTO kb_paragraphs "
+                "(source_kind, source_file, para_index, title, body, tags, "
+                " node_ids, weight, confidence, kind, graph_version, "
+                " created_at, access_count) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+                (p["source_kind"], p["source_file"], p["para_index"],
+                 p["title"], p["body"], p.get("tags_json"),
+                 p.get("node_ids_json"), p.get("weight", 1.0),
+                 p.get("confidence", 1.0), p.get("kind", "knowledge"),
+                 p.get("graph_version"),
+                 datetime.now().isoformat()))
+        conn.commit()
+        return len(paragraphs)
+    except sqlite3.Error as exc:
+        logging.getLogger(__name__).warning(
+            "sync_brief_to_kb failed: %s", exc, exc_info=True)
+        try:
+            conn.rollback()
+        except sqlite3.Error:
+            pass
+        return 0
+    finally:
+        conn.close()
+
+
 def sync_memory_entries(graph_dir: str, mem_ids: List[int]) -> int:
     """Incrementally sync memory entries into kb_paragraphs.
 

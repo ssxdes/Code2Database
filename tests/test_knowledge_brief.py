@@ -96,6 +96,80 @@ class TestBriefIO(unittest.TestCase):
         self.assertEqual(loaded["schema_version"], 1)
         self.assertTrue(loaded["updated_at"])
 
+    def test_save_brief_syncs_kb_paragraphs(self):
+        """Audit issue 39 (MEDIUM): save_brief must sync the brief content
+        to kb_paragraphs so kb-query / describe-node see the new knowledge
+        immediately, without waiting for a manual kb-rebuild-index.
+        """
+        # Set up a graph_dir with a code2database.db so kb_index can
+        # connect and create its tables.
+        import sqlite3
+        db_path = os.path.join(self.graph_dir, "code2database.db")
+        conn = sqlite3.connect(db_path)
+        conn.close()
+        brief = {"project": "TestProj", "one_liner": "test",
+                 "description": "a test project for kb sync",
+                 "hard_rules": [
+                     {"rule": "always lock before mutate", "type": "rule"}],
+                 "modes": [], "key_abstractions": [], "conventions": [],
+                 "pitfalls": ["don't free twice"], "query_paths": [],
+                 "must_know": "critical invariant", "graph_stats": {}}
+        save_brief(self.graph_dir, brief)
+        # Verify the brief paragraphs landed in kb_paragraphs.
+        from _builder.kb.kb_index import _kb_connect
+        kb_conn = _kb_connect(self.graph_dir)
+        self.assertIsNotNone(kb_conn, "kb_connect must succeed after save_brief")
+        try:
+            rows = kb_conn.execute(
+                "SELECT title, body FROM kb_paragraphs "
+                "WHERE source_file = 'brief.json' ORDER BY para_index"
+            ).fetchall()
+            titles = [r[0] for r in rows]
+            bodies = [r[1] for r in rows]
+            # Must include the description, must_know, hard_rule, pitfall
+            # (titles are prefixed with [Project] by _brief_sections_as_paragraphs)
+            self.assertTrue(any("Description" in t for t in titles),
+                            f"Description missing from {titles}")
+            self.assertTrue(any("Must Know" in t for t in titles),
+                            f"Must Know missing from {titles}")
+            self.assertTrue(any("Hard Rule" in t for t in titles),
+                            f"Hard Rule missing from {titles}")
+            self.assertTrue(any("Pitfall" in t for t in titles),
+                            f"Pitfall missing from {titles}")
+            self.assertIn("don't free twice", bodies)
+        finally:
+            kb_conn.close()
+
+    def test_save_brief_replaces_stale_kb_paragraphs(self):
+        """When save_brief is called a second time, the old paragraphs
+        must be replaced (not duplicated). Audit issue 39 regression."""
+        import sqlite3
+        db_path = os.path.join(self.graph_dir, "code2database.db")
+        conn = sqlite3.connect(db_path)
+        conn.close()
+        brief_v1 = {"project": "P", "description": "version 1",
+                    "hard_rules": [], "modes": [], "key_abstractions": [],
+                    "conventions": [], "pitfalls": [], "query_paths": [],
+                    "must_know": "", "graph_stats": {}}
+        save_brief(self.graph_dir, brief_v1)
+        brief_v2 = {"project": "P", "description": "version 2",
+                    "hard_rules": [], "modes": [], "key_abstractions": [],
+                    "conventions": [], "pitfalls": [], "query_paths": [],
+                    "must_know": "", "graph_stats": {}}
+        save_brief(self.graph_dir, brief_v2)
+        from _builder.kb.kb_index import _kb_connect
+        kb_conn = _kb_connect(self.graph_dir)
+        try:
+            rows = kb_conn.execute(
+                "SELECT body FROM kb_paragraphs "
+                "WHERE source_file = 'brief.json' AND title LIKE '%Description%'"
+            ).fetchall()
+            # Must have exactly ONE Description row (v2 replaced v1).
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0][0], "version 2")
+        finally:
+            kb_conn.close()
+
 
 class TestGraphStats(unittest.TestCase):
     def test_compute_from_graph(self):

@@ -822,7 +822,16 @@ class CTreeSitterScanner(BaseScanner):
                         "domain": domain,
                         "file": filepath,
                         "line": 0,
-                        "labels": ["unknown_end"],
+                        # Audit issue L8-3 (MEDIUM): was ["unknown_end"] —
+                        # but __macro_* nodes have call OUT edges (asm
+                        # call/jmp/syscall targets), so they are NOT
+                        # terminal. validate_out_end_labels flagged the
+                        # contradiction (out_end/unknown_end label + call
+                        # successors). Empty label lets _label_entry_exit_
+                        # points classify them naturally (they'll get no
+                        # terminal label since they have non-CONTAINS
+                        # out-edges).
+                        "labels": [],
                         "body_text": "",
                         "source_tag": "inline_asm_macro",
                     }

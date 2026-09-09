@@ -410,7 +410,16 @@ def _extract_state_access(body_text: str, local_vars: list, params: list,
         # UnboundLocalError on the uncached path (all split-extraction
         # / --low-memory callers pass _cached_globals=None).
         _ASSIGN_OPS = None
-        global_vars_list = globals_data.get("global_vars", [])
+        # _proc_state_access (ProcessPoolExecutor worker) intentionally
+        # passes globals_data=None — the worker relies on _cached_globals
+        # for the pre-built name map.  When _cached_globals is also None
+        # (e.g. extraction had no globals, or split-extraction fallback
+        # path), globals_data.get() raised AttributeError and aborted
+        # the entire build (DPDK step 2/12 crash, 46931 functions lost).
+        if globals_data is None:
+            global_vars_list = []
+        else:
+            global_vars_list = globals_data.get("global_vars", [])
         global_var_names = {}  # name → info dict
         for gv in global_vars_list:
             gname = gv.get("name", "")

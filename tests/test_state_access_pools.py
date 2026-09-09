@@ -113,5 +113,54 @@ class TestPreStripPool(unittest.TestCase):
         self.assertIsNone(gb._PRE_STRIP_CACHED)
 
 
+class TestExtractStateAccessNoneGlobals(unittest.TestCase):
+    """Regression for audit issue L2 (HIGH): _proc_state_access (the
+    ProcessPoolExecutor worker for state_access) passes globals_data=None
+    by design — workers rely on _cached_globals for the pre-built name
+    map.  But when _cached_globals is also None (e.g. extraction has no
+    globals section, or a split-extraction fallback path), the code
+    called globals_data.get('global_vars', []) and raised
+    AttributeError: 'NoneType' object has no attribute 'get'.
+    DPDK build crashed here on step 2/12, losing 46931 functions.
+    """
+
+    def test_globals_data_none_with_no_cache_returns_empty(self):
+        # _extract_state_access with globals_data=None and no cached
+        # globals must NOT raise; it should return empty state lists.
+        result = gb._extract_state_access(
+            body_text="x = 1; some_global = 2;",
+            local_vars=[{"name": "x"}],
+            params=[],
+            globals_data=None,
+            field_assignments=[],
+            node_name="test_fn",
+            _cached_globals=None,
+        )
+        self.assertEqual(result.get("globals_read", []), [])
+        self.assertEqual(result.get("globals_written", []), [])
+
+    def test_globals_data_none_with_cache_uses_cache(self):
+        # When _cached_globals IS provided, globals_data=None is fine —
+        # the cached name map drives the writes-detection loop.
+        cached = {
+            "var_names": {"g_state": {"name": "g_state"}},
+            "var_names_keys": {"g_state"},
+            "assign_ops_re": re.compile(
+                r'\b(g_state)\s*(\+|-|\*|\/|\||\&|\^|\%|<<|>>)?=\s*[^=]'),
+        }
+        result = gb._extract_state_access(
+            body_text="g_state = 1;",
+            local_vars=[],
+            params=[],
+            globals_data=None,
+            field_assignments=[],
+            node_name="test_fn",
+            _cached_globals=cached,
+        )
+        self.assertEqual(
+            [x["name"] for x in result.get("globals_written", [])],
+            ["g_state"])
+
+
 if __name__ == "__main__":
     unittest.main()

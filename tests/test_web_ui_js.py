@@ -88,6 +88,10 @@ let syncCyCalls = 0;
 function runLayout() {}
 function applyCommunityColors() {}
 function syncCyFromModel() { syncCyCalls++; }
+// Minimal document stub — syncCyFromModel touches the edge-legend element.
+const document = {
+  getElementById: () => ({ style: {} }),
+};
 
 function _mkEle(id, data) {
   return {

@@ -564,6 +564,17 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 .call-loc { font-size: 10px; color: #6b7280; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; max-width: 180px; }
 
+/* Edge-type legend — compact key for call / import / ffi edges */
+#edge-legend { position: absolute; left: 10px; bottom: 32px;
+  background: rgba(13,27,42,0.9); padding: 6px 8px; border-radius: 6px;
+  font-size: 10px; border: 1px solid var(--border); z-index: var(--z-toolbar);
+  display: none; }
+#edge-legend .edge-legend-title { color: var(--muted-fg); margin-bottom: 3px;
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
+#edge-legend .edge-legend-item { display: flex; align-items: center; gap: 4px; padding: 1px 0; }
+#edge-legend .edge-swatch { width: 20px; height: 0; border-top-width: 2px;
+  border-top-style: solid; flex-shrink: 0; }
+
 /* Source code panel — replaces the alert()-based viewer.
    Sits alongside the sidebar (right side), supports full scroll +
    text selection, and shows the file path + line range so users can
@@ -645,6 +656,12 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
   <label><input type="checkbox" class="filter-label" value="__default" checked> Other</label>
 </div>
 <div id="stats"></div>
+<div id="edge-legend">
+  <div class="edge-legend-title">Edge Types</div>
+  <div class="edge-legend-item"><span class="edge-swatch" style="border-color:#64748b"></span>Call</div>
+  <div class="edge-legend-item"><span class="edge-swatch" style="border-color:#f59e0b;border-top-style:dashed"></span>Import</div>
+  <div class="edge-legend-item"><span class="edge-swatch" style="border-color:#a855f7;border-top-style:dotted"></span>FFI</div>
+</div>
 <div id="breadcrumb"></div>
 <div id="loading" role="status" aria-live="polite">Loading...</div>
 <div id="ctx-menu" role="menu"></div>
@@ -763,6 +780,7 @@ async function loadSummary() {
     }
   }
   document.getElementById('stats').innerHTML = statsHtml;
+  window._lastStatsHtml = statsHtml;
   // Build community legend — collapsible to avoid occluding the canvas
   // when a project has many domains (libstorage yields dozens). Default
   // collapses above 8 entries; the "+N more" row expands inline.
@@ -962,6 +980,22 @@ function initCy() {
   cy.on('cxttap', 'node', function(evt) {
     showContextMenu(evt.target.id(), evt.originalEvent.clientX, evt.originalEvent.clientY);
   });
+  // Edge hover tooltip — shows relation + confidence + condition
+  // so users can identify edge semantics without zooming in.
+  cy.on('mouseover', 'edge', function(evt) {
+    const e = evt.target;
+    const rel = e.data('relation') || 'INVOKES';
+    const conf = e.data('confidence') || 'EXTRACTED';
+    const cond = e.data('condition') || '';
+    let tip = rel + ' · ' + conf;
+    if (cond) tip += ' · ' + cond;
+    document.getElementById('stats').textContent = tip;
+  });
+  cy.on('mouseout', 'edge', function() {
+    if (window._lastStatsHtml) {
+      document.getElementById('stats').innerHTML = window._lastStatsHtml;
+    }
+  });
   // Label zoom threshold
   cy.on('zoom', function() {
     const z = cy.zoom();
@@ -1030,6 +1064,11 @@ function syncCyFromModel() {
   }
   runLayout();
   applyCommunityColors();
+  // Show the edge-type legend once the graph has edges.
+  const edgeLegend = document.getElementById('edge-legend');
+  if (edgeLegend) {
+    edgeLegend.style.display = Object.keys(allEdges).length > 0 ? 'block' : 'none';
+  }
 }
 
 function applyFocusContext(focusId) {

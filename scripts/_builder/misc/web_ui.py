@@ -1137,9 +1137,25 @@ async function loadNodeDetails(nodeId) {
     ]);
     document.getElementById('node-title').textContent = node.name || nodeId;
     let html = '';
+    // Degree summary: in (callers) + out (callees) = total. Shows
+    // the node's connectivity at a glance without scanning the lists.
+    const inDeg = (callers.callers || []).length;
+    const outDeg = (callees.callees || []).length;
+    // Edge-confidence breakdown across both directions — surfaces
+    // how much of the node's connectivity is inferred vs extracted.
+    const confCounts = { EXTRACTED: 0, INFERRED: 0, AMBIGUOUS: 0 };
+    (callers.callers || []).concat(callees.callees || []).forEach(c => {
+      const k = c.confidence || 'EXTRACTED';
+      confCounts[k] = (confCounts[k] || 0) + 1;
+    });
+    const confParts = Object.entries(confCounts)
+      .filter(([_, n]) => n > 0)
+      .map(([k, n]) => n + ' ' + k);
     const fields = [
       ['Domain', node.domain], ['Labels', (node.labels||[]).join(', ')],
       ['Location', node.location], ['Signature', node.signature],
+      ['Degree', inDeg + outDeg > 0 ? (inDeg + ' in / ' + outDeg + ' out') : ''],
+      ['Edge Confidence', confParts.length ? confParts.join(' · ') : ''],
       ['Description', node.semantic_desc || node.external_desc || '(none)'],
     ];
     for (const [label, value] of fields) {

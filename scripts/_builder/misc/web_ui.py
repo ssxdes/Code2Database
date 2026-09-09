@@ -489,6 +489,8 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 /* Depth slider */
 #depth-control { display: flex; align-items: center; gap: 4px; }
 #depth-slider { width: 80px; }
+#spacing-control { display: flex; align-items: center; gap: 4px; }
+#spacing-slider { width: 60px; }
 
 /* Stats */
 #stats { position: absolute; left: 10px; bottom: 10px; background: rgba(13,27,42,0.9);
@@ -622,6 +624,10 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
     <label for="depth-slider" style="font-size:11px">Depth</label>
     <input type="range" id="depth-slider" min="1" max="5" value="1" class="w-20" aria-label="BFS depth" />
     <span id="depth-val" style="font-size:11px;width:12px">1</span>
+  </div>
+  <div id="spacing-control">
+    <label for="spacing-slider" style="font-size:11px">Spacing</label>
+    <input type="range" id="spacing-slider" min="50" max="200" value="100" step="10" aria-label="Layout spacing" />
   </div>
   <button id="fit-btn" aria-label="Fit graph to screen">Fit</button>
   <button id="png-btn" aria-label="Export as PNG">PNG</button>
@@ -910,18 +916,22 @@ function buildCyElements() {
   return eles;
 }
 
-// Force-sim auto-tuning by node count
+// Force-sim auto-tuning by node count, with a manual spacing
+// multiplier (0.5x–2x) that lets users tighten or loosen the layout
+// without changing the algorithm.
 function getLayoutOptions() {
   const n = Object.keys(allNodes).length;
   const name = document.getElementById('layout-select').value;
+  const spacingMult = (parseInt(
+    (document.getElementById('spacing-slider') || {}).value || '100', 10)) / 100;
   const opts = { name: name, animate: n < 200, padding: 42 };
   if (name === 'cose') {
-    opts.nodeRepulsion = n > 100 ? 4000 : 10000;
-    opts.idealEdgeLength = n > 100 ? 50 : 100;
+    opts.nodeRepulsion = (n > 100 ? 4000 : 10000) * spacingMult;
+    opts.idealEdgeLength = (n > 100 ? 50 : 100) * spacingMult;
     opts.gravity = n > 200 ? 0.3 : 0.1;
   }
   if (name === 'breadthfirst') {
-    opts.spacingFactor = n > 50 ? 1.0 : 1.2;
+    opts.spacingFactor = (n > 50 ? 1.0 : 1.2) * spacingMult;
   }
   return opts;
 }
@@ -1569,6 +1579,7 @@ async function search() {
 document.getElementById('search-btn').addEventListener('click', search);
 document.getElementById('search').addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
 document.getElementById('layout-select').addEventListener('change', runLayout);
+document.getElementById('spacing-slider').addEventListener('change', runLayout);
 document.getElementById('depth-slider').addEventListener('input', e => {
   document.getElementById('depth-val').textContent = e.target.value;
 });

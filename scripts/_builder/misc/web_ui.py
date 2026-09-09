@@ -469,11 +469,22 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 
 /* Community legend */
 #legend { position: absolute; left: 10px; top: 52px; background: rgba(13,27,42,0.9);
-  padding: 8px; border-radius: 6px; font-size: 11px; max-height: 300px; overflow-y: auto;
+  padding: 0; border-radius: 6px; font-size: 11px; max-height: 300px; overflow-y: auto;
   border: 1px solid var(--border); z-index: var(--z-toolbar); }
+#legend.collapsed { max-height: none; overflow: visible; }
+#legend.collapsed #legend-body { display: none; }
+#legend .legend-header { display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; padding: 6px 8px; cursor: pointer; user-select: none; }
+#legend .legend-header:hover { background: rgba(255,255,255,0.06); }
+#legend .legend-title { font-weight: 600; color: var(--fg); }
+#legend .legend-toggle { color: var(--muted-fg); font-size: 10px; flex-shrink: 0; }
+#legend-body { padding: 0 8px 6px; }
 #legend .legend-item { display: flex; align-items: center; gap: 4px; cursor: pointer; padding: 2px; }
 #legend .legend-color { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
 #legend .legend-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#legend .legend-more { padding: 4px 2px; color: var(--primary); cursor: pointer;
+  font-size: 10px; text-align: center; }
+#legend .legend-more:hover { text-decoration: underline; }
 
 /* Depth slider */
 #depth-control { display: flex; align-items: center; gap: 4px; }
@@ -700,6 +711,7 @@ function jsAttr(s) { return escapeHtml(JSON.stringify(String(s == null ? '' : s)
 
 async function loadSummary() {
   const s = await api('/api/graph/summary');
+  window._lastSummary = s;
   let statsHtml = s.node_count + ' nodes · ' + s.edge_count + ' edges';
   // Staleness badge: source files vs scan manifest
   if (s.freshness) {
@@ -711,18 +723,63 @@ async function loadSummary() {
     }
   }
   document.getElementById('stats').innerHTML = statsHtml;
-  // Build community legend
+  // Build community legend — collapsible to avoid occluding the canvas
+  // when a project has many domains (libstorage yields dozens). Default
+  // collapses above 8 entries; the "+N more" row expands inline.
   const legend = document.getElementById('legend');
-  let lh = '';
-  s.communities.forEach((c, i) => {
+  const communities = s.communities || [];
+  const LEGEND_PREVIEW = 10;
+  const lh = '<div class="legend-header" onclick="toggleLegend()">' +
+      '<span class="legend-title">Domains (' + communities.length + ')</span>' +
+      '<span class="legend-toggle" id="legend-toggle">' +
+      (communities.length > 8 ? '▶' : '▼') + '</span></div>' +
+      '<div id="legend-body">' +
+      communities.slice(0, LEGEND_PREVIEW).map((c, i) => {
+        const color = COMMUNITY_COLORS[i % COMMUNITY_COLORS.length];
+        return '<div class="legend-item" onclick="toggleCommunity(' + jsAttr(c.id) + ')"' +
+          ' title="' + escapeHtml(c.label || c.id) + '">' +
+          '<div class="legend-color" style="background:' + color + '"></div>' +
+          '<span class="legend-label">' + escapeHtml(c.label || c.id) + ' (' + c.node_count + ')</span></div>';
+      }).join('') +
+      (communities.length > LEGEND_PREVIEW
+        ? '<div class="legend-more" onclick="expandLegend(event)">+' +
+          (communities.length - LEGEND_PREVIEW) + ' more</div>' : '') +
+      '</div>';
+  legend.innerHTML = lh;
+  legend.style.display = communities.length ? 'block' : 'none';
+  // Default-collapse when there are many communities so the legend
+  // doesn't dominate the upper-left corner on first load.
+  if (communities.length > 8) {
+    legend.classList.add('collapsed');
+  } else {
+    legend.classList.remove('collapsed');
+  }
+}
+
+function toggleLegend() {
+  const legend = document.getElementById('legend');
+  const toggle = document.getElementById('legend-toggle');
+  if (!legend) return;
+  const collapsed = legend.classList.toggle('collapsed');
+  if (toggle) toggle.textContent = collapsed ? '▶' : '▼';
+}
+
+function expandLegend(ev) {
+  if (ev) ev.stopPropagation();
+  const legend = document.getElementById('legend');
+  if (!legend) return;
+  const body = document.getElementById('legend-body');
+  if (!body) return;
+  // Re-render the full community list, dropping the "+N more" row.
+  const s = window._lastSummary;
+  if (!s || !s.communities) return;
+  body.innerHTML = s.communities.map((c, i) => {
     const color = COMMUNITY_COLORS[i % COMMUNITY_COLORS.length];
-    lh += '<div class="legend-item" onclick="toggleCommunity(' + jsAttr(c.id) + ')"' +
+    return '<div class="legend-item" onclick="toggleCommunity(' + jsAttr(c.id) + ')"' +
       ' title="' + escapeHtml(c.label || c.id) + '">' +
       '<div class="legend-color" style="background:' + color + '"></div>' +
       '<span class="legend-label">' + escapeHtml(c.label || c.id) + ' (' + c.node_count + ')</span></div>';
-  });
-  legend.innerHTML = lh;
-  legend.style.display = lh ? 'block' : 'none';
+  }).join('');
 }
 
 function communityColor(node) {

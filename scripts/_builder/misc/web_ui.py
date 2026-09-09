@@ -569,6 +569,14 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 .call-loc { font-size: 10px; color: #6b7280; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; max-width: 180px; }
 
+/* Lightweight minimap — canvas-based, no external dependency.
+   Shows node positions as dots and the current viewport as a
+   rectangle; click to pan. */
+#minimap-wrap { position: absolute; right: 320px; bottom: 10px; width: 140px; height: 100px;
+  background: rgba(13,27,42,0.9); border: 1px solid var(--border); border-radius: 6px;
+  z-index: var(--z-toolbar); display: none; cursor: crosshair; }
+#minimap-canvas { width: 100%; height: 100%; display: block; }
+
 /* Edge-type legend — compact key for call / import / ffi edges */
 #edge-legend { position: absolute; left: 10px; bottom: 32px;
   background: rgba(13,27,42,0.9); padding: 6px 8px; border-radius: 6px;
@@ -671,6 +679,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
   <div class="edge-legend-item"><span class="edge-swatch" style="border-color:#f59e0b;border-top-style:dashed"></span>Import</div>
   <div class="edge-legend-item"><span class="edge-swatch" style="border-color:#a855f7;border-top-style:dotted"></span>FFI</div>
 </div>
+<div id="minimap-wrap" aria-label="Minimap"><canvas id="minimap-canvas"></canvas></div>
 <div id="breadcrumb"></div>
 <div id="loading" role="status" aria-live="polite">Loading...</div>
 <div id="ctx-menu" role="menu"></div>
@@ -1017,9 +1026,13 @@ function initCy() {
     } else {
       cy.style().selector('node').style('text-opacity', 1).update();
     }
+    drawMinimap();
   });
+  cy.on('pan', function() { drawMinimap(); });
   // Apply community colors
   applyCommunityColors();
+  initMinimap();
+  drawMinimap();
 }
 
 // Community coloring
@@ -1040,6 +1053,93 @@ function mapData(val, fromMin, fromMax, toMin, toMax) {
   if (fromMax === fromMin) return toMin;
   const t = Math.max(0, Math.min(1, (val - fromMin) / (fromMax - fromMin)));
   return toMin + t * (toMax - toMin);
+}
+
+// --- Lightweight minimap ---
+// Canvas-based, no external JS dependency. Redraws on layout (node
+// positions change) and pan/zoom (viewport rectangle moves).
+function drawMinimap() {
+  const wrap = document.getElementById('minimap-wrap');
+  const canvas = document.getElementById('minimap-canvas');
+  if (!wrap || !canvas || !cy) return;
+  if (Object.keys(allNodes).length === 0) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width = wrap.clientWidth;
+  const h = canvas.height = wrap.clientHeight;
+  ctx.clearRect(0, 0, w, h);
+  // Compute the bounding box of all rendered nodes.
+  const nodes = cy.nodes();
+  if (nodes.length === 0) return;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  nodes.forEach(n => {
+    const p = n.position();
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  });
+  const rangeX = (maxX - minX) || 1;
+  const rangeY = (maxY - minY) || 1;
+  const pad = 6;
+  const scaleX = (w - 2 * pad) / rangeX;
+  const scaleY = (h - 2 * pad) / rangeY;
+  const scale = Math.min(scaleX, scaleY);
+  const offX = pad + (w - 2 * pad - rangeX * scale) / 2;
+  const offY = pad + (h - 2 * pad - rangeY * scale) / 2;
+  // Draw nodes as dots.
+  ctx.fillStyle = '#4a90e2';
+  nodes.forEach(n => {
+    const p = n.position();
+    const x = offX + (p.x - minX) * scale;
+    const y = offY + (p.y - minY) * scale;
+    ctx.fillRect(x - 0.5, y - 0.5, 1.5, 1.5);
+  });
+  // Draw the viewport rectangle.
+  const vp = cy.extent();
+  const vx = offX + (vp.x1 - minX) * scale;
+  const vy = offY + (vp.y1 - minY) * scale;
+  const vw = vp.w * scale;
+  const vh = vp.h * scale;
+  ctx.strokeStyle = '#f59e0b';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(vx, vy, vw, vh);
+}
+
+function initMinimap() {
+  const wrap = document.getElementById('minimap-wrap');
+  if (!wrap || !cy) return;
+  // Click-to-pan: clicking on the minimap centers the main viewport
+  // on the corresponding graph position.
+  wrap.addEventListener('click', function(ev) {
+    if (!cy) return;
+    const canvas = document.getElementById('minimap-canvas');
+    const rect = canvas.getBoundingClientRect();
+    const px = (ev.clientX - rect.left) / rect.width * canvas.width;
+    const py = (ev.clientY - rect.top) / rect.height * canvas.height;
+    // Reverse-map the minimap pixel back to graph coordinates.
+    const nodes = cy.nodes();
+    if (nodes.length === 0) return;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    nodes.forEach(n => {
+      const p = n.position();
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    });
+    const rangeX = (maxX - minX) || 1;
+    const rangeY = (maxY - minY) || 1;
+    const pad = 6;
+    const scale = Math.min((canvas.width - 2*pad)/rangeX, (canvas.height - 2*pad)/rangeY);
+    const offX = pad + (canvas.width - 2*pad - rangeX*scale) / 2;
+    const offY = pad + (canvas.height - 2*pad - rangeY*scale) / 2;
+    const gx = minX + (px - offX) / scale;
+    const gy = minY + (py - offY) / scale;
+    cy.panBy({ x: cy.width()/2 - cy.cyViewport().width/2, y: 0 });
+    cy.center({ x: gx, y: gy });
+    drawMinimap();
+  });
 }
 
 function syncCyFromModel() {
@@ -1077,6 +1177,7 @@ function syncCyFromModel() {
   }
   runLayout();
   applyCommunityColors();
+  drawMinimap();
   // Show the edge-type legend once the graph has edges.
   const edgeLegend = document.getElementById('edge-legend');
   if (edgeLegend) {

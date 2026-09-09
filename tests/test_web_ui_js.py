@@ -88,6 +88,7 @@ let syncCyCalls = 0;
 function runLayout() {}
 function applyCommunityColors() {}
 function syncCyFromModel() { syncCyCalls++; }
+function drawMinimap() {}
 // Minimal document stub — syncCyFromModel touches stats + edge-legend.
 const window = { _lastStatsHtml: '' };
 const document = {

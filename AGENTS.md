@@ -3,6 +3,8 @@
 This file provides instructions for AI coding agents (Codex, Copilot, etc.) working with Code2Database.
 
 > **Boundary**: This file is for developers modifying the Code2Database skill itself. For usage instructions, follow `SKILL.md`. Do NOT load `OVERVIEW.md` or `scripts/` into agent context — they are implementation details.
+>
+> **Installed vs. source repo** (audit issue 12): this file ships in the installed skill, but some paths it references (`docs/`, `evals/`, `deploy/`, `tests/`, `OVERVIEW.md`, `docs/en/`, `docs/zh/`) exist only in the source repo, not in the install directory. When working in the installed skill, these paths will not resolve — clone the source repo for full developer context.
 
 ## Scope
 
@@ -126,7 +128,7 @@ Capability modules have dedicated unit tests in `tests/` covering:
 - Update command (confirmation gate, attribute parsing, backend detection)
 - Profile generation (auto-profile, project-type detection, struct_op_types)
 
-**Test suite**: 2408+ tests across 128 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails. Tests that drive a real scanner subprocess must pin `--memory-limit 9999` (and raised `--memory-warn/crit-threshold`) — MemoryGuard reads SYSTEM memory, so its auto cap (total RAM × 0.8) can cancel even a tiny scan on a busy machine, and make now fails fast on the leftover checkpoint. tests/test_web_ui_js.py extracts the shipped `<script>` block and runs it under Node.js — skipped when node is not on PATH. tests/test_skill_manifest.py introspects both argparse trees and pins skill.json/skill_analysis.json command lists against them — so adding a CLI command without updating the manifests fails CI.)
+**Test suite**: 2439+ tests across 128 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails. Tests that drive a real scanner subprocess must pin `--memory-limit 9999` (and raised `--memory-warn/crit-threshold`) — MemoryGuard reads SYSTEM memory, so its auto cap (total RAM × 0.8) can cancel even a tiny scan on a busy machine, and make now fails fast on the leftover checkpoint. tests/test_web_ui_js.py extracts the shipped `<script>` block and runs it under Node.js — skipped when node is not on PATH. tests/test_skill_manifest.py introspects both argparse trees and pins skill.json/skill_analysis.json/skill_ops.json command lists against them — so adding a CLI command without updating the manifests fails CI.)
 
 ## Language Support
 

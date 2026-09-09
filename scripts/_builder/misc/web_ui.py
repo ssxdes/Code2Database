@@ -698,7 +698,11 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
       <tr><td><kbd>P</kbd></td><td>Export PNG</td></tr>
       <tr><td><kbd>J</kbd></td><td>Export visible subgraph as JSON</td></tr>
       <tr><td>Click node</td><td>Focus + show callers/callees</td></tr>
+      <tr><td>Hover node/edge</td><td>Show info in stats bar</td></tr>
       <tr><td>Right-click node</td><td>Context menu (Focus / Expand / Collapse / Collapse All / Impact / Code / Copy)</td></tr>
+      <tr><td>Topbar buttons</td><td>PNG / JSON export · Filter · Cycles · Reload · Brief · Memory · Arch</td></tr>
+      <tr><td>Spacing slider</td><td>Tighten / loosen layout spacing</td></tr>
+      <tr><td>Minimap</td><td>Click to center viewport (bottom-right)</td></tr>
     </table>
     <p style="text-align:center;margin-top:12px"><button class="action-btn" onclick="document.getElementById('help-modal').style.display='none'">Close</button></p>
   </div>

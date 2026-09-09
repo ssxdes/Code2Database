@@ -821,6 +821,7 @@ except ImportError:
 # accidental writes by remote clients.
 WRITE_TOOLS = frozenset({
     "code2database_save_memory",
+    "code2database_sync_foreign",
     "commit_db_transaction",
     "rollback_db_transaction",
     "insert_node_after",

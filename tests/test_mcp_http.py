@@ -343,7 +343,8 @@ class TestMcpHttpReadOnly(unittest.TestCase):
         """Health endpoint reports read_only=True."""
         status, _, body = self.ctx.request("GET", "/health")
         self.assertTrue(body["read_only"])
-        self.assertEqual(body["tools_visible"], 83 - 9)
+        from _builder.mcp.mcp_server import WRITE_TOOLS
+        self.assertEqual(body["tools_visible"], 83 - len(WRITE_TOOLS))
 
     def test_read_tool_still_works(self):
         """In read-only mode, read tools still work."""

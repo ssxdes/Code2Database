@@ -556,8 +556,11 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
   background: var(--card); border: 1px solid var(--border); border-radius: 6px;
   margin-top: 2px; max-height: 260px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
 #search-results .sr-item { padding: 6px 10px; cursor: pointer; font-size: 12px;
-  display: flex; justify-content: space-between; gap: 10px; }
+  display: flex; justify-content: space-between; gap: 10px; align-items: center; }
 #search-results .sr-item:hover, #search-results .sr-item.active { background: var(--primary); color: #fff; }
+#search-results .sr-badge { font-size: 9px; padding: 1px 5px; border-radius: 3px;
+  background: var(--accent); color: #000; text-transform: uppercase; letter-spacing: 0.3px;
+  flex-shrink: 0; }
 #search-results .sr-loc { color: #6b7280; font-size: 10px; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
 #search-results .sr-item:hover .sr-loc, #search-results .sr-item.active .sr-loc { color: #dbeafe; }
@@ -1532,10 +1535,29 @@ async function search() {
     const nm = document.createElement('span');
     nm.className = 'mono';
     nm.textContent = r.name;
+    // Node-type badge from labels — surfaces whether the hit is an
+    // API entry, external endpoint, callback, etc. at a glance.
+    const lbls = r.labels || [];
+    const primaryLabel = lbls.find(l =>
+      l === 'API_entry' || l === 'out_end' || l === 'unknown_end' ||
+      l === 'callback_func' || l === 'constructor' || l === 'destructor');
+    if (primaryLabel) {
+      const badge = document.createElement('span');
+      badge.className = 'sr-badge';
+      badge.textContent = primaryLabel.replace('_', ' ');
+      div.appendChild(badge);
+    }
+    div.appendChild(nm);
+    // Domain tag — helps distinguish same-named functions across modules.
+    if (r.domain) {
+      const dom = document.createElement('span');
+      dom.className = 'sr-loc';
+      dom.textContent = r.domain;
+      div.appendChild(dom);
+    }
     const loc = document.createElement('span');
     loc.className = 'sr-loc';
     loc.textContent = shortLoc(r.source_file, r.line);
-    div.appendChild(nm);
     if (loc.textContent) div.appendChild(loc);
     div.onclick = () => { hideSearchResults(); focusNode(r.id, 2); };
     resEl.appendChild(div);

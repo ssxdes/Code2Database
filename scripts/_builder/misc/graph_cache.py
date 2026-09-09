@@ -370,6 +370,7 @@ class GraphCache:
                 results.append({"id": exact_id,
                                 "name": nd.get("name", ""),
                                 "domain": nd.get("domain", ""),
+                                "labels": nd.get("labels", []),
                                 "source_file": nd.get("source_file", ""),
                                 "line": nd.get("line", 0),
                                 "score": 100})
@@ -383,6 +384,7 @@ class GraphCache:
                     score = 50 if name.lower().startswith(query_lower) else 30
                     results.append({"id": nid, "name": name,
                                     "domain": nd.get("domain", ""),
+                                    "labels": nd.get("labels", []),
                                     "source_file": nd.get("source_file", ""),
                                     "line": nd.get("line", 0),
                                     "score": score})

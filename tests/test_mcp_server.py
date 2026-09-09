@@ -536,3 +536,30 @@ class TestDispatchRobustness(unittest.TestCase):
                 "initialize", 3, {}, "/nonexistent", mcp_stats, False)
         self.assertEqual(response["jsonrpc"], "2.0")
         self.assertEqual(response["error"]["code"], -32603)
+
+    def test_tool_call_error_returns_exception_message_not_opaque(self):
+        """Audit issue 24 (MEDIUM): when a tool handler raises, the
+        error response must include the actual exception message, not
+        an opaque 'internal error' string. Without the message, debugging
+        core tool failures was nearly impossible.
+        """
+        from _builder.mcp.mcp_server import dispatch_mcp_request, TOOLS
+        mcp_stats = {"total_calls": 0, "total_output_tokens": 0, "by_tool": {}}
+        # Pick any real tool, force its handler to raise.
+        tool_name = next(iter(TOOLS))
+        original = TOOLS[tool_name]["handler"]
+        TOOLS[tool_name]["handler"] = lambda a, g: (_ for _ in ()).throw(
+            ValueError("diagnostic-message-that-must-appear"))
+        try:
+            response = dispatch_mcp_request(
+                "tools/call", 99,
+                {"name": tool_name, "arguments": {}},
+                "/nonexistent", mcp_stats, False)
+        finally:
+            TOOLS[tool_name]["handler"] = original
+        self.assertTrue(response["result"]["isError"])
+        body = response["result"]["content"][0]["text"]
+        import json as _json
+        payload = _json.loads(body)
+        self.assertIn("diagnostic-message-that-must-appear", payload["error"])
+        self.assertEqual(payload["exception_type"], "ValueError")

@@ -87,8 +87,8 @@ def _tool_search(args: dict, graph_dir: str) -> list:
     it's much faster than Python iteration on 1.5M+ node graphs.
     """
     import os
-    keywords = args.get("keywords", "")
-    top = args.get("top", 20)
+    keywords = _mcp_coerce_str(args.get("keywords", ""))
+    top = _mcp_coerce_int(args.get("top", 20), 20, 1, 500)
     if not keywords:
         return []
     db_path = os.path.join(graph_dir, "code2database.db")
@@ -308,11 +308,13 @@ def _tool_impact(args: dict, graph_dir: str) -> dict:
     G = _get_graph(graph_dir)
     if not G:
         return {"error": "Graph not loaded"}
-    node_id = _find_node_id(G, args.get("node", ""))
+    node_id = _find_node_id(G, _mcp_coerce_str(args.get("node", "")))
     if not node_id:
-        return {"error": f"Node not found: {args.get('node', '')}"}
-    direction = args.get("direction", "reverse")
-    depth = args.get("depth", 3)
+        return {"error": f"Node not found: {_mcp_coerce_str(args.get('node', ''))}"}
+    direction = _mcp_coerce_str(args.get("direction", "reverse"))
+    # Audit issue 27: cap depth — depth=1000000 on a 1.5M-node graph
+    # would block the dispatch thread indefinitely.
+    depth = _mcp_coerce_int(args.get("depth", 3), 3, 1, 20)
     visited = set()
     result_nodes = []
     frontier = [node_id]
@@ -345,8 +347,8 @@ def _tool_key_paths(args: dict, graph_dir: str) -> list:
     G = _get_graph(graph_dir)
     if not G:
         return []
-    top = args.get("top", 5)
-    from_entry = args.get("from_entry")
+    top = _mcp_coerce_int(args.get("top", 5), 5, 1, 100)
+    from_entry = _mcp_coerce_str(args.get("from_entry"))
 
     # Compute entry scores as {node_id: float_score} dict (same format as CLI)
     entry_scores = _compute_entry_scores(G)
@@ -370,7 +372,7 @@ def _tool_concurrency(args: dict, graph_dir: str) -> list:
     G = _get_graph(graph_dir)
     if not G:
         return []
-    top = args.get("top", 50)
+    top = _mcp_coerce_int(args.get("top", 50), 50, 1, 500)
     spawn_points = []
     for nid, ndata in G.nodes(data=True):
         if ndata.get("is_empty", False):
@@ -558,19 +560,26 @@ def _tool_kb_query(args: dict, graph_dir: str) -> dict:
     shared kb_paragraphs_fts index.
     """
     from _builder.kb.kb_index import query_kb
-    query = args.get("query", "")
+    query = _mcp_coerce_str(args.get("query", ""))
     if not query:
         return {"error": "query is required"}
-    kinds_str = args.get("kinds", "")
+    kinds_str = _mcp_coerce_str(args.get("kinds", ""))
     kinds = [k.strip() for k in kinds_str.split(",") if k.strip()] if kinds_str else None
-    results = query_kb(
-        graph_dir=graph_dir,
-        query=query,
-        top_n=_mcp_coerce_int(args.get("top", 10), 10, 1, 100),
-        kinds=kinds,
-        min_weight=float(args.get("min_weight", 0.0)),
-        max_tokens=_mcp_coerce_int(args.get("max_tokens", 4000), 4000, 100, 100000),
-    )
+    # Audit issue 16 (LOW): wrap query_kb() in try/except and use
+    # _mcp_coerce_float for min_weight — bare float() crashed on a
+    # non-numeric string from a client. Mirrors _tool_knowledge_query
+    # which already had this protection.
+    try:
+        results = query_kb(
+            graph_dir=graph_dir,
+            query=query,
+            top_n=_mcp_coerce_int(args.get("top", 10), 10, 1, 100),
+            kinds=kinds,
+            min_weight=_mcp_coerce_float(args.get("min_weight", 0.0), 0.0, 0.0, 1.0),
+            max_tokens=_mcp_coerce_int(args.get("max_tokens", 4000), 4000, 100, 100000),
+        )
+    except Exception as exc:
+        return {"error": str(exc)}
     return {
         "query": query,
         "kinds": kinds,
@@ -728,13 +737,15 @@ def _tool_get_code_snippet(args: dict, graph_dir: str) -> dict:
     G = _get_graph(graph_dir)
     if not G:
         return {"error": "Graph not loaded"}
-    node_id = _find_node_id(G, args.get("node", ""))
+    node_id = _find_node_id(G, _mcp_coerce_str(args.get("node", "")))
     if not node_id:
-        return {"error": f"Node not found: {args.get('node', '')}"}
+        return {"error": f"Node not found: {_mcp_coerce_str(args.get('node', ''))}"}
     nd = G.nodes[node_id]
     source_file = nd.get("source_file", "")
     line_num = nd.get("line", 0)
-    context = args.get("context", 10)
+    # Audit issue 27: cap context lines — context=1000000 would dump
+    # the entire file.
+    context = _mcp_coerce_int(args.get("context", 10), 10, 0, 500)
     if not source_file or not line_num:
         return {"error": "No source location for this node"}
     # Resolve source_root from master.json for relative paths
@@ -760,10 +771,11 @@ def _tool_blast_radius(args: dict, graph_dir: str) -> dict:
     G = _get_graph(graph_dir)
     if not G:
         return {"error": "Graph not loaded"}
-    node_id = _find_node_id(G, args.get("node", ""))
+    node_id = _find_node_id(G, _mcp_coerce_str(args.get("node", "")))
     if not node_id:
-        return {"error": f"Node not found: {args.get('node', '')}"}
-    depth = args.get("depth", 3)
+        return {"error": f"Node not found: {_mcp_coerce_str(args.get('node', ''))}"}
+    # Audit issue 27: cap depth — depth=1000000 would block dispatch thread.
+    depth = _mcp_coerce_int(args.get("depth", 3), 3, 1, 20)
     # Reverse BFS to find all callers up to depth
     visited = set()
     frontier = [node_id]

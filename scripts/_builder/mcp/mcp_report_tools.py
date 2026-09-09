@@ -53,6 +53,8 @@ import json
 from typing import Optional
 import logging
 
+from _builder.mcp.mcp_cache import _mcp_coerce_int, _mcp_coerce_str
+
 # Lazily import to avoid circular deps at module-load time
 def _get_conn(graph_dir: str) -> sqlite3.Connection:
     """Open or get the cached SQLite connection for `graph_dir`."""
@@ -100,7 +102,7 @@ def _begin_writeback_tx(conn: sqlite3.Connection, graph_dir: str,
 def _tool_render_source(args: dict, graph_dir: str) -> dict:
     """render_source(file_id) -> {content, sha256, matches_disk}"""
     from _builder.export.source_renderer import render_source
-    file_id = int(args.get("file_id", 0))
+    file_id = _mcp_coerce_int(args.get("file_id", 0), 0, 0, 2**63-1)
     if not file_id:
         return {"error": "file_id is required"}
     conn = None
@@ -142,7 +144,7 @@ def _tool_render_source(args: dict, graph_dir: str) -> dict:
 def _tool_verify_consistency(args: dict, graph_dir: str) -> dict:
     """verify_consistency(file_id) -> {db_sha256, disk_sha256, ok, diff}"""
     from _builder.export.source_renderer import verify_consistency
-    file_id = int(args.get("file_id", 0))
+    file_id = _mcp_coerce_int(args.get("file_id", 0), 0, 0, 2**63-1)
     if not file_id:
         return {"error": "file_id is required"}
     conn = None
@@ -176,7 +178,7 @@ def _tool_verify_consistency(args: dict, graph_dir: str) -> dict:
 
 def _tool_edit_token(args: dict, graph_dir: str) -> dict:
     """edit_token(token_id, new_text) -> {affected_nodes, transaction_id}"""
-    token_id = int(args.get("token_id", 0))
+    token_id = _mcp_coerce_int(args.get("token_id", 0), 0, 0, 2**63-1)
     new_text = args.get("new_text", "")
     if not token_id:
         return {"error": "token_id is required"}
@@ -226,7 +228,7 @@ def _tool_edit_token(args: dict, graph_dir: str) -> dict:
 
 def _tool_insert_token(args: dict, graph_dir: str) -> dict:
     """insert_token(after_token_id, tokens[]) -> {new_token_ids, transaction_id}"""
-    after_token_id = int(args.get("after_token_id", 0))
+    after_token_id = _mcp_coerce_int(args.get("after_token_id", 0), 0, 0, 2**63-1)
     tokens = args.get("tokens", [])
     if not after_token_id or not tokens:
         return {"error": "after_token_id and tokens[] are required"}
@@ -288,7 +290,7 @@ def _tool_insert_token(args: dict, graph_dir: str) -> dict:
 
 def _tool_delete_token(args: dict, graph_dir: str) -> dict:
     """delete_token(token_id) -> {affected_nodes, transaction_id}"""
-    token_id = int(args.get("token_id", 0))
+    token_id = _mcp_coerce_int(args.get("token_id", 0), 0, 0, 2**63-1)
     if not token_id:
         return {"error": "token_id is required"}
     conn = None
@@ -395,7 +397,7 @@ def _tool_find_macros(args: dict, graph_dir: str) -> list:
 
 def _tool_get_pp_branches(args: dict, graph_dir: str) -> list:
     """get_pp_branches(file_id) -> [{kind, condition, line, active, children[]}]"""
-    file_id = int(args.get("file_id", 0))
+    file_id = _mcp_coerce_int(args.get("file_id", 0), 0, 0, 2**63-1)
     if not file_id:
         return [{"error": "file_id is required"}]
     conn = None
@@ -651,7 +653,7 @@ def _tool_who_reads(args: dict, graph_dir: str) -> list:
 def _tool_get_context(args: dict, graph_dir: str) -> dict:
     """get_context(loc, radius_lines) -> {ast, code, comments, token_range}"""
     loc = args.get("loc", {})
-    radius = int(args.get("radius_lines", 5))
+    radius = _mcp_coerce_int(args.get("radius_lines", 5), 5, 1, 100)
     file_id = loc.get("file_id")
     line = loc.get("line")
     if not file_id or not line:
@@ -1240,7 +1242,7 @@ def _tool_rollback_db_transaction(args: dict, graph_dir: str) -> dict:
 
 def _tool_insert_node_after(args: dict, graph_dir: str) -> dict:
     """insert_node_after(ast_node_id, node_spec) -> {new_node_id, token_ids, transaction_id}"""
-    ast_node_id = int(args.get("ast_node_id", 0))
+    ast_node_id = _mcp_coerce_int(args.get("ast_node_id", 0), 0, 0, 2**63-1)
     node_spec = args.get("node_spec", {})
     if not ast_node_id or not node_spec:
         return {"error": "ast_node_id and node_spec are required"}
@@ -1286,7 +1288,7 @@ def _tool_insert_node_after(args: dict, graph_dir: str) -> dict:
 
 def _tool_delete_node(args: dict, graph_dir: str) -> dict:
     """delete_node(ast_node_id) -> {affected_tokens, transaction_id}"""
-    ast_node_id = int(args.get("ast_node_id", 0))
+    ast_node_id = _mcp_coerce_int(args.get("ast_node_id", 0), 0, 0, 2**63-1)
     if not ast_node_id:
         return {"error": "ast_node_id is required"}
     conn = None
@@ -1324,7 +1326,7 @@ def _tool_add_function(args: dict, graph_dir: str) -> dict:
     """add_function(signature, body_tokens?, file_id?) -> {symbol_id, token_ids, transaction_id}"""
     signature = args.get("signature", "")
     body_tokens = args.get("body_tokens", [])
-    file_id = int(args.get("file_id", 0) or 0)
+    file_id = _mcp_coerce_int(args.get("file_id", 0) or 0, 0, 0, 2**63-1)
     if not signature:
         return {"error": "signature is required"}
     # tokens.file_id is NOT NULL — body tokens can only be attached to a

@@ -119,3 +119,24 @@ def _mcp_coerce_int(value, default: int, lo: int, hi: int) -> int:
     except (TypeError, ValueError):
         return default
     return max(lo, min(hi, n))
+
+
+def _mcp_coerce_float(value, default: float = 0.0,
+                      lo: float = None, hi: float = None) -> float:
+    """Bounded float coercion for MCP arguments.
+
+    Same defensive contract as _mcp_coerce_int: a non-numeric value
+    falls back to the default; out-of-range values clamp. Never raises.
+
+    Audit issue 16/25: _tool_kb_query used float(args.get('min_weight', 0.0))
+    which crashed with ValueError on a non-numeric string from a client.
+    """
+    try:
+        x = float(value)
+    except (TypeError, ValueError):
+        return default
+    if lo is not None:
+        x = max(lo, x)
+    if hi is not None:
+        x = min(hi, x)
+    return x

@@ -5,14 +5,17 @@
 
 import os
 import logging
-from _builder.mcp.mcp_cache import _cgdb_store, _mcp_coerce_int
+from _builder.mcp.mcp_cache import _cgdb_store, _mcp_coerce_int, _mcp_coerce_str
 
 
 def _tool_cgdb_search_symbols(args: dict, graph_dir: str) -> list:
     """Full-text search over cgdb_nodes via FTS5."""
-    query = args.get("query", "")
+    query = _mcp_coerce_str(args.get("query", ""))
     kind = args.get("kind")
-    limit = int(args.get("limit", 50))
+    # Audit issue 25 (MEDIUM): bare int() crashed on non-numeric input.
+    # Audit issue 27 (MEDIUM): no upper cap on limit; clients could
+    # pass top=999999999 and get back a huge response.
+    limit = _mcp_coerce_int(args.get("limit", 50), 50, 1, 200)
     if not query:
         return []
     store = _cgdb_store(graph_dir)
@@ -79,7 +82,8 @@ def _tool_cgdb_get_source(args: dict, graph_dir: str) -> dict:
     (nid, kind, name, fqn, line, col, byte_start, byte_end,
      source_snippet, file_path, content_hash) = row
     snippet_only = bool(args.get("snippet_only", False))
-    context_bytes = int(args.get("context_bytes", 0) or 0)
+    # Audit issue 25/27: cap context_bytes at a sane upper bound.
+    context_bytes = _mcp_coerce_int(args.get("context_bytes", 0), 0, 0, 1_000_000)
     result = {
         "node_id": nid, "kind": kind, "name": name, "fqn": fqn,
         "line": line, "col": col,
@@ -160,11 +164,14 @@ def _tool_cgdb_find_invokers(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    depth = int(args.get("depth", 1))
+    # Audit issue 25/27: bare int() + no upper cap on depth/limit.
+    # depth=1000000 would cause unbounded recursive CTE; cap at 20.
+    # limit=999999999 would return a massive response; cap at 1000.
+    depth = _mcp_coerce_int(args.get("depth", 1), 1, 1, 20)
     edge_types = args.get("edge_types", ["INVOKES"])
-    limit = int(args.get("limit", 200))
+    limit = _mcp_coerce_int(args.get("limit", 200), 200, 1, 1000)
     include_vtable_dispatch = bool(args.get("include_vtable_dispatch", False))
-    return store.find_invokers(int(node_id), depth=depth,
+    return store.find_invokers(_mcp_coerce_int(node_id, 0, 0, 2**63-1), depth=depth,
                                edge_types=edge_types, limit=limit,
                                include_vtable_dispatch=include_vtable_dispatch)
 
@@ -183,11 +190,11 @@ def _tool_cgdb_find_invoked(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    depth = int(args.get("depth", 1))
+    depth = _mcp_coerce_int(args.get("depth", 1), 1, 1, 20)
     edge_types = args.get("edge_types", ["INVOKES"])
-    limit = int(args.get("limit", 500))
+    limit = _mcp_coerce_int(args.get("limit", 500), 500, 1, 1000)
     include_vtable_dispatch = bool(args.get("include_vtable_dispatch", False))
-    return store.find_invoked(int(node_id), depth=depth,
+    return store.find_invoked(_mcp_coerce_int(node_id, 0, 0, 2**63-1), depth=depth,
                               edge_types=edge_types, limit=limit,
                               include_vtable_dispatch=include_vtable_dispatch)
 
@@ -238,7 +245,8 @@ def _tool_cgdb_find_cfg_paths(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    return store.find_cfg_paths(int(func_id), max_len=int(args.get("max_len", 10)))
+    return store.find_cfg_paths(_mcp_coerce_int(func_id, 0, 0, 2**63-1),
+                                max_len=_mcp_coerce_int(args.get("max_len", 10), 10, 1, 100))
 
 
 def _tool_cgdb_find_data_flow(args: dict, graph_dir: str) -> dict:
@@ -304,7 +312,8 @@ def _tool_cgdb_find_nodes_under_config(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    return store.find_nodes_under_config(config, limit=int(args.get("limit", 500)))
+    return store.find_nodes_under_config(_mcp_coerce_str(config),
+                                         limit=_mcp_coerce_int(args.get("limit", 500), 500, 1, 2000))
 
 
 def _tool_cgdb_index_status(args: dict, graph_dir: str) -> dict:

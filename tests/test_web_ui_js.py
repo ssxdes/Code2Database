@@ -82,8 +82,12 @@ let allNodes = {};
 let allEdges = {};
 let cycleEdges = new Set();
 let highlightPath = [];
+let expandChildren = {};
+let activeNodeId = null;
+let syncCyCalls = 0;
 function runLayout() {}
 function applyCommunityColors() {}
+function syncCyFromModel() { syncCyCalls++; }
 
 function _mkEle(id, data) {
   return {
@@ -220,6 +224,79 @@ class TestWebUIJs(unittest.TestCase):
             syncCyFromModel();
             assert.ok(cy.removed.includes('#b'), 'stale node removed');
         """, ["syncCyFromModel", "nodeClasses", "edgeClasses"])
+
+    def test_collapse_removes_exclusive_children(self):
+        """Collapse should remove a node's expand-children that no
+        other expand path reaches, including their edges."""
+        self._run_harness("""
+            allNodes = {
+              root: { id: 'root', name: 'Root', labels: [] },
+              a: { id: 'a', name: 'A', labels: [] },
+              b: { id: 'b', name: 'B', labels: [] },
+            };
+            allEdges = {
+              'root->a': { source: 'root', target: 'a', relation: 'INVOKES' },
+              'root->b': { source: 'root', target: 'b', relation: 'INVOKES' },
+            };
+            expandChildren = { root: new Set(['a', 'b']) };
+            activeNodeId = 'root';
+            collapseNode('root');
+            assert.ok(!('a' in allNodes), 'exclusive child a removed');
+            assert.ok(!('b' in allNodes), 'exclusive child b removed');
+            assert.ok(!('root->a' in allEdges), 'edge to a removed');
+            assert.ok(!('root->b' in allEdges), 'edge to b removed');
+            assert.ok('root' in allNodes, 'focus target preserved');
+            assert.ok(syncCyCalls > 0, 'view refreshed');
+        """, ["collapseNode", "_countExpandParents"])
+
+    def test_collapse_preserves_shared_children(self):
+        """A child reached by two expand paths must survive collapsing
+        only one of them."""
+        self._run_harness("""
+            allNodes = {
+              root: { id: 'root', name: 'Root', labels: [] },
+              a: { id: 'a', name: 'A', labels: [] },
+              shared: { id: 'shared', name: 'S', labels: [] },
+            };
+            allEdges = {
+              'root->shared': { source: 'root', target: 'shared' },
+              'a->shared': { source: 'a', target: 'shared' },
+            };
+            expandChildren = {
+              root: new Set(['shared']),
+              a: new Set(['shared']),
+            };
+            activeNodeId = 'root';
+            collapseNode('root');
+            // 'shared' is also a child of 'a' — must survive.
+            assert.ok('shared' in allNodes, 'shared child preserved');
+            assert.ok(expandChildren.root.size === 0, 'root cleared');
+            assert.ok(expandChildren.a.has('shared'), 'a still claims shared');
+        """, ["collapseNode", "_countExpandParents"])
+
+    def test_collapse_recurses_into_subtree(self):
+        """Collapsing a node should also remove grandchildren that the
+        child's own expand introduced."""
+        self._run_harness("""
+            allNodes = {
+              root: { id: 'root', name: 'Root', labels: [] },
+              child: { id: 'child', name: 'C', labels: [] },
+              grandchild: { id: 'grandchild', name: 'G', labels: [] },
+            };
+            allEdges = {
+              'root->child': { source: 'root', target: 'child' },
+              'child->grandchild': { source: 'child', target: 'grandchild' },
+            };
+            expandChildren = {
+              root: new Set(['child']),
+              child: new Set(['grandchild']),
+            };
+            activeNodeId = 'root';
+            collapseNode('root');
+            assert.ok(!('child' in allNodes), 'child removed');
+            assert.ok(!('grandchild' in allNodes), 'grandchild removed by recursion');
+            assert.ok(!('child' in expandChildren), "child's expand-map cleared");
+        """, ["collapseNode", "_countExpandParents"])
 
 
 if __name__ == "__main__":

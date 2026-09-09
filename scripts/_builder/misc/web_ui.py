@@ -661,7 +661,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
       <tr><td><kbd>D</kbd></td><td>Toggle dark / light mode</td></tr>
       <tr><td><kbd>P</kbd></td><td>Export PNG</td></tr>
       <tr><td>Click node</td><td>Focus + show callers/callees</td></tr>
-      <tr><td>Right-click node</td><td>Context menu (Focus/Impact/Copy)</td></tr>
+      <tr><td>Right-click node</td><td>Context menu (Focus / Expand / Collapse / Collapse All / Impact / Code / Copy)</td></tr>
     </table>
     <p style="text-align:center;margin-top:12px"><button class="action-btn" onclick="document.getElementById('help-modal').style.display='none'">Close</button></p>
   </div>
@@ -721,6 +721,11 @@ let highlightPath = [];
 let cycleEdges = new Set();
 let maxDegree = 1;
 let activeNodeId = null;
+// Expand-tree: nodeId -> Set<childId> of nodes introduced by
+// expanding nodeId. Used by collapseNode/collapseAll to remove
+// only the nodes a particular expand brought in, preserving
+// nodes shared across multiple expand paths.
+let expandChildren = {};
 
 // Community color palette (categorical hues)
 const COMMUNITY_COLORS = [
@@ -1041,6 +1046,11 @@ async function focusNode(nodeId, depth) {
     if (!allNodes[nodeId]) {
       allNodes[nodeId] = { id: nodeId, name: nodeId, is_focused: true };
     }
+    // Snapshot existing node IDs so we can record which nodes this
+    // particular focus/expand call introduced — collapseNode uses
+    // this map to remove only the nodes the expand brought in.
+    const _priorIds = new Set(Object.keys(allNodes));
+    if (!expandChildren[nodeId]) expandChildren[nodeId] = new Set();
     // Fetch the degree map ONCE (the old per-node loop issued one
     // /api/degrees request per neighbor — up to 200 identical requests,
     // each recomputing every node's degree under the global lock).
@@ -1050,6 +1060,9 @@ async function focusNode(nodeId, depth) {
       const deg = degreeMap[n.id] || 0;
       allNodes[n.id] = { ...n, degree: deg,
         community: n.community || n.domain || '' };
+      if (!_priorIds.has(n.id) && n.id !== nodeId) {
+        expandChildren[nodeId].add(n.id);
+      }
     }
     for (const e of (data.edges || [])) {
       allEdges[e.source + '->' + e.target] = e;
@@ -1063,6 +1076,55 @@ async function focusNode(nodeId, depth) {
     loadNodeDetails(nodeId);
     applyFocusContext(nodeId);
   } finally { hideLoading(); }
+}
+
+// Collapse a node's expand-children: remove the neighbors it brought
+// in, preserving nodes that another expand path also reaches. This
+// lets users undo a single Expand without a full Reload.
+function _countExpandParents(childId) {
+  let cnt = 0;
+  for (const pid in expandChildren) {
+    if (expandChildren[pid] && expandChildren[pid].has(childId)) cnt++;
+  }
+  return cnt;
+}
+
+function collapseNode(nodeId) {
+  const children = expandChildren[nodeId];
+  if (!children || children.size === 0) return;
+  // Iterate over a copy — we mutate the set during recursion.
+  const kids = Array.from(children);
+  for (const childId of kids) {
+    children.delete(childId);
+    // Only remove the child if no other expand path reaches it AND
+    // it's not the currently focused node (which the user is
+    // actively inspecting).
+    if (_countExpandParents(childId) === 0 && childId !== activeNodeId) {
+      // Recursively collapse the child's own subtree first.
+      collapseNode(childId);
+      delete expandChildren[childId];
+      delete allNodes[childId];
+      // Remove every edge touching the child.
+      for (const key in allEdges) {
+        const e = allEdges[key];
+        if (e.source === childId || e.target === childId) {
+          delete allEdges[key];
+        }
+      }
+    }
+  }
+  syncCyFromModel();
+}
+
+// Collapse everything except the focused node, then re-expand at
+// depth 1 for a clean starting view — no backend Reload needed.
+function collapseAll() {
+  if (!activeNodeId) return;
+  allNodes = {};
+  allEdges = {};
+  expandChildren = {};
+  syncCyFromModel();
+  focusNode(activeNodeId, 1);
 }
 
 // Click node → callers/callees detail panel
@@ -1226,6 +1288,8 @@ function showContextMenu(nodeId, x, y) {
   const items = [
     { label: 'Focus', action: () => focusNode(nodeId, 1) },
     { label: 'Expand (depth 2)', action: () => focusNode(nodeId, 2) },
+    { label: 'Collapse', action: () => collapseNode(nodeId) },
+    { label: 'Collapse All', action: () => collapseAll() },
     { label: 'Impact Analysis', action: () => loadImpact(nodeId) },
     { label: 'View Code', action: () => loadCode(nodeId) },
     { label: 'Copy ID', action: () => navigator.clipboard.writeText(nodeId) },

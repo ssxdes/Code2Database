@@ -611,6 +611,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
   </div>
   <button id="fit-btn" aria-label="Fit graph to screen">Fit</button>
   <button id="png-btn" aria-label="Export as PNG">PNG</button>
+  <button id="json-btn" aria-label="Export visible subgraph as JSON">JSON</button>
   <button id="filter-btn" aria-pressed="false">Filter</button>
   <button id="cycle-btn" aria-pressed="false">Cycles</button>
   <button id="reload-btn" aria-label="Reload graph">Reload</button>
@@ -660,6 +661,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
       <tr><td><kbd>?</kbd></td><td>Toggle this help</td></tr>
       <tr><td><kbd>D</kbd></td><td>Toggle dark / light mode</td></tr>
       <tr><td><kbd>P</kbd></td><td>Export PNG</td></tr>
+      <tr><td><kbd>J</kbd></td><td>Export visible subgraph as JSON</td></tr>
       <tr><td>Click node</td><td>Focus + show callers/callees</td></tr>
       <tr><td>Right-click node</td><td>Context menu (Focus / Expand / Collapse / Collapse All / Impact / Code / Copy)</td></tr>
     </table>
@@ -1297,6 +1299,38 @@ function exportPNG() {
   a.click();
 }
 
+// JSON export — dump the current visible subgraph (allNodes +
+// allEdges) so users can share/import the explored view without a
+// backend round-trip.
+function exportJSON() {
+  const nodes = Object.values(allNodes).map(n => ({
+    id: n.id, name: n.name || n.id, labels: n.labels || [],
+    domain: n.domain || '', community: n.community || '',
+    degree: n.degree || 0,
+  }));
+  const edges = Object.values(allEdges).map(e => ({
+    source: e.source, target: e.target,
+    relation: e.relation || 'INVOKES',
+    confidence: e.confidence || 'EXTRACTED',
+    condition: e.call_condition || '',
+  }));
+  const data = {
+    focus: cache.focus || null,
+    node_count: nodes.length,
+    edge_count: edges.length,
+    nodes: nodes,
+    edges: edges,
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)],
+    { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'code2database_subgraph.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // Right-click context menu
 function showContextMenu(nodeId, x, y) {
   const menu = document.getElementById('ctx-menu');
@@ -1453,6 +1487,7 @@ document.getElementById('depth-slider').addEventListener('change', e => {
 });
 document.getElementById('fit-btn').addEventListener('click', () => { if (cy) cy.fit(undefined, 42); });
 document.getElementById('png-btn').addEventListener('click', exportPNG);
+document.getElementById('json-btn').addEventListener('click', exportJSON);
 document.getElementById('cycle-btn').addEventListener('click', toggleCycles);
 document.getElementById('reload-btn').addEventListener('click', async () => {
   await api('/api/reload', { method: 'POST' }); loadSummary();
@@ -1658,6 +1693,7 @@ document.addEventListener('keydown', e => {
     case '?': document.getElementById('help-btn').click(); break;
     case 'd': case 'D': toggleDark(); break;
     case 'p': case 'P': exportPNG(); break;
+    case 'j': case 'J': exportJSON(); break;
     case '+': case '=': if (cy) cy.zoom(cy.zoom() * 1.3); break;
     case '-': if (cy) cy.zoom(cy.zoom() / 1.3); break;
     case 'Escape':

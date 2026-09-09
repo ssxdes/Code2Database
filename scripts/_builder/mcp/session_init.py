@@ -19,6 +19,7 @@ layers in a stable, prompt-ready form.
 import json
 import os
 import sys
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 import logging
@@ -76,7 +77,23 @@ def build_session_context(graph_dir: str, memory_top: int = 10) -> dict:
     freshness: Optional[Dict[str, Any]] = None
     try:
         from _builder.cgdb.cgdb_freshness import check_freshness
-        src_root = os.path.dirname(os.path.abspath(graph_dir))
+        # Audit issue 42 (LOW): derive source_root from code2database_master.json
+        # (which the build wrote with the actual source path), not from
+        # os.path.dirname(graph_dir). The parent of graph_dir is only the
+        # source root by convention (.code2database subdir layout) — a graph
+        # built from /home/user/proj stored at /tmp/graphs/proj would derive
+        # /tmp/graphs as source_root, marking every manifest file as 'deleted'.
+        src_root = ""
+        master_path = os.path.join(graph_dir, "code2database_master.json")
+        if os.path.exists(master_path):
+            try:
+                _master = json.loads(Path(master_path).read_text(encoding="utf-8"))
+                src_root = _master.get("source_root", "") or ""
+            except Exception:
+                pass
+        if not src_root:
+            # Fallback: parent dir (the legacy convention).
+            src_root = os.path.dirname(os.path.abspath(graph_dir))
         fr = check_freshness(graph_dir, src_root)
         freshness = {
             "is_fresh": fr.get("is_fresh", True),

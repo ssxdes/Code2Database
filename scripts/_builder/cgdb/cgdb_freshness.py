@@ -22,8 +22,27 @@ import logging
 # M3: TTL cache so session-init doesn't os.walk a 70K-file source tree
 # on every call. The web UI already had a 10s GraphCache.freshness()
 # wrapper; session-init called check_freshness() directly with no cache.
+# Audit issue 42 (LOW): bounded LRU — long-running MCP servers querying
+# multiple graph_dirs previously grew this dict without limit.
 _freshness_cache: Dict[str, tuple] = {}
 _FRESHNESS_TTL = 10.0
+_FRESHNESS_CACHE_MAX = 64  # cap; ~10MB worst case at 150KB/entry
+
+
+def _cache_set(key: tuple, value: tuple) -> None:
+    """Insert into _freshness_cache with a hard size cap.
+
+    Evicts the oldest entries (by insert order; Python 3.7+ dicts are
+    insertion-ordered) when the cap is exceeded — a simple LRU without
+    access-time tracking, sufficient for the short TTL (10s) where
+    entries rarely get re-accessed before expiry.
+    """
+    _freshness_cache[key] = value
+    if len(_freshness_cache) > _FRESHNESS_CACHE_MAX:
+        # Drop oldest 25% to amortize the eviction cost.
+        drop_count = _FRESHNESS_CACHE_MAX // 4
+        for k in list(_freshness_cache.keys())[:drop_count]:
+            _freshness_cache.pop(k, None)
 
 
 def check_freshness(graph_dir: str, source_root: str = "",
@@ -184,7 +203,7 @@ def check_freshness(graph_dir: str, source_root: str = "",
         result["recommendation"] = "Graph is up to date."
 
     if use_cache:
-        _freshness_cache[cache_key] = (time.time(), result)
+        _cache_set(cache_key, (time.time(), result))
     return result
 
 

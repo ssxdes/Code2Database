@@ -752,11 +752,9 @@ let cy = null;
 let cache = { nodes: [], edges: [], focus: null };
 let allNodes = {};
 let allEdges = {};
-let expandedSet = new Set();
 let navHistory = [];
 let highlightPath = [];
 let cycleEdges = new Set();
-let maxDegree = 1;
 let activeNodeId = null;
 // Expand-tree: nodeId -> Set<childId> of nodes introduced by
 // expanding nodeId. Used by collapseNode/collapseAll to remove
@@ -771,7 +769,15 @@ const COMMUNITY_COLORS = [
   '#facc15','#fb7185','#8b5cf6','#10b981','#f43f5e','#3b82f6',
 ];
 
-async function api(path, opts) { const r = await fetch(path, opts || {}); return r.json(); }
+async function api(path, opts) {
+  const r = await fetch(path, opts || {});
+  if (!r.ok) {
+    let detail = r.statusText || ('HTTP ' + r.status);
+    try { const j = await r.json(); if (j.error) detail = j.error; } catch (e) {}
+    throw new Error(detail);
+  }
+  return r.json();
+}
 function showLoading() { document.getElementById('loading').style.display = 'block'; }
 function hideLoading() { document.getElementById('loading').style.display = 'none'; }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
@@ -1240,7 +1246,32 @@ async function focusNode(nodeId, depth) {
     syncCyFromModel();
     loadNodeDetails(nodeId);
     applyFocusContext(nodeId);
+    pushNavHistory(nodeId);
+    renderBreadcrumb();
   } finally { hideLoading(); }
+}
+
+// Navigation history — tracks the sequence of focused nodes so users
+// can backtrack through their exploration path via the breadcrumb.
+function pushNavHistory(nodeId) {
+  // Dedup consecutive entries (clicking the same node repeatedly).
+  if (navHistory.length > 0 && navHistory[navHistory.length - 1] === nodeId) return;
+  navHistory.push(nodeId);
+  if (navHistory.length > 12) navHistory.shift();
+}
+
+function renderBreadcrumb() {
+  const bc = document.getElementById('breadcrumb');
+  if (!bc) return;
+  if (navHistory.length === 0) { bc.innerHTML = ''; return; }
+  bc.innerHTML = navHistory.map((id, i) => {
+    const name = (allNodes[id] && allNodes[id].name) ? allNodes[id].name : id;
+    const isLast = i === navHistory.length - 1;
+    const escaped = escapeHtml(name.length > 24 ? name.substring(0, 22) + '…' : name);
+    if (isLast) return '<span class="crumb" style="color:var(--fg);font-weight:600">' + escaped + '</span>';
+    return '<span class="crumb" onclick="focusNode(' + jsAttr(id) + ',1)">' + escaped + '</span>' +
+           '<span style="color:var(--muted);margin:0 2px">›</span>';
+  }).join('');
 }
 
 // Collapse a node's expand-children: remove the neighbors it brought

@@ -4,7 +4,7 @@ This file provides instructions for AI coding agents (Codex, Copilot, etc.) work
 
 > **Boundary**: This file is for developers modifying the Code2Database skill itself. For usage instructions, follow `SKILL.md`. Do NOT load `OVERVIEW.md` or `scripts/` into agent context — they are implementation details.
 >
-> **Installed vs. source repo** (audit issue 12): this file ships in the installed skill, but some paths it references (`docs/`, `evals/`, `deploy/`, `tests/`, `OVERVIEW.md`, `docs/en/`, `docs/zh/`) exist only in the source repo, not in the install directory. When working in the installed skill, these paths will not resolve — clone the source repo for full developer context.
+> **Installed vs. source repo**: this file ships in the installed skill, but some paths it references (`docs/`, `evals/`, `deploy/`, `tests/`, `OVERVIEW.md`, `docs/en/`, `docs/zh/`) exist only in the source repo, not in the install directory. When working in the installed skill, these paths will not resolve — clone the source repo for full developer context.
 
 ## Scope
 

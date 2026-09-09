@@ -57,7 +57,7 @@ def resolve_source_file(file_path: str, graph_dir: str) -> str:
     Returns the original file_path if no resolution succeeds (caller's
     open() will then raise OSError naturally).
 
-    Path-traversal protection (audit issue 18): if file_path (or its
+    Path-traversal protection: if file_path (or its
     resolved form) escapes source_root via '..' segments, the resolved
     path is rejected. This prevents a malicious code2database.db with
     source_file='../../../etc/passwd' from tricking an MCP tool into
@@ -65,7 +65,7 @@ def resolve_source_file(file_path: str, graph_dir: str) -> str:
     """
     if not file_path:
         return file_path
-    # Path-traversal protection (audit issue 18): if file_path (or its
+    # Path-traversal protection: if file_path (or its
     # resolved form) escapes source_root via '..' segments, the resolved
     # path is rejected. This prevents a malicious code2database.db with
     # source_file='../../../etc/passwd' from tricking an MCP tool into
@@ -108,7 +108,7 @@ def resolve_source_file(file_path: str, graph_dir: str) -> str:
     if os.path.isabs(file_path) and os.path.exists(file_path):
         if _contained(file_path):
             return file_path
-        # Absolute path outside source_root — refuse (audit issue 18).
+        # Absolute path outside source_root — refuse.
         # Fall through to source_root-relative resolution below.
 
     # 2. Relative path: join with source_root, check existence + containment.

@@ -97,7 +97,7 @@ class TestBriefIO(unittest.TestCase):
         self.assertTrue(loaded["updated_at"])
 
     def test_save_brief_syncs_kb_paragraphs(self):
-        """Audit issue 39 (MEDIUM): save_brief must sync the brief content
+        """save_brief must sync the brief content
         to kb_paragraphs so kb-query / describe-node see the new knowledge
         immediately, without waiting for a manual kb-rebuild-index.
         """
@@ -142,7 +142,7 @@ class TestBriefIO(unittest.TestCase):
 
     def test_save_brief_replaces_stale_kb_paragraphs(self):
         """When save_brief is called a second time, the old paragraphs
-        must be replaced (not duplicated). Audit issue 39 regression."""
+        must be replaced (not duplicated). Regression."""
         import sqlite3
         db_path = os.path.join(self.graph_dir, "code2database.db")
         conn = sqlite3.connect(db_path)

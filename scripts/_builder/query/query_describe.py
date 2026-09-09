@@ -952,7 +952,7 @@ def cmd_trace_chain(args):
     result["path"] = annotated
     result["total_steps"] = len(annotated)
 
-    # Audit issue 40 (MEDIUM): trace-chain returned pure graph path
+    # trace-chain returned pure graph path
     # annotations without any brief/memory context. describe-node and
     # query both call query_kb() to inject memory_refs /
     # knowledge_refs — trace-chain didn't, so users tracing a call chain

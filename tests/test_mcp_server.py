@@ -538,7 +538,7 @@ class TestDispatchRobustness(unittest.TestCase):
         self.assertEqual(response["error"]["code"], -32603)
 
     def test_tool_call_error_returns_exception_message_not_opaque(self):
-        """Audit issue 24 (MEDIUM): when a tool handler raises, the
+        """When a tool handler raises, the
         error response must include the actual exception message, not
         an opaque 'internal error' string. Without the message, debugging
         core tool failures was nearly impossible.
@@ -565,7 +565,7 @@ class TestDispatchRobustness(unittest.TestCase):
         self.assertEqual(payload["exception_type"], "ValueError")
 
     def test_tool_call_timeout_returns_timeout_error(self):
-        """Audit issue 26 (MEDIUM): a handler that runs longer than its
+        """A handler that runs longer than its
         timeout must be aborted with a TimeoutError, not block the
         dispatch thread indefinitely. Uses signal.alarm which only
         works in the main thread (stdio mode); HTTP workers skip.

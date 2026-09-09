@@ -1770,7 +1770,7 @@ class Daemon:
             "stale_files": touched_only,
         }
         fresh_path = Path(self.graph_dir) / ".code2database_freshness.json"
-        # Audit issue 15 (LOW): use a per-writer tmp filename (pid +
+        # use a per-writer tmp filename (pid +
         # thread id) to prevent concurrent rename races. The main daemon
         # status writer (line 179) already does this; the freshness
         # marker writer was missed. _rebuild_output_files is currently

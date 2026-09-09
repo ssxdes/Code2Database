@@ -96,7 +96,7 @@ def load_brief(graph_dir: str) -> Optional[dict]:
 def save_brief(graph_dir: str, brief: dict) -> str:
     """Atomically write the brief (tmp + rename, like the old store).
 
-    Audit issue 39 (MEDIUM): also sync the brief content to kb_paragraphs
+    also sync the brief content to kb_paragraphs
     so kb-query / describe-node see the new knowledge immediately,
     without waiting for a manual kb-rebuild-index.
     """

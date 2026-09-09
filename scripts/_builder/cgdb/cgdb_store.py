@@ -215,7 +215,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             # SQLiteStore.connect() now sets PRAGMA foreign_keys = ON, but
             # older graphs created before that fix, or connections opened
             # by other callers, may still default to OFF.  The pragma is
-            # idempotent and cheap.  See audit issue 21.
+            # idempotent and cheap.
             try:
                 self._conn.execute("PRAGMA foreign_keys = ON")
             except sqlite3.ProgrammingError:

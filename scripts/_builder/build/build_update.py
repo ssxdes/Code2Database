@@ -345,7 +345,7 @@ def build_update(source_root: str, graph_dir: str,
     # build-update would too) serialize.  Without this lock the user-CLI
     # path opened its own sqlite connection and raced the daemon's write
     # path: SQLite's busy_timeout=5000 only waits 5s, then raises
-    # 'database is locked'.  See audit issue 20.
+    # 'database is locked'.
     from _builder.ops.transactions import write_lock
     with write_lock(graph_dir, timeout=30.0):
         return _build_update_locked(
@@ -418,7 +418,7 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
                     break
             if prev_ast == new_ast:
                 disk_hash = _content_hash(fp)
-                # Audit issue 22 (MEDIUM): UPDATE must use the same path
+                # UPDATE must use the same path
                 # form that the SELECT matched. Using fp (absolute) when
                 # the stored row has a relative path matched 0 rows,
                 # leaving content_hash stale — the file was re-detected

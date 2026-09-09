@@ -212,7 +212,7 @@ class TestCompileCommandsPathResolution(unittest.TestCase):
     """compile_commands.json 'file' relative paths must resolve against
     'directory' (per Clang Compilation Database spec), not CWD.
 
-    Regression for audit issue 17: prior code used os.path.abspath(file_path)
+    Regression: prior code used os.path.abspath(file_path)
     which resolved against CWD, so any entry with a relative file path
     (kernel/glibc/gcc-style) never matched a real TU and clang fell back
     to default args.

@@ -471,8 +471,7 @@ def _process_asm_aliases(extraction: dict, G, name_to_nid: dict) -> dict:
                         call_order=0,
                         call_condition="",
                         confidence="EXTRACTED",
-                        # Audit issue L8-1/L8-2 (MEDIUM): asm_alias edges
-                        # were created without 'concurrency' or 'evidence'
+                        # asm_alias edges were created without 'concurrency' or 'evidence'
                         # attributes. validate_edge_logic flags cross-domain
                         # edges missing 'concurrency'; validate_call_chain_
                         # accuracy flags edges missing 'evidence'. The main
@@ -1074,14 +1073,11 @@ def _add_imports_edges(G, file_nodes: dict) -> None:
                     relation="IMPORTS",
                     concurrency="imports",
                     confidence="EXTRACTED",
-                    # Audit issue L8-2 (MEDIUM): Phase 24 IMPORTS edges
-                    # had concurrency="imports" but no 'evidence' attr.
-                    # validate_call_chain_accuracy flags edges without
-                    # evidence (5 such edges in SPDK: 9679 no-evidence
-                    # - 9674 no-concurrency = 5 imports edges). The main
-                    # build loop's evidence logic only covers direct_call,
-                    # contains, callback, spawn_target, fn_ptr, poller,
-                    # interrupt — not 'imports'.
+                    # IMPORTS edges had concurrency but no 'evidence' attr.
+                    # validate_call_chain_accuracy flags edges without evidence.
+                    # The main build loop's evidence logic only covers
+                    # direct_call, contains, callback, spawn_target, fn_ptr,
+                    # poller, interrupt — not 'imports'.
                     evidence=f"imports: {fid} includes {header}",
                     source="ast",
                     import_path=header,

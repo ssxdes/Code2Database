@@ -375,9 +375,9 @@ fi
 #    semantic_enhancement.md, endpoint_pipeline.md, cross_skill_collaboration.md,
 #    memory_knowledge.md (referenced by SKILL_ops.md and SKILL_analysis.md
 #    which inherit from core's references/)
-#    Audit issue 11: SKILL_ops.md and SKILL_analysis.md also reference
+#    SKILL_ops.md and SKILL_analysis.md also reference
 #    json_schema.md and usage_examples.md — install them too.
-#    Audit issue 10: SKILL_ops.md references RUNTIME_CONFIG.md and
+#    SKILL_ops.md references RUNTIME_CONFIG.md and
 #    PROFILE_MANUAL.md — install them at the skill root (they live at
 #    docs/<lang>/, not docs/<lang>/references/).
 REF_DIR="$INSTALL_DIR/references"
@@ -394,7 +394,7 @@ for ref_file in usage_reference.md label_rules.md data_model.md \
 done
 ok "References (9 files) [core]"
 
-# Audit issue 10: RUNTIME_CONFIG.md and PROFILE_MANUAL.md live at
+# RUNTIME_CONFIG.md and PROFILE_MANUAL.md live at
 # docs/<lang>/ (not references/) — install them at the skill root so
 # SKILL_ops.md's reference path resolves correctly.
 for doc_file in RUNTIME_CONFIG.md PROFILE_MANUAL.md; do

@@ -75,7 +75,7 @@ class SQLiteStore:
         # non-existent function node).  When SQLiteCGDBStore reuses this
         # connection (passed as conn=...), _ensure_conn() returns early
         # without re-applying the pragma — so the pragma must be set here
-        # on the underlying connection.  See audit issue 21.
+        # on the underlying connection.
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._migration_ok = True
         self._migrate_schema()

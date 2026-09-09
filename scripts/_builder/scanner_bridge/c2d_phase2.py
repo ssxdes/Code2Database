@@ -26,7 +26,7 @@ def composite_query(graph_dir: str, query: str,
 
     Returns: {results: [...], attached_c2ds: [...]}
 
-    Security (audit issue 19): only foreign C2D paths registered in the
+    Security: only foreign C2D paths registered in the
     local watched_c2ds table (via `c2d-add-foreign`) may be ATTACHed.
     Without this check, an MCP client could pass any filesystem path
     (e.g. /home/user/private/other-project) and ATTACH its
@@ -41,7 +41,7 @@ def composite_query(graph_dir: str, query: str,
     }
     try:
         # Attach foreign dbs — but only paths the user explicitly
-        # registered via `c2d-add-foreign` first (audit issue 19).
+        # registered via `c2d-add-foreign` first.
         if foreign_c2ds:
             # Normalize once: realpath resolves symlinks and ../ segments
             # so an attacker can't dodge the watched_c2ds row by using a

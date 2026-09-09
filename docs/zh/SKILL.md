@@ -68,15 +68,15 @@ python3 scripts/code2database_builder.py serve    # MCP 服务器（83 工具）
 
 | 命令 | 用途 | 查询层 |
 |------|------|--------|
-| `query` | Cypher 子集查询（`MATCH (n:Function) WHERE n.name='foo' RETURN n.id`）。自然语言用 `intent-query`（审计问题 6） | Graph |
+| `query` | Cypher 子集查询（`MATCH (n:Function) WHERE n.name='foo' RETURN n.id`）。自然语言用 `intent-query` | Graph |
 | `kb-query` | 跨 memory + knowledge 的统一 FTS5+BM25 查询 | Memory+Knowledge |
 | `describe` | 节点详情 + 源码片段 + memory_refs + knowledge_refs | Graph→Source |
 | `trace` | A→B 调用链（含条件） | Graph |
 | `impact` | 改了 X 会影响什么？ | Graph |
-| `find` | 按模式查找不变式（`--var`/`--value`/`--kind`）。查找宏用 `find-macros`（审计问题 5） | Graph |
-| `flow` | 值流（DATA_FLOW/RETURN_FLOW 边）。数据依赖用 `data-dep`；参数流用 `param-flow`（审计问题 4） | Graph |
-| `concurrency` | 列出并发风险对（函数级）。真正的竞争检测用 `detect-races`（审计问题 7） | Graph |
-| `context` | 按 ID/名称描述节点（`describe-node` 的别名）。非基于位置（审计问题 9） | Graph |
+| `find` | 按模式查找不变式（`--var`/`--value`/`--kind`）。查找宏用 `find-macros` | Graph |
+| `flow` | 值流（DATA_FLOW/RETURN_FLOW 边）。数据依赖用 `data-dep`；参数流用 `param-flow` | Graph |
+| `concurrency` | 列出并发风险对（函数级）。真正的竞争检测用 `detect-races` | Graph |
+| `context` | 按 ID/名称描述节点（`describe-node` 的别名）。非基于位置 | Graph |
 | `make` | 一键建库：env-check（缺件前置报出）+ 扫描构建 + 全部派生产物与导出 | — |
 | `build` | 扫描 + 构建图（手动，make 已封装） | — |
 | `update` | 增量重扫 | — |
@@ -92,8 +92,8 @@ python3 scripts/code2database_builder.py serve    # MCP 服务器（83 工具）
 | `serve` | 启动 MCP 服务器（83 工具 (55 base + 28 design-report)） | 全部 |
 | `web-ui` | 交互式浏览器（cytoscape.js） | 全部 |
 | `tx-begin` | 开始事务 | Ops |
-| `daemon` | 显示守护进程状态（`daemon-status` 的别名；启动同步用 `daemon-start`）（审计问题 3） | Ops |
-| `health` | Profile 健康评分（需要 `--source`）。图谱新鲜度用 `daemon-status` 或 `session-init`（审计问题 8） | — |
+| `daemon` | 显示守护进程状态（`daemon-status` 的别名；启动同步用 `daemon-start`） | Ops |
+| `health` | Profile 健康评分（需要 `--source`）。图谱新鲜度用 `daemon-status` 或 `session-init` | — |
 
 全部 249 个 CLI 命令仍可访问；上述 25 个覆盖 ~95% 的 agent 工作流。
 
@@ -142,7 +142,7 @@ HTTP 传输（`--transport http`）让远程 MCP 客户端跨网络访问代码�
   友好错误提示使用 `daemon-start` 或 `build`。用 `daemon-start` 做增量同步，或用
   `build-update --source 源码目录 --graph 图目录` 对 SQLite 图做精确的按文件更新
   （content-hash 检测 + #include 闭包；纯格式改动按结构跳过）。
-- **`build-update` 跨文件边限制**（审计问题 23）：`build-update` 只重扫变更的文件。
+- **`build-update` 跨文件边限制**：`build-update` 只重扫变更的文件。
   当文件 A 中的函数被重命名或删除时，其他文件指向 A 旧函数的调用边会被删除
   （通过 `_delete_legacy_rows`），但**不会重建**——因为调用方文件没有被重扫，
   新的函数 ID（内嵌文件路径）不会匹配。指向变更文件的跨文件调用边在运行完整

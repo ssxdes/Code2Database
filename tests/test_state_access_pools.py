@@ -114,7 +114,7 @@ class TestPreStripPool(unittest.TestCase):
 
 
 class TestExtractStateAccessNoneGlobals(unittest.TestCase):
-    """Regression for audit issue L2 (HIGH): _proc_state_access (the
+    """Regression: _proc_state_access (the
     ProcessPoolExecutor worker for state_access) passes globals_data=None
     by design — workers rely on _cached_globals for the pre-built name
     map.  But when _cached_globals is also None (e.g. extraction has no

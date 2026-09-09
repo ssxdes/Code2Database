@@ -822,7 +822,7 @@ class CTreeSitterScanner(BaseScanner):
                         "domain": domain,
                         "file": filepath,
                         "line": 0,
-                        # Audit issue L8-3 (MEDIUM): was ["unknown_end"] —
+                        # was ["unknown_end"] —
                         # but __macro_* nodes have call OUT edges (asm
                         # call/jmp/syscall targets), so they are NOT
                         # terminal. validate_out_end_labels flagged the

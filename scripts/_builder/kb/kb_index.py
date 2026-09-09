@@ -665,7 +665,7 @@ def sync_brief_to_kb(graph_dir: str, brief: dict) -> int:
     Called by save_brief() so kb-query / describe-node see the updated
     knowledge immediately, without waiting for a full kb-rebuild-index.
 
-    Audit issue 39 (MEDIUM): save_brief wrote brief.json but didn't
+    save_brief wrote brief.json but didn't
     trigger kb_index sync — new paragraphs didn't appear in FTS5 until
     a manual kb-rebuild-index run.
     """
@@ -834,7 +834,7 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
         except sqlite3.Error:
             rows = []
         sim_scores: Dict[int, float] = {}
-        # Audit issue 41 (LOW): CJK fallback previously only triggered
+        # CJK fallback previously only triggered
         # when FTS5 returned ZERO results (`not rows`). For CJK+Latin
         # mixed queries, the Latin token could produce partial FTS5
         # hits, suppressing the CJK similarity scan — missing paragraphs

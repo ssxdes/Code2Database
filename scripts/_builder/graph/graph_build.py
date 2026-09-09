@@ -4936,8 +4936,7 @@ def cmd_build(args):
                                     f"(sha256 ok)"
                                 )
                             elif _l1_stats.get("error"):
-                                # Audit issue L5 (MEDIUM): external
-                                # dependency files (not in this source
+                                # external dependency files (not in this source
                                 # tree — expected for subset builds like
                                 # libstorage) are flagged file_not_found
                                 # by l1_ingest and logged at INFO, not

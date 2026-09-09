@@ -223,7 +223,7 @@ class TestDeleteFileRecordsWithL1(unittest.TestCase):
 
 
 class TestForeignKeysEnforcedOnSharedConnection(unittest.TestCase):
-    """Regression for audit issue 21 (HIGH): SQLiteStore.connect() did
+    """Regression: SQLiteStore.connect() did
     not set PRAGMA foreign_keys = ON. SQLiteCGDBStore reusing this
     connection (passed as conn=...) returned early from _ensure_conn
     without applying the pragma — so FK constraints on edges /

@@ -377,7 +377,7 @@ def _merge_project_data(joint_extraction: Dict[str, Any],
     # metadata, includes, ...). Generic on purpose: any NEW cgdb_* key
     # the scanner starts emitting gets merged without another fix here.
     _legacy_keys = {"functions", "edges", "globals", "vtables", "imports"}
-    # Audit issue L6 (LOW): these scanner-output keys are consumed by
+    # these scanner-output keys are consumed by
     # graph_build / build_phases (vtable dispatch, fn_ptr dispatch,
     # macro dispatch, state_access, struct_defs, container_of, etc.)
     # but were not in the legacy whitelist — multi-project builds

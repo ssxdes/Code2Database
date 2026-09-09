@@ -151,25 +151,25 @@ class TestSkillManifest(unittest.TestCase):
                          "total TOOLS count drifted from 83: %d"
                          % len(TOOLS))
 
-    # ---- Audit issue 2: session-init must be in tier_1_commands ----
+    # ---- session-init must be in tier_1_commands ----
     def test_skill_json_tier_1_includes_session_init(self):
         """session-init is the mandatory first step; must be tier_1."""
         self.assertIn("session-init", self.skill["tier_1_commands"],
-                      "session-init must be in tier_1_commands (audit issue 2)")
+                      "session-init must be in tier_1_commands")
 
     def test_skill_json_tier_1_subset_of_commands(self):
-        """tier_1_commands must be a subset of commands (audit issue 13)."""
+        """tier_1_commands must be a subset of commands."""
         ghosts = set(self.skill["tier_1_commands"]) - set(self.skill["commands"])
         self.assertEqual(ghosts, set(),
                          f"skill.json tier_1 not in commands: {sorted(ghosts)}")
 
-    # ---- Audit issue 13/30/31: ops manifest sync ----
+    # ---- ops manifest sync ----
     def test_ops_manifest_commands_runnable(self):
         ghosts = set(self.ops["commands"]) - self.runnable
         self.assertEqual(ghosts, set(), f"ops ghosts: {sorted(ghosts)}")
 
     def test_ops_tier_1_subset_of_commands(self):
-        """tier_1_commands must be a subset of commands (audit issue 13)."""
+        """tier_1_commands must be a subset of commands."""
         ghosts = set(self.ops["tier_1_commands"]) - set(self.ops["commands"])
         self.assertEqual(ghosts, set(),
                          f"ops tier_1 not in commands: {sorted(ghosts)}")
@@ -179,7 +179,7 @@ class TestSkillManifest(unittest.TestCase):
         self.assertEqual(ghosts, set(), f"ops tier_1 ghosts: {sorted(ghosts)}")
 
     def test_ops_includes_brief_and_kb_commands(self):
-        """Audit issue 31: brief-* and kb-* commands belong to ops domain."""
+        """brief-* and kb-* commands belong to ops domain."""
         ops_cmds = set(self.ops["commands"])
         for c in ["brief-extract", "brief-validate", "brief-suggest",
                   "brief-migrate-legacy", "brief-update",
@@ -193,17 +193,17 @@ class TestSkillManifest(unittest.TestCase):
                   "apply-semantics", "apply-invariants", "ffi-types",
                   "rollback-db-transaction", "commit-db-transaction"]:
             self.assertIn(c, ops_cmds,
-                          f"ops missing {c} (audit issue 30/31)")
+                          f"ops missing {c}")
 
-    # ---- Audit issue 32: analysis manifest sync ----
+    # ---- analysis manifest sync ----
     def test_analysis_includes_flow_and_search_commands(self):
-        """Audit issue 32: analysis-domain commands must be in manifest."""
+        """analysis-domain commands must be in manifest."""
         ana_cmds = set(self.analysis["commands"])
         for c in ["field-flow", "null-source", "path-guards", "runtime-guards",
                   "taint-analysis", "explore-flow", "key-paths", "code-slice",
                   "hybrid-search", "semantic-search", "reverse-trace"]:
             self.assertIn(c, ana_cmds,
-                          f"analysis missing {c} (audit issue 32)")
+                          f"analysis missing {c}")
 
 
 if __name__ == "__main__":

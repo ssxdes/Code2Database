@@ -128,7 +128,7 @@ def _mcp_coerce_float(value, default: float = 0.0,
     Same defensive contract as _mcp_coerce_int: a non-numeric value
     falls back to the default; out-of-range values clamp. Never raises.
 
-    Audit issue 16/25: _tool_kb_query used float(args.get('min_weight', 0.0))
+    _tool_kb_query used float(args.get('min_weight', 0.0))
     which crashed with ValueError on a non-numeric string from a client.
     """
     try:

@@ -213,7 +213,7 @@ class MemoryStore:
 
     def _connect(self) -> sqlite3.Connection:
         if self.read_only:
-            # Audit issue 38 (MEDIUM): if memory.db doesn't exist, the
+            # if memory.db doesn't exist, the
             # mode=ro connect below raises OperationalError; the previous
             # fallback sqlite3.connect(self.db_path) CREATED the file
             # (and its parent dirs via makedirs in __init__), defeating

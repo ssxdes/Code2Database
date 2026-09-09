@@ -42,11 +42,11 @@ def build_session_context(graph_dir: str, memory_top: int = 10) -> dict:
     memory: Dict[str, Any] = {"stats": None, "digest": []}
     try:
         from _builder.memory.memory_store import MemoryStore
-        # Audit issue 38 (MEDIUM): session-init is a read-only status
-        # query — it must NOT create memory.db as a side effect. Without
-        # read_only=True, MemoryStore.__init__ called os.makedirs and
-        # _init_schema(), leaving an empty memory/ dir + memory.db file
-        # even when the user only ran session-init to check status.
+        # session-init is a read-only status query — it must NOT create
+        # memory.db as a side effect. Without read_only=True,
+        # MemoryStore.__init__ calls os.makedirs + _init_schema(), leaving
+        # an empty memory/ dir + memory.db file even when the user only
+        # ran session-init to check status.
         store = MemoryStore(graph_dir, read_only=True)
         memory["stats"] = store.stats()
         memory["digest"] = store.digest(limit=memory_top)
@@ -77,7 +77,7 @@ def build_session_context(graph_dir: str, memory_top: int = 10) -> dict:
     freshness: Optional[Dict[str, Any]] = None
     try:
         from _builder.cgdb.cgdb_freshness import check_freshness
-        # Audit issue 42 (LOW): derive source_root from code2database_master.json
+        # derive source_root from code2database_master.json
         # (which the build wrote with the actual source path), not from
         # os.path.dirname(graph_dir). The parent of graph_dir is only the
         # source root by convention (.code2database subdir layout) — a graph
@@ -133,7 +133,7 @@ def build_session_context(graph_dir: str, memory_top: int = 10) -> dict:
         for qp in (brief.get("query_paths") or [])[:5]:
             hints.append(qp)
     # Suggest save-memory when the store is empty OR doesn't exist yet
-    # (read_only session-init no longer creates memory.db — audit issue 38).
+    # (read_only session-init no longer creates memory.db).
     if memory.get("stats") and memory["stats"].get("active_entries", 0) == 0:
         hints.append("Memory store is empty — save the first Q&A with "
                      "`save-memory --question ... --answer ... "

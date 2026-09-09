@@ -312,7 +312,7 @@ def _tool_impact(args: dict, graph_dir: str) -> dict:
     if not node_id:
         return {"error": f"Node not found: {_mcp_coerce_str(args.get('node', ''))}"}
     direction = _mcp_coerce_str(args.get("direction", "reverse"))
-    # Audit issue 27: cap depth — depth=1000000 on a 1.5M-node graph
+    # cap depth — depth=1000000 on a 1.5M-node graph
     # would block the dispatch thread indefinitely.
     depth = _mcp_coerce_int(args.get("depth", 3), 3, 1, 20)
     visited = set()
@@ -565,7 +565,7 @@ def _tool_kb_query(args: dict, graph_dir: str) -> dict:
         return {"error": "query is required"}
     kinds_str = _mcp_coerce_str(args.get("kinds", ""))
     kinds = [k.strip() for k in kinds_str.split(",") if k.strip()] if kinds_str else None
-    # Audit issue 16 (LOW): wrap query_kb() in try/except and use
+    # wrap query_kb() in try/except and use
     # _mcp_coerce_float for min_weight — bare float() crashed on a
     # non-numeric string from a client. Mirrors _tool_knowledge_query
     # which already had this protection.
@@ -743,7 +743,7 @@ def _tool_get_code_snippet(args: dict, graph_dir: str) -> dict:
     nd = G.nodes[node_id]
     source_file = nd.get("source_file", "")
     line_num = nd.get("line", 0)
-    # Audit issue 27: cap context lines — context=1000000 would dump
+    # cap context lines — context=1000000 would dump
     # the entire file.
     context = _mcp_coerce_int(args.get("context", 10), 10, 0, 500)
     if not source_file or not line_num:
@@ -774,7 +774,7 @@ def _tool_blast_radius(args: dict, graph_dir: str) -> dict:
     node_id = _find_node_id(G, _mcp_coerce_str(args.get("node", "")))
     if not node_id:
         return {"error": f"Node not found: {_mcp_coerce_str(args.get('node', ''))}"}
-    # Audit issue 27: cap depth — depth=1000000 would block dispatch thread.
+    # cap depth — depth=1000000 would block dispatch thread.
     depth = _mcp_coerce_int(args.get("depth", 3), 3, 1, 20)
     # Reverse BFS to find all callers up to depth
     visited = set()

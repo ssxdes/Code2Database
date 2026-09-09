@@ -483,7 +483,7 @@ class WritebackPipeline:
     def _git_commit(self, file_path: str, message: str) -> tuple[bool, Optional[str]]:
         """Stage + commit a single file. Returns (ok, commit_sha).
 
-        Audit issue 29 (LOW): previously hardcoded --no-verify, bypassing
+        previously hardcoded --no-verify, bypassing
         pre-commit hooks. On a public MCP server this could allow clients
         to commit code that fails linting/formatting checks. Now respects
         hooks by default; callers that need to bypass can pass

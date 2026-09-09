@@ -12,8 +12,8 @@ def _tool_cgdb_search_symbols(args: dict, graph_dir: str) -> list:
     """Full-text search over cgdb_nodes via FTS5."""
     query = _mcp_coerce_str(args.get("query", ""))
     kind = args.get("kind")
-    # Audit issue 25 (MEDIUM): bare int() crashed on non-numeric input.
-    # Audit issue 27 (MEDIUM): no upper cap on limit; clients could
+    # bare int() crashed on non-numeric input.
+    # no upper cap on limit; clients could
     # pass top=999999999 and get back a huge response.
     limit = _mcp_coerce_int(args.get("limit", 50), 50, 1, 200)
     if not query:
@@ -82,7 +82,7 @@ def _tool_cgdb_get_source(args: dict, graph_dir: str) -> dict:
     (nid, kind, name, fqn, line, col, byte_start, byte_end,
      source_snippet, file_path, content_hash) = row
     snippet_only = bool(args.get("snippet_only", False))
-    # Audit issue 25/27: cap context_bytes at a sane upper bound.
+    # cap context_bytes at a sane upper bound.
     context_bytes = _mcp_coerce_int(args.get("context_bytes", 0), 0, 0, 1_000_000)
     result = {
         "node_id": nid, "kind": kind, "name": name, "fqn": fqn,
@@ -110,7 +110,7 @@ def _tool_cgdb_get_source(args: dict, graph_dir: str) -> dict:
         result["source"] = "file_resolution_failed"
         return result
     try:
-        # Cap file size to prevent unbounded memory use (audit issue 18):
+        # Cap file size to prevent unbounded memory use:
         # a malicious or pathological source file (e.g. a generated .c
         # shipped with a toolchain) could otherwise OOM the MCP server.
         # 8 MB is enough for any hand-written TU (the Linux kernel's
@@ -164,7 +164,7 @@ def _tool_cgdb_find_invokers(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    # Audit issue 25/27: bare int() + no upper cap on depth/limit.
+    # bare int() + no upper cap on depth/limit.
     # depth=1000000 would cause unbounded recursive CTE; cap at 20.
     # limit=999999999 would return a massive response; cap at 1000.
     depth = _mcp_coerce_int(args.get("depth", 1), 1, 1, 20)

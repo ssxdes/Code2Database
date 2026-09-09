@@ -130,7 +130,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
         # cgdb_nodes.config_predicate_id FK references config_predicates(id),
         # whose primary key starts at 1, so 0 is never a valid reference.
         # With PRAGMA foreign_keys = ON, INSERTing a 0 trips FK violation
-        # (audit issue 21 surfaced this).
+        # (this surfaces when FK is ON).
         config_predicate_id = n.get('config_predicate_id')
         if config_predicate_id:
             config_predicate_id = int(config_predicate_id)

@@ -22,7 +22,7 @@ import logging
 # M3: TTL cache so session-init doesn't os.walk a 70K-file source tree
 # on every call. The web UI already had a 10s GraphCache.freshness()
 # wrapper; session-init called check_freshness() directly with no cache.
-# Audit issue 42 (LOW): bounded LRU — long-running MCP servers querying
+# bounded LRU — long-running MCP servers querying
 # multiple graph_dirs previously grew this dict without limit.
 _freshness_cache: Dict[str, tuple] = {}
 _FRESHNESS_TTL = 10.0

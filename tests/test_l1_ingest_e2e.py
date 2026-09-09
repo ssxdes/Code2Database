@@ -378,7 +378,7 @@ class TestResolveSourceFileGraphDir(unittest.TestCase):
         self.assertEqual(resolve_source_file(bogus, empty_graph_dir), bogus)
 
     def test_rejects_path_traversal_with_dotdot(self):
-        """Regression for audit issue 18: a malicious code2database.db
+        """Regression: a malicious code2database.db
         with source_file='../../../etc/passwd' must NOT resolve to a
         path outside source_root. Previously, os.path.join(source_root,
         '../../../etc/passwd') would traverse up and os.path.exists()
@@ -402,7 +402,7 @@ class TestResolveSourceFileGraphDir(unittest.TestCase):
 
     def test_rejects_absolute_path_outside_source_root(self):
         """An absolute path that exists but is outside source_root must
-        not be returned (audit issue 18)."""
+        not be returned."""
         from _builder.utils import resolve_source_file, _SOURCE_ROOT_CACHE
         _SOURCE_ROOT_CACHE.pop(self.graph_dir, None)
         outside = os.path.join(self.tmpdir, 'outside.c')

@@ -894,7 +894,7 @@ def _handle_tools_call(msg_id, params, graph_dir, mcp_stats,
 
     try:
         handler = TOOLS[tool_name]["handler"]
-        # Audit issue 26 (MEDIUM): per-tool execution timeout. Without
+        # per-tool execution timeout. Without
         # this, a handler that loops indefinitely (e.g. _tool_impact
         # with depth=1000000 on a 1.5M-node graph before issue 27's
         # cap was added) blocks the dispatch thread — in stdio mode the
@@ -936,7 +936,7 @@ def _handle_tools_call(msg_id, params, graph_dir, mcp_stats,
                 "result": {"content": [{"type": "text",
                     "text": json.dumps(result, ensure_ascii=False, indent=2)}]}}
     except Exception as e:
-        # Audit issue 24 (MEDIUM): return the actual exception message
+        # return the actual exception message
         # instead of opaque "internal error". The previous behavior made
         # debugging core tools nearly impossible — the 28 design-report
         # handlers all returned str(exc), but the 36 code2database_* +

@@ -509,7 +509,7 @@ def _verify_scan_completed(source, graph_dir, extraction_path):
                 "extraction is PARTIAL. Free memory or re-run with "
                 "--large-project / -j 1; the checkpoint resumes the "
                 "remaining files" % checkpoint)
-    # Audit issue L3 (MEDIUM): check for both monolithic extraction.json
+    # check for both monolithic extraction.json
     # AND split extraction.json.d/ directory. --large-project mode writes
     # to the split directory (per-file chunks) instead of the monolithic
     # file; the previous check only looked for the monolithic file and

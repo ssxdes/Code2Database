@@ -68,15 +68,15 @@ python3 scripts/code2database_builder.py serve    # MCP server (83 tools)
 
 | Command | Purpose | Query Layer |
 |---------|---------|-------------|
-| `query` | Cypher-subset query (`MATCH (n:Function) WHERE n.name='foo' RETURN n.id`). For natural-language, use `intent-query` (audit issue 6) | Graph |
+| `query` | Cypher-subset query (`MATCH (n:Function) WHERE n.name='foo' RETURN n.id`). For natural-language, use `intent-query` | Graph |
 | `kb-query` | Unified FTS5+BM25 across memory + knowledge | Memory+Knowledge |
 | `describe` | Node details + source snippet + memory_refs + knowledge_refs | Graph→Source |
 | `trace` | Call chain A→B with conditions | Graph |
 | `impact` | What breaks if I change X? | Graph |
-| `find` | Find invariants by pattern (`--var`/`--value`/`--kind`). For macros, use `find-macros` (audit issue 5) | Graph |
-| `flow` | Value flow (DATA_FLOW/RETURN_FLOW edges). For data deps use `data-dep`; for params use `param-flow` (audit issue 4) | Graph |
-| `concurrency` | List concurrency risk pairs (function-level). For race detection use `detect-races` (audit issue 7) | Graph |
-| `context` | Describe a node by ID/name (alias for `describe-node`). Not location-based (audit issue 9) | Graph |
+| `find` | Find invariants by pattern (`--var`/`--value`/`--kind`). For macros, use `find-macros` | Graph |
+| `flow` | Value flow (DATA_FLOW/RETURN_FLOW edges). For data deps use `data-dep`; for params use `param-flow` | Graph |
+| `concurrency` | List concurrency risk pairs (function-level). For race detection use `detect-races` | Graph |
+| `context` | Describe a node by ID/name (alias for `describe-node`). Not location-based | Graph |
 | `make` | One-click ingestion: env-check (fail fast) then scan + build + all derived artifacts + exports | — |
 | `build` | Scan + build graph (manual, make wraps it) | — |
 | `update` | Incremental re-scan | — |
@@ -92,8 +92,8 @@ python3 scripts/code2database_builder.py serve    # MCP server (83 tools)
 | `serve` | Start MCP server (83 tools) | All |
 | `web-ui` | Interactive browser (cytoscape.js) | All |
 | `tx-begin` | Start a transaction | Ops |
-| `daemon` | Show daemon status (alias for `daemon-status`; to start sync use `daemon-start`) (audit issue 3) | Ops |
-| `health` | Profile health score (requires `--source`). For graph freshness use `daemon-status` or `session-init` (audit issue 8) | — |
+| `daemon` | Show daemon status (alias for `daemon-status`; to start sync use `daemon-start`) | Ops |
+| `health` | Profile health score (requires `--source`). For graph freshness use `daemon-status` or `session-init` | — |
 
 All 249 CLI commands remain accessible; the 25 above cover ~95% of agent workflows.
 
@@ -144,7 +144,7 @@ HTTP transport (`--transport http`) enables remote MCP clients to access your co
   `build-update --source SRC --graph DIR` for a precise per-file update of the
   SQLite graph (content-hash detection + #include closure; format-only edits
   are skipped structurally).
-- **`build-update` cross-file edge limitation** (audit issue 23): `build-update`
+- **`build-update` cross-file edge limitation**: `build-update`
   rescans only changed files. When a function is renamed or deleted in file A,
   edges from *other* files that called A's old function are deleted (via
   `_delete_legacy_rows`) but **not recreated** — the calling files aren't

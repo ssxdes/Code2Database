@@ -299,7 +299,7 @@ class TestCompositeQuery(unittest.TestCase):
         self.assertEqual(result["results"][0]["callee_name"], "helper")
 
     def test_unregistered_foreign_c2d_rejected(self):
-        """Audit issue 19: composite_query must refuse to ATTACH a foreign
+        """composite_query must refuse to ATTACH a foreign
         C2D path that wasn't registered via c2d-add-foreign (i.e. is not
         in watched_c2ds). Without this, an MCP client could pass any path
         and ATTACH its code2database.db, leaking arbitrary project data.

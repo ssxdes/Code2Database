@@ -563,3 +563,41 @@ class TestDispatchRobustness(unittest.TestCase):
         payload = _json.loads(body)
         self.assertIn("diagnostic-message-that-must-appear", payload["error"])
         self.assertEqual(payload["exception_type"], "ValueError")
+
+    def test_tool_call_timeout_returns_timeout_error(self):
+        """Audit issue 26 (MEDIUM): a handler that runs longer than its
+        timeout must be aborted with a TimeoutError, not block the
+        dispatch thread indefinitely. Uses signal.alarm which only
+        works in the main thread (stdio mode); HTTP workers skip.
+        """
+        import time
+        from _builder.mcp.mcp_server import dispatch_mcp_request, TOOLS
+        mcp_stats = {"total_calls": 0, "total_output_tokens": 0, "by_tool": {}}
+        tool_name = next(iter(TOOLS))
+        original = TOOLS[tool_name]["handler"]
+        original_timeout = TOOLS[tool_name].get("timeout")
+        # Force a 1-second timeout and a handler that sleeps 5s.
+        TOOLS[tool_name]["handler"] = lambda a, g: time.sleep(5)
+        TOOLS[tool_name]["timeout"] = 1
+        try:
+            t0 = time.time()
+            response = dispatch_mcp_request(
+                "tools/call", 99,
+                {"name": tool_name, "arguments": {}},
+                "/nonexistent", mcp_stats, False)
+            elapsed = time.time() - t0
+        finally:
+            TOOLS[tool_name]["handler"] = original
+            if original_timeout is not None:
+                TOOLS[tool_name]["timeout"] = original_timeout
+            else:
+                TOOLS[tool_name].pop("timeout", None)
+        # Must return well under the 5-second sleep.
+        self.assertLess(elapsed, 3.0,
+                        "timeout did not abort the handler (elapsed %.1fs)"
+                        % elapsed)
+        self.assertTrue(response["result"]["isError"])
+        body = response["result"]["content"][0]["text"]
+        import json as _json
+        payload = _json.loads(body)
+        self.assertIn("timeout", payload["error"].lower())

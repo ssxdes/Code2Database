@@ -894,7 +894,35 @@ def _handle_tools_call(msg_id, params, graph_dir, mcp_stats,
 
     try:
         handler = TOOLS[tool_name]["handler"]
-        result = handler(tool_args, graph_dir)
+        # Audit issue 26 (MEDIUM): per-tool execution timeout. Without
+        # this, a handler that loops indefinitely (e.g. _tool_impact
+        # with depth=1000000 on a 1.5M-node graph before issue 27's
+        # cap was added) blocks the dispatch thread — in stdio mode the
+        # entire server hangs. signal.alarm only works in the main
+        # thread (stdio mode); HTTP worker threads fall back to no
+        # timeout (the --max-clients concurrency limit bounds resource
+        # use there). Default 60s; tools can override via the
+        # 'timeout' field in their TOOLS entry.
+        tool_timeout = TOOLS[tool_name].get("timeout", 60)
+        _alarm_installed = False
+        try:
+            import signal as _signal
+            def _timeout_handler(signum, frame):
+                raise TimeoutError(
+                    f"tool '{tool_name}' exceeded {tool_timeout}s timeout")
+            _old_handler = _signal.signal(_signal.SIGALRM, _timeout_handler)
+            _signal.alarm(tool_timeout)
+            _alarm_installed = True
+        except (ValueError, OSError):
+            # ValueError: not in main thread (HTTP worker) — skip.
+            # OSError: signal not available (Windows) — skip.
+            pass
+        try:
+            result = handler(tool_args, graph_dir)
+        finally:
+            if _alarm_installed:
+                _signal.alarm(0)
+                _signal.signal(_signal.SIGALRM, _old_handler)
         result_json = json.dumps(result, ensure_ascii=False, indent=2)
         tokens = estimate_tokens(result_json)
         mcp_stats["total_calls"] += 1

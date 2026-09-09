@@ -951,6 +951,29 @@ def cmd_trace_chain(args):
 
     result["path"] = annotated
     result["total_steps"] = len(annotated)
+
+    # Audit issue 40 (MEDIUM): trace-chain returned pure graph path
+    # annotations without any brief/memory context. describe-node and
+    # query both call query_kb() to inject memory_refs /
+    # knowledge_refs — trace-chain didn't, so users tracing a call chain
+    # got no veteran experience or project knowledge attached.
+    try:
+        from _builder.kb.kb_index import query_kb
+        # Query for the from + to node names (the most likely search
+        # hits — intermediate nodes are usually short utility calls).
+        path_names = [s.get("name", "") for s in annotated if s.get("name")]
+        trace_query = " ".join(path_names[:5])  # cap at 5 for recall
+        if trace_query.strip():
+            kb_hits = query_kb(args.graph, trace_query, top_n=5,
+                               log_query=False, max_tokens=1500)
+            if kb_hits:
+                result["memory_refs"] = [h for h in kb_hits
+                                          if h.get("source_kind") == "memory"]
+                result["knowledge_refs"] = [h for h in kb_hits
+                                            if h.get("source_kind") == "knowledge"]
+    except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+
     _output_result(result, getattr(args, 'json', False))
 
 

@@ -236,6 +236,7 @@
       "kb-rollback",
       "kb-global-search",
       "kb-global-import",
+      "kb-global-share",
       "kb-global-share-memory",
       "kb-global-search-memory",
       "kb-global-import-memory"

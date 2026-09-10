@@ -187,13 +187,24 @@ class TestSkillManifest(unittest.TestCase):
                   "kb-forget", "kb-global-add", "kb-known-unknowns",
                   "kb-rebuild-index", "kb-rollback",
                   "kb-global-search", "kb-global-import",
-                  "kb-global-share-memory", "kb-global-search-memory",
-                  "kb-global-import-memory",
+                  "kb-global-share", "kb-global-share-memory",
+                  "kb-global-search-memory", "kb-global-import-memory",
                   "build-update", "quick-update", "heuristic-enhance",
                   "apply-semantics", "apply-invariants", "ffi-types",
                   "rollback-db-transaction", "commit-db-transaction"]:
             self.assertIn(c, ops_cmds,
                           f"ops missing {c}")
+
+    def test_ops_routing_table_has_kb_global_share(self):
+        """kb-global-share must be in routing_table (symmetry with kb-global-share-memory)."""
+        rt = self.ops.get("routing_table", {})
+        all_routed = set()
+        for cmds in rt.values():
+            all_routed.update(cmds)
+        self.assertIn("kb-global-share", all_routed,
+                      "kb-global-share missing from routing_table")
+        self.assertIn("kb-global-share-memory", all_routed,
+                      "kb-global-share-memory missing from routing_table")
 
     # ---- analysis manifest sync ----
     def test_analysis_includes_flow_and_search_commands(self):

@@ -410,6 +410,12 @@ class GraphCache:
         so the user can jump to the same location in an editor. The
         legacy ``get_code_snippet`` is preserved as a thin wrapper so
         existing callers (incl. tests) keep working.
+
+        On LazySQLiteGraph the per-node ``body_text`` attr is empty
+        (compressed blobs are only decompressed on demand), so we call
+        ``get_body_text`` to fetch the real body. The body's line count
+        extends the read window so the *entire* function is shown,
+        not just a fixed 21-line window around the start line.
         """
         with self._lock:
             if node_id not in self.G:
@@ -417,8 +423,14 @@ class GraphCache:
             nd = self.G.nodes[node_id]
             source_file = nd.get("source_file", "")
             line = nd.get("line", 0)
+            # LazySQLiteGraph stores body_text='' — fetch lazily so the
+            # code panel shows the real function body instead of an
+            # empty string.
+            body_text = nd.get("body_text", "")
+            if not body_text and hasattr(self.G, "get_body_text"):
+                body_text = self.G.get_body_text(node_id)
             if not source_file or not line:
-                return {"code": nd.get("body_text", "")[:2000],
+                return {"code": body_text[:50000],
                         "file": source_file, "line": line}
             # Resolve a possibly-relative source_file against source_root
             # (functions.source_file may be relative to keep graphs portable
@@ -430,12 +442,20 @@ class GraphCache:
             try:
                 with open(resolved, "r", encoding="utf-8", errors="replace") as f:
                     lines = f.readlines()
+                # Use body_text line count to extend the read window so
+                # the entire function body is shown, not just a fixed
+                # 21-line window around the start line.
+                if body_text:
+                    body_line_count = body_text.count('\n') + 1
+                    end = min(len(lines),
+                              line - 1 + body_line_count + context_lines)
+                else:
+                    end = min(len(lines), line + context_lines)
                 start = max(0, line - context_lines - 1)
-                end = min(len(lines), line + context_lines)
                 snippet = "".join(lines[start:end])
-                return {"code": snippet[:4000], "file": source_file, "line": line}
+                return {"code": snippet[:50000], "file": source_file, "line": line}
             except OSError:
-                return {"code": nd.get("body_text", "")[:2000],
+                return {"code": body_text[:50000],
                         "file": source_file, "line": line}
 
     def list_domains(self) -> List[Dict]:

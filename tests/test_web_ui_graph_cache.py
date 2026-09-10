@@ -217,6 +217,129 @@ class TestGraphCacheExtended(unittest.TestCase):
         self.assertIsInstance(snip, str)
 
 
+class TestGraphCacheCodePayload(unittest.TestCase):
+    """get_code_payload — source-file read window + body_text fallback.
+
+    The old implementation capped body_text at 2000 chars, source-file
+    snippets at 4000 chars, and read only a 21-line window (context_lines=10
+    on each side of the start line). Long functions were truncated.
+    """
+
+    def setUp(self):
+        from _builder.misc.web_ui import GraphCache
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(self._cleanup)
+        # Create a real source file with a long function (50 lines)
+        self.src_file = os.path.join(self.tmpdir, 'long_func.c')
+        body_lines = [f'    int line_{i} = {i};' for i in range(50)]
+        src_content = ('int long_func(void) {\n' +
+                       '\n'.join(body_lines) + '\n}\n')
+        with open(self.src_file, 'w') as f:
+            f.write(src_content)
+        master = {
+            'version': 'test-1.0',
+            'stats': {'total_functions': 1},
+            'total_nodes': 1,
+            'domains': {'test': 'code2database_test.json'},
+        }
+        with open(os.path.join(self.tmpdir, 'code2database_master.json'), 'w') as f:
+            json.dump(master, f)
+        domain = {
+            'domain': 'test',
+            'nodes': [
+                {
+                    'id': 'lf', 'name': 'long_func',
+                    'source_file': self.src_file,
+                    'line': 1, 'domain': 'test', 'labels': [],
+                    'signature': 'int long_func()',
+                    'body_text': src_content,
+                },
+            ],
+            'edges': [],
+        }
+        with open(os.path.join(self.tmpdir, 'code2database_test.json'), 'w') as f:
+            json.dump(domain, f)
+        self.cache = GraphCache(self.tmpdir)
+
+    def _cleanup(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_long_function_not_truncated(self):
+        """A 52-line function should be returned in full, not capped at 21 lines."""
+        payload = self.cache.get_code_payload('lf', context_lines=3)
+        code = payload['code']
+        # The function has 52 lines (1 sig + 50 body + 1 close brace).
+        # With context_lines=3 and body_text guiding the window, we
+        # should see line_49 near the end — not truncated.
+        self.assertIn('line_49', code)
+
+    def test_body_text_used_when_source_missing(self):
+        """When source_file doesn't exist, body_text is returned (not empty)."""
+        # Point source_file at a non-existent path
+        master = {
+            'version': 'test-1.0', 'stats': {'total_functions': 1},
+            'total_nodes': 1,
+            'domains': {'test': 'code2database_test.json'},
+        }
+        d2 = os.path.join(self.tmpdir, 'd2')
+        os.makedirs(d2)
+        with open(os.path.join(d2, 'code2database_master.json'), 'w') as f:
+            json.dump(master, f)
+        long_body = 'x' * 5000  # exceeds old 2000-char cap
+        domain = {
+            'domain': 'test',
+            'nodes': [{'id': 'nb', 'name': 'nb',
+                       'source_file': '/nonexistent/path.c',
+                       'line': 5, 'domain': 'test', 'labels': [],
+                       'signature': 'int nb()',
+                       'body_text': long_body}],
+            'edges': [],
+        }
+        with open(os.path.join(d2, 'code2database_test.json'), 'w') as f:
+            json.dump(domain, f)
+        from _builder.misc.web_ui import GraphCache
+        cache2 = GraphCache(d2)
+        payload = cache2.get_code_payload('nb')
+        # body_text is 5000 chars — old cap was 2000, new cap is 50000.
+        self.assertEqual(len(payload['code']), 5000)
+
+    def test_lazy_graph_body_text_fetched(self):
+        """When body_text attr is empty but graph has get_body_text, it's called."""
+
+        class FakeLazyGraph:
+            """Minimal duck-typed stand-in for LazySQLiteGraph."""
+            def __init__(self):
+                self._nodes = {'lazy_node': {
+                    'source_file': '', 'line': 0,
+                    'body_text': '',  # empty — triggers lazy fetch
+                }}
+                self._body_calls = 0
+
+            def __contains__(self, nid):
+                return nid in self._nodes
+
+            @property
+            def nodes(self):
+                class _NodesProxy:
+                    def __init__(self, outer):
+                        self._outer = outer
+                    def __getitem__(self, nid):
+                        return self._outer._nodes[nid]
+                return _NodesProxy(self)
+
+            def get_body_text(self, nid):
+                self._body_calls += 1
+                return 'decompressed body for ' + nid
+
+        from _builder.misc.web_ui import GraphCache
+        cache = GraphCache(self.tmpdir)
+        cache.G = FakeLazyGraph()
+        payload = cache.get_code_payload('lazy_node')
+        self.assertIn('decompressed body', payload['code'])
+        self.assertEqual(cache.G._body_calls, 1)
+
+
 class TestGraphCacheDegrees(unittest.TestCase):
     """Degrees are precomputed once per reload and served from cache.
 

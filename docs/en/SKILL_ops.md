@@ -106,11 +106,11 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 
 | Question Type | Command Sequence |
 |---------------|------------------|
-| **Safe graph editing** | `tx-begin` → `tx-status` → `update-node` / `update-edge` / `patch-profile` / `classify-endpoints` / `auto-enhance` / `batch-confirm` / `rollback` / `fill-request` / `add-semantic-edges` / `semantic-status` / `audit-log` → `tx-commit` (with confirmation) → fallback `tx-restore` / `tx-list-snapshots` / `tx-replay-wal` if needed |
-| **Keep graph up to date** | `daemon-start` → `daemon-status` → `daemon-pause` / `daemon-resume` / `daemon-force-refresh` / `daemon-wait-sync` / `daemon-logs` / `daemon-reload` / `daemon-list-projects` → `daemon-stop` ; or `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes` |
+| **Safe graph editing** | `tx-begin` → `tx-status` → `update-node` / `update-edge` / `patch-profile` / `classify-endpoints` / `auto-enhance` / `heuristic-enhance` / `batch-confirm` / `rollback` / `fill-request` / `add-semantic-edges` / `semantic-status` / `audit-log` → `tx-commit` (with confirmation) → fallback `tx-restore` / `tx-list-snapshots` / `tx-replay-wal` if needed |
+| **Keep graph up to date** | `daemon-start` → `daemon-status` → `daemon-pause` / `daemon-resume` / `daemon-force-refresh` / `daemon-wait-sync` / `daemon-logs` / `daemon-reload` / `daemon-list-projects` → `daemon-stop` ; or `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes` ; precise per-file update: `build-update --source SRC --graph DIR` or `quick-update --source SRC --graph DIR` |
 | **Profile and doc-code** | `profile-health` → `profile-evolve` → `profile-bind-version` ; `doc-code-check` → `doc-alignment-report` → `doc-signature-diff` → `doc-mark-stale` |
 | **Graph versioning** | `graph-record-version` → `graph-history` → `graph-diff` |
-| **Memory management** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory` ; cross-project: `kb-global-share-memory` → `kb-global-search-memory` → `kb-global-import-memory` |
+| **Memory management** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory` ; knowledge brief: `brief-extract` → `brief-validate` → `brief-suggest` → `brief-migrate-legacy` ; cross-project: `kb-global-share-memory` → `kb-global-search-memory` → `kb-global-import-memory` |
 | **Export / plugin / benchmark** | `export-html` / `export-obsidian` / `web-ui` ; `plugins` / `validate-plugin` ; `bug-benchmark` |
 | **Embeddings (experimental)** | `embeddings-build` → `embeddings-search` |
 

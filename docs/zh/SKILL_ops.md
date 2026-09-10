@@ -106,11 +106,11 @@ LLM 执行任何修改 code graph database的命令时，**必须先获得用户
 
 | 问题类型 | 命令序列 |
 |---------|---------|
-| **安全图谱编辑** | `tx-begin` → `tx-status` → `update-node` / `update-edge` / `patch-profile` / `classify-endpoints` / `auto-enhance` / `batch-confirm` / `rollback` / `fill-request` / `add-semantic-edges` / `semantic-status` / `audit-log` → `tx-commit`（带确认）→ 必要时 `tx-restore` / `tx-list-snapshots` / `tx-replay-wal` |
-| **保持图谱新鲜** | `daemon-start` → `daemon-status` → `daemon-pause` / `daemon-resume` / `daemon-force-refresh` / `daemon-wait-sync` / `daemon-logs` / `daemon-reload` / `daemon-list-projects` → `daemon-stop`；或 `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes` |
+| **安全图谱编辑** | `tx-begin` → `tx-status` → `update-node` / `update-edge` / `patch-profile` / `classify-endpoints` / `auto-enhance` / `heuristic-enhance` / `batch-confirm` / `rollback` / `fill-request` / `add-semantic-edges` / `semantic-status` / `audit-log` → `tx-commit`（带确认）→ 必要时 `tx-restore` / `tx-list-snapshots` / `tx-replay-wal` |
+| **保持图谱新鲜** | `daemon-start` → `daemon-status` → `daemon-pause` / `daemon-resume` / `daemon-force-refresh` / `daemon-wait-sync` / `daemon-logs` / `daemon-reload` / `daemon-list-projects` → `daemon-stop`；或 `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes`；精确按文件更新：`build-update --source SRC --graph DIR` 或 `quick-update --source SRC --graph DIR` |
 | **profile 与文档-代码** | `profile-health` → `profile-evolve` → `profile-bind-version`；`doc-code-check` → `doc-alignment-report` → `doc-signature-diff` → `doc-mark-stale` |
 | **图谱版本** | `graph-record-version` → `graph-history` → `graph-diff` |
-| **记忆管理** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory`；跨项目：`kb-global-share-memory` → `kb-global-search-memory` → `kb-global-import-memory` |
+| **记忆管理** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory`；知识简报：`brief-extract` → `brief-validate` → `brief-suggest` → `brief-migrate-legacy`；跨项目：`kb-global-share-memory` → `kb-global-search-memory` → `kb-global-import-memory` |
 | **导出 / 插件 / 基准** | `export-html` / `export-obsidian` / `web-ui`；`plugins` / `validate-plugin`；`bug-benchmark` |
 | **Embeddings（实验性）** | `embeddings-build` → `embeddings-search` |
 

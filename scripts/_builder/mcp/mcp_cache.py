@@ -8,6 +8,7 @@ import os
 import atexit
 import threading
 import logging
+import math
 
 
 _GRAPH_CACHE = {}
@@ -145,10 +146,18 @@ def _mcp_coerce_float(value, default: float = 0.0,
 
     _tool_kb_query used float(args.get('min_weight', 0.0))
     which crashed with ValueError on a non-numeric string from a client.
+
+    nan is explicitly rejected: float('nan') passes the try/except
+    (it doesn't raise) and survives clamp (max/min with nan returns nan
+    because all nan comparisons are False). Without this guard, nan
+    passed to query_kb's min_weight would silently zero out all results
+    (weight >= nan is always False).
     """
     try:
         x = float(value)
     except (TypeError, ValueError):
+        return default
+    if math.isnan(x):
         return default
     if lo is not None:
         x = max(lo, x)

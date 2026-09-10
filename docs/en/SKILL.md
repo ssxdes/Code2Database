@@ -44,9 +44,9 @@ top kb hits as a `_hints` field alongside graph rows.
 ```bash
 # 0. First time on a project: one-click ingestion (env-check fails fast)
 python3 scripts/code2database_builder.py make --source /path/to/project
-#   → phase 1 env-check BEFORE any build step: missing compile_commands.json /
+#   → stage 1 env-check BEFORE any build step: missing compile_commands.json /
 #     libclang / tree-sitter grammars are reported up front (never mid-build)
-#   → phase 2: scan -> build -> derived artifacts (value-flow, data-dep,
+#   → stage 2: scan -> build -> derived artifacts (value-flow, data-dep,
 #     #ifdef signals, FFI, brief, kb index, embeddings) -> exports
 #     (Obsidian vault, HTML) -> profile-health report
 #   → make --check: env-check only, no build

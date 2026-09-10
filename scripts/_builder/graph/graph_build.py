@@ -4,6 +4,7 @@ import logging
 import os
 import json
 import sys
+import sqlite3
 from _builder.graph.streaming_graph import StreamingGraph
 import re
 import time
@@ -4567,6 +4568,22 @@ def cmd_build(args):
         print(f"[SQLite] Exporting to {db_path}...", file=sys.stderr)
         _sqlite_start = time.time()
         with SQLiteStore(db_path) as store:
+            # Wipe legacy graph tables before the export so a rebuild into
+            # an existing DB does not accumulate duplicate edges / access
+            # rows (store_edges and the access batches are plain INSERT,
+            # and store_functions is INSERT OR REPLACE — so without a wipe
+            # every rebuild doubled the edges/access tables while stale
+            # deleted-file nodes persisted forever). Order respects the
+            # edges/entry_scores/field_access/global_access → functions FK.
+            _wipe_conn = store._conn
+            for _tbl in ("edges", "entry_scores", "field_access",
+                         "global_access", "communities", "domain_stats"):
+                try:
+                    _wipe_conn.execute(f"DELETE FROM {_tbl}")
+                except sqlite3.Error:
+                    pass
+            _wipe_conn.execute("DELETE FROM functions")
+            _wipe_conn.commit()
             # Store functions AND populate field_access/global_access in a
             # single pass over G.nodes(data=True). Previously these were two
             # separate full-graph traversals (lines 7228 and 7242), costing

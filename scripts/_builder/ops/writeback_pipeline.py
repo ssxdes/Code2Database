@@ -119,6 +119,7 @@ class WritebackPipeline:
         self.graph_dir = graph_dir
         self.source_root = source_root
         self.renderer = renderer or SourceRenderer(conn, source_root=source_root)
+        self.git_no_verify: bool = False
 
     # ------------------------------------------------------------------
     # Transaction lifecycle
@@ -175,12 +176,14 @@ class WritebackPipeline:
         commit_message: Optional[str] = None,
         compile_args: Optional[list[str]] = None,
         lint_tool: Optional[str] = None,
+        git_no_verify: bool = False,
     ) -> WritebackResult:
         """Commit the write-back transaction.
 
         Runs all gates in order. On any failure, rolls back the transaction
         (DB state restored, disk file untouched).
         """
+        self.git_no_verify = git_no_verify
         start = time.time()
         result = WritebackResult(transaction_id=tx_id)
 

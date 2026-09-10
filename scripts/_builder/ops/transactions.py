@@ -1282,11 +1282,12 @@ def cmd_tx_commit(args):
                     pipe = WritebackPipeline(conn, graph_dir, graph_dir)
                     result = pipe.commit(
                         writeback_tx_id,
-                        run_compile=getattr(args, "run_compile", True),
+                        run_compile=not getattr(args, "skip_compile", False),
                         run_lint=getattr(args, "run_lint", False),
                         run_clang_format=getattr(args, "run_clang_format", False),
                         git_commit=getattr(args, "git_commit", False),
                         commit_message=getattr(args, "commit_message", None),
+                        git_no_verify=getattr(args, "git_no_verify", False),
                     )
                     response["writeback"] = result.to_dict()
                     if not result.applied:

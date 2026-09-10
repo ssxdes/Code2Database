@@ -2319,9 +2319,24 @@ def main():
     p_txb = sub.add_parser("tx-begin", help="Begin a graph transaction (snapshot + WAL + write lock)")
     p_txb.add_argument("--graph", required=True, help="Call graph output directory")
     p_txb.add_argument("--description", default="", help="Description of the transaction")
+    p_txb.add_argument("--file-id", type=int, default=None, dest="file_id",
+                       help="File ID for write-back transaction (registers a pending "
+                            "WritebackPipeline tx so tx-commit can run render→compile→lint→git)")
 
     p_txc = sub.add_parser("tx-commit", help="Commit the current transaction (clears WAL)")
     p_txc.add_argument("--graph", required=True, help="Call graph output directory")
+    p_txc.add_argument("--skip-compile", action="store_true", default=False,
+                       help="Skip the compile gate (compile runs by default for write-back txs)")
+    p_txc.add_argument("--run-lint", action="store_true", default=False,
+                       help="Run the lint gate after writing to disk")
+    p_txc.add_argument("--run-clang-format", action="store_true", default=False, dest="run_clang_format",
+                       help="Run clang-format on the rendered source before writing to disk")
+    p_txc.add_argument("--git-commit", action="store_true", default=False, dest="git_commit",
+                       help="Git-commit the written file after all gates pass")
+    p_txc.add_argument("--commit-message", default=None, dest="commit_message",
+                       help="Git commit message (used with --git-commit)")
+    p_txc.add_argument("--no-verify", action="store_true", default=False, dest="git_no_verify",
+                       help="Pass --no-verify to git commit (bypasses pre-commit hooks)")
 
     p_txr = sub.add_parser("tx-rollback", help="Rollback the current transaction (restores snapshot)")
     p_txr.add_argument("--graph", required=True, help="Call graph output directory")

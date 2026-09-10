@@ -18,6 +18,7 @@ Memory budget for 1.4M nodes / 4.35M edges (deferred mode):
 import gc
 import sys
 import time
+import sqlite3
 from typing import Dict, List, Tuple, Set
 import logging
 
@@ -210,6 +211,22 @@ class StreamingGraph:
         # Views
         self._node_view = _StreamingNodeView(self.id_registry)
         self._edge_view = _StreamingEdgeView(self)
+
+        # Wipe legacy graph tables so a rebuild into an existing DB starts
+        # clean. Without this, close()'s function rewrite (and the mid-build
+        # edge flushes) hit FOREIGN KEY constraint failures because old-build
+        # edges still reference the functions being deleted, and stale
+        # deleted-file nodes persisted forever. Order respects the
+        # edges/entry_scores/field_access/global_access → functions FK.
+        _wipe_conn = self._store._conn
+        for _tbl in ("edges", "entry_scores", "field_access",
+                     "global_access", "communities", "domain_stats"):
+            try:
+                _wipe_conn.execute(f"DELETE FROM {_tbl}")
+            except sqlite3.Error:
+                pass
+        _wipe_conn.execute("DELETE FROM functions")
+        _wipe_conn.commit()
 
     # ---- Deferred mode ----
 
@@ -585,6 +602,12 @@ class StreamingGraph:
     def _flush_edges(self):
         """Flush queued edges to SQLite."""
         if self._edge_batch:
+            # Flush pending functions first so edge endpoints exist in the
+            # functions table before the edges INSERT (FK constraint is on).
+            # Without this, an edge-batch flush fired before the function
+            # batch reached its threshold raised FOREIGN KEY constraint
+            # failed mid-build.
+            self._flush_functions()
             self._store.store_edges(self._edge_batch, autocommit=False)
             self._edges_flushed += len(self._edge_batch)
             self._edge_batch = []
@@ -644,13 +667,19 @@ class StreamingGraph:
             # Start a single transaction for the entire write
             self._store._conn.execute("BEGIN TRANSACTION")
 
-            # Clear tables
-            self._store._conn.execute("DELETE FROM functions")
+            # Clear tables. Normal mode: edges are in memory (_edge_data),
+            # not yet in the DB, so deleting functions is FK-safe and the
+            # rewrite from id_registry/_edge_data captures the final state.
+            # Deferred mode: edges were streamed to the DB during the build
+            # (init wiped old data, so all streamed edges are this build's).
+            # Deleting functions there would violate the edges→functions FK,
+            # and the streamed edges must be kept — so skip the function
+            # delete and rely on store_functions' INSERT OR REPLACE (upsert)
+            # to refresh mutated attributes. Edges are never cleared in
+            # deferred mode (they are already persisted).
             if not self._deferred:
-                # Normal mode: edges will be rewritten from _edge_data, so clear
-                # them. Deferred mode: edges were streamed during build — do NOT
-                # clear (would lose the streamed edges).
                 self._store._conn.execute("DELETE FROM edges")
+                self._store._conn.execute("DELETE FROM functions")
 
             _REWRITE_BATCH = 5000
 

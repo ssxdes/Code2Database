@@ -693,13 +693,7 @@ def cmd_field_access(args):
 # `field-flow --value NULL` matches `(struct block_device *)0`, `((void *)0)`,
 # `0`, `0L`, etc. — critical for null-pointer-deref analysis where the bug
 # report says "who set field to NULL" but the source uses pointer-cast zero.
-
-import re as _re_null_form
-import logging
-_NULL_FORM_RE = _re_null_form.compile(
-    r"^\(*\s*(?:void\s*\*|[A-Za-z_][A-Za-z0-9_ ]*\*\s*|\s*)\)*0(L?)\s*\)*$",
-    _re_null_form.IGNORECASE,
-)
+# (The NULL-form pattern itself lives in query_helpers next to its users.)
 
 
 

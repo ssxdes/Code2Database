@@ -896,6 +896,13 @@ def _io_path_bfs(G: nx.DiGraph, start_id: str, bindings: dict,
     return result, parent
 
 
+# C NULL-form pattern: `0`, `0L`, `(void *)0`, `(struct foo *)0`, with
+# optional nesting/whitespace. Shared by _value_is_null_form and
+# _value_is_null_form_match below (field-flow / path-guards value filters).
+_NULL_FORM_RE = re.compile(
+    r"^\(*\s*(?:void\s*\*|[A-Za-z_][A-Za-z0-9_ ]*\*\s*|\s*)\)*0(L?)\s*\)*$",
+    re.IGNORECASE,
+)
 
 
 def _value_is_null_form(assigned_value: str) -> bool:

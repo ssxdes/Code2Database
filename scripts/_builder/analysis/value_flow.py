@@ -699,6 +699,7 @@ def cmd_value_flow(args):
 
     if getattr(args, "build", False):
         edges = build_data_flow_edges(G)
+        attach_data_flow_to_graph(G, edges)
         out_path = os.path.join(graph_dir, ".code2database_data_flow.json")
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump({"edges": edges, "count": len(edges)}, f,
@@ -706,6 +707,24 @@ def cmd_value_flow(args):
         print(f"Built {len(edges)} DATA_FLOW/RETURN_FLOW edges → {out_path}",
               file=sys.stderr)
         return
+
+    # For reverse/taint/interprocedural traces, ensure DATA_FLOW edges are
+    # attached to the in-memory graph. The --build command writes them to
+    # .code2database_data_flow.json but never attached them to G, so the
+    # DATA_FLOW/RETURN_FLOW traversal branches in _propagate were dead.
+    _df_path = os.path.join(graph_dir, ".code2database_data_flow.json")
+    if os.path.exists(_df_path):
+        try:
+            with open(_df_path, "r", encoding="utf-8") as _f:
+                _df = json.load(_f)
+            attach_data_flow_to_graph(G, _df.get("edges", []))
+        except (json.JSONDecodeError, OSError):
+            pass
+    else:
+        # No persisted edges — build on-the-fly and attach (don't persist;
+        # the user didn't ask for --build).
+        _df_edges = build_data_flow_edges(G)
+        attach_data_flow_to_graph(G, _df_edges)
 
     if getattr(args, "reverse", False):
         node = args.node

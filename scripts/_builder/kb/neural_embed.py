@@ -182,9 +182,12 @@ def semantic_search(graph_dir: str, query: str, top_n: int = 20) -> Dict[str, An
                 "SELECT id, title, body, source_kind, source_file, weight, kind "
                 "FROM kb_paragraphs LIMIT 10000"
             ).fetchall()
-            for r in rows:
-                text = (r["title"] or "") + " " + (r["body"] or "")
-                emb = get_embedding(text[:500])  # truncate for speed
+            # Batch the embedding requests instead of calling get_embedding
+            # per row (each call re-ran _detect_provider, making ~2 network
+            # round-trips per row for Ollama auto-mode on 10K rows).
+            texts = [(r["title"] or "") + " " + (r["body"] or "") for r in rows]
+            embeddings = get_embedding_batch([t[:500] for t in texts])
+            for r, emb in zip(rows, embeddings):
                 if emb is not None:
                     sim = cosine_similarity(query_emb, emb)
                     if sim > 0.1:
@@ -200,6 +203,12 @@ def semantic_search(graph_dir: str, query: str, top_n: int = 20) -> Dict[str, An
                         })
         finally:
             conn.close()
+
+    # Sort dense by similarity descending so RRF rank reflects relevance,
+    # not DB row order (the previous code fused dense in row-id order,
+    # making the dense channel's 'rank 1' whichever row happened to be
+    # first by id — the RRF fusion scores were wrong).
+    dense.sort(key=lambda d: -d["score"])
 
     # RRF fusion
     K = 60

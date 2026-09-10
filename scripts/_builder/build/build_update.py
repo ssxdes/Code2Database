@@ -18,6 +18,15 @@ inference pipeline (cross-file resolution, vtable dispatch, community
 detection). build-update trades that for turnaround: the SQLite graph
 tracks source edits in seconds. Derived artifacts (indexes, docs,
 embeddings) refresh on the next make/build.
+
+Incoming-edge loss: _delete_legacy_rows removes BOTH the changed file's
+outgoing edges (invoker_id IN old_ids) AND incoming edges from other
+files (invoked_id IN old_ids). Only the changed file is rescanned, so
+its outgoing edges are rebuilt, but incoming edges from other files
+are NOT rebuilt — those calling files aren't rescanned. This means
+cross-file call edges pointing INTO the changed file are permanently
+lost until a full `build` re-runs cross-file resolution. See SKILL.md
+"build-update cross-file edge limitation" for user guidance.
 """
 
 import json

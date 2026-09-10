@@ -195,6 +195,8 @@ class TestGoInterfaceDispatchBuildPhase(unittest.TestCase):
             if d.get("relation") == "DISPATCH":
                 self.assertEqual(d.get("confidence"), "INFERRED")
                 self.assertIn("Writer", d.get("call_condition", ""))
+                self.assertEqual(d.get("concurrency"), "dispatch")
+                self.assertTrue(d.get("evidence", ""))
 
     def test_partial_implementor_gets_no_dispatch(self):
         """M5: a type that has the method but doesn't satisfy the FULL

@@ -3295,6 +3295,8 @@ def _add_go_interface_dispatch(G) -> int:
                         call_condition=f"via {iface} (dynamic dispatch)",
                         confidence="INFERRED",
                         confidence_score=0.5,
+                        concurrency="dispatch",
+                        evidence=f"go interface dispatch: {iface}.{method} -> {tname}.{method}",
                     )
                     added += 1
     return added

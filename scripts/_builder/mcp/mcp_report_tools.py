@@ -179,7 +179,7 @@ def _tool_verify_consistency(args: dict, graph_dir: str) -> dict:
 def _tool_edit_token(args: dict, graph_dir: str) -> dict:
     """edit_token(token_id, new_text) -> {affected_nodes, transaction_id}"""
     token_id = _mcp_coerce_int(args.get("token_id", 0), 0, 0, 2**63-1)
-    new_text = args.get("new_text", "")
+    new_text = _mcp_coerce_str(args.get("new_text", ""))
     if not token_id:
         return {"error": "token_id is required"}
     if not new_text:
@@ -341,7 +341,7 @@ def _tool_delete_token(args: dict, graph_dir: str) -> dict:
 
 def _tool_find_macros(args: dict, graph_dir: str) -> list:
     """find_macros(name?) -> [{name, params, body, defined_at, used_at[]}]"""
-    name = args.get("name")
+    name = _mcp_coerce_str(args.get("name"))
     conn = None
     try:
         conn = _get_conn(graph_dir)
@@ -436,7 +436,7 @@ def _tool_get_pp_branches(args: dict, graph_dir: str) -> list:
 
 def _tool_get_string_literals(args: dict, graph_dir: str) -> list:
     """get_string_literals(pattern?) -> [{loc, bytes, in_function}]"""
-    pattern = args.get("pattern")
+    pattern = _mcp_coerce_str(args.get("pattern"))
     conn = None
     try:
         conn = _get_conn(graph_dir)
@@ -477,8 +477,8 @@ def _tool_get_string_literals(args: dict, graph_dir: str) -> list:
 
 def _tool_find_symbol(args: dict, graph_dir: str) -> dict:
     """find_symbol(name, kind?) -> {loc, signature, doc, token_range}"""
-    name = args.get("name", "")
-    kind = args.get("kind")
+    name = _mcp_coerce_str(args.get("name", ""))
+    kind = _mcp_coerce_str(args.get("kind"))
     if not name:
         return {"error": "name is required"}
     conn = None
@@ -534,7 +534,7 @@ def _tool_find_symbol(args: dict, graph_dir: str) -> dict:
 
 def _tool_callers_of(args: dict, graph_dir: str) -> list:
     """callers_of(fn) -> [{caller, loc, call_kind}]"""
-    fn = args.get("fn", "")
+    fn = _mcp_coerce_str(args.get("fn", ""))
     if not fn:
         return [{"error": "fn is required"}]
     conn = None
@@ -566,7 +566,7 @@ def _tool_callers_of(args: dict, graph_dir: str) -> list:
 
 def _tool_callees_of(args: dict, graph_dir: str) -> list:
     """callees_of(fn) -> [{callee, loc, call_kind}]"""
-    fn = args.get("fn", "")
+    fn = _mcp_coerce_str(args.get("fn", ""))
     if not fn:
         return [{"error": "fn is required"}]
     conn = None
@@ -598,7 +598,7 @@ def _tool_callees_of(args: dict, graph_dir: str) -> list:
 
 def _tool_who_writes(args: dict, graph_dir: str) -> list:
     """who_writes(global_var) -> [{fn, loc}]"""
-    var = args.get("global_var", "")
+    var = _mcp_coerce_str(args.get("global_var", ""))
     if not var:
         return [{"error": "global_var is required"}]
     conn = None
@@ -625,7 +625,7 @@ def _tool_who_writes(args: dict, graph_dir: str) -> list:
 
 def _tool_who_reads(args: dict, graph_dir: str) -> list:
     """who_reads(global_var) -> [{fn, loc}]"""
-    var = args.get("global_var", "")
+    var = _mcp_coerce_str(args.get("global_var", ""))
     if not var:
         return [{"error": "global_var is required"}]
     conn = None
@@ -712,7 +712,7 @@ def _tool_get_context(args: dict, graph_dir: str) -> dict:
 
 def _tool_impact_analysis(args: dict, graph_dir: str) -> dict:
     """impact_analysis(symbol) -> {affected_files, affected_fns, risk_level}"""
-    symbol = args.get("symbol", "")
+    symbol = _mcp_coerce_str(args.get("symbol", ""))
     if not symbol:
         return {"error": "symbol is required"}
     conn = None
@@ -763,7 +763,7 @@ def _tool_impact_analysis(args: dict, graph_dir: str) -> dict:
 
 def _tool_get_module_view(args: dict, graph_dir: str) -> dict:
     """get_module_view(module) -> {files, symbols_summary, deps, metrics}"""
-    module = args.get("module", "")
+    module = _mcp_coerce_str(args.get("module", ""))
     if not module:
         return {"error": "module is required"}
     conn = None
@@ -858,8 +858,8 @@ def _tool_indirect_targets(args: dict, graph_dir: str) -> list:
 
 def _tool_alias_set(args: dict, graph_dir: str) -> list:
     """alias_set(variable, scope?) -> [{alias_var, kind, confidence}]"""
-    variable = args.get("variable", "")
-    scope = args.get("scope")
+    variable = _mcp_coerce_str(args.get("variable", ""))
+    scope = _mcp_coerce_str(args.get("scope"))
     if not variable:
         return [{"error": "variable is required"}]
     conn = None
@@ -935,8 +935,8 @@ def _tool_alias_set(args: dict, graph_dir: str) -> list:
 
 def _tool_trace_data_flow(args: dict, graph_dir: str) -> dict:
     """trace_data_flow(from_var, to_var?) -> {path, deps, locs}"""
-    from_var = args.get("from_var", "")
-    to_var = args.get("to_var")
+    from_var = _mcp_coerce_str(args.get("from_var", ""))
+    to_var = _mcp_coerce_str(args.get("to_var"))
     if not from_var:
         return {"error": "from_var is required"}
     conn = None
@@ -1017,7 +1017,7 @@ def _tool_trace_data_flow(args: dict, graph_dir: str) -> dict:
 
 def _tool_cfg_of(args: dict, graph_dir: str) -> dict:
     """cfg_of(fn) -> {blocks, edges, conditions}"""
-    fn = args.get("fn", "")
+    fn = _mcp_coerce_str(args.get("fn", ""))
     if not fn:
         return {"error": "fn is required"}
     conn = None
@@ -1066,8 +1066,8 @@ def _tool_cfg_of(args: dict, graph_dir: str) -> dict:
 
 def _tool_path_sensitive_states(args: dict, graph_dir: str) -> dict:
     """path_sensitive_states(fn, condition?) -> {paths, constraints, states}"""
-    fn = args.get("fn", "")
-    condition = args.get("condition")
+    fn = _mcp_coerce_str(args.get("fn", ""))
+    condition = _mcp_coerce_str(args.get("condition"))
     if not fn:
         return {"error": "fn is required"}
     conn = None
@@ -1119,7 +1119,7 @@ def _tool_path_sensitive_states(args: dict, graph_dir: str) -> dict:
 
 def _tool_precise_write_set(args: dict, graph_dir: str) -> list:
     """precise_write_set(global_var) -> [{fn, loc, via_path}]"""
-    var = args.get("global_var", "")
+    var = _mcp_coerce_str(args.get("global_var", ""))
     if not var:
         return [{"error": "global_var is required"}]
     conn = None
@@ -1149,7 +1149,7 @@ def _tool_precise_write_set(args: dict, graph_dir: str) -> list:
 
 def _tool_dead_code_in(args: dict, graph_dir: str) -> list:
     """dead_code_in(fn) -> [{loc, reason}]"""
-    fn = args.get("fn", "")
+    fn = _mcp_coerce_str(args.get("fn", ""))
     if not fn:
         return [{"error": "fn is required"}]
     conn = None
@@ -1195,14 +1195,14 @@ def _tool_dead_code_in(args: dict, graph_dir: str) -> list:
 def _tool_commit_db_transaction(args: dict, graph_dir: str) -> dict:
     """commit_db_transaction(transaction_id) -> {render_ok, consistency_ok, ...}"""
     from _builder.ops.writeback_pipeline import commit_db_transaction as _commit
-    tx_id = args.get("transaction_id", "")
+    tx_id = _mcp_coerce_str(args.get("transaction_id", ""))
     if not tx_id:
         return {"error": "transaction_id is required"}
     run_compile = bool(args.get("run_compile", True))
     run_lint = bool(args.get("run_lint", False))
     run_clang_format = bool(args.get("run_clang_format", False))
     git_commit = bool(args.get("git_commit", False))
-    commit_message = args.get("commit_message")
+    commit_message = _mcp_coerce_str(args.get("commit_message"))
     conn = None
     try:
         conn = _get_conn(graph_dir)
@@ -1222,7 +1222,7 @@ def _tool_commit_db_transaction(args: dict, graph_dir: str) -> dict:
 def _tool_rollback_db_transaction(args: dict, graph_dir: str) -> dict:
     """rollback_db_transaction(transaction_id) -> {rolled_back: true}"""
     from _builder.ops.writeback_pipeline import rollback_db_transaction as _rollback
-    tx_id = args.get("transaction_id", "")
+    tx_id = _mcp_coerce_str(args.get("transaction_id", ""))
     if not tx_id:
         return {"error": "transaction_id is required"}
     conn = None
@@ -1324,7 +1324,7 @@ def _tool_delete_node(args: dict, graph_dir: str) -> dict:
 
 def _tool_add_function(args: dict, graph_dir: str) -> dict:
     """add_function(signature, body_tokens?, file_id?) -> {symbol_id, token_ids, transaction_id}"""
-    signature = args.get("signature", "")
+    signature = _mcp_coerce_str(args.get("signature", ""))
     body_tokens = args.get("body_tokens", [])
     file_id = _mcp_coerce_int(args.get("file_id", 0) or 0, 0, 0, 2**63-1)
     if not signature:

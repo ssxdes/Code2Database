@@ -95,7 +95,7 @@ python3 scripts/code2database_builder.py serve    # MCP server (83 tools)
 | `daemon` | Show daemon status (alias for `daemon-status`; to start sync use `daemon-start`) | Ops |
 | `health` | Profile health score (requires `--source`). For graph freshness use `daemon-status` or `session-init` | — |
 
-All 249 CLI commands remain accessible; the 25 above cover ~95% of agent workflows.
+All 249 CLI commands remain accessible; the 26 above cover ~95% of agent workflows.
 
 ## Supported Languages
 

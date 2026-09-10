@@ -95,7 +95,7 @@ python3 scripts/code2database_builder.py serve    # MCP 服务器（83 工具）
 | `daemon` | 显示守护进程状态（`daemon-status` 的别名；启动同步用 `daemon-start`） | Ops |
 | `health` | Profile 健康评分（需要 `--source`）。图谱新鲜度用 `daemon-status` 或 `session-init` | — |
 
-全部 249 个 CLI 命令仍可访问；上述 25 个覆盖 ~95% 的 agent 工作流。
+全部 249 个 CLI 命令仍可访问；上述 26 个覆盖 ~95% 的 agent 工作流。
 
 ## 支持语言
 

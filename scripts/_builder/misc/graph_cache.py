@@ -420,8 +420,15 @@ class GraphCache:
             if not source_file or not line:
                 return {"code": nd.get("body_text", "")[:2000],
                         "file": source_file, "line": line}
+            # Resolve a possibly-relative source_file against source_root
+            # (functions.source_file may be relative to keep graphs portable
+            # across machines), with path-traversal protection. Mirrors the
+            # MCP get-code-snippet path so /api/code shows real source
+            # instead of falling back to body_text for relative-path graphs.
+            from _builder.utils import resolve_source_file
+            resolved = resolve_source_file(source_file, self.graph_dir) or source_file
             try:
-                with open(source_file, "r", encoding="utf-8", errors="replace") as f:
+                with open(resolved, "r", encoding="utf-8", errors="replace") as f:
                     lines = f.readlines()
                 start = max(0, line - context_lines - 1)
                 end = min(len(lines), line + context_lines)

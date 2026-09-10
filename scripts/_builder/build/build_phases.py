@@ -651,6 +651,7 @@ def _emit_ops_bind_edges(G, extraction: dict, profile,
                 confidence_score=1.0,
                 preproc_condition=vtable_cond,
                 preproc_alive=True,
+                concurrency="ops_bind",
                 evidence=f"vtable_registration: {stype}.{field_name} = "
                          f"{fn_name} (var={var_name}, condition={vtable_cond or 'none'})",
             )

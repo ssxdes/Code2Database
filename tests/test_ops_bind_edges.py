@@ -175,6 +175,8 @@ class TestOpsBindEdges(unittest.TestCase):
         self.assertEqual(ops_edges[0][2].get("confidence"), "EXTRACTED")
         self.assertEqual(ops_edges[0][2].get("source_tag"), "vtable_registration")
         self.assertAlmostEqual(ops_edges[0][2].get("confidence_score", 0), 1.0)
+        self.assertEqual(ops_edges[0][2].get("concurrency"), "ops_bind")
+        self.assertTrue(ops_edges[0][2].get("evidence", ""))
 
     def test_query_ops_bind_by_field_name(self):
         """After building, we can query 'which functions bind to file_operations.read_iter'."""

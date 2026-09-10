@@ -802,7 +802,11 @@ def _synthesize_from_legacy(scan_result: dict, batch: IngestBatch,
             byte_end=int(fn.get('end_byte', 0) or fn.get('byte_end', 0) or 0),
             type_spelling=fn.get('return_type', '') or fn.get('type_spelling', '') or '',
             attrs=attrs,
-            source_layer='legacy',
+            # 'analysis': these nodes are synthesized from legacy scan
+            # data when no cgdb_nodes were emitted (tree-sitter-only
+            # path). The schema CHECK allows ('ast','cfg','analysis','llm');
+            # 'legacy' was rejected and rolled back the whole batch.
+            source_layer='analysis',
             confidence=0.9,
             commit_hash=commit_hash or None,
             first_seen_version=version_id,
@@ -832,7 +836,7 @@ def _synthesize_from_legacy(scan_result: dict, batch: IngestBatch,
                 line=0, col=0,
                 byte_start=0, byte_end=0,
                 attrs={'external': True},
-                source_layer='legacy',
+                source_layer='analysis',
                 confidence=0.5,
                 commit_hash=commit_hash or None,
                 first_seen_version=version_id,

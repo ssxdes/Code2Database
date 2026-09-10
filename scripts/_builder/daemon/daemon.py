@@ -2044,12 +2044,47 @@ def cmd_daemon_start(args):
     daemon.start()
 
 
+def _pid_is_our_daemon(pid: int) -> bool:
+    """Best-effort check that pid is a Code2Database daemon process.
+
+    Guards daemon-stop against SIGTERMing an unrelated process that
+    recycled a stale daemon PID. On Linux, reads /proc/<pid>/cmdline and
+    looks for the builder entry script + the daemon subcommand. On other
+    platforms (or when /proc is unreadable) the check is permissive
+    (returns True) so a real daemon is not falsely refused a stop.
+    """
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            cmd = f.read().replace(b"\x00", b" ").decode("utf-8", "replace")
+    except (OSError, ValueError):
+        return True  # not Linux or /proc unreadable — be permissive
+    # The daemon runs as: python3 .../code2database_builder.py daemon ...
+    return ("code2database" in cmd or "code2database_builder" in cmd) and "daemon" in cmd
+
+
 def cmd_daemon_stop(args):
     """Stop a running daemon."""
     graph_dir = args.graph
     state = DaemonState.read(graph_dir)
     if not state.pid:
         print(json.dumps({"ok": False, "error": "no daemon PID in state file"}))
+        sys.exit(1)
+    if not _pid_is_our_daemon(state.pid):
+        # Stale state file pointing at a recycled/foreign PID: clean up
+        # the state instead of killing an unrelated process.
+        try:
+            DaemonState(status=STATUS_STOPPED, pid=0).write(graph_dir)
+        except Exception:
+            pass
+        print(json.dumps({"ok": False,
+                          "error": "daemon PID not running or belongs to "
+                                   "another process; state cleared"}))
         sys.exit(1)
     try:
         os.kill(state.pid, signal.SIGTERM)

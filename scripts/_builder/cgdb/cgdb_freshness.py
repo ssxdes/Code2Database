@@ -101,7 +101,11 @@ def check_freshness(graph_dir: str, source_root: str = "",
             pass
     current_commit = _detect_git_head(source_root or os.path.dirname(graph_dir))
     result["current_commit"] = current_commit
-    if current_commit and result["last_scan_commit"] != "unknown":
+    # Only compare when git actually reported a commit. The 'unknown'
+    # sentinel (git missing / not a repo) is truthy, so without this
+    # guard any non-git project was perpetually reported stale with a
+    # bogus 'HEAD changed' message.
+    if current_commit and current_commit != "unknown" and result["last_scan_commit"] != "unknown":
         if current_commit != result["last_scan_commit"]:
             result["git_head_changed"] = True
             result["is_fresh"] = False

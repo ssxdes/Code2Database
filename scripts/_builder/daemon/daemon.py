@@ -2035,7 +2035,7 @@ def cmd_daemon_start(args):
     _sock = _daemon_socket_path(graph_dir)
     print(f"[daemon] socket: {_sock}", file=sys.stderr)
     print(f"[daemon] status file: {graph_dir}/.daemon_status.json", file=sys.stderr)
-    print(f"[daemon] log file: ~/.code2database/daemon-{Path(graph_dir).name}.log",
+    print(f"[daemon] log file: ~/.callgraph/daemon-{Path(graph_dir).name}.log",
           file=sys.stderr)
     print(f"[daemon] startup grace: {daemon.config.get('startup_grace_sec', 60.0):.0f}s "
           f"(sync dispatch held after start; wait-sync/force-refresh end it early)",

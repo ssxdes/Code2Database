@@ -1266,6 +1266,20 @@ def _try_cte_execution(query: Query, cgdb_store) -> Optional[List[Dict]]:
         start_where = (" WHERE " + " AND ".join(start_filters)) if start_filters else ""
         end_where = (" AND " + " AND ".join(end_filters)) if end_filters else ""
 
+        # When the query has an aggregate / GROUP BY, applying LIMIT inside
+        # the CTE SQL truncates rows BEFORE aggregation (e.g. COUNT(*) LIMIT
+        # 10 returns 10, not the true count). Defer LIMIT to the caller's
+        # post-aggregation slice in that case; otherwise push it into SQL.
+        has_post_aggregate = bool(query.group_by) or any(
+            item.is_aggregate for item in query.return_items
+        )
+        if has_post_aggregate:
+            sql_limit_clause = ""
+            sql_limit_val = 50000  # safety cap; aggregation handles the real LIMIT
+        else:
+            sql_limit_clause = "\n            LIMIT ?"
+            sql_limit_val = query.limit if query.limit is not None else 500
+
         sql = f"""
             WITH RECURSIVE traverse(depth, node_id, start_id, path_ids) AS (
                 SELECT 0, n0.id, n0.id, ',' || n0.id || ','
@@ -1285,10 +1299,9 @@ def _try_cte_execution(query: Query, cgdb_store) -> Optional[List[Dict]]:
             FROM traverse t
             JOIN cgdb_nodes n_start ON n_start.id = t.start_id
             JOIN cgdb_nodes n_end ON n_end.id = t.node_id
-            WHERE t.depth >= ?{end_where}
-            LIMIT ?
+            WHERE t.depth >= ?{end_where}{sql_limit_clause}
         """
-        params = start_params + [max_depth, edge_kind, rel.min_hops] + end_params + [query.limit if query.limit is not None else 500]
+        params = start_params + [max_depth, edge_kind, rel.min_hops] + end_params + ([sql_limit_val] if sql_limit_clause else [])
         rows = conn.execute(sql, params).fetchall()
         results: List[Dict] = []
         for r in rows:

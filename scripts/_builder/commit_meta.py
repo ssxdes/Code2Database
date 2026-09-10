@@ -193,21 +193,16 @@ def query_blame_for_lines(source_root: str, file_path: str,
     if not out:
         return {}
     result = {}
-    current_commit = None
     for line in out.split("\n"):
-        if line.startswith("commit "):
-            current_commit = line.split()[1]
-        elif re.match(r"^([0-9a-f]{40}) (\d+) (\d+) (\d+)", line):
-            # Format: <hash> <orig-line> <final-line> <line-count>
-            parts = line.split()
-            if len(parts) >= 3:
-                try:
-                    final_line = int(parts[2])
-                    if current_commit:
-                        result[final_line] = current_commit
-                except ValueError:
-                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                    pass
+        m = re.match(r"^([0-9a-f]{40}) (\d+) (\d+) (\d+)", line)
+        if m:
+            # --line-porcelain header: <hash> <orig-line> <final-line> <count>.
+            # The commit hash is parts[0]; a separate 'commit <hash>' line
+            # is only emitted by --porcelain (grouped), not --line-porcelain
+            # (per-line), so reading current_commit never worked here.
+            commit_hash = m.group(1)
+            final_line = int(m.group(3))
+            result[final_line] = commit_hash
     return result
 
 

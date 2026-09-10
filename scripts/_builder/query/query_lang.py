@@ -303,13 +303,21 @@ class _Parser:
         raise SyntaxError(f"Expected literal, got {tok}")
 
     def _parse_rel(self) -> RelPattern:
-        # Already peeked: OP "-" or "<-"
-        direction = "->"
+        # Relationship forms:
+        #   (a)-[:R]->(b)   forward
+        #   (a)<-[:R]-(b)   reverse
+        #   (a)-[:R]-(b)    undirected
+        #   (a)<-(b)        bare reverse
+        #   (a)-(b)         bare undirected
+        # The leading half is "<-" (reverse arrow, complete) or "-" (the
+        # start of a forward/undirected arrow). Direction is finalized once
+        # the optional bracket and closing half are consumed.
+        leading_reverse = False
         if self._accept("OP", "<-"):
-            direction = "<-"
+            leading_reverse = True
         else:
             self._expect("OP", "-")
-        rel = RelPattern(direction=direction)
+        rel = RelPattern(direction="<-" if leading_reverse else "-")
         if self._accept("PUNCT", "["):
             tok = self._peek()
             if tok and tok[0] == "WORD":
@@ -330,14 +338,20 @@ class _Parser:
                     else:
                         rel.max_hops = rel.min_hops
             self._expect("PUNCT", "]")
-        # Closing direction
-        if direction == "->":
-            self._expect("OP", "->")
-        elif direction == "<-":
-            pass  # already consumed <- at start
-        else:
-            # could end with - (undirected) or ->
-            self._accept("OP", "->")
+            # Closing half: "->" (forward) or "-" (reverse/undirected).
+            if self._accept("OP", "->"):
+                if leading_reverse:
+                    raise SyntaxError("Cannot mix <- and -> in one relationship")
+                rel.direction = "->"
+            else:
+                self._expect("OP", "-")
+                # closing "-": reverse if leading was "<-", else undirected
+                rel.direction = "<-" if leading_reverse else "-"
+        # Bare form (no bracket): direction already set from the leading
+        # half — "<-" => reverse, "-" => undirected. A bare "-" is treated
+        # as undirected (forward needs the explicit "->" closing, which
+        # only appears with a bracket; bare "->" is not a leading token
+        # since _parse_path only enters here on "-" or "<-").
         return rel
 
     def _parse_where(self) -> WhereClause:
@@ -892,12 +906,19 @@ def _execute_rel_match(query: Query, G, left: NodePattern, rel: RelPattern,
                        right: NodePattern) -> List[Dict]:
     rows = []
     # Determine traversal direction
+    # Determine traversal direction.
+    #   "->" : nid is the source, successors are targets.
+    #   "<-" : nid is the target, predecessors are sources.
+    #   "-"  : undirected — successors + predecessors.
+    # In all cases the left pattern binds to nid and the right pattern
+    # binds to the neighbor, so (a)-[:R]->(b) yields a=source,b=target
+    # and (a)<-[:R]-(b) yields a=target,b=source (b points to a).
     if rel.direction == "->":
         src_pat, dst_pat = left, right
         edge_iter = G.out_edges
         swap = False
     elif rel.direction == "<-":
-        src_pat, dst_pat = right, left
+        src_pat, dst_pat = left, right
         edge_iter = G.in_edges
         swap = False
     else:
@@ -937,10 +958,14 @@ def _execute_rel_match(query: Query, G, left: NodePattern, rel: RelPattern,
                 continue
             seen_pairs.add(pair_key)
             binding = {}
+            # For "->" and "<-" alike: nid is the left node, neighbor is
+            # the right node. (For "<-" nid is the target and its
+            # predecessor is the source, so (a)<-[:R]-(b) yields a=nid,
+            # b=neighbor — i.e. b points to a, the documented meaning.)
             if left.variable:
-                binding[left.variable] = src_dict if rel.direction != "<-" else nb_dict
+                binding[left.variable] = src_dict
             if right.variable:
-                binding[right.variable] = nb_dict if rel.direction != "<-" else src_dict
+                binding[right.variable] = nb_dict
             if not _eval_where(query.where, binding):
                 continue
             row = _project_return(query.return_items, binding)

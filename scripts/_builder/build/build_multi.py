@@ -388,6 +388,10 @@ def _merge_project_data(joint_extraction: Dict[str, Any],
         "field_assignments", "vtable_registrations", "fn_ptr_calls",
         "macro_registrations", "struct_defs", "container_of_usages",
         "conversion_funcs", "passthrough_reg_funcs",
+        # ASM scanner outputs consumed by build_phases:
+        #   asm_aliases  → _process_asm_aliases (asm alias edges)
+        #   export_symbols → _label_export_symbol_functions (API_entry labels)
+        "asm_aliases", "export_symbols",
         # Informational / scanner-internal — passthrough so the joint
         # extraction carries them for logging, but the builder doesn't
         # gate on them.

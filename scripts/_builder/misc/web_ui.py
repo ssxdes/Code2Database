@@ -404,6 +404,13 @@ _HTML_UI = r"""<!DOCTYPE html>
   --bg: #0d1b2a; --fg: #e0e0e0; --card: #16213e; --border: #334155;
   --primary: #4a90e2; --accent: #f59e0b; --danger: #ef4444; --success: #22c55e;
   --muted: #678; --muted-fg: #94a3b8; --ring: #4a90e2;
+  --overlay-bg: rgba(13,27,42,0.92);
+  --hover-bg: rgba(255,255,255,0.06);
+  --graph-label: #cbd5e1;
+  --graph-edge: #64748b;
+  --graph-edge-opacity: 0.6;
+  --graph-faded-opacity: 0.12;
+  --search-shadow: 0 8px 24px rgba(0,0,0,0.45);
   --z-toolbar: 10; --z-sidebar: 20; --z-modal: 30; --z-loading: 40;
   --sidebar-w: 320px; --code-panel-w: 480px;
 }
@@ -411,6 +418,13 @@ _HTML_UI = r"""<!DOCTYPE html>
   --bg: #f8fafc; --fg: #1e293b; --card: #ffffff; --border: #e2e8f0;
   --primary: #1e40af; --accent: #d97706; --danger: #dc2626; --success: #16a34a;
   --muted: #64748b; --muted-fg: #475569; --ring: #1e40af;
+  --overlay-bg: rgba(255,255,255,0.92);
+  --hover-bg: rgba(0,0,0,0.04);
+  --graph-label: #334155;
+  --graph-edge: #475569;
+  --graph-edge-opacity: 0.75;
+  --graph-faded-opacity: 0.18;
+  --search-shadow: 0 8px 24px rgba(0,0,0,0.12);
 }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -440,6 +454,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 
 /* Cytoscape canvas */
 #cy { position: absolute; left: 0; top: 42px; right: var(--sidebar-w); bottom: 0; background: var(--bg); }
+#cy:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 
 /* Sidebar */
 #sidebar { position: absolute; right: 0; top: 42px; bottom: 0; width: var(--sidebar-w);
@@ -466,14 +481,14 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 .call-item .call-conf { font-size: 10px; flex-shrink: 0; }
 
 /* Community legend */
-#legend { position: absolute; left: 10px; top: 52px; background: rgba(13,27,42,0.9);
+#legend { position: absolute; left: 10px; top: 52px; background: var(--overlay-bg);
   padding: 0; border-radius: 6px; font-size: 11px; max-height: 300px; overflow-y: auto;
   border: 1px solid var(--border); z-index: var(--z-toolbar); }
 #legend.collapsed { max-height: none; overflow: visible; }
 #legend.collapsed #legend-body { display: none; }
 #legend .legend-header { display: flex; align-items: center; justify-content: space-between;
   gap: 6px; padding: 6px 8px; cursor: pointer; user-select: none; }
-#legend .legend-header:hover { background: rgba(255,255,255,0.06); }
+#legend .legend-header:hover { background: var(--hover-bg); }
 #legend .legend-title { font-weight: 600; color: var(--fg); }
 #legend .legend-toggle { color: var(--muted-fg); font-size: 10px; flex-shrink: 0; }
 #legend-body { padding: 0 8px 6px; }
@@ -491,11 +506,16 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 #spacing-slider { width: 60px; }
 
 /* Stats */
-#stats { position: absolute; left: 10px; bottom: 10px; background: rgba(13,27,42,0.9);
+#stats { position: absolute; left: 10px; bottom: 10px; background: var(--overlay-bg);
   padding: 4px 8px; border-radius: 4px; font-size: 11px; color: var(--muted-fg); }
 
-/* Breadcrumb */
-#breadcrumb { display: flex; gap: 3px; flex-wrap: wrap; align-items: center; }
+/* Breadcrumb — positioned below the topbar so it's actually visible
+   (previously had no position and was hidden behind the cy canvas). */
+#breadcrumb { position: absolute; left: 50%; top: 44px; transform: translateX(-50%);
+  display: none; gap: 3px; flex-wrap: wrap; align-items: center;
+  background: var(--overlay-bg); padding: 2px 10px; border-radius: 4px;
+  z-index: var(--z-toolbar); max-width: 60%; }
+#breadcrumb.visible { display: flex; }
 .crumb { cursor: pointer; color: var(--primary); font-size: 11px; }
 .crumb:hover { text-decoration: underline; }
 
@@ -554,30 +574,30 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 #filter-panel label { display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer; }
 #search-results { display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 60;
   background: var(--card); border: 1px solid var(--border); border-radius: 6px;
-  margin-top: 2px; max-height: 260px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+  margin-top: 2px; max-height: 260px; overflow-y: auto; box-shadow: var(--search-shadow); }
 #search-results .sr-item { padding: 6px 10px; cursor: pointer; font-size: 12px;
   display: flex; justify-content: space-between; gap: 10px; align-items: center; }
 #search-results .sr-item:hover, #search-results .sr-item.active { background: var(--primary); color: #fff; }
 #search-results .sr-badge { font-size: 9px; padding: 1px 5px; border-radius: 3px;
   background: var(--accent); color: #000; text-transform: uppercase; letter-spacing: 0.3px;
   flex-shrink: 0; }
-#search-results .sr-loc { color: #6b7280; font-size: 10px; overflow: hidden;
+#search-results .sr-loc { color: var(--muted-fg); font-size: 10px; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
 #search-results .sr-item:hover .sr-loc, #search-results .sr-item.active .sr-loc { color: #dbeafe; }
-.call-loc { font-size: 10px; color: #6b7280; overflow: hidden; text-overflow: ellipsis;
+.call-loc { font-size: 10px; color: var(--muted-fg); overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; max-width: 180px; }
 
 /* Lightweight minimap — canvas-based, no external dependency.
    Shows node positions as dots and the current viewport as a
    rectangle; click to pan. */
 #minimap-wrap { position: absolute; right: var(--sidebar-w); bottom: 10px; width: 140px; height: 100px;
-  background: rgba(13,27,42,0.9); border: 1px solid var(--border); border-radius: 6px;
+  background: var(--overlay-bg); border: 1px solid var(--border); border-radius: 6px;
   z-index: var(--z-toolbar); display: none; cursor: crosshair; }
 #minimap-canvas { width: 100%; height: 100%; display: block; }
 
 /* Edge-type legend — compact key for call / import / ffi edges */
 #edge-legend { position: absolute; left: 10px; bottom: 32px;
-  background: rgba(13,27,42,0.9); padding: 6px 8px; border-radius: 6px;
+  background: var(--overlay-bg); padding: 6px 8px; border-radius: 6px;
   font-size: 10px; border: 1px solid var(--border); z-index: var(--z-toolbar);
   display: none; }
 #edge-legend .edge-legend-title { color: var(--muted-fg); margin-bottom: 3px;
@@ -605,7 +625,13 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 #code-panel-actions button:hover { opacity: 0.85; }
 #code-content { white-space: pre; font-family: "JetBrains Mono", "Fira Code", monospace;
   font-size: 12px; line-height: 1.5; overflow: auto; padding: 8px 12px;
-  color: var(--fg); flex: 1; user-select: text; }
+  color: var(--fg); flex: 1; user-select: text; counter-reset: lineno; }
+#code-content .code-line { display: block; }
+#code-content .code-line::before {
+  counter-increment: lineno; content: counter(lineno);
+  display: inline-block; width: 3.5em; text-align: right;
+  padding-right: 10px; color: var(--muted); user-select: none;
+  border-right: 1px solid var(--border); margin-right: 10px; }
 #code-empty { padding: 20px; color: var(--muted-fg); font-size: 12px; text-align: center; }
 
 /* Resize handles — thin vertical bars on the left edge of the
@@ -681,7 +707,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 <div id="stats"></div>
 <div id="edge-legend">
   <div class="edge-legend-title">Edge Types</div>
-  <div class="edge-legend-item"><span class="edge-swatch" style="border-color:#64748b"></span>Call</div>
+  <div class="edge-legend-item"><span class="edge-swatch" style="border-color:var(--graph-edge)"></span>Call</div>
   <div class="edge-legend-item"><span class="edge-swatch" style="border-color:#f59e0b;border-top-style:dashed"></span>Import</div>
   <div class="edge-legend-item"><span class="edge-swatch" style="border-color:#a855f7;border-top-style:dotted"></span>FFI</div>
 </div>
@@ -800,6 +826,27 @@ function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;'
 // jsAttr already includes the surrounding double quotes.
 function jsAttr(s) { return escapeHtml(JSON.stringify(String(s == null ? '' : s))); }
 
+function getCssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+function graphColors() {
+  return {
+    label: getCssVar('--graph-label') || '#cbd5e1',
+    edge: getCssVar('--graph-edge') || '#64748b',
+    edgeOpacity: parseFloat(getCssVar('--graph-edge-opacity')) || 0.6,
+    fadedOpacity: parseFloat(getCssVar('--graph-faded-opacity')) || 0.12,
+  };
+}
+function applyCyTheme() {
+  if (!cy) return;
+  const c = graphColors();
+  cy.style()
+    .selector('node').style({ 'color': c.label })
+    .selector('edge.call-edge').style({ 'line-color': c.edge, 'opacity': c.edgeOpacity })
+    .selector('.faded').style({ 'opacity': c.fadedOpacity })
+    .update();
+}
+
 async function loadSummary() {
   let s;
   try {
@@ -813,10 +860,10 @@ async function loadSummary() {
   // Staleness badge: source files vs scan manifest
   if (s.freshness) {
     if (s.freshness.is_fresh) {
-      statsHtml += ' · <span style="color:#4a4">fresh</span>';
+      statsHtml += ' · <span style="color:var(--success)">fresh</span>';
     } else {
       const changed = (s.freshness.changed_count || 0) + (s.freshness.new_count || 0) + (s.freshness.deleted_count || 0);
-      statsHtml += ' · <span style="color:#c33;font-weight:bold" title="' + escapeHtml(s.freshness.recommendation || '') + '">STALE (' + changed + ' files)</span>';
+      statsHtml += ' · <span style="color:var(--danger);font-weight:bold" title="' + escapeHtml(s.freshness.recommendation || '') + '">STALE (' + changed + ' files)</span>';
     }
   }
   document.getElementById('stats').innerHTML = statsHtml;
@@ -973,15 +1020,16 @@ function runLayout() {
 }
 
 function initCy() {
+  const gc = graphColors();
   cy = cytoscape({
     container: document.getElementById('cy'),
     elements: buildCyElements(),
     style: [
       { selector: 'node', style: {
-        'background-color': 'data(community) ? "#4a90e2" : "#4a90e2"',
+        'background-color': '#4a90e2',
         'width': 'data(degree) ? mapData(degree, 0, 30, 16, 40) : 24',
         'height': 'data(degree) ? mapData(degree, 0, 30, 16, 40) : 24',
-        'label': 'data(name)', 'font-size': '8px', 'color': '#ccc',
+        'label': 'data(name)', 'font-size': '8px', 'color': gc.label,
         'text-valign': 'bottom', 'text-margin-y': 4,
         'text-wrap': 'ellipsis', 'text-max-width': '80px',
         'border-width': 0,
@@ -991,8 +1039,8 @@ function initCy() {
       { selector: 'node.ffi', style: { 'background-color': '#c084fc', 'border-color': '#a855f7' } },
       { selector: 'node.focused', style: { 'border-color': '#ef4444', 'border-width': 3 } },
       // Edge type styling
-      { selector: 'edge.call-edge', style: { 'width': 2, 'line-color': '#64748b', 'curve-style': 'bezier',
-        'target-arrow-shape': 'triangle', 'arrow-scale': 0.8, 'opacity': 0.6 } },
+      { selector: 'edge.call-edge', style: { 'width': 2, 'line-color': gc.edge, 'curve-style': 'bezier',
+        'target-arrow-shape': 'triangle', 'arrow-scale': 0.8, 'opacity': gc.edgeOpacity } },
       { selector: 'edge.import-edge', style: { 'line-color': '#f59e0b', 'line-style': 'dashed', 'opacity': 0.5 } },
       { selector: 'edge.ffi-edge', style: { 'line-color': '#a855f7', 'line-style': 'dotted', 'opacity': 0.6 } },
       // Edge confidence
@@ -1002,7 +1050,7 @@ function initCy() {
       { selector: 'edge.cycle-edge', style: { 'line-color': '#ef4444', 'line-style': 'dashed', 'width': 3 } },
       // Highlight
       { selector: 'edge.highlighted', style: { 'width': 4, 'line-color': '#f59e0b', 'opacity': 0.9 } },
-      { selector: '.faded', style: { 'opacity': 0.12 } },
+      { selector: '.faded', style: { 'opacity': gc.fadedOpacity } },
       // Label zoom threshold
       { selector: 'node', style: { 'text-opacity': 0 } },
       { selector: 'node[degree > 0]', style: { 'text-opacity': 1 } },
@@ -1065,13 +1113,16 @@ function initCy() {
     } else {
       cy.style().selector('node').style('text-opacity', 1).update();
     }
+    closeContextMenu();
     drawMinimap();
   });
-  cy.on('pan', function() { drawMinimap(); });
+  cy.on('pan', function() { closeContextMenu(); drawMinimap(); });
+  cy.on('scroll', function() { closeContextMenu(); });
   // Apply community colors
   applyCommunityColors();
   initMinimap();
   drawMinimap();
+  applyCyTheme();
 }
 
 // Community coloring
@@ -1127,7 +1178,7 @@ function drawMinimap() {
   const offX = pad + (w - 2 * pad - rangeX * scale) / 2;
   const offY = pad + (h - 2 * pad - rangeY * scale) / 2;
   // Draw nodes as dots.
-  ctx.fillStyle = '#4a90e2';
+  ctx.fillStyle = getCssVar('--primary') || '#4a90e2';
   nodes.forEach(n => {
     const p = n.position();
     const x = offX + (p.x - minX) * scale;
@@ -1140,7 +1191,7 @@ function drawMinimap() {
   const vy = offY + (vp.y1 - minY) * scale;
   const vw = vp.w * scale;
   const vh = vp.h * scale;
-  ctx.strokeStyle = '#f59e0b';
+  ctx.strokeStyle = getCssVar('--accent') || '#f59e0b';
   ctx.lineWidth = 1;
   ctx.strokeRect(vx, vy, vw, vh);
 }
@@ -1241,6 +1292,40 @@ function applyFocusContext(focusId) {
   cy.elements().not(connected).not('#' + focusId).addClass('faded');
 }
 
+// Show ONLY a single node on the canvas — used by search-click
+// so the user isn't flooded with the target's entire neighborhood.
+// The depth slider or right-click "Expand" can grow the view later.
+async function focusNodeOnly(nodeId) {
+  showLoading();
+  try {
+    allNodes = {};
+    allEdges = {};
+    expandChildren = {};
+    cycleEdges.clear();
+    const btn = document.getElementById('cycle-btn');
+    if (btn) btn.setAttribute('aria-pressed', 'false');
+    // Fetch the node's own metadata so the sidebar + code panel work.
+    try {
+      const node = await api('/api/node/' + encodeURIComponent(nodeId));
+      let degreeMap = {};
+      try { degreeMap = (await api('/api/degrees')).degrees || {}; } catch (e) {}
+      const deg = degreeMap[nodeId] || 0;
+      allNodes[nodeId] = {
+        ...node, id: nodeId, is_focused: true, degree: deg,
+        community: node.community || node.domain || '',
+      };
+    } catch (e) {
+      allNodes[nodeId] = { id: nodeId, name: nodeId, is_focused: true };
+    }
+    cache = { nodes: [], edges: [], focus: nodeId };
+    activeNodeId = nodeId;
+    syncCyFromModel();
+    loadNodeDetails(nodeId);
+    pushNavHistory(nodeId);
+    renderBreadcrumb();
+  } finally { hideLoading(); }
+}
+
 async function focusNode(nodeId, depth) {
   showLoading();
   try {
@@ -1296,7 +1381,8 @@ function pushNavHistory(nodeId) {
 function renderBreadcrumb() {
   const bc = document.getElementById('breadcrumb');
   if (!bc) return;
-  if (navHistory.length === 0) { bc.innerHTML = ''; return; }
+  if (navHistory.length === 0) { bc.innerHTML = ''; bc.classList.remove('visible'); return; }
+  bc.classList.add('visible');
   bc.innerHTML = navHistory.map((id, i) => {
     const name = (allNodes[id] && allNodes[id].name) ? allNodes[id].name : id;
     const isLast = i === navHistory.length - 1;
@@ -1446,7 +1532,7 @@ async function loadNodeDetails(nodeId) {
             escapeHtml(c.source_file + ':' + (c.line || 0)) + '">' +
             escapeHtml(shortLoc(c.source_file, c.line)) + '</span>' : '') +
           (c.call_condition ? '<span class="call-cond">' + escapeHtml(c.call_condition.substring(0,20)) + '</span>' : '') +
-          (c.confidence !== 'EXTRACTED' ? '<span class="call-conf" style="color:#f59e0b">' + escapeHtml(String(c.confidence || '').substring(0,3)) + '</span>' : '') +
+          (c.confidence !== 'EXTRACTED' ? '<span class="call-conf" style="color:var(--accent)">' + escapeHtml(String(c.confidence || '').substring(0,3)) + '</span>' : '') +
           '</div>';
       });
       html += '</div>';
@@ -1462,7 +1548,7 @@ async function loadNodeDetails(nodeId) {
             escapeHtml(c.source_file + ':' + (c.line || 0)) + '">' +
             escapeHtml(shortLoc(c.source_file, c.line)) + '</span>' : '') +
           (c.call_condition ? '<span class="call-cond">' + escapeHtml(c.call_condition.substring(0,20)) + '</span>' : '') +
-          (c.confidence !== 'EXTRACTED' ? '<span class="call-conf" style="color:#f59e0b">' + escapeHtml(String(c.confidence || '').substring(0,3)) + '</span>' : '') +
+          (c.confidence !== 'EXTRACTED' ? '<span class="call-conf" style="color:var(--accent)">' + escapeHtml(String(c.confidence || '').substring(0,3)) + '</span>' : '') +
           '</div>';
       });
       html += '</div>';
@@ -1475,8 +1561,8 @@ async function loadNodeDetails(nodeId) {
           .filter(Boolean).join(' · ');
         html += '<div class="call-item" style="flex-direction:column;align-items:flex-start;gap:2px">' +
           '<span class="call-name">' + escapeHtml(m.question) + '</span>' +
-          '<span style="font-size:11px;color:#9ca3af">' + escapeHtml(m.answer.substring(0,160)) + '</span>' +
-          (meta ? '<span style="font-size:10px;color:#6b7280">' + escapeHtml(meta) + '</span>' : '') +
+          '<span style="font-size:11px;color:var(--muted-fg)">' + escapeHtml(m.answer.substring(0,160)) + '</span>' +
+          (meta ? '<span style="font-size:10px;color:var(--muted)">' + escapeHtml(meta) + '</span>' : '') +
           '</div>';
       });
       html += '</div>';
@@ -1499,7 +1585,14 @@ async function loadCode(nodeId) {
   const title = document.getElementById('code-panel-title');
   const code = data.code || '';
   if (code) {
-    content.textContent = code;
+    // Render with line numbers using CSS counters. The counter-reset
+    // value is (startLine - 1) so the first line shows the correct
+    // source line number from the backend.
+    const startLine = data.line || 1;
+    content.style.counterReset = 'lineno ' + (startLine - 1);
+    const lines = code.split('\n');
+    content.innerHTML = lines.map(l =>
+      '<span class="code-line">' + escapeHtml(l) + '</span>').join('\n');
     content.style.display = 'block';
     empty.style.display = 'none';
   } else {
@@ -1562,7 +1655,7 @@ async function loadImpact(nodeId) {
 // PNG export
 function exportPNG() {
   if (!cy) return;
-  const png64 = cy.png({ full: true, scale: 2, bg: '#0d1b2a' });
+  const png64 = cy.png({ full: true, scale: 2, bg: getCssVar('--bg') || '#0d1b2a' });
   const a = document.createElement('a');
   a.href = png64;
   a.download = 'code2database_graph.png';
@@ -1602,6 +1695,10 @@ function exportJSON() {
 }
 
 // Right-click context menu
+function closeContextMenu() {
+  const m = document.getElementById('ctx-menu');
+  if (m) m.style.display = 'none';
+}
 function showContextMenu(nodeId, x, y) {
   const menu = document.getElementById('ctx-menu');
   menu.innerHTML = '';
@@ -1683,6 +1780,8 @@ function toggleDark() {
     btn.textContent = 'Light';
     try { localStorage.setItem('c2d-theme', 'light'); } catch (e) {}
   }
+  applyCyTheme();
+  drawMinimap();
 }
 
 // Apply saved theme on load — called before the first paint to
@@ -1741,7 +1840,7 @@ async function search() {
     }
     if (results.length === 1) {
       hideSearchResults();
-      focusNode(results[0].id, 2);
+      focusNodeOnly(results[0].id);
       return;
     }
   // Disambiguation list: same-named functions in different files used
@@ -1779,7 +1878,7 @@ async function search() {
     loc.className = 'sr-loc';
     loc.textContent = shortLoc(r.source_file, r.line);
     if (loc.textContent) div.appendChild(loc);
-    div.onclick = () => { hideSearchResults(); focusNode(r.id, 2); };
+    div.onclick = () => { hideSearchResults(); focusNodeOnly(r.id); };
     resEl.appendChild(div);
   });
   resEl.style.display = 'block';
@@ -1791,7 +1890,23 @@ async function search() {
 
 // Event listeners
 document.getElementById('search-btn').addEventListener('click', search);
-document.getElementById('search').addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+document.getElementById('search').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { search(); return; }
+  // Arrow-key navigation through the search dropdown.
+  const resEl = document.getElementById('search-results');
+  if (!resEl || resEl.style.display === 'none') return;
+  const items = resEl.querySelectorAll('.sr-item');
+  if (!items.length) return;
+  const active = resEl.querySelector('.sr-item.active');
+  let idx = active ? Array.from(items).indexOf(active) : -1;
+  if (e.key === 'ArrowDown') { e.preventDefault(); idx = (idx + 1) % items.length; }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); idx = (idx - 1 + items.length) % items.length; }
+  else if (e.key === 'Escape') { hideSearchResults(); return; }
+  else return;
+  items.forEach(it => it.classList.remove('active'));
+  items[idx].classList.add('active');
+  items[idx].scrollIntoView({ block: 'nearest' });
+});
 document.getElementById('layout-select').addEventListener('change', runLayout);
 document.getElementById('spacing-slider').addEventListener('change', runLayout);
 document.getElementById('depth-slider').addEventListener('input', e => {
@@ -2037,6 +2152,15 @@ document.addEventListener('keydown', e => {
 document.addEventListener('click', (e) => {
   document.getElementById('ctx-menu').style.display = 'none';
   if (!e.target.closest || !e.target.closest('#search-wrap')) hideSearchResults();
+});
+
+// Backdrop-click-to-close for modals — click the dimmed overlay area
+// (not the inner content) to dismiss any modal. The inner panels stop
+// propagation so clicks inside them don't close the modal.
+['brief-modal','memory-modal','arch-modal','help-modal'].forEach(id => {
+  const m = document.getElementById(id);
+  if (!m) return;
+  m.addEventListener('click', (e) => { if (e.target === m) m.style.display = 'none'; });
 });
 
 // Resizable panels — drag the thin vertical bar on the left edge of

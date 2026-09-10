@@ -70,12 +70,12 @@ python3 scripts/code2database_builder.py serve    # MCP 服务器（83 工具）
 |------|------|--------|
 | `query` | Cypher 子集查询（`MATCH (n:Function) WHERE n.name='foo' RETURN n.id`）。自然语言用 `intent-query` | Graph |
 | `kb-query` | 跨 memory + knowledge 的统一 FTS5+BM25 查询 | Memory+Knowledge |
-| `describe` | 节点详情 + 源码片段 + memory_refs + knowledge_refs | Graph→Source |
-| `trace` | A→B 调用链（含条件） | Graph |
+| `describe` | 节点详情 + 源码片段 + memory_refs + knowledge_refs（`describe-node` 的别名） | Graph→Source |
+| `trace` | A→B 调用链（含条件）（`trace-chain` 的别名） | Graph |
 | `impact` | 改了 X 会影响什么？ | Graph |
-| `find` | 按模式查找不变式（`--var`/`--value`/`--kind`）。查找宏用 `find-macros` | Graph |
-| `flow` | 值流（DATA_FLOW/RETURN_FLOW 边）。数据依赖用 `data-dep`；参数流用 `param-flow` | Graph |
-| `concurrency` | 列出并发风险对（函数级）。真正的竞争检测用 `detect-races` | Graph |
+| `find` | 按模式查找不变式（`--var`/`--value`/`--kind`）（`find-invariants` 的别名）。查找宏用 `find-macros` | Graph |
+| `flow` | 值流（DATA_FLOW/RETURN_FLOW 边）（`value-flow` 的别名）。数据依赖用 `data-dep`；参数流用 `param-flow` | Graph |
+| `concurrency` | 列出并发风险对（函数级）（`concurrency-risks` 的别名）。真正的竞争检测用 `detect-races` | Graph |
 | `context` | 按 ID/名称描述节点（`describe-node` 的别名）。非基于位置 | Graph |
 | `make` | 一键建库：env-check（缺件前置报出）+ 扫描构建 + 全部派生产物与导出 | — |
 | `build` | 扫描 + 构建图（手动，make 已封装） | — |
@@ -93,9 +93,9 @@ python3 scripts/code2database_builder.py serve    # MCP 服务器（83 工具）
 | `web-ui` | 交互式浏览器（cytoscape.js） | 全部 |
 | `tx-begin` | 开始事务 | Ops |
 | `daemon` | 显示守护进程状态（`daemon-status` 的别名；启动同步用 `daemon-start`） | Ops |
-| `health` | Profile 健康评分（需要 `--source`）。图谱新鲜度用 `daemon-status` 或 `session-init` | — |
+| `health` | Profile 健康评分（需要 `--source`）（`profile-health` 的别名）。图谱新鲜度用 `daemon-status` 或 `session-init` | — |
 
-全部 249 个 CLI 命令仍可访问；上述 26 个覆盖 ~95% 的 agent 工作流。
+全部 249 个 CLI 命令仍可访问；上述 26 个覆盖 ~95% 的 agent 工作流。其他短别名（未列入上表）：`export` → `export-mermaid`。
 
 ## 支持语言
 

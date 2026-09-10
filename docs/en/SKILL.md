@@ -70,12 +70,12 @@ python3 scripts/code2database_builder.py serve    # MCP server (83 tools)
 |---------|---------|-------------|
 | `query` | Cypher-subset query (`MATCH (n:Function) WHERE n.name='foo' RETURN n.id`). For natural-language, use `intent-query` | Graph |
 | `kb-query` | Unified FTS5+BM25 across memory + knowledge | Memory+Knowledge |
-| `describe` | Node details + source snippet + memory_refs + knowledge_refs | Graph→Source |
-| `trace` | Call chain A→B with conditions | Graph |
+| `describe` | Node details + source snippet + memory_refs + knowledge_refs (alias for `describe-node`) | Graph→Source |
+| `trace` | Call chain A→B with conditions (alias for `trace-chain`) | Graph |
 | `impact` | What breaks if I change X? | Graph |
-| `find` | Find invariants by pattern (`--var`/`--value`/`--kind`). For macros, use `find-macros` | Graph |
-| `flow` | Value flow (DATA_FLOW/RETURN_FLOW edges). For data deps use `data-dep`; for params use `param-flow` | Graph |
-| `concurrency` | List concurrency risk pairs (function-level). For race detection use `detect-races` | Graph |
+| `find` | Find invariants by pattern (`--var`/`--value`/`--kind`) (alias for `find-invariants`). For macros, use `find-macros` | Graph |
+| `flow` | Value flow (DATA_FLOW/RETURN_FLOW edges) (alias for `value-flow`). For data deps use `data-dep`; for params use `param-flow` | Graph |
+| `concurrency` | List concurrency risk pairs (function-level) (alias for `concurrency-risks`). For race detection use `detect-races` | Graph |
 | `context` | Describe a node by ID/name (alias for `describe-node`). Not location-based | Graph |
 | `make` | One-click ingestion: env-check (fail fast) then scan + build + all derived artifacts + exports | — |
 | `build` | Scan + build graph (manual, make wraps it) | — |
@@ -93,9 +93,9 @@ python3 scripts/code2database_builder.py serve    # MCP server (83 tools)
 | `web-ui` | Interactive browser (cytoscape.js) | All |
 | `tx-begin` | Start a transaction | Ops |
 | `daemon` | Show daemon status (alias for `daemon-status`; to start sync use `daemon-start`) | Ops |
-| `health` | Profile health score (requires `--source`). For graph freshness use `daemon-status` or `session-init` | — |
+| `health` | Profile health score (requires `--source`) (alias for `profile-health`). For graph freshness use `daemon-status` or `session-init` | — |
 
-All 249 CLI commands remain accessible; the 26 above cover ~95% of agent workflows.
+All 249 CLI commands remain accessible; the 26 above cover ~95% of agent workflows. Additional short aliases (not listed above): `export` → `export-mermaid`.
 
 ## Supported Languages
 

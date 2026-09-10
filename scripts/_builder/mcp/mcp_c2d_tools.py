@@ -214,8 +214,8 @@ def _tool_explore(args: dict, graph_dir: str) -> dict:
     if not G:
         return {"error": "Graph not loaded"}
     query = args.get("query", "")
-    max_nodes = args.get("max_nodes", 15)
-    max_tokens = args.get("max_tokens", 2000)
+    max_nodes = _mcp_coerce_int(args.get("max_nodes", 15), 15, 1, 500)
+    max_tokens = _mcp_coerce_int(args.get("max_tokens", 2000), 2000, 100, 100000)
     query_tokens = _tokenize_query(query)
     if not query_tokens:
         return {"error": "Empty query"}
@@ -553,7 +553,7 @@ def _tool_memory_search(args: dict, graph_dir: str) -> list:
         pass
     from _builder.memory.memory_manager import MemoryManager
     mm = MemoryManager(graph_dir)
-    return mm.query(args.get("query", ""), top_n=args.get("top", 5))
+    return mm.query(args.get("query", ""), top_n=_mcp_coerce_int(args.get("top", 5), 5, 1, 100))
 
 
 

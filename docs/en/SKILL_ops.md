@@ -100,6 +100,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 | `kb-rollback` | Roll a kb_item back to a prior version (saves current as version history) |
 | `kb-conflict` | Detect contradictory items in the same cluster (yes/no, must/must not, ...) |
 | `kb-global-add` / `kb-global-search` / `kb-global-share` / `kb-global-import` | Cross-project global KB (~/.code2database_global_kb/) |
+| `kb-global-share-memory` / `kb-global-search-memory` / `kb-global-import-memory` | Cross-project global memory Q&A: share high-weight memories to the global KB, search for similar Q&A across projects, import matches into the current project's memory.db (with merge) |
 
 ## Routing Table — Medium-weight Commands by Question Type
 
@@ -109,7 +110,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 | **Keep graph up to date** | `daemon-start` → `daemon-status` → `daemon-pause` / `daemon-resume` / `daemon-force-refresh` / `daemon-wait-sync` / `daemon-logs` / `daemon-reload` / `daemon-list-projects` → `daemon-stop` ; or `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes` |
 | **Profile and doc-code** | `profile-health` → `profile-evolve` → `profile-bind-version` ; `doc-code-check` → `doc-alignment-report` → `doc-signature-diff` → `doc-mark-stale` |
 | **Graph versioning** | `graph-record-version` → `graph-history` → `graph-diff` |
-| **Memory management** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory` |
+| **Memory management** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory` ; cross-project: `kb-global-share-memory` → `kb-global-search-memory` → `kb-global-import-memory` |
 | **Export / plugin / benchmark** | `export-html` / `export-obsidian` / `web-ui` ; `plugins` / `validate-plugin` ; `bug-benchmark` |
 | **Embeddings (experimental)** | `embeddings-build` → `embeddings-search` |
 

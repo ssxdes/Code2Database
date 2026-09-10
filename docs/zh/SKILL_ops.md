@@ -100,6 +100,7 @@ LLM 执行任何修改 code graph database的命令时，**必须先获得用户
 | `kb-rollback` | 把 kb_item 回滚到旧版本（保留当前为版本历史） |
 | `kb-conflict` | 检测同 cluster 内矛盾条目（yes/no, must/must not 等） |
 | `kb-global-add` / `kb-global-search` / `kb-global-share` / `kb-global-import` | 跨项目全局 KB（~/.code2database_global_kb/） |
+| `kb-global-share-memory` / `kb-global-search-memory` / `kb-global-import-memory` | 跨项目全局记忆 Q&A：将高权重记忆导出到全局 KB、跨项目搜索相似 Q&A、将匹配项导入当前项目的 memory.db（含合并） |
 
 ## 路由表 — 按问题类型分组的中权重命令
 
@@ -109,7 +110,7 @@ LLM 执行任何修改 code graph database的命令时，**必须先获得用户
 | **保持图谱新鲜** | `daemon-start` → `daemon-status` → `daemon-pause` / `daemon-resume` / `daemon-force-refresh` / `daemon-wait-sync` / `daemon-logs` / `daemon-reload` / `daemon-list-projects` → `daemon-stop`；或 `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes` |
 | **profile 与文档-代码** | `profile-health` → `profile-evolve` → `profile-bind-version`；`doc-code-check` → `doc-alignment-report` → `doc-signature-diff` → `doc-mark-stale` |
 | **图谱版本** | `graph-record-version` → `graph-history` → `graph-diff` |
-| **记忆管理** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory` |
+| **记忆管理** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory`；跨项目：`kb-global-share-memory` → `kb-global-search-memory` → `kb-global-import-memory` |
 | **导出 / 插件 / 基准** | `export-html` / `export-obsidian` / `web-ui`；`plugins` / `validate-plugin`；`bug-benchmark` |
 | **Embeddings（实验性）** | `embeddings-build` → `embeddings-search` |
 

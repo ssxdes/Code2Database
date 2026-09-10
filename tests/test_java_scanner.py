@@ -136,5 +136,90 @@ class Service {
         self.assertIn(mem[0], targets, "MemWriter.write must get dispatch edge")
 
 
+
+class TestJavaEnumRecordAnnotation(unittest.TestCase):
+    """enum/record/annotation_type declarations should produce nodes
+    and their nested methods should be extracted, just like classes."""
+
+    def test_enum_methods_extracted(self):
+        result = _scan_java("""\
+public enum Color {
+    RED, GREEN, BLUE;
+
+    public String describe() {
+        return name();
+    }
+}
+""")
+        names = {f["name"] for f in result["functions"]}
+        self.assertIn("Color", names)
+        self.assertIn("Color.describe", names)
+
+    def test_enum_node_type_is_enum(self):
+        result = _scan_java("""\
+public enum Status { ACTIVE, INACTIVE; }
+""")
+        enum_node = next(f for f in result["functions"] if f["name"] == "Status")
+        self.assertEqual(enum_node.get("node_type"), "enum")
+
+    def test_record_accessor_extracted(self):
+        result = _scan_java("""\
+public record Point(int x, int y) {
+    public int sum() { return x + y; }
+}
+""")
+        names = {f["name"] for f in result["functions"]}
+        self.assertIn("Point", names)
+        self.assertIn("Point.sum", names)
+        rec_node = next(f for f in result["functions"] if f["name"] == "Point")
+        self.assertEqual(rec_node.get("node_type"), "record")
+
+    def test_annotation_type_extracted(self):
+        result = _scan_java("""\
+public @interface Beta {
+    String value() default "";
+}
+""")
+        names = {f["name"] for f in result["functions"]}
+        self.assertIn("Beta", names)
+        ann_node = next(f for f in result["functions"] if f["name"] == "Beta")
+        self.assertEqual(ann_node.get("node_type"), "annotation")
+
+
+class TestJavaMethodReference(unittest.TestCase):
+    """Java 8+ method references (::) should produce call edges."""
+
+    def test_method_reference_produces_edge(self):
+        result = _scan_java("""\
+import java.util.stream.Stream;
+
+public class Processor {
+    public void run(Stream<String> stream) {
+        stream.forEach(System.out::println);
+    }
+}
+""")
+        pairs = {(e.get("source"), e.get("target"))
+                 for e in result["edges"]}
+        # The method reference to println should produce an edge
+        self.assertIn(
+            ("root_processor_run", "println"), pairs,
+            f"method reference edge missing: {pairs}")
+
+    def test_method_reference_obj_method(self):
+        result = _scan_java("""\
+public class Handler {
+    public void process(Obj o) {
+        Runnable r = o::callback;
+    }
+}
+""")
+        pairs = {(e.get("source"), e.get("target"))
+                 for e in result["edges"]}
+        self.assertIn(
+            ("root_handler_process", "callback"), pairs,
+            f"obj::method reference edge missing: {pairs}")
+
+
 if __name__ == "__main__":
     unittest.main()

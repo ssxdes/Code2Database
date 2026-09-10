@@ -279,6 +279,38 @@ class JavaTreeSitterScanner(BaseScanner):
 
                 self._walk_java(child, source_bytes, filepath, source_root,
                                 domain, functions, edges, import_edges, class_name=cls_name)
+            elif child.type == 'enum_declaration':
+                # Java enum: treat like a class so its methods are extracted.
+                # The enum body also contains enum_constant declarations but
+                # those are data, not function nodes.
+                enum_name_node = next((c for c in child.children if c.type == 'identifier'), None)
+                enum_name = self._node_text(enum_name_node, source_bytes) if enum_name_node else class_name
+                self._extract_class_node(child, source_bytes, filepath,
+                                         source_root, domain, enum_name,
+                                         functions, edges, 'enum')
+                self._walk_java(child, source_bytes, filepath, source_root,
+                                domain, functions, edges, import_edges, class_name=enum_name)
+            elif child.type == 'record_declaration':
+                # Java 16+ record: treat like a class. Record accessors
+                # (compact accessor methods) appear as method_declaration
+                # nodes in the record body.
+                rec_name_node = next((c for c in child.children if c.type == 'identifier'), None)
+                rec_name = self._node_text(rec_name_node, source_bytes) if rec_name_node else class_name
+                self._extract_class_node(child, source_bytes, filepath,
+                                         source_root, domain, rec_name,
+                                         functions, edges, 'record')
+                self._walk_java(child, source_bytes, filepath, source_root,
+                                domain, functions, edges, import_edges, class_name=rec_name)
+            elif child.type == 'annotation_type_declaration':
+                # Java annotation type: treat like an interface so its
+                # element declarations are walked.
+                ann_name_node = next((c for c in child.children if c.type == 'identifier'), None)
+                ann_name = self._node_text(ann_name_node, source_bytes) if ann_name_node else class_name
+                self._extract_class_node(child, source_bytes, filepath,
+                                         source_root, domain, ann_name,
+                                         functions, edges, 'annotation')
+                self._walk_java(child, source_bytes, filepath, source_root,
+                                domain, functions, edges, import_edges, class_name=ann_name)
             elif child.type == 'method_declaration':
                 self._process_java_method(child, source_bytes, filepath, source_root,
                                           domain, functions, edges, class_name)
@@ -291,6 +323,16 @@ class JavaTreeSitterScanner(BaseScanner):
                                 domain, functions, edges, import_edges, class_name)
             elif child.type == 'interface_body':
                 # interface_body can contain abstract method declarations
+                self._walk_java(child, source_bytes, filepath, source_root,
+                                domain, functions, edges, import_edges, class_name)
+            elif child.type in ('enum_body', 'record_body', 'annotation_type_body'):
+                # Bodies of enum/record/annotation types — walk for
+                # method/constructor declarations nested inside.
+                self._walk_java(child, source_bytes, filepath, source_root,
+                                domain, functions, edges, import_edges, class_name)
+            elif child.type == 'enum_body_declarations':
+                # enum_body > enum_body_declarations contains the
+                # method/constructor declarations of an enum.
                 self._walk_java(child, source_bytes, filepath, source_root,
                                 domain, functions, edges, import_edges, class_name)
 
@@ -542,6 +584,14 @@ class JavaTreeSitterScanner(BaseScanner):
                         })
                         callee_args_list[-1]["callback_target"] = spawn_target_name
 
+                # Walk argument_list children for method references (::)
+                # and lambda callbacks that may contain nested calls.
+                # The early return above used to skip this, so
+                # method_reference nodes inside arguments were lost.
+                for child in node.children:
+                    if child.type == 'argument_list':
+                        for arg in child.children:
+                            _walk(arg)
                 return
 
             if node.type == 'if_statement':
@@ -580,6 +630,49 @@ class JavaTreeSitterScanner(BaseScanner):
                         "source": invoker_id, "target": scope["empty_id"],
                         "call_order": None, "call_condition": scope["condition"],
                     })
+                return
+
+            if node.type == 'method_reference':
+                # Java 8+ method reference (e.g. System.out::println,
+                # obj::method, ClassName::staticMethod). Extract the
+                # referenced method name and emit an edge so the call
+                # graph connects the invoker to the referenced method.
+                # The method_reference node has the structure:
+                #   (method_reference receiver: ... method: (identifier))
+                # or in some grammar versions the last identifier child.
+                ref_callee = None
+                # Try the 'method' field name first (newer grammars)
+                method_field = node.child_by_field_name('method')
+                if method_field:
+                    ref_callee = self._node_text(method_field, source_bytes)
+                if not ref_callee:
+                    # Fallback: last identifier child
+                    id_children = [c for c in node.children if c.type == 'identifier']
+                    if id_children:
+                        ref_callee = self._node_text(id_children[-1], source_bytes)
+                if ref_callee:
+                    call_order[0] += 1
+                    edge_base = {
+                        "target": ref_callee.lower(),
+                        "call_order": call_order[0],
+                        "call_condition": "",
+                    }
+                    if cond_stack:
+                        scope = cond_stack[-1]
+                        scope["has_calls"] = True
+                        edges.append({
+                            "source": scope["empty_id"],
+                            "is_cond_child": True,
+                            **edge_base,
+                        })
+                    else:
+                        edges.append({
+                            "source": invoker_id,
+                            **edge_base,
+                        })
+                # Still walk children for nested calls
+                for child in node.children:
+                    _walk(child)
                 return
 
             if node.type == 'switch_statement':

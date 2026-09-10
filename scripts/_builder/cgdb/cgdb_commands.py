@@ -268,7 +268,7 @@ def cmd_cgdb_sql(args):
     Cypher-subset query language doesn't cover directly.
 
     Tables: cgdb_nodes, cgdb_edges, cgdb_files, cgdb_types, cgdb_includes,
-    cgdb_invoke_sites, cgdb_predicates, cgdb_ops_bindings, basic_blocks,
+    invoke_sites, config_predicates, ops_bindings, basic_blocks,
     cfg_edges, data_flow, sync_primitives, happens_before, alias_sets,
     doc_comments, conditions, config_predicates, graph_versions,
     audit_log, change_log, communities, domain_stats, edge_metadata,

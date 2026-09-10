@@ -174,8 +174,9 @@ def _prefix_domain_with_project(data: Dict[str, Any], project_name: str) -> int:
 
 def _normalize_name(name: str) -> str:
     """Mirror _scanner/base.py _normalize_name for legacy id regeneration."""
-    # Replace non-alphanumeric with underscore
-    return re.sub(r'[^A-Za-z0-9_]+', '_', name).strip('_')
+    # Replace non-alphanumeric with underscore — must NOT strip('_')
+    # or leading-underscore names (_foo) collide with bare names (foo).
+    return re.sub(r'[^A-Za-z0-9_]', '_', name)
 
 
 # ---------------------------------------------------------------------------

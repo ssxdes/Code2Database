@@ -178,6 +178,29 @@ class TestDomainPrefix(unittest.TestCase):
         self.assertEqual(data["functions"][0]["domain"], "A")
         self.assertEqual(data["functions"][0]["id"], "A_init")
 
+    def test_leading_underscore_no_collision(self):
+        """_foo and foo must get distinct IDs after domain prefixing.
+
+        The old _normalize_name had .strip('_') which stripped the
+        leading underscore, causing _foo and foo to produce the same
+        ID and the second one to be silently dropped by INSERT OR IGNORE.
+        """
+        data = {"functions": [
+            {"id": "module__foo", "name": "_foo", "domain": "module"},
+            {"id": "module_foo", "name": "foo", "domain": "module"},
+        ], "edges": []}
+        _prefix_domain_with_project(data, "spdk")
+        ids = {fn["id"] for fn in data["functions"]}
+        self.assertEqual(len(ids), 2)
+        self.assertIn("spdk_module__foo", ids)
+        self.assertIn("spdk_module_foo", ids)
+
+    def test_normalize_name_preserves_underscores(self):
+        self.assertEqual(_normalize_name("_bdev_nvme_reset_ctrlr"),
+                         "_bdev_nvme_reset_ctrlr")
+        self.assertEqual(_normalize_name("bdev_nvme_reset_ctrlr"),
+                         "bdev_nvme_reset_ctrlr")
+
 
 class TestJaccardSimilarity(unittest.TestCase):
     def test_identical_sets(self):

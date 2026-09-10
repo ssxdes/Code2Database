@@ -131,8 +131,13 @@ class TestFederatedQueries(unittest.TestCase):
                 self.name = name
             def nodes(self, data=False):
                 if data:
+                    # Return a fixed node name that does NOT appear
+                    # in any graph_dir path — otherwise the temporary
+                    # directory path (e.g. /tmp/tmplXyGax/projA) can
+                    # accidentally match the search query 'ga' and
+                    # cause the wrong graph to be yielded first.
                     yield (self.name + '_n1',
-                       {'name': self.name, 'is_empty': False,
+                       {'name': 'federated_target_node', 'is_empty': False,
                         'node_type': 'func', 'domain': 'd'})
             def close(self):
                 closed_flags.append(self.name)
@@ -148,7 +153,9 @@ class TestFederatedQueries(unittest.TestCase):
                 gd = os.path.join(self.tmp.name, proj)
                 _write_graph(gd, proj, [], [])
                 federate_register(proj, gd, registry=self.registry)
-            results = fed_search('gA', top=1, registry=self.registry)
+            results = fed_search('federated_target_node', top=1,
+                                 registry=self.registry,
+                                 graphs={'gA'})
             self.assertEqual(len(results), 1)
             # gA's graph was yielded and the generator was abandoned
             # after the caller returned early. try/finally must have

@@ -457,7 +457,8 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
             if edges:
                 report["written_edges"] += _store_resolved_edges(
                     conn, store, edges)
-            _write_file_node(conn, store, result["file"], functions)
+            _write_file_node(conn, store,
+                             os.path.relpath(fp, source_root), functions)
             batch = extract_cgdb_batch(result, commit_hash=commit,
                                        version_id=_version_id)
             if batch.file and batch.file.path:

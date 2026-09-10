@@ -104,10 +104,24 @@ def _read_message():
             break
 
     if content_length is not None:
-        # Read exactly content_length bytes
-        data = sys.stdin.read(content_length)
-        if not data:
-            return _EOF_SENTINEL  # EOF
+        # Read exactly content_length bytes. Content-Length is a byte count
+        # per the MCP/LSP framing spec, but sys.stdin is a text stream whose
+        # .read(n) counts CHARACTERS — non-ASCII (e.g. CJK query text)
+        # desynchronizes the stream. Read bytes from the underlying buffer
+        # and decode, so multi-byte UTF-8 bodies are framed correctly.
+        # Fallback to the text stream when .buffer is unavailable (e.g.
+        # StringIO-backed tests), where the byte/char divergence does not
+        # arise for ASCII content.
+        stdin_buffer = getattr(sys.stdin, "buffer", None)
+        if stdin_buffer is not None:
+            raw = stdin_buffer.read(content_length)
+            if not raw:
+                return _EOF_SENTINEL  # EOF
+            data = raw.decode("utf-8", errors="replace")
+        else:
+            data = sys.stdin.read(content_length)
+            if not data:
+                return _EOF_SENTINEL  # EOF
     elif fallback_body is not None:
         # Fallback: the line we already read IS the JSON body.
         data = fallback_body

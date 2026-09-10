@@ -1984,9 +1984,15 @@ def daemon_query(graph_dir: str, cmd: str, **kwargs) -> Dict:
 
 
 def is_daemon_running(graph_dir: str) -> bool:
-    """Check if daemon process is alive."""
+    """Check if a daemon process is alive and actually running.
+
+    A transient status (syncing / paused / idle) still means the daemon
+    process is alive — returning False there let cmd_daemon_start spin up
+    a second daemon that hijacked the live socket. Only STOPPED/CRASHED
+    (or a dead PID) count as not-running.
+    """
     state = DaemonState.read(graph_dir)
-    if state.status != STATUS_RUNNING:
+    if state.status in (STATUS_STOPPED, STATUS_CRASHED):
         return False
     if not state.pid:
         return False

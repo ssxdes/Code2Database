@@ -258,7 +258,7 @@ def _tool_cgdb_find_data_flow(args: dict, graph_dir: str) -> dict:
     store = _cgdb_store(graph_dir)
     if store is None:
         return {"error": "cgdb tables not available"}
-    return store.find_data_flow(int(var_id))
+    return store.find_data_flow(_mcp_coerce_int(var_id, 0, 0, 2**63 - 1))
 
 
 def _tool_cgdb_find_aliases(args: dict, graph_dir: str) -> list:
@@ -269,7 +269,7 @@ def _tool_cgdb_find_aliases(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    return store.find_aliases(int(ptr_id))
+    return store.find_aliases(_mcp_coerce_int(ptr_id, 0, 0, 2**63 - 1))
 
 
 def _tool_cgdb_find_lock_held_calls(args: dict, graph_dir: str) -> list:
@@ -280,7 +280,7 @@ def _tool_cgdb_find_lock_held_calls(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    return store.find_lock_held_calls(int(func_id))
+    return store.find_lock_held_calls(_mcp_coerce_int(func_id, 0, 0, 2**63 - 1))
 
 
 def _tool_cgdb_check_race_condition(args: dict, graph_dir: str) -> list:
@@ -291,7 +291,7 @@ def _tool_cgdb_check_race_condition(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    return store.check_race_condition(int(func_id))
+    return store.check_race_condition(_mcp_coerce_int(func_id, 0, 0, 2**63 - 1))
 
 
 def _tool_cgdb_find_configs_for(args: dict, graph_dir: str) -> list:
@@ -302,7 +302,7 @@ def _tool_cgdb_find_configs_for(args: dict, graph_dir: str) -> list:
     store = _cgdb_store(graph_dir)
     if store is None:
         return [{"error": "cgdb tables not available"}]
-    return store.find_configs_for(int(node_id))
+    return store.find_configs_for(_mcp_coerce_int(node_id, 0, 0, 2**63 - 1))
 
 
 def _tool_cgdb_find_nodes_under_config(args: dict, graph_dir: str) -> list:
@@ -334,7 +334,9 @@ def _tool_cgdb_time_travel_query(args: dict, graph_dir: str) -> dict:
     store = _cgdb_store(graph_dir)
     if store is None:
         return {"error": "cgdb tables not available"}
-    result = store.time_travel_query_node(int(node_id), int(version_id))
+    result = store.time_travel_query_node(
+        _mcp_coerce_int(node_id, 0, 0, 2**63 - 1),
+        _mcp_coerce_int(version_id, 0, 0, 2**63 - 1))
     return result or {"error": f"node {node_id} not alive at version {version_id}"}
 
 

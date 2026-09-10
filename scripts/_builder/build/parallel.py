@@ -309,11 +309,12 @@ def map_nodes(
             # threads. BrokenExecutor: spawn bootstrap/pool breakage
             # (e.g. unguarded __main__ script) — retry on threads
             # instead of crashing the caller.
-            if _auto_promote:
-                logging.getLogger(__name__).warning(
-                    "map_nodes: process mode failed (work_fn may not be "
-                    "picklable, or the pool broke); falling back to "
-                    "thread mode (GIL-serialized). desc=%s, n=%d", desc, n)
+            logging.getLogger(__name__).warning(
+                "map_nodes: process mode unavailable (work_fn may not "
+                "be picklable, or the pool broke); falling back to "
+                "thread mode (GIL-serialized). desc=%s, n=%d, "
+                "explicit=%s", desc, n,
+                parallel_mode == "process")
             pass  # fall back to ThreadPoolExecutor
 
     # ThreadPoolExecutor path (default or fallback).

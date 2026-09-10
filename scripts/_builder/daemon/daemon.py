@@ -755,6 +755,14 @@ class FileWatcher:
                 logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
         _poll_interval = getattr(self, 'polling_interval', 2.0)
+        # Separate content-hash state from the fast-signature state. Storing
+        # the content hash in _polling_state made every file's fast sig
+        # (mtime+size) mismatch on the next cycle, so every file was
+        # re-hashed every poll — defeating the two-phase optimization and
+        # burning CPU/IO on large trees (auto-enabled whenever the DB has
+        # cgdb tables, which is exactly the big-project case).
+        if not hasattr(self, '_content_hash_state'):
+            self._content_hash_state: Dict[str, str] = {}
         while not self._stop:
             time.sleep(_poll_interval)
             current: Dict[str, str] = {}
@@ -783,16 +791,17 @@ class FileWatcher:
                 sig = self._file_signature(full_path)
                 if not sig:
                     continue
-                current[full_path] = sig
-                old_content = self._polling_state.get(full_path)
+                old_content = self._content_hash_state.get(full_path)
                 if old_content is None or old_content != sig:
                     if self._callback:
                         self._callback(full_path)
+                self._content_hash_state[full_path] = sig
             for old_path in list(self._polling_state.keys()):
                 if old_path not in current:
                     if self._callback:
                         self._callback(old_path)
                     del self._polling_state[old_path]
+                    self._content_hash_state.pop(old_path, None)
 
             # DB-aware change detection — compare current file content hashes
             # against the cgdb_files table's stored content_hash. Any file

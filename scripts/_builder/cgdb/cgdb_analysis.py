@@ -774,15 +774,14 @@ class DataFlowExtractor:
         """
         records: List[DataFlowRecord] = []
         try:
-            # Try to get live-vars if not provided
-            if live_vars is None and filepath:
-                try:
-                    dump = self._run_dump_live_vars(filepath)
-                    func_name = func_cursor.spelling or ''
-                    if dump and func_name:
-                        live_vars = self._parse_live_vars(dump, func_name)
-                except Exception:
-                    live_vars = None
+            # live_vars liveness metadata is not consumed yet: the prior
+            # implementation wrote kind='live_in'/'live_out' DataFlowRecord
+            # rows, but those kinds are not in the data_flow CHECK and
+            # rejected the whole cgdb batch on any clang CLI build. The
+            # auto-DumpLiveVars clang subprocess that populated this dict
+            # was the only producer, so it is skipped until a proper
+            # block-id → statement mapping exists. live_vars stays in the
+            # signature for callers that pass it explicitly.
 
             # First pass: collect VarDecls (initial defs)
             var_decls = {}  # var_name → (var_node_id, def_stmt_node_id, def_order)
@@ -883,31 +882,11 @@ class DataFlowExtractor:
             # If we have live-vars data, attach metadata to records.
             # For MVP, we don't filter records based on liveness (we'd need
             # block-id mapping per statement, which requires deeper AST
-            # integration). But we record the live-in/live-out sets as
-            # auxiliary DataFlowRecord entries with kind='live_in'/'live_out'
-            # so they're queryable.
-            if live_vars:
-                for block_idx, liveness in live_vars.items():
-                    for var_name in liveness.get('live_in', []):
-                        if var_name in var_decls:
-                            var_node_id, _, _ = var_decls[var_name]
-                            records.append(DataFlowRecord(
-                                var_id=var_node_id,
-                                def_stmt_id=var_node_id,
-                                use_stmt_id=var_node_id,
-                                function_id=func_node_id,
-                                kind='live_in',
-                            ))
-                    for var_name in liveness.get('live_out', []):
-                        if var_name in var_decls:
-                            var_node_id, _, _ = var_decls[var_name]
-                            records.append(DataFlowRecord(
-                                var_id=var_node_id,
-                                def_stmt_id=var_node_id,
-                                use_stmt_id=var_node_id,
-                                function_id=func_node_id,
-                                kind='live_out',
-                            ))
+            # integration). Live-in/live-out rows were previously emitted
+            # here as kind='live_in'/'live_out' DataFlowRecord entries, but
+            # those kinds are not in the data_flow CHECK and rejected the
+            # whole cgdb batch, so the emission is deferred until a proper
+            # block-id → statement mapping exists (see note above).
         except Exception:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass

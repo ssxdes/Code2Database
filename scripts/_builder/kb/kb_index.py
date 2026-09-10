@@ -684,8 +684,8 @@ def sync_brief_to_kb(graph_dir: str, brief: dict) -> int:
                 " created_at, access_count) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
                 (p["source_kind"], p["source_file"], p["para_index"],
-                 p["title"], p["body"], p.get("tags_json"),
-                 p.get("node_ids_json"), p.get("weight", 1.0),
+                 p["title"], p["body"], p.get("tags"),
+                 p.get("node_ids"), p.get("weight", 1.0),
                  p.get("confidence", 1.0), p.get("kind", "knowledge"),
                  p.get("graph_version"),
                  datetime.now().isoformat()))

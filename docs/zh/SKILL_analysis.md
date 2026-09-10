@@ -54,13 +54,15 @@ parent_skill: Code2Database
 | 问题类型 | 命令序列 |
 |---------|---------|
 | **这是线程安全的吗？** | `concurrency-risks` → `concurrency-analyze` → `detect-races` → `lock-coverage` → `happens-before` → `memory-ordering` → `who-locks` |
-| **这个 NULL / 值从哪来？** | `value-flow` → `param-flow` → `data-dep` → `data-lifecycle` → `io-path` |
-| **改这个会影响什么？** | `impact` → `blast-radius` → `neighbors` → `path` → `diff-chains` |
-| **这条路径可行吗？** | `path-feasible` → `resolve-chain` → `extract-signals` |
+| **这个 NULL / 值从哪来？** | `value-flow` → `param-flow` → `data-dep` → `field-flow` → `null-source` → `data-lifecycle` → `io-path` |
+| **改这个会影响什么？** | `impact` → `blast-radius` → `explore-flow` → `key-paths` → `neighbors` → `path` → `code-slice` → `diff-chains` |
+| **这条路径可行吗？** | `path-feasible` → `path-guards` → `runtime-guards` → `resolve-chain` → `extract-signals` |
+| **输入被净化了吗（污点分析）？** | `taint-analysis` → `null-source` → `path-guards` |
 | **这个函数强制了什么不变量？** | `extract-invariants` → `find-invariants` → `apply-invariants` |
 | **哪个 Python/Go/Rust 函数调到 C？** | `ffi-detect` → `ffi-list` → `ffi-trace` → `ffi-types` |
 | **哪个 commit 引入了这个？** | `blame-node` → `describe-commit` → `node-history` → `graph-provenance` → `find-commits` |
 | **谁分配 / 释放了这个资源？** | `who-allocates` → `who-frees` → `unbalanced-alloc-free` → `add-semantic-edges` |
+| **语义 + FTS 混合搜索？** | `hybrid-search` → `code-slice` → `key-paths` |
 | **直接查询 cgdb 表（clang 后端）** | 使用 19 个 `cgdb_*` MCP 工具——见下方"cgdb MCP 工具"节 |
 
 ## cgdb MCP 工具（clang 后端 — 19 个工具）

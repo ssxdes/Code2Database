@@ -54,13 +54,15 @@ When the question type matches one of these, use the listed command sequence. Re
 | Question Type | Command Sequence |
 |---------------|------------------|
 | **Is this thread-safe?** | `concurrency-risks` → `concurrency-analyze` → `detect-races` → `lock-coverage` → `happens-before` → `memory-ordering` → `who-locks` |
-| **Where does this NULL / value come from?** | `value-flow` → `param-flow` → `data-dep` → `data-lifecycle` → `io-path` |
-| **What breaks if I change this?** | `impact` → `blast-radius` → `neighbors` → `path` → `diff-chains` |
-| **Is this path feasible?** | `path-feasible` → `resolve-chain` → `extract-signals` |
+| **Where does this NULL / value come from?** | `value-flow` → `param-flow` → `data-dep` → `field-flow` → `null-source` → `data-lifecycle` → `io-path` |
+| **What breaks if I change this?** | `impact` → `blast-radius` → `explore-flow` → `key-paths` → `neighbors` → `path` → `code-slice` → `diff-chains` |
+| **Is this path feasible?** | `path-feasible` → `path-guards` → `runtime-guards` → `resolve-chain` → `extract-signals` |
+| **Is this input sanitized (taint analysis)?** | `taint-analysis` → `null-source` → `path-guards` |
 | **What invariants does this function enforce?** | `extract-invariants` → `find-invariants` → `apply-invariants` |
 | **Which Python/Go/Rust function calls into C?** | `ffi-detect` → `ffi-list` → `ffi-trace` → `ffi-types` |
 | **Which commit introduced this?** | `blame-node` → `describe-commit` → `node-history` → `graph-provenance` → `find-commits` |
 | **Who allocates / frees this resource?** | `who-allocates` → `who-frees` → `unbalanced-alloc-free` → `add-semantic-edges` |
+| **Hybrid semantic + FTS search?** | `hybrid-search` → `code-slice` → `key-paths` |
 | **Query cgdb tables directly (clang backend)** | use the 19 `cgdb_*` MCP tools — see "cgdb MCP Tools" section below |
 
 ## cgdb MCP Tools (clang backend — 19 tools)

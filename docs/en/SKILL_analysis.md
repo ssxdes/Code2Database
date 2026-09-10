@@ -136,8 +136,7 @@ When you detect a question about **simple browsing, scanning, building, or gener
 | `references/semantic_enhancement.md` | Semantic extraction and enhancement details |
 | `references/endpoint_pipeline.md` | Endpoint classification pipeline |
 | `references/cross_skill_collaboration.md` | Cross-skill collaboration protocols |
-| `references/usage_examples.md` | Worked query examples across common scenarios |
 
-**Inherited from parent** (`/Code2Database`): `references/usage_reference.md`, `references/label_rules.md`, `references/json_schema.md`, `references/memory_knowledge.md`. These are available at the parent skill's references directory.
+**Inherited from parent** (`/Code2Database`): `references/usage_reference.md`, `references/label_rules.md`, `references/json_schema.md`, `references/memory_knowledge.md`, `references/usage_examples.md`. These are available at the parent skill's references directory.
 
 **Internal files** (do NOT load into agent context): `OVERVIEW.md`, `scripts/`, `config/profiles/`. These are implementation details for tool developers, not needed for usage.

@@ -136,8 +136,7 @@ parent_skill: Code2Database
 | `references/semantic_enhancement.md` | 语义提取和增强详情 |
 | `references/endpoint_pipeline.md` | 端点分类流水线 |
 | `references/cross_skill_collaboration.md` | 跨 Skill 协作协议 |
-| `references/usage_examples.md` | 常见场景的查询示例 |
 
-**继承自父技能**（`/Code2Database`）：`references/usage_reference.md`、`references/label_rules.md`、`references/json_schema.md`、`references/memory_knowledge.md`。这些位于父技能的 references 目录。
+**继承自父技能**（`/Code2Database`）：`references/usage_reference.md`、`references/label_rules.md`、`references/json_schema.md`、`references/memory_knowledge.md`、`references/usage_examples.md`。这些位于父技能的 references 目录。
 
 **内部文件**（禁止加载到 agent 上下文）：`OVERVIEW.md`、`scripts/`、`config/profiles/`。这些是工具开发者的实现细节，使用时不需要。

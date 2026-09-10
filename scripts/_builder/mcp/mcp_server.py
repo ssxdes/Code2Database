@@ -31,7 +31,6 @@ import json
 import sys
 import os
 import atexit
-import threading
 from pathlib import Path
 
 from _builder.token_budget import estimate_tokens
@@ -44,7 +43,6 @@ from _builder.mcp.mcp_cache import (
     _drop_cgdb_store, _close_cached_cgdb_stores,
     _cgdb_store, _mcp_coerce_str, _mcp_coerce_int,
 )
-from _builder.utils import resolve_source_file as _resolve_source_file
 
 
 from _builder.mcp.mcp_c2d_tools import _tool_load, _tool_search, _tool_describe, _tool_explore, _tool_trace, _tool_impact, _tool_key_paths, _tool_concurrency, _tool_data_lifecycle, _tool_domain, _tool_knowledge_query, _tool_memory_search, _tool_kb_query, _tool_save_memory, _tool_session_init, _tool_semantic_status, _tool_foreign_refs, _tool_sync_foreign, _tool_composite_query, _tool_get_code_snippet, _tool_blast_radius, _tool_extract_signals, _tool_path_feasible, _tool_find_invariants, _tool_ffi_trace, _tool_doc_code_check, _tool_daemon_status, _tool_who_allocates, _tool_who_frees, _tool_who_locks, _tool_explain_label, _tool_why_ambiguous, _tool_audit_log, _tool_happens_before, _tool_memory_ordering, _tool_unbalanced_alloc_free

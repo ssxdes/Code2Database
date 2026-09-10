@@ -170,7 +170,6 @@ def resolve_source_file(file_path: str, graph_dir: str) -> str:
 
 def _ensure_mutable_graph(G, command_name: str = "this command"):
     """Detect LazySQLiteGraph (read-only SQLite view) early and exit with
-import logging
     a clear, actionable error.
 
     Used by commands that mutate the graph (nx.compose, G.nodes[nid][...] = ...).

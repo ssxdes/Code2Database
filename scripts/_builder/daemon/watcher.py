@@ -28,7 +28,6 @@ class WatchService:
         """Start watching for changes."""
         try:
             from watchdog.observers import Observer
-            from watchdog.events import FileSystemEventHandler
 
             handler = _ChangeHandler(self)
             self._watcher = Observer()
@@ -65,7 +64,6 @@ class WatchService:
         # Run incremental scan
         try:
             from code2database_scanner import scan_files
-            import networkx as nx
 
             result = scan_files(source_changes, self.source_root)
 

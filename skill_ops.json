@@ -93,6 +93,7 @@
     "kb-global-import-memory",
     "kb-global-search",
     "kb-global-search-memory",
+    "kb-global-share",
     "kb-global-share-memory",
     "kb-known-unknowns",
     "kb-migrate",

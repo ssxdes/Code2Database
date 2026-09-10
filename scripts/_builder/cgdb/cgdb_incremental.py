@@ -206,17 +206,31 @@ class IncrementalSync:
         finally:
             conn.close()
         changed: List[str] = []
-        # Check existing files on disk against stored hashes
-        seen_paths = set()
+        # Check existing files on disk against stored hashes.
+        # _include_graph keys are absolute (os.walk over an abspath root),
+        # but cgdb_files.path may be relative (the scanner emits
+        # source-root-relative paths for portability). Look up both forms
+        # so a relative-path DB does not report every file as changed on
+        # every poll cycle (which also re-hashed the whole tree each time).
+        seen_abs = set()
+        seen_rel = set()
         for fpath in self._include_graph.keys():
-            seen_paths.add(fpath)
+            seen_abs.add(fpath)
+            seen_rel.add(os.path.relpath(fpath, self.source_root))
             cur_hash = compute_content_hash(fpath)
-            stored_hash = stored.get(fpath, '')
+            rel = os.path.relpath(fpath, self.source_root)
+            stored_hash = stored.get(fpath, stored.get(rel, ''))
             if cur_hash != stored_hash:
                 changed.append(fpath)
-        # Check for deleted files (in DB but not on disk)
+        # Check for deleted files (in DB but not on disk). Compare in BOTH
+        # forms: a relative stored path is "seen" if its relative form is in
+        # seen_rel, and its absolute form (resolved against source_root)
+        # exists on disk.
         for path in stored:
-            if path not in seen_paths and not os.path.exists(path):
+            if path in seen_abs or path in seen_rel:
+                continue
+            resolved = path if os.path.isabs(path) else os.path.join(self.source_root, path)
+            if not os.path.exists(resolved):
                 changed.append(path)
         return changed
 

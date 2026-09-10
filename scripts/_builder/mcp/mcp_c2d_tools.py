@@ -8,7 +8,7 @@ import os
 import logging
 from pathlib import Path
 from _builder.token_budget import estimate_tokens
-from _builder.mcp.mcp_cache import _get_graph, _mcp_coerce_str, _mcp_coerce_int
+from _builder.mcp.mcp_cache import _get_graph, _mcp_coerce_str, _mcp_coerce_int, mcp_read_only
 from _builder.utils import resolve_source_file as _resolve_source_file
 
 
@@ -475,6 +475,8 @@ def _tool_knowledge_query(args: dict, graph_dir: str) -> dict:
                    "query_paths"],
             min_weight=0.0,
             max_tokens=_mcp_coerce_int(args.get("max_tokens", 500), 500, 50, 50000),
+            update_access=not mcp_read_only(),
+            log_query=not mcp_read_only(),
         )
         if results:
             return {
@@ -540,6 +542,8 @@ def _tool_memory_search(args: dict, graph_dir: str) -> list:
             kinds=["memory_qa", "memory_experience"],
             min_weight=0.0,  # no weight filter; let BM25 rank
             max_tokens=4000,
+            update_access=not mcp_read_only(),
+            log_query=not mcp_read_only(),
         )
         if results:
             return results
@@ -579,6 +583,8 @@ def _tool_kb_query(args: dict, graph_dir: str) -> dict:
             kinds=kinds,
             min_weight=_mcp_coerce_float(args.get("min_weight", 0.0), 0.0, 0.0, 1.0),
             max_tokens=_mcp_coerce_int(args.get("max_tokens", 4000), 4000, 100, 100000),
+            update_access=not mcp_read_only(),
+            log_query=not mcp_read_only(),
         )
     except Exception as exc:
         return {"error": str(exc)}

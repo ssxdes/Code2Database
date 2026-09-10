@@ -450,6 +450,12 @@ def run_mcp_server_http(graph_dir: str, host: str = "0.0.0.0",
     if token and not token.strip():
         token = None
 
+    # Propagate read-only mode to the tool handlers (kb-query tools skip
+    # their access_count / query-log writes so a read-only server is
+    # genuinely write-free, not just write-tool-filtered).
+    from _builder.mcp.mcp_cache import set_mcp_read_only
+    set_mcp_read_only(read_only)
+
     # Shared stats (same structure as stdio mode)
     mcp_stats = {"total_calls": 0, "total_output_tokens": 0, "by_tool": {}}
     stats_lock = threading.Lock()

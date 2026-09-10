@@ -773,7 +773,8 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
              min_weight: float = 0.0,
              max_tokens: int = 4000,
              semantic: bool = False,
-             log_query: bool = True) -> List[Dict[str, Any]]:
+             log_query: bool = True,
+             update_access: bool = True) -> List[Dict[str, Any]]:
     """Unified FTS5 + BM25 search across all kb_paragraphs.
 
     Args:
@@ -936,17 +937,21 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
             except sqlite3.Error:
                 res["see_also"] = []
         # Update access_count on returned rows (best-effort)
-        try:
-            for res in results:
-                conn.execute(
-                    "UPDATE kb_paragraphs SET access_count = access_count + 1, "
-                    "accessed_at = ? WHERE id = ?",
-                    (datetime.now().isoformat(), res["id"])
-                )
-            conn.commit()
-        except sqlite3.Error:
-            logging.getLogger(__name__).debug("silent exception", exc_info=True)
-            pass
+        # Update access_count on returned rows (best-effort). Skipped in
+        # read-only mode (a --read-only MCP server must not mutate the
+        # production DB on every query — including these bookkeeping writes).
+        if update_access:
+            try:
+                for res in results:
+                    conn.execute(
+                        "UPDATE kb_paragraphs SET access_count = access_count + 1, "
+                        "accessed_at = ? WHERE id = ?",
+                        (datetime.now().isoformat(), res["id"])
+                    )
+                conn.commit()
+            except sqlite3.Error:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                pass
         if log_query:
             top_score = results[0]["score"] if results else 0.0
             _record_query_log(conn, query, len(results), top_score)

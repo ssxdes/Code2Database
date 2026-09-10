@@ -842,6 +842,10 @@ WRITE_TOOLS = frozenset({
     "edit_token",
     "insert_token",
     "delete_token",
+    # verify_consistency UPDATEs source_files_meta on success and INSERTs
+    # into alignment_errors on mismatch, so it mutates the DB even though
+    # its name sounds read-only. Hide it in --read-only mode.
+    "verify_consistency",
 })
 
 
@@ -1016,6 +1020,11 @@ def dispatch_mcp_request(method, msg_id, params, graph_dir, mcp_stats,
 
 def run_mcp_server(graph_dir: str, read_only: bool = False):
     """Run MCP server over stdio transport."""
+    # Propagate read-only mode to the tool handlers (kb-query tools skip
+    # their access_count / query-log writes so a read-only server is
+    # genuinely write-free, not just write-tool-filtered).
+    from _builder.mcp.mcp_cache import set_mcp_read_only
+    set_mcp_read_only(read_only)
     # Token tracking
     mcp_stats = {"total_calls": 0, "total_output_tokens": 0, "by_tool": {}}
 

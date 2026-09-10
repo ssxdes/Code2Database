@@ -16,6 +16,21 @@ _GRAPH_CACHE_LOCK = threading.RLock()
 _CGDB_STORE_CACHE: dict = {}
 _CGDB_STORE_CACHE_LOCK = threading.RLock()
 
+# Set to True by run_mcp_server / the HTTP server when started with
+# --read-only. Tool handlers that perform bookkeeping writes (kb access
+# bumps, query logging) check this so a read-only server delivers a
+# write-free mode instead of mutating the production DB on every query.
+_MCP_READ_ONLY = False
+
+
+def set_mcp_read_only(value: bool) -> None:
+    global _MCP_READ_ONLY
+    _MCP_READ_ONLY = value
+
+
+def mcp_read_only() -> bool:
+    return _MCP_READ_ONLY
+
 
 def _get_graph(graph_dir: str):
     """Get a cached graph instance, or load and cache a new one."""

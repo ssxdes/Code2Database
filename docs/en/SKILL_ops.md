@@ -150,9 +150,9 @@ When you detect a question about **simple browsing, scanning, building, or gener
 | Document | Content |
 |----------|---------|
 | `references/ops_commands.md` | Full syntax for all ops commands (transactions, daemon, profile, doc-code, exports, plugins, memory, embeddings) |
-| `RUNTIME_CONFIG.md` | Runtime tuning (invariants, auto_enhance, transactions, ffi, web_ui, benchmark, profile_health, doc_code, daemon sections) |
-| `PROFILE_MANUAL.md` | Profile authoring (skip_names, callback_detection, struct_op_types, registration_macros, domain_rules, threading_models) |
+| `RUNTIME_CONFIG.md` *(inherited — parent skill dir)* | Runtime tuning (invariants, auto_enhance, transactions, ffi, web_ui, benchmark, profile_health, doc_code, daemon sections) |
+| `PROFILE_MANUAL.md` *(inherited — parent skill dir)* | Profile authoring (skip_names, callback_detection, struct_op_types, registration_macros, domain_rules, threading_models) |
 
-**Inherited from parent** (`/Code2Database`): `references/usage_reference.md`, `references/label_rules.md`, `references/data_model.md`, `references/json_schema.md`, `references/usage_examples.md`, `references/memory_knowledge.md`. These are available at the parent skill's references directory.
+**Inherited from parent** (`/Code2Database`): `references/usage_reference.md`, `references/label_rules.md`, `references/data_model.md`, `references/json_schema.md`, `references/usage_examples.md`, `references/memory_knowledge.md`, `RUNTIME_CONFIG.md`, `PROFILE_MANUAL.md`. These are available at the parent skill's directory.
 
 **Internal files** (do NOT load into agent context): `OVERVIEW.md`, `scripts/`, `config/profiles/`. These are implementation details for tool developers, not needed for usage.

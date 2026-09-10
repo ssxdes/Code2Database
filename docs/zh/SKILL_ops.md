@@ -150,9 +150,9 @@ LLM 执行任何修改 code graph database的命令时，**必须先获得用户
 | 文档 | 内容 |
 |------|------|
 | `references/ops_commands.md` | 所有运维命令（事务、守护进程、profile、文档-代码、导出、插件、记忆、embeddings）的完整语法 |
-| `RUNTIME_CONFIG.md` | 运行时调优（invariants、auto_enhance、transactions、ffi、web_ui、benchmark、profile_health、doc_code、daemon 各节） |
-| `PROFILE_MANUAL.md` | Profile 编写（skip_names、callback_detection、struct_op_types、registration_macros、domain_rules、threading_models） |
+| `RUNTIME_CONFIG.md` *（继承——父技能目录）* | 运行时调优（invariants、auto_enhance、transactions、ffi、web_ui、benchmark、profile_health、doc_code、daemon 各节） |
+| `PROFILE_MANUAL.md` *（继承——父技能目录）* | Profile 编写（skip_names、callback_detection、struct_op_types、registration_macros、domain_rules、threading_models） |
 
-**继承自父技能**（`/Code2Database`）：`references/usage_reference.md`、`references/label_rules.md`、`references/data_model.md`、`references/json_schema.md`、`references/usage_examples.md`、`references/memory_knowledge.md`。这些文件位于父技能的 references 目录中。
+**继承自父技能**（`/Code2Database`）：`references/usage_reference.md`、`references/label_rules.md`、`references/data_model.md`、`references/json_schema.md`、`references/usage_examples.md`、`references/memory_knowledge.md`、`RUNTIME_CONFIG.md`、`PROFILE_MANUAL.md`。这些文件位于父技能目录中。
 
 **内部文件**（禁止加载到 agent 上下文）：`OVERVIEW.md`、`scripts/`、`config/profiles/`。这些是工具开发者的实现细节，使用时不需要。

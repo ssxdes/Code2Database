@@ -1091,10 +1091,16 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         conn = self._ensure_conn()
         # Find calls made while a lock is held: lock_acquire before call,
         # no intervening lock_release.
+        # Order by source line (via JOIN to cgdb_nodes) — acquire_stmt_id
+        # is a USR-based hash whose magnitude has no relation to source order.
         rows = conn.execute(
-            "SELECT id, sync_var_id, kind, acquire_stmt_id, release_stmt_id, "
-            "memory_order FROM sync_primitives WHERE function_id = ? "
-            "ORDER BY acquire_stmt_id",
+            "SELECT sp.id, sp.sync_var_id, sp.kind, sp.acquire_stmt_id, "
+            "sp.release_stmt_id, sp.memory_order, "
+            "COALESCE(n.line, 0) AS src_line "
+            "FROM sync_primitives sp "
+            "LEFT JOIN cgdb_nodes n ON n.id = sp.acquire_stmt_id "
+            "WHERE sp.function_id = ? "
+            "ORDER BY src_line",
             (func_id,)
         ).fetchall()
         return [{"id": r[0], "sync_var_id": r[1], "kind": r[2],
@@ -1295,11 +1301,29 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         whether the access is protected.
         """
         conn = self._ensure_conn()
-        # Get all sync_primitives for this function, ordered by acquire_stmt_id
+        # Build a stmt_id → source-line map so interval comparisons use
+        # actual source positions, not node-ID hashes (acquire_stmt_id /
+        # release_stmt_id / def_stmt_id / use_stmt_id are USR-based hashes
+        # whose magnitude has no relation to source order — comparing them
+        # as positions made the protected flag effectively random).
+        _stmt_lines: Dict[int, int] = {}
+        for r in conn.execute(
+            "SELECT id, line FROM cgdb_nodes WHERE enclosing_symbol_id = ?",
+            (function_id,)
+        ).fetchall():
+            _stmt_lines[r[0]] = r[1] or 0
+        _func_row = conn.execute(
+            "SELECT line FROM cgdb_nodes WHERE id = ?", (function_id,)).fetchone()
+        if _func_row:
+            _stmt_lines[function_id] = _func_row[0] or 0
+
+        def _line_of(stmt_id):
+            return _stmt_lines.get(stmt_id, 0) if stmt_id is not None else 0
+
+        # Get all sync_primitives for this function.
         syncs = conn.execute(
             "SELECT kind, sync_var_id, acquire_stmt_id, release_stmt_id "
-            "FROM sync_primitives WHERE function_id = ? "
-            "ORDER BY acquire_stmt_id",
+            "FROM sync_primitives WHERE function_id = ?",
             (function_id,)
         ).fetchall()
         # Pair acquires with releases by sync_var_id
@@ -1312,18 +1336,19 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         # race, while functions that never release their locks got no
         # warnings at all (exactly backwards).
         lock_intervals: Dict[int, List[Tuple[int, int]]] = {}
-        open_acqs: Dict[int, int] = {}
+        open_acqs: Dict[int, int] = {}  # sync_var_id → acquire stmt_id
         for kind, sync_var_id, acq, rel in syncs:
             if sync_var_id is None:
                 continue
             if kind == 'lock_acquire' and acq is not None:
                 open_acqs[sync_var_id] = acq
             elif kind == 'lock_release' and sync_var_id in open_acqs:
+                _acq_id = open_acqs.pop(sync_var_id)
                 lock_intervals.setdefault(sync_var_id, []).append(
-                    (open_acqs.pop(sync_var_id), rel if rel is not None else acq))
+                    (_line_of(_acq_id), _line_of(rel if rel is not None else _acq_id)))
         for sv, a in list(open_acqs.items()):
             # Never released — treat as held to end (use a large sentinel)
-            lock_intervals.setdefault(sv, []).append((a, 1 << 62))
+            lock_intervals.setdefault(sv, []).append((_line_of(a), 1 << 62))
         # For each unprotected var (var_id matches a sync_var_id but no lock held),
         # emit a race warning. This is heuristic — production would use
         # clang's Thread Safety Analysis (C++ plugin).
@@ -1336,14 +1361,15 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             # If this var is also a sync_var (lock), it's not a race target
             if var_id in lock_intervals or var_id in open_acqs:
                 continue
-            access_stmt = def_stmt if def_stmt is not None else use_stmt
+            access_line = _line_of(def_stmt if def_stmt is not None else use_stmt)
             # Access is protected if it lies inside ANY lock interval
             # (any var — we can't attribute which lock guards which var
-            # from sync rows alone; conservative).
+            # from sync rows alone; conservative). Intervals are in source
+            # line space, not node-ID hash space.
             protected = any(
-                a is not None and access_stmt is not None and a <= access_stmt <= r
+                a_l is not None and access_line is not None and a_l <= access_line <= r_l
                 for intervals in lock_intervals.values()
-                for (a, r) in intervals
+                for (a_l, r_l) in intervals
             )
             if not protected:
                 races.append({

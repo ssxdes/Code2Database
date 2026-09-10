@@ -126,16 +126,17 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             attrs['body_text'] = n['body_text']
         # L3.5: propagate config_predicate_id from the scan-result node dict
         # (set by ClangScanner via ConfigPredicateExtractor.pass3_predicate_for_range).
-        # Treat 0 (the scanner's "no predicate" sentinel) as NULL — the
-        # cgdb_nodes.config_predicate_id FK references config_predicates(id),
-        # whose primary key starts at 1, so 0 is never a valid reference.
-        # With PRAGMA foreign_keys = ON, INSERTing a 0 trips FK violation
-        # (this surfaces when FK is ON).
-        config_predicate_id = n.get('config_predicate_id')
-        if config_predicate_id:
-            config_predicate_id = int(config_predicate_id)
-        else:
+        # The scanner uses 0 as the "unconditional" sentinel for nodes outside
+        # any #ifdef. It is NOT a valid FK target (config_predicates PK starts
+        # at 1), so we keep it as 0 here and resolve it to the actual
+        # unconditional predicate's id in a post-pass after predicates are
+        # converted (section 5 below). Any remaining 0 (no unconditional
+        # predicate in the batch) is set to None before the batch is written.
+        raw_pred_id = n.get('config_predicate_id')
+        if raw_pred_id is None:
             config_predicate_id = None
+        else:
+            config_predicate_id = int(raw_pred_id)
         # L1+5.4.2: propagate enclosing_symbol_id (set by ClangScanner via
         # cursor.semantic_parent walk). 0/None = file/TU scope.
         enclosing_symbol_id = n.get('enclosing_symbol_id') or 0
@@ -254,14 +255,13 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
     #    enum value). The CHECK constraint on cgdb_edges.kind rejects 'CALLS'.
     _EDGE_KIND_LEGACY_MAP = {'CALLS': 'INVOKES'}
     for e in scan_result.get('cgdb_edges', []):
-        # L3.5: propagate config_predicate_id from edge dict (if set by scanner)
-        # Treat 0 as NULL — see node note above (config_predicates PK starts
-        # at 1, so 0 is never a valid FK target).
-        edge_pred_id = e.get('config_predicate_id')
-        if edge_pred_id:
-            edge_pred_id = int(edge_pred_id)
-        else:
+        # L3.5: propagate config_predicate_id from edge dict (if set by scanner).
+        # Same 0 = "unconditional" sentinel as nodes; resolved in the post-pass.
+        raw_edge_pred = e.get('config_predicate_id')
+        if raw_edge_pred is None:
             edge_pred_id = None
+        else:
+            edge_pred_id = int(raw_edge_pred)
         # L7: propagate edge_id (deterministic ID for OPS_BIND edges so that
         # ops_bindings.edge_id FK is stable across runs).
         edge_id = e.get('edge_id')
@@ -376,6 +376,21 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             is_unconditional=bool(p.get('is_unconditional', False)),
             is_contradictory=bool(p.get('is_contradictory', False)),
         ))
+
+    # Resolve the scanner's "unconditional" sentinel (config_predicate_id=0)
+    # to the actual unconditional predicate's id. The scanner emits 0 for
+    # nodes/edges outside any #ifdef; the store writes config_predicate_id
+    # as a FK to config_predicates(id) (PK starts at 1), so 0 must be
+    # resolved before the batch is written. Nodes/edges whose 0 cannot be
+    # resolved (no unconditional predicate in the batch) get None.
+    _unconditional_pred_id = next(
+        (p.id for p in batch.config_predicates if p.is_unconditional), None)
+    for _node in batch.nodes:
+        if _node.config_predicate_id == 0:
+            _node.config_predicate_id = _unconditional_pred_id
+    for _edge in batch.edges:
+        if _edge.config_predicate_id == 0:
+            _edge.config_predicate_id = _unconditional_pred_id
 
     # 5b. Convert conditions → ConditionRecord (L3)
     #     One record per branch condition emitted by the scanner. De-dup by id
@@ -697,6 +712,37 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
     #    (e.g., tree-sitter-only fallback path).
     if not scan_result.get('cgdb_nodes'):
         _synthesize_from_legacy(scan_result, batch, fid, commit_hash, version_id)
+
+    # Filter out records whose cgdb_nodes FK references don't exist in the
+    # batch. The scanner's data_flow / sync_primitives / etc. extractors
+    # occasionally emit IDs that don't correspond to any emitted cgdb_node
+    # (different ID scheme or stale references). With PRAGMA foreign_keys =
+    # ON, a single orphan reference rejects the ENTIRE write_batch (the
+    # whole file's cgdb layer is lost). Drop orphan references instead —
+    # they provide no queryable value (JOINs to cgdb_nodes return nothing).
+    _node_ids = {n.id for n in batch.nodes}
+    if _node_ids:
+        batch.edges = [e for e in batch.edges
+                       if e.src_id in _node_ids and e.dst_id in _node_ids]
+        batch.basic_blocks = [b for b in batch.basic_blocks
+                              if b.function_id in _node_ids]
+        batch.cfg_edges = [e for e in batch.cfg_edges
+                           if e.function_id in _node_ids]
+        batch.data_flow = [d for d in batch.data_flow
+                           if d.var_id in _node_ids and d.function_id in _node_ids]
+        batch.alias_sets = [a for a in batch.alias_sets
+                            if a.ptr1_node_id in _node_ids
+                            and a.ptr2_node_id in _node_ids]
+        batch.invoke_sites = [i for i in batch.invoke_sites
+                              if i.invoker_id in _node_ids
+                              and i.invoked_id in _node_ids]
+        batch.ops_bindings = [o for o in batch.ops_bindings
+                              if o.ops_table_id in _node_ids
+                              and o.field_node_id in _node_ids
+                              and o.impl_function_id in _node_ids]
+        batch.sync_primitives = [s for s in batch.sync_primitives
+                                 if s.function_id in _node_ids
+                                 and (s.sync_var_id is None or s.sync_var_id in _node_ids)]
 
     return batch
 

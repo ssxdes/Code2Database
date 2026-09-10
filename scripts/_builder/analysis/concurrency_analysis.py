@@ -349,13 +349,27 @@ def _detect_toctou_patterns(G, target_func=None, profile=None):
                 if reader_locks and not (reader_locks & writer_locks):
                     toctou.append({
                         "type": "toctou_race",
+                        "race_id": f"TOCTOU-{len(toctou) + 1}",
                         "severity": "high",
                         "confidence": "medium",
                         "shared_resource": {
                             "type": "struct_field",
                             "name": f"{fsc}.{fname}" if fsc else fname,
                             "struct_chain": fsc,
+                            "access_a": "read",
+                            "access_b": "write",
                         },
+                        "thread_a": {
+                            "function": nd.get("name", nid),
+                            "thread_model": "unknown",
+                            "thread_entry": "unknown",
+                        },
+                        "thread_b": {
+                            "function": writer_name,
+                            "thread_model": "unknown",
+                            "thread_entry": "unknown",
+                        },
+                        "protection": "none",
                         "reader": {
                             "function": nd.get("name", nid),
                             "node_id": nid,

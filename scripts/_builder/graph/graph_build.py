@@ -1548,9 +1548,13 @@ def build_graph(extraction: dict, profile: dict = None,
                 "id": target_id, "domain": _auto_domain,
                 "name": target_name, "labels": [], "is_empty": False}
 
-        # Default concurrency for CALLBACK_ARG edges without explicit type:
-        # generic callback suffix detection (_cb, _fn, etc.) doesn't set
-        # concurrency, but these are all callback dispatch patterns.
+        # Default concurrency for edges without explicit type:
+        # CALLBACK_ARG → callback (generic callback dispatch)
+        # EXTRACTED → direct_call (directly observed call)
+        # INFERRED → direct_call (cross-file resolved or dispatch
+        #   inference — all INFERRED edges set concurrency at creation
+        #   time; this is a structural catch-all for any that slip
+        #   through with empty concurrency)
         # Note: scanner may already set concurrency to "poller" or "interrupt"
         # for registration functions that create periodic pollers or interrupt
         # handlers — preserve those rather than overriding to "callback".
@@ -1558,6 +1562,8 @@ def build_graph(extraction: dict, profile: dict = None,
         if not edge_concurrency and edge.get("confidence") == "CALLBACK_ARG":
             edge_concurrency = "callback"
         elif not edge_concurrency and edge.get("confidence") == "EXTRACTED":
+            edge_concurrency = "direct_call"
+        elif not edge_concurrency and edge.get("confidence") == "INFERRED":
             edge_concurrency = "direct_call"
 
         # Guard against self-loops: a self-loop is almost always a resolution

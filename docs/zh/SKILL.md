@@ -158,3 +158,18 @@ HTTP 传输（`--transport http`）让远程 MCP 客户端跨网络访问代码�
 - `path --domain-filter fs,block` 硬限制遍历只在指定 domain（或 `root`）
   的节点上进行。用于跨子系统可达性查询，确保只在已知子系统集合内搜索。
   支持逗号分隔列表。
+- **C++ 虚函数分发未解析**：tree-sitter C++ 没有独立的 `virtual_call` 节点
+  类型——虚方法调用被当作常规 `call_expression` 解析，仅解析到静态类型的方法，
+  而非动态分发目标。C 风格的 ops-table vtable 分发已处理（`vtable_dispatch`
+  边正确连接分发函数与注册目标）。对于 C++ 类层次结构中的 `virtual`/`override`，
+  请用 `concurrency-analyze` 或手动检查 override 集合。
+- **FFI 边需要 `make` 或显式 `ffi-detect`**：单独运行 `build` 命令会生成调用图，
+  但不运行 FFI 检测。跨语言 FFI 桥接（Python ctypes、Go cgo、Rust extern "C"）
+  由 `ffi-detect` 检测（在 `make` 流水线中自动调用），也可在 `build` 后单独运行。
+  如果在多语言项目上用 `build` 而非 `make`，请在之后运行 `ffi-detect --apply`
+  来添加 FFI 桥接边。
+- **`--scan-subsystems` 丢失跨子系统边**：子系统过滤将扫描范围限制在顶级目录
+  （如 `--scan-subsystems fs,block`）。`include/` 中的共享头文件和从被扫描
+  子系统到未扫描子系统的调用会变成 phantom external 节点——调用边保留但目标
+  节点未解析。如需跨子系统边界的完整调用图保真度，请省略 `--scan-subsystems`
+  或将 `include` 目录加入过滤列表。

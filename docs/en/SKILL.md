@@ -165,3 +165,24 @@ HTTP transport (`--transport http`) enables remote MCP clients to access your co
 - `path --domain-filter fs,block` hard-restricts traversal to nodes whose domain
   is in the allowlist (or `root`). Use for cross-subsystem reachability queries
   that must stay within a known set of subsystems. Comma-separated list supported.
+- **C++ virtual dispatch not resolved**: tree-sitter C++ has no separate
+  `virtual_call` node type — virtual method calls are parsed as regular
+  `call_expression` and only resolve to the statically-typed method, not to
+  dynamic dispatch targets. C-style ops-table vtable dispatch IS handled
+  (`vtable_dispatch` edges connect dispatch functions to registered targets).
+  For C++ class hierarchies with `virtual`/`override`, use `concurrency-analyze`
+  or manually inspect override sets.
+- **FFI edges require `make` or explicit `ffi-detect`**: the standalone `build`
+  command produces the invocation graph but does NOT run FFI detection.
+  Cross-language FFI bridges (Python ctypes, Go cgo, Rust extern "C") are
+  detected by `ffi-detect` (called automatically in the `make` pipeline) or
+  can be run separately after `build`. If you use `build` instead of `make`
+  on a multi-language project, run `ffi-detect --apply` afterward to add
+  FFI bridge edges.
+- **`--scan-subsystems` drops cross-subsystem edges**: subsystem filtering
+  restricts the scan to top-level directories (e.g. `--scan-subsystems fs,block`).
+  Shared header files in `include/` and calls from the scanned subsystem into
+  unscanned subsystems become phantom external nodes — the call edge is
+  preserved but the target node is unresolved. For full call-graph fidelity
+  across subsystem boundaries, omit `--scan-subsystems` or include the
+  `include` directory in the filter list.

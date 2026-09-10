@@ -15,6 +15,35 @@ import logging
 _SOURCE_ROOT_CACHE: dict = {}
 
 
+def resolve_source_root(graph_dir: str) -> str:
+    """Derive the project source root for a graph dir.
+
+    Reads source_root from code2database_master.json (which the build
+    wrote with the actual source path), falling back to the parent dir
+    of graph_dir (the legacy .code2database subdir convention). The
+    parent-dir heuristic alone is wrong when the graph dir is not a
+    direct subdirectory of the source tree (e.g. a graph built from
+    /home/user/proj stored at /tmp/graphs/proj) — it marks every
+    manifest file as 'deleted' in freshness checks.
+    """
+    cached = _SOURCE_ROOT_CACHE.get(graph_dir)
+    if cached is not None:
+        return cached
+    master_path = os.path.join(graph_dir, "code2database_master.json")
+    src_root = ""
+    if os.path.exists(master_path):
+        try:
+            master = json.loads(Path(master_path).read_text(encoding="utf-8"))
+            src_root = master.get("source_root", "") or ""
+        except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            src_root = ""
+    if not src_root:
+        src_root = os.path.dirname(os.path.abspath(graph_dir)) or ""
+    _SOURCE_ROOT_CACHE[graph_dir] = src_root
+    return src_root
+
+
 def _fts5_escape(query: str) -> str:
     """Escape a free-form query string for FTS5 MATCH.
 
@@ -86,19 +115,7 @@ def resolve_source_file(file_path: str, graph_dir: str) -> str:
     # path is rejected. This prevents a malicious code2database.db with
     # source_file='../../../etc/passwd' from tricking an MCP tool into
     # reading arbitrary files outside the project tree.
-    source_root = _SOURCE_ROOT_CACHE.get(graph_dir, "")
-    if source_root == "" and graph_dir not in _SOURCE_ROOT_CACHE:
-        master_path = os.path.join(graph_dir, "code2database_master.json")
-        if os.path.exists(master_path):
-            try:
-                master = json.loads(Path(master_path).read_text(encoding="utf-8"))
-                source_root = master.get("source_root", "") or ""
-            except Exception:
-                logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                source_root = ""
-        if not source_root:
-            source_root = os.path.dirname(graph_dir.rstrip(os.sep)) or ""
-        _SOURCE_ROOT_CACHE[graph_dir] = source_root
+    source_root = resolve_source_root(graph_dir)
 
     def _contained(candidate: str) -> bool:
         """True iff candidate path is inside source_root (after realpath)."""

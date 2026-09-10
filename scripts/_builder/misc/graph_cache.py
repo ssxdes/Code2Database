@@ -53,7 +53,12 @@ class GraphCache:
                 return self._freshness
         try:
             from _builder.cgdb.cgdb_freshness import check_freshness
-            src_root = os.path.dirname(os.path.abspath(self.graph_dir))
+            from _builder.utils import resolve_source_root
+            # Derive source_root from code2database_master.json (the build
+            # wrote the actual source path), not from the parent dir of
+            # graph_dir — a relocated graph dir would otherwise flag every
+            # manifest file as 'deleted'. Mirrors session-init's resolution.
+            src_root = resolve_source_root(self.graph_dir)
             fr = check_freshness(self.graph_dir, src_root, use_cache=False)
             slim = {
                 "is_fresh": fr.get("is_fresh", True),

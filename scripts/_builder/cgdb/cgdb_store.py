@@ -563,8 +563,12 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
     def search_symbols(self, query: str, kind: Optional[str] = None,
                        limit: int = 50) -> List[Dict[str, Any]]:
         conn = self._ensure_conn()
-        # FTS5 search over nodes_fts
-        fts_query = query
+        # FTS5 search over nodes_fts. Escape user input (raw MATCH on
+        # operator/special chars like std::vector, a AND, ~mutex raised
+        # fts5 syntax error) and rank by BM25 relevance instead of
+        # arbitrary rowid order.
+        from _builder.utils import _fts5_escape
+        fts_query = _fts5_escape(query)
         sql = ("SELECT n.id, n.kind, n.name, n.fqn, n.line, n.type_spelling "
                "FROM nodes_fts f JOIN cgdb_nodes n ON n.id = f.rowid "
                "WHERE nodes_fts MATCH ? ")
@@ -572,7 +576,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         if kind:
             sql += " AND n.kind = ?"
             params.append(kind)
-        sql += " LIMIT ?"
+        sql += " ORDER BY bm25(nodes_fts) LIMIT ?"
         params.append(limit)
         rows = conn.execute(sql, params).fetchall()
         return [{"id": r[0], "kind": r[1], "name": r[2], "fqn": r[3],

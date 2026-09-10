@@ -285,16 +285,11 @@ def get_known_unknowns(graph_dir: str, top_n: int = 20,
 def _fts5_escape(query: str) -> str:
     """Escape a free-form query string for FTS5 MATCH.
 
-    FTS5 query syntax treats special chars (:", *, (, ), etc.) as
-    operators. For user-typed queries we want lenient token matching:
-    split on whitespace, quote each token, join with AND. This way
-    "how does bdev register" matches documents containing all three
-    tokens (in any order, any distance).
+    Re-exported from _builder.utils so the kb and cgdb search paths share
+    one implementation. See utils._fts5_escape for the full docstring.
     """
-    tokens = re.findall(r'[A-Za-z0-9_]+', query)
-    if not tokens:
-        return '""'  # match nothing safely
-    return " ".join(f'"{t}"' for t in tokens)
+    from _builder.utils import _fts5_escape as _impl
+    return _impl(query)
 
 
 def _split_markdown_paragraphs(text: str) -> List[tuple]:

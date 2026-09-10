@@ -15,6 +15,22 @@ import logging
 _SOURCE_ROOT_CACHE: dict = {}
 
 
+def _fts5_escape(query: str) -> str:
+    """Escape a free-form query string for FTS5 MATCH.
+
+    FTS5 query syntax treats special chars (:", *, (, ), etc.) as
+    operators. For user-typed queries we want lenient token matching:
+    split on whitespace, quote each token, join with AND. This way
+    "how does bdev register" matches documents containing all three
+    tokens (in any order, any distance). Shared by the kb and cgdb
+    search paths so both accept the same free-form input safely.
+    """
+    tokens = re.findall(r'[A-Za-z0-9_]+', query)
+    if not tokens:
+        return '""'  # match nothing safely
+    return " ".join(f'"{t}"' for t in tokens)
+
+
 def normalize_str_field(value) -> str:
     """Coerce a node-data field value to a string.
 

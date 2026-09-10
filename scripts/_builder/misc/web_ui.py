@@ -405,6 +405,7 @@ _HTML_UI = r"""<!DOCTYPE html>
   --primary: #4a90e2; --accent: #f59e0b; --danger: #ef4444; --success: #22c55e;
   --muted: #678; --muted-fg: #94a3b8; --ring: #4a90e2;
   --z-toolbar: 10; --z-sidebar: 20; --z-modal: 30; --z-loading: 40;
+  --sidebar-w: 320px; --code-panel-w: 480px;
 }
 :root.light {
   --bg: #f8fafc; --fg: #1e293b; --card: #ffffff; --border: #e2e8f0;
@@ -438,10 +439,10 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 #topbar button[aria-pressed="true"] { background: var(--accent); }
 
 /* Cytoscape canvas */
-#cy { position: absolute; left: 0; top: 42px; right: 320px; bottom: 0; background: var(--bg); }
+#cy { position: absolute; left: 0; top: 42px; right: var(--sidebar-w); bottom: 0; background: var(--bg); }
 
 /* Sidebar */
-#sidebar { position: absolute; right: 0; top: 42px; bottom: 0; width: 320px;
+#sidebar { position: absolute; right: 0; top: 42px; bottom: 0; width: var(--sidebar-w);
   background: var(--card); border-left: 1px solid var(--border); overflow-y: auto;
   padding: 10px; color: var(--muted-fg); }
 #sidebar h2 { font-size: 13px; margin: 0 0 6px; color: var(--fg); font-weight: 600; }
@@ -547,7 +548,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 #ctx-menu .ctx-item:hover { background: var(--bg); }
 
 /* Node type filter */
-#filter-panel { display: none; position: absolute; right: 330px; top: 52px;
+#filter-panel { display: none; position: absolute; right: calc(var(--sidebar-w) + 10px); top: 52px;
   background: var(--card); padding: 8px; border-radius: 6px; border: 1px solid var(--border);
   z-index: var(--z-toolbar); }
 #filter-panel label { display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer; }
@@ -569,7 +570,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 /* Lightweight minimap — canvas-based, no external dependency.
    Shows node positions as dots and the current viewport as a
    rectangle; click to pan. */
-#minimap-wrap { position: absolute; right: 320px; bottom: 10px; width: 140px; height: 100px;
+#minimap-wrap { position: absolute; right: var(--sidebar-w); bottom: 10px; width: 140px; height: 100px;
   background: rgba(13,27,42,0.9); border: 1px solid var(--border); border-radius: 6px;
   z-index: var(--z-toolbar); display: none; cursor: crosshair; }
 #minimap-canvas { width: 100%; height: 100%; display: block; }
@@ -589,7 +590,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
    Sits alongside the sidebar (right side), supports full scroll +
    text selection, and shows the file path + line range so users can
    locate the snippet in their editor. */
-#code-panel { position: absolute; right: 320px; top: 42px; bottom: 0; width: 480px;
+#code-panel { position: absolute; right: var(--sidebar-w); top: 42px; bottom: 0; width: var(--code-panel-w);
   background: var(--card); border-left: 1px solid var(--border);
   border-right: 1px solid var(--border); display: none; flex-direction: column;
   z-index: var(--z-sidebar); }
@@ -606,6 +607,12 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
   font-size: 12px; line-height: 1.5; overflow: auto; padding: 8px 12px;
   color: var(--fg); flex: 1; user-select: text; }
 #code-empty { padding: 20px; color: var(--muted-fg); font-size: 12px; text-align: center; }
+
+/* Resize handles — thin vertical bars on the left edge of the
+   sidebar and code-panel. Drag to adjust width. */
+.resize-handle { position: absolute; top: 0; bottom: 0; left: -4px; width: 8px;
+  cursor: col-resize; z-index: calc(var(--z-sidebar) + 1); background: transparent; }
+.resize-handle:hover, .resize-handle.dragging { background: var(--primary); opacity: 0.4; }
 </style>
 </head>
 <body>
@@ -648,11 +655,13 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
 </div>
 <div id="cy" role="application" aria-label="Code graph visualization" tabindex="0"></div>
 <div id="sidebar" role="complementary" aria-label="Node details">
+  <div class="resize-handle" id="sidebar-resize" aria-label="Drag to resize sidebar" role="separator"></div>
   <h2 id="node-title">Select a node</h2>
   <div id="node-details"></div>
 </div>
 <div id="legend" style="display:none"></div>
 <div id="code-panel" role="complementary" aria-label="Source code">
+  <div class="resize-handle" id="code-panel-resize" aria-label="Drag to resize code panel" role="separator"></div>
   <div id="code-panel-header">
     <span id="code-panel-title">Source</span>
     <span id="code-panel-actions">
@@ -696,7 +705,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
       <tr><td><kbd>J</kbd></td><td>Export visible subgraph as JSON</td></tr>
       <tr><td>Click node</td><td>Focus + show callers/callees</td></tr>
       <tr><td>Hover node/edge</td><td>Show info in stats bar</td></tr>
-      <tr><td>Right-click node</td><td>Context menu (Focus / Expand / Collapse / Collapse All / Impact / Code / Copy)</td></tr>
+      <tr><td>Right-click node</td><td>Context menu (Focus / Expand / Collapse / Collapse All / Delete / Impact / Code / Copy)</td></tr>
       <tr><td>Topbar buttons</td><td>PNG / JSON export · Filter · Cycles · Reload · Brief · Memory · Arch</td></tr>
       <tr><td>Spacing slider</td><td>Tighten / loosen layout spacing</td></tr>
       <tr><td>Minimap</td><td>Click to center viewport (bottom-right)</td></tr>
@@ -1347,6 +1356,49 @@ function collapseAll() {
   focusNode(activeNodeId, 1);
 }
 
+// Delete a node from the view, then cascade-remove any leaf nodes
+// that become orphaned (zero in-degree AND zero out-degree) as a
+// result. This prunes dead branches without a backend round-trip.
+// The currently focused node is preserved so the user isn't left
+// staring at an empty canvas.
+function deleteNode(nodeId) {
+  delete allNodes[nodeId];
+  for (const key in allEdges) {
+    const e = allEdges[key];
+    if (e.source === nodeId || e.target === nodeId) delete allEdges[key];
+  }
+  delete expandChildren[nodeId];
+  for (const pid in expandChildren) {
+    if (expandChildren[pid]) expandChildren[pid].delete(nodeId);
+  }
+  // Cascade: remove orphaned leaves (no callers AND no callees).
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const inDeg = {}, outDeg = {};
+    for (const id in allNodes) { inDeg[id] = 0; outDeg[id] = 0; }
+    for (const key in allEdges) {
+      const e = allEdges[key];
+      if (allNodes[e.source] && allNodes[e.target]) {
+        outDeg[e.source] = (outDeg[e.source] || 0) + 1;
+        inDeg[e.target] = (inDeg[e.target] || 0) + 1;
+      }
+    }
+    for (const id in allNodes) {
+      if (inDeg[id] === 0 && outDeg[id] === 0 && id !== activeNodeId) {
+        delete allNodes[id];
+        delete expandChildren[id];
+        changed = true;
+      }
+    }
+  }
+  if (!allNodes[activeNodeId]) {
+    activeNodeId = Object.keys(allNodes)[0] || null;
+  }
+  syncCyFromModel();
+  if (activeNodeId) loadNodeDetails(activeNodeId);
+}
+
 // Click node → callers/callees detail panel
 async function loadNodeDetails(nodeId) {
   try {
@@ -1558,6 +1610,7 @@ function showContextMenu(nodeId, x, y) {
     { label: 'Expand (depth 2)', action: () => focusNode(nodeId, 2) },
     { label: 'Collapse', action: () => collapseNode(nodeId) },
     { label: 'Collapse All', action: () => collapseAll() },
+    { label: 'Delete', action: () => deleteNode(nodeId) },
     { label: 'Impact Analysis', action: () => loadImpact(nodeId) },
     { label: 'View Code', action: () => loadCode(nodeId) },
     { label: 'Copy ID', action: () => navigator.clipboard.writeText(nodeId) },
@@ -1985,6 +2038,41 @@ document.addEventListener('click', (e) => {
   document.getElementById('ctx-menu').style.display = 'none';
   if (!e.target.closest || !e.target.closest('#search-wrap')) hideSearchResults();
 });
+
+// Resizable panels — drag the thin vertical bar on the left edge of
+// the sidebar or code-panel to adjust its width. The cytoscape
+// canvas and minimap follow via the --sidebar-w CSS variable.
+function initResize(handleId, cssVar, minW, maxW) {
+  const handle = document.getElementById(handleId);
+  if (!handle) return;
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const panel = handle.parentElement;
+    const startW = parseInt(getComputedStyle(panel).width, 10);
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (ev) => {
+      const delta = startX - ev.clientX;
+      let w = Math.max(minW, Math.min(maxW, startW + delta));
+      document.documentElement.style.setProperty(cssVar, w + 'px');
+    };
+    const onUp = () => {
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (cy) cy.resize();
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+initResize('sidebar-resize', '--sidebar-w', 200, 700);
+initResize('code-panel-resize', '--code-panel-w', 300, 900);
 
 loadSummary();
 window.addEventListener('resize', () => { if (cy) cy.resize(); });

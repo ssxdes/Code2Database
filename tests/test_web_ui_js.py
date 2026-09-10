@@ -89,6 +89,7 @@ function runLayout() {}
 function applyCommunityColors() {}
 function syncCyFromModel() { syncCyCalls++; }
 function drawMinimap() {}
+function loadNodeDetails(id) {}
 // Minimal document stub — syncCyFromModel touches stats + edge-legend.
 const window = { _lastStatsHtml: '' };
 const document = {
@@ -303,6 +304,63 @@ class TestWebUIJs(unittest.TestCase):
             assert.ok(!('grandchild' in allNodes), 'grandchild removed by recursion');
             assert.ok(!('child' in expandChildren), "child's expand-map cleared");
         """, ["collapseNode", "_countExpandParents"])
+
+    def test_delete_removes_node_and_edges(self):
+        """Delete should remove the node, its edges, and cascade-delete
+        any leaf nodes that become fully isolated (no callers, no
+        callees) as a result."""
+        self._run_harness("""
+            allNodes = {
+              root: { id: 'root', name: 'Root', labels: [] },
+              a: { id: 'a', name: 'A', labels: [] },
+              leaf: { id: 'leaf', name: 'Leaf', labels: [] },
+            };
+            allEdges = {
+              'root->a': { source: 'root', target: 'a' },
+              'a->leaf': { source: 'a', target: 'leaf' },
+            };
+            activeNodeId = 'root';
+            deleteNode('a');
+            // 'a' itself is gone
+            assert.ok(!('a' in allNodes), 'deleted node removed');
+            assert.ok(!('root->a' in allEdges), 'edge to a removed');
+            assert.ok(!('a->leaf' in allEdges), 'edge from a removed');
+            // 'leaf' was only called by 'a' and calls nothing — now
+            // fully isolated (0 in-degree, 0 out-degree) → cascade-deleted
+            assert.ok(!('leaf' in allNodes), 'orphaned leaf cascade-deleted');
+            // root survives (it's the activeNodeId)
+            assert.ok('root' in allNodes, 'active node preserved');
+            assert.ok(syncCyCalls > 0, 'view refreshed');
+        """, ["deleteNode"])
+
+    def test_delete_preserves_connected_nodes(self):
+        """Delete should NOT remove nodes that still have other edges."""
+        self._run_harness("""
+            allNodes = {
+              root: { id: 'root', name: 'Root', labels: [] },
+              a: { id: 'a', name: 'A', labels: [] },
+              b: { id: 'b', name: 'B', labels: [] },
+              c: { id: 'c', name: 'C', labels: [] },
+            };
+            allEdges = {
+              'root->a': { source: 'root', target: 'a' },
+              'root->b': { source: 'root', target: 'b' },
+              'c->b': { source: 'c', target: 'b' },
+            };
+            activeNodeId = 'root';
+            deleteNode('root');
+            // root deleted, root->a and root->b removed
+            assert.ok(!('root' in allNodes), 'root removed');
+            assert.ok(!('root->a' in allEdges), 'root->a removed');
+            assert.ok(!('root->b' in allEdges), 'root->b removed');
+            // 'a' is now isolated (no callers, no callees) → cascade-deleted
+            assert.ok(!('a' in allNodes), 'isolated a cascade-deleted');
+            // 'b' still has caller 'c' → preserved
+            assert.ok('b' in allNodes, 'b preserved (still has caller c)');
+            // 'c' still has callee 'b' → preserved
+            assert.ok('c' in allNodes, 'c preserved (still has callee b)');
+            assert.ok('c->b' in allEdges, 'c->b edge preserved');
+        """, ["deleteNode"])
 
 
 if __name__ == "__main__":

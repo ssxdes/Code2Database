@@ -41,6 +41,7 @@ import time
 import secrets
 import threading
 import logging
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
 

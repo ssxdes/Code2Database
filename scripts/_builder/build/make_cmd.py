@@ -458,7 +458,11 @@ def _build_steps(rep, args):
          "project brief template -> knowledge/brief.json", None, ""),
         ("kb-rebuild-index", [py, _BUILDER, "kb-rebuild-index",
                               "--graph", graph], False,
-         "unified FTS5 index (memory + brief -> kb_paragraphs)", None, ""),
+          "unified FTS5 index (memory + brief -> kb_paragraphs)", None, ""),
+        ("lock-coverage", [py, _BUILDER, "lock-coverage",
+                           "--graph", graph, "--detect-races"], False,
+          "whole-graph race detection (precise locksets) → stdout",
+          None, ""),
         ("embeddings-build", [py, _BUILDER, "embeddings-build",
                               "--graph", graph], False,
          "TF-IDF n-gram embeddings -> embeddings.json "

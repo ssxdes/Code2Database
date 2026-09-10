@@ -70,8 +70,8 @@ class TestMakeEndToEnd(unittest.TestCase):
                          % (self.proc.stdout[-3000:], self.proc.stderr[-3000:]))
         self.assertIn("0 failed", self.proc.stdout)
 
-    def test_make_reports_all_twelve_steps(self):
-        self.assertIn("build pipeline (12 steps)", self.proc.stdout)
+    def test_make_reports_all_thirteen_steps(self):
+        self.assertIn("build pipeline (13 steps)", self.proc.stdout)
         self.assertIn("[make] done:", self.proc.stdout)
         # env-check phase ran first and passed
         self.assertIn("env-check OK", self.proc.stdout)

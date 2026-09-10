@@ -314,7 +314,12 @@ class SyncPrimitiveWriter:
                             happens_before.append(HappensBeforeRecord(
                                 write_event_id=write_id,
                                 read_event_id=call_stmt_id,
-                                reason='write_once',
+                                # WRITE_ONCE→READ_ONCE ordering is an
+                                # atomic-style access pair. The 'atomic'
+                                # value is in the schema's reason CHECK;
+                                # 'write_once' was not, which rejected the
+                                # whole batch on any such pair.
+                                reason='atomic',
                                 confidence=1.0,
                             ))
                 elif role == 'barrier':

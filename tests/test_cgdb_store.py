@@ -228,6 +228,26 @@ class TestSQLiteCGDBStoreWriteRead(unittest.TestCase):
         kinds = {l['kind'] for l in locks}
         self.assertEqual(kinds, {'lock_acquire', 'lock_release'})
 
+    def test_happens_before_atomic_reason_accepted(self):
+        """The sync layer emits reason='atomic' for WRITE_ONCE→READ_ONCE
+        pairs (an atomic-style access ordering). The schema CHECK must
+        accept it so the cgdb batch does not roll back on real-world
+        kernel-style code."""
+        hb = HappensBeforeRecord(write_event_id=1001, read_event_id=1002,
+                                 reason='atomic', confidence=1.0)
+        store = SQLiteCGDBStore(self.db_path)
+        try:
+            conn = store._ensure_conn()
+            store._write_happens_before(conn, [hb])
+            conn.commit()
+            row = conn.execute(
+                "SELECT reason FROM happens_before WHERE reason='atomic'"
+            ).fetchone()
+            self.assertIsNotNone(row)
+            self.assertEqual(row[0], 'atomic')
+        finally:
+            store.close()
+
     def test_check_path_feasible_empty_path(self):
         """check_path_feasible with empty path returns feasible."""
         result = self.store.check_path_feasible([])

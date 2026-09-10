@@ -3453,9 +3453,20 @@ def cmd_build(args):
         from _builder.memory.memory_guard import MemoryGuard, set_global_guard
         warn_thresh = getattr(args, 'memory_warn_threshold', 0.75)
         crit_thresh = getattr(args, 'memory_crit_threshold', 0.85)
+        # Forward the absolute-MB caps and dynamic toggle the CLI exposes.
+        # Without these, --memory-warn-mb / --memory-crit-mb / --no-memory-dynamic
+        # were accepted and forwarded (make_cmd) but silently ignored by the
+        # build (the phase with the largest memory footprint).
+        warn_mb = getattr(args, 'memory_warn_mb', None)
+        crit_mb = getattr(args, 'memory_crit_mb', None)
+        dynamic = getattr(args, 'memory_dynamic', True)
         memory_guard = MemoryGuard(
             warn_threshold=warn_thresh,
-            crit_threshold=crit_thresh
+            crit_threshold=crit_thresh,
+            warn_threshold_mb=warn_mb,
+            crit_threshold_mb=crit_mb,
+            dynamic=dynamic,
+            stats_file=getattr(args, 'memory_stats', None),
         )
 
         # More aggressive memory management for large projects
@@ -3465,8 +3476,13 @@ def cmd_build(args):
 
         set_global_guard(memory_guard)
         memory_guard.start_monitoring(interval=10.0)
-        print(f"[MemoryGuard] Started monitoring (warn={warn_thresh*100:.0f}%, crit={crit_thresh*100:.0f}%)",
-              file=sys.stderr)
+        _cap_desc = ""
+        if warn_mb is not None or crit_mb is not None:
+            _cap_desc = f", caps={warn_mb}MB/{crit_mb}MB"
+        if not dynamic:
+            _cap_desc += ", dynamic=off"
+        print(f"[MemoryGuard] Started monitoring (warn={warn_thresh*100:.0f}%, "
+              f"crit={crit_thresh*100:.0f}%{_cap_desc})", file=sys.stderr)
     except ImportError:
         print("Warning: memory_guard module not available, memory management disabled", file=sys.stderr)
     except Exception as e:

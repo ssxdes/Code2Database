@@ -869,9 +869,10 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
             for s, r in scored_cand[:top_n]:
                 sim_scores[r["id"]] = s
             # Merge: prefer FTS5 hits (already in `rows`), then add
-            # similarity hits not already present.
+            # similarity hits not already present. scored_cand holds
+            # (score, row) tuples, so unpack to get the row.
             existing_ids = {r["id"] for r in rows}
-            for r in scored_cand[:top_n]:
+            for _, r in scored_cand[:top_n]:
                 if r["id"] not in existing_ids:
                     rows.append(r)
                     if len(rows) >= top_n:

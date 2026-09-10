@@ -701,6 +701,17 @@ def cmd_update_edge(args):
         ok = _sqlite_update_edge(graph_dir, invoker_id, invoked_id, attrs, source, confidence)
 
     if ok:
+        # Invalidate query cache entries that touched either endpoint.
+        # describe-node / trace-chain / path results showing this edge's
+        # condition would otherwise stay stale for the full TTL (and on
+        # the json backend the db-mtime check is inert).
+        try:
+            from _builder.query.query_cache import invalidate_node
+            invalidate_node(graph_dir, invoker_id)
+            invalidate_node(graph_dir, invoked_id)
+        except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
         # Audit log: record this edge update
         try:
             from _builder.ops.audit_log import log_audit

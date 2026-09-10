@@ -121,7 +121,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/ \
 
 83 tools: 36 `code2database_*` (incl. `code2database_session_init` one-shot session context, `code2database_save_memory` for MCP-side experience accumulation, `code2database_kb_query` for unified memory+knowledge search) + 19 `cgdb_*` (clang semantic layer) + 28 design-report.
 
-HTTP transport (`--transport http`) enables remote MCP clients to access your code graph and shared memory/knowledge base over the network. All 83 tools are available, and multiple clients share the same `memory/memory.db` — experiences saved by one agent are immediately visible to others. Use `--token` for Bearer auth and `--read-only` to disable write tools on public endpoints. See `deploy/` for systemd + nginx configs.
+HTTP transport (`--transport http`) enables remote MCP clients to access your code graph and shared memory/knowledge base over the network. All 83 tools are available, and multiple clients share the same `memory/memory.db` — experiences saved by one agent are immediately visible to others. Use `--token` for Bearer auth and `--read-only` to disable write tools on public endpoints. The `deploy/` directory (systemd + nginx configs) exists only in the source repo — clone it to access deployment templates.
 
 ## Constraints
 

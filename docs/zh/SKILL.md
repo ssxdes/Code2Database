@@ -121,7 +121,7 @@ python3 scripts/code2database_builder.py serve --graph code2db-out/ \
 
 83 工具 (55 base + 28 design-report)：36 个 `code2database_*`（含 `code2database_session_init` 一站式会话上下文、`code2database_save_memory` MCP 侧经验沉淀、`code2database_kb_query` 跨 memory+knowledge 查询）+ 19 个 `cgdb_*`（clang 语义层）。
 
-HTTP 传输（`--transport http`）让远程 MCP 客户端跨网络访问代码图谱和共享 memory/knowledge 库。全部 83 个工具可用，多个客户端共享同一个 `memory/memory.db`——一个 agent 沉淀的经验对其他 agent 立即可见。使用 `--token` 做 Bearer 认证，`--read-only` 在公开端点禁用写入工具。部署配置见 `deploy/` 目录。
+HTTP 传输（`--transport http`）让远程 MCP 客户端跨网络访问代码图谱和共享 memory/knowledge 库。全部 83 个工具可用，多个客户端共享同一个 `memory/memory.db`——一个 agent 沉淀的经验对其他 agent 立即可见。使用 `--token` 做 Bearer 认证，`--read-only` 在公开端点禁用写入工具。`deploy/` 目录（systemd + nginx 配置）仅存在于源码仓库——克隆源码仓库以获取部署模板。
 
 ## 约束
 

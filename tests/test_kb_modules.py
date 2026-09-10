@@ -260,7 +260,11 @@ class TestKbCluster(unittest.TestCase):
         rebuild_kb_index(self.graph_dir, verbose=False)
         summary = cluster_kb(self.graph_dir, threshold=0.1, verbose=False)
         self.assertTrue(summary["clustered"])
-        self.assertGreater(summary["cluster_count"], 0)
+        # Two near-duplicate entries must union into one cluster; a
+        # singleton-per-item result (cluster_count == item count) means
+        # the FTS candidate query failed and clustering was a no-op.
+        self.assertEqual(summary["items_clustered"], 2)
+        self.assertEqual(summary["cluster_count"], 1)
 
 
 class TestKbAudit(unittest.TestCase):

@@ -113,15 +113,19 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
                 continue
             try:
                 match_expr = _fts5_escape(query_text)
-                # Get top-20 FTS5 candidates (sampling for performance)
+                # Get top-20 FTS5 candidates (sampling for performance).
+                # kb_paragraphs_fts is an external-content FTS5 table over
+                # kb_paragraphs(id); its addressable rowid IS that id, so
+                # filter and select by rowid (the bare 'id' column does not
+                # exist on the FTS table and raised OperationalError).
                 cand_rows = conn.execute(
-                    "SELECT id FROM kb_paragraphs_fts "
-                    "WHERE kb_paragraphs_fts MATCH ? AND id != ? "
+                    "SELECT rowid FROM kb_paragraphs_fts "
+                    "WHERE kb_paragraphs_fts MATCH ? AND rowid != ? "
                     "ORDER BY bm25(kb_paragraphs_fts) LIMIT 20",
                     (match_expr, iid)
                 ).fetchall()
                 for cr in cand_rows:
-                    cand_id = cr["id"]
+                    cand_id = cr["rowid"]
                     cand_ts = token_sets.get(cand_id, set())
                     # C1: use Jaccard (correct similarity metric)
                     sim = _jaccard(ts, cand_ts)

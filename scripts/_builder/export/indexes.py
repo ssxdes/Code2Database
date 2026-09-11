@@ -903,6 +903,31 @@ def _generate_mermaid_path_diagram(G: nx.DiGraph, paths: list, title: str = "Cri
 
 
 
+# Generic cross-project path segments that mark non-production code.
+# main() under any of these is classified test_entry instead of
+# program_entry. Profiles extend this set through
+# project_boundaries.test_domain_segments (e.g., "ut_mock", "ztest");
+# the union keeps the generic conventions intact.
+_GENERIC_TEST_PATH_SEGMENTS = frozenset((
+    'test', 'tests', 'ut', 'example', 'examples',
+    'fuzz', 'benchmark', 'demo', 'sample',
+    'samples', 'documentation', 'doc',
+    'tools', 'scripts',
+))
+
+
+def _test_path_segments(profile: dict = None) -> frozenset:
+    """Test-path segments: generic defaults plus project-specific segments
+    declared in profile.project_boundaries.test_domain_segments."""
+    segments = set(_GENERIC_TEST_PATH_SEGMENTS)
+    if isinstance(profile, dict):
+        declared = ((profile.get("project_boundaries") or {})
+                    .get("test_domain_segments"))
+        if declared:
+            segments.update(declared)
+    return frozenset(segments)
+
+
 def _classify_endpoint(name: str, domain: str, profile: dict = None,
                        has_source_file: bool = True,
                        source_file: str = "") -> tuple:
@@ -1067,17 +1092,14 @@ def _classify_endpoint(name: str, domain: str, profile: dict = None,
         # Note: 'app' is NOT treated as test — many C projects (e.g., SPDK) put
         # production executables in app/. Only test/ut/example/fuzz directories
         # are unambiguously non-production.
-        _TEST_PATH_SEGMENTS = ('test', 'tests', 'ut', 'example', 'examples',
-                               'fuzz', 'benchmark', 'demo', 'sample',
-                               'samples', 'documentation', 'doc',
-                               'tools', 'scripts')
+        segments = _test_path_segments(profile)
         # Check both domain components and source_file path for test indicators
         domain_lower = domain.lower()
         domain_parts = domain_lower.split('.')
         src_lower = source_file.lower().replace("\\", "/")
         src_parts = src_lower.split("/")
-        if any(p in _TEST_PATH_SEGMENTS for p in domain_parts) or \
-           any(p in _TEST_PATH_SEGMENTS for p in src_parts):
+        if any(p in segments for p in domain_parts) or \
+           any(p in segments for p in src_parts):
             return 'test_entry', 'Test/example entry point'
         return 'program_entry', 'Program entry point'
 

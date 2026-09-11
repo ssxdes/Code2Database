@@ -1342,6 +1342,41 @@ class TestEndpointClassification(unittest.TestCase):
                 any(r.get("pattern") == r"^main$" for r in rules),
                 f"blanket ^main$ rule inferred for project_type={ptype!r}")
 
+    def test_profile_test_domain_segment_extends_classification(self):
+        """test_domain_segments declared in the profile extend the set of
+        paths whose main() resolves to test_entry."""
+        from _builder.export.indexes import _classify_endpoint
+        profile = {"project_boundaries": {
+            "test_domain_segments": ["ztest", "ut_mock"]}}
+        self.assertEqual(
+            _classify_endpoint("main", "ztest.suite", profile=profile,
+                               source_file="ztest/foo.c")[0],
+            "test_entry")
+        # source path participates too, not just the domain
+        self.assertEqual(
+            _classify_endpoint("main", "app", profile=profile,
+                               source_file="ut_mock/foo.c")[0],
+            "test_entry")
+        # without the profile declaration the same paths are production
+        self.assertEqual(
+            _classify_endpoint("main", "ztest.suite", profile=None,
+                               source_file="ztest/foo.c")[0],
+            "program_entry")
+        self.assertEqual(
+            _classify_endpoint("main", "app", profile={},
+                               source_file="ut_mock/foo.c")[0],
+            "program_entry")
+
+    def test_generic_segments_still_apply_without_profile(self):
+        from _builder.export.indexes import _classify_endpoint
+        for seg in ("test", "tests", "ut", "example", "examples", "fuzz",
+                    "benchmark", "demo", "sample", "samples",
+                    "documentation", "doc", "tools", "scripts"):
+            self.assertEqual(
+                _classify_endpoint("main", "app", profile=None,
+                                   source_file=f"{seg}/foo.c")[0],
+                "test_entry", f"segment {seg!r} lost its test classification")
+
 
 if __name__ == "__main__":
     unittest.main()

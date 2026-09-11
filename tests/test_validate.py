@@ -375,5 +375,60 @@ class TestSqliteFallbackMaster(unittest.TestCase):
                         f"result: {result.errors + result.warnings}")
 
 
+class TestValidateSemanticMatching(unittest.TestCase):
+    """main() test-path warnings must follow the classifier's segment set:
+    generic defaults plus profile-declared test_domain_segments."""
+
+    def _make_outdir_with_main(self, src, labels):
+        tmp = tempfile.mkdtemp(prefix="c2d_validate_sem_")
+        func = {"id": "app.main", "name": "main", "source_file": src,
+                "line": 1, "labels": labels, "is_empty": False}
+        with open(os.path.join(tmp, "domain_app.json"), "w") as f:
+            json.dump({"nodes": [func], "edges": [], "functions": [func],
+                       "function_details": {}}, f)
+        master = {"source_root": "/tmp", "domains": {"app": "domain_app.json"},
+                  "cross_domain_edges": [], "structural_edges": [],
+                  "total_edges": 0, "total_nodes": 1,
+                  "stats": {"total_functions": 1}}
+        with open(os.path.join(tmp, "code2database_master.json"), "w") as f:
+            json.dump(master, f)
+        return tmp
+
+    def _warnings(self, src, labels, profile=None):
+        from _builder.ops.validate import validate_semantic_matching
+        d = self._make_outdir_with_main(src, labels)
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        master = {"domains": {"app": "domain_app.json"}}
+        r = ValidationResult()
+        validate_semantic_matching(master, r, outdir=d, profile=profile)
+        return [w["message"] for w in r.warnings]
+
+    def test_profile_segment_main_with_entry_point_label_warns(self):
+        warns = self._warnings(
+            "ztest/foo.c", ["entry_point"],
+            profile={"project_boundaries": {"test_domain_segments": ["ztest"]}})
+        self.assertTrue(any("should be test_entry" in m for m in warns), warns)
+
+    def test_profile_segment_absent_no_warning(self):
+        """Without the profile declaration the same path is production —
+        an entry_point label there is correct and must not warn."""
+        warns = self._warnings("ztest/foo.c", ["entry_point"], profile=None)
+        self.assertFalse(any("should be test_entry" in m for m in warns), warns)
+
+    def test_generic_doc_segment_warns(self):
+        """Generic segments the classifier honors (doc/, tools/, scripts/)
+        must also trigger the validator — the two sets must stay in sync."""
+        for seg in ("doc", "tools", "scripts", "documentation"):
+            warns = self._warnings(f"{seg}/foo.c", ["entry_point"])
+            self.assertTrue(any("should be test_entry" in m for m in warns),
+                            f"segment {seg!r} did not warn: {warns}")
+
+    def test_test_entry_label_does_not_warn(self):
+        warns = self._warnings(
+            "ztest/foo.c", ["test_entry"],
+            profile={"project_boundaries": {"test_domain_segments": ["ztest"]}})
+        self.assertFalse(any("should be test_entry" in m for m in warns), warns)
+
+
 if __name__ == "__main__":
     unittest.main()

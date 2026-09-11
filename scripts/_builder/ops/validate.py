@@ -338,9 +338,11 @@ def validate_semantic_matching(master: dict, result: ValidationResult,
     # Check for test/example main functions in API entries or program_entry
     # Note: 'app' is NOT treated as test — many C projects put production
     # executables in app/. Only test/ut/example/fuzz are unambiguous.
-    test_path_segments = ('test', 'tests', 'ut', 'example', 'examples',
-                          'fuzz', 'benchmark', 'demo', 'sample',
-                          'samples')
+    # Use the classifier's segment set (generic defaults plus the
+    # profile's test_domain_segments) so validation checks exactly the
+    # paths the endpoint classifier treats as non-production.
+    from _builder.export.indexes import _test_path_segments
+    test_path_segments = _test_path_segments(profile)
     bad_mains = 0
     for func in all_funcs:
         labels = func.get("labels", [])

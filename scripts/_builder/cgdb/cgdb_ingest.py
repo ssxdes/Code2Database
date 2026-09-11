@@ -860,8 +860,12 @@ def _synthesize_from_legacy(scan_result: dict, batch: IngestBatch,
             legacy_function_id=fn_id_str,
         ))
     for e in scan_result.get('edges', []):
-        caller = e.get('invoker_id', '') or e.get('invoker', '') or e.get('caller', '')
-        callee = e.get('invoked_id', '') or e.get('invoked', '') or e.get('callee', '') or e.get('target', '')
+        # Scanner legacy edges use "source"/"target" keys (see c_scanner);
+        # keep the invoker/caller aliases for hand-built scan results.
+        caller = (e.get('source', '') or e.get('invoker_id', '')
+                  or e.get('invoker', '') or e.get('caller', ''))
+        callee = (e.get('target', '') or e.get('invoked_id', '')
+                  or e.get('invoked', '') or e.get('callee', ''))
         if not caller or not callee:
             continue
         caller_nid = unified_node_id(language, caller)

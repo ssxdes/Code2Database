@@ -184,6 +184,29 @@ class TestCgdbIngest(unittest.TestCase):
                       if n.legacy_function_id}
         self.assertIn('root.foo', legacy_ids)
 
+    def test_extract_cgdb_batch_synthesizes_edges_from_scanner_keys(self):
+        """Scanner legacy edges use "source"/"target" keys (c_scanner.py);
+        _synthesize_from_legacy must resolve them, not only invoker_id."""
+        scan_result = {
+            'file': self.c_path,
+            'functions': [
+                {'id': 'root.foo', 'name': 'foo', 'line_number': 10,
+                 'signature': 'int foo()', 'body_text': 'return 0;'},
+            ],
+            'edges': [
+                {'source': 'root.foo', 'target': 'ext.helper',
+                 'relation': 'INVOKES', 'line': 11},
+            ],
+        }
+        batch = extract_cgdb_batch(scan_result)
+        edge_kinds = {e.kind for e in batch.edges}
+        self.assertIn('INVOKES', edge_kinds,
+                      "legacy edge with source/target keys was dropped")
+        # The external callee must be synthesized as a node so the edge
+        # has both endpoints.
+        names = {n.name for n in batch.nodes}
+        self.assertIn('helper', names)
+
 
 class TestSqliteStoreCgdbIntegration(unittest.TestCase):
     """Test that SQLiteStore (legacy) now applies cgdb schema."""

@@ -406,7 +406,8 @@ class TestTransactionCommitOrdering(unittest.TestCase):
                                             crash_on_clear):
                 with self.assertRaises(KeyboardInterrupt):
                     with transactions.transaction(d, description="crash"):
-                        pass
+                        # Give the WAL content so its survival is observable.
+                        append_wal_entry(d, "update-node", "n1", {})
             state = transactions._read_tx_state(d)
             self.assertIsNotNone(state)
             self.assertEqual(state.status, "committed",

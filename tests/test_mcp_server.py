@@ -125,6 +125,37 @@ class TestMcpFraming(unittest.TestCase):
         self.assertEqual(result, msg)
 
 
+class TestMcpStdioLoopResilience(unittest.TestCase):
+    """run_mcp_server must survive non-object JSON messages.
+
+    JSON-RPC 2.0 permits batch arrays, and a naive client can send a bare
+    string or number over stdio. The HTTP transport guards with
+    isinstance(msg, dict); the stdio loop must do the same or any such
+    message kills the whole server process with AttributeError.
+    """
+
+    def test_stdio_loop_skips_non_dict_messages(self):
+        import tempfile
+        from unittest.mock import patch as mpatch
+        from _builder.mcp.mcp_server import run_mcp_server
+
+        def framed(body: str) -> str:
+            return f"Content-Length: {len(body.encode('utf-8'))}\r\n\r\n{body}"
+
+        # A batch array, a bare string, a number — then EOF.
+        stdin_data = (framed(json.dumps([{"jsonrpc": "2.0"}]))
+                      + framed(json.dumps("hello"))
+                      + framed("42"))
+        with tempfile.TemporaryDirectory() as tmp:
+            with mpatch("sys.stdin", new_callable=io.StringIO) as mock_in, \
+                 mpatch("sys.stdout", new_callable=io.StringIO):
+                mock_in.write(stdin_data)
+                mock_in.seek(0)
+                # EOF after the malformed messages exits the loop cleanly;
+                # any AttributeError propagating out is the regression.
+                run_mcp_server(tmp, read_only=True)
+
+
 class TestMcpToolDispatch(unittest.TestCase):
     """Test the tool dispatch table covers all expected tools."""
 

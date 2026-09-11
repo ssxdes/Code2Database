@@ -1047,6 +1047,9 @@ def run_mcp_server(graph_dir: str, read_only: bool = False):
             break  # stdin closed — clean exit
         if msg is None:
             continue  # malformed message — skip
+        if not isinstance(msg, dict):
+            continue  # batch arrays / scalars have no method — skip (HTTP
+            # transport applies the same guard in _handle_mcp_post)
 
         method = msg.get("method", "")
         msg_id = msg.get("id")

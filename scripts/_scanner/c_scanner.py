@@ -1839,6 +1839,17 @@ class CTreeSitterScanner(BaseScanner):
         # the EXTRACTED direct-call path with confidence 1.0 and no
         # fn_ptr_calls record — dispatch/vtable resolution never saw them.
         _local_fn_ptr_vars = set()
+        # Local variable → function-name alias map. Tracks assignments of
+        # known function names to local variables (e.g. in SPDK's core
+        # async pattern):
+        #   spdk_msg_fn msg_fn;
+        #   if (cond) msg_fn = bdev_nvme_reconnect_ctrlr_now;
+        #   else       msg_fn = _bdev_nvme_reset_ctrlr;
+        #   spdk_thread_send_msg(t, msg_fn, ctx);
+        # Without this map, the CALLBACK_ARG edge targets the variable name
+        # "msg_fn" (a non-existent node) instead of the actual function.
+        _local_fn_aliases = {}  # var_name → set of func_name(s)
+        _file_funcs = getattr(self, '_file_defined_funcs', set())
 
         def _process_node(node):
             if node.type == 'declaration':
@@ -1847,6 +1858,44 @@ class CTreeSitterScanner(BaseScanner):
                 for _m in re.finditer(r'\(\s*\*\s*(\w+)[^)]*\)',
                                       self._node_text(node, source_bytes)):
                     _local_fn_ptr_vars.add(_m.group(1))
+                # Detect initializer assignments of known function names to
+                # local variables: 'type var = func_name;' or
+                # 'type var = &func_name;'. This catches the declaration-
+                # with-initializer form of the fn-ptr alias pattern.
+                for child in node.children:
+                    if child.type == 'init_declarator':
+                        _decl_name = ""
+                        _init_val = ""
+                        for dc in child.children:
+                            if dc.type == 'identifier' and not _decl_name:
+                                _decl_name = self._node_text(dc, source_bytes)
+                            elif dc.type == 'initializer':
+                                _init_val = self._node_text(dc, source_bytes).strip().rstrip(';').strip()
+                        if _decl_name and _init_val:
+                            _init_val = _init_val.lstrip('&').strip()
+                            if (re.match(r'^[a-zA-Z_]\w*$', _init_val)
+                                    and _init_val in _file_funcs
+                                    and _decl_name not in _file_funcs
+                                    and len(_decl_name) > 2):
+                                _local_fn_aliases.setdefault(_decl_name, set()).add(_init_val)
+            if node.type == 'assignment_expression':
+                # Track local variable reassignments of known function names:
+                #   msg_fn = _bdev_nvme_reset_ctrlr;
+                #   msg_fn = bdev_nvme_reconnect_ctrlr_now;
+                # This is the reassignment form (no declaration). The
+                # CALLBACK_ARG block below resolves these aliases when
+                # spdk_thread_send_msg(t, msg_fn, ctx) is called.
+                _lhs_node = node.child_by_field_name('left')
+                _rhs_node = node.child_by_field_name('right')
+                if _lhs_node and _rhs_node \
+                        and _lhs_node.type == 'identifier' \
+                        and _rhs_node.type == 'identifier':
+                    _lhs_name = self._node_text(_lhs_node, source_bytes)
+                    _rhs_name = self._node_text(_rhs_node, source_bytes)
+                    if (_rhs_name in _file_funcs
+                            and _lhs_name not in _file_funcs
+                            and len(_lhs_name) > 2):
+                        _local_fn_aliases.setdefault(_lhs_name, set()).add(_rhs_name)
             if node.type == 'call_expression':
                 callee_name = self._extract_callee_name(node, source_bytes)
                 # Detect indirect calls through function pointers (field_expression or pointer_expression)
@@ -1975,19 +2024,35 @@ class CTreeSitterScanner(BaseScanner):
                                 if _cb_target in ('NULL', 'null', '0') or '->' in _cb_target or '.' in _cb_target:
                                     _cb_target = ""
                             if _cb_target and re.match(r'^[a-zA-Z_]\w*$', _cb_target):
-                                # Create CALLBACK_ARG edge
-                                edges.append({
-                                    "source": invoker_id,
-                                    "target": _cb_target,
-                                    "call_order": call_order[0],
-                                    "call_condition": "",
-                                    "confidence": "CALLBACK_ARG",
-                                    "concurrency": _cb_concurrency,
-                                    "source_tag": "callback_arg",
-                                    "preproc_condition": "",
-                                    "preproc_alive": True,
-                                    "evidence": f"callback_arg: {callee_name}() arg#{_cb_arg_idx}={_cb_target}",
-                                })
+                                # Resolve local variable aliases: when the
+                                # callback argument is a local variable that
+                                # was assigned a known function name earlier
+                                # (e.g. msg_fn = _bdev_nvme_reset_ctrlr;
+                                # spdk_thread_send_msg(t, msg_fn, ctx)),
+                                # create the edge to the resolved function
+                                # instead of the variable name. A variable
+                                # reassigned in if/else branches may map to
+                                # multiple targets — create one edge per
+                                # target so the graph captures all paths.
+                                _resolved_targets = {_cb_target}
+                                if _cb_target in _local_fn_aliases:
+                                    _resolved_targets = _local_fn_aliases[_cb_target]
+                                for _rt in _resolved_targets:
+                                    _alias_note = ""
+                                    if _rt != _cb_target:
+                                        _alias_note = f" (alias: {_cb_target} -> {_rt})"
+                                    edges.append({
+                                        "source": invoker_id,
+                                        "target": _rt,
+                                        "call_order": call_order[0],
+                                        "call_condition": "",
+                                        "confidence": "CALLBACK_ARG",
+                                        "concurrency": _cb_concurrency,
+                                        "source_tag": "callback_arg",
+                                        "preproc_condition": "",
+                                        "preproc_alive": True,
+                                        "evidence": f"callback_arg: {callee_name}() arg#{_cb_arg_idx}={_rt}{_alias_note}",
+                                    })
 
                     current_condition = ""
                     target_empty = None

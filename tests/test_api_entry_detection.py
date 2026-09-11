@@ -823,5 +823,90 @@ public class Plain {
         self.assertNotIn("API_entry", fn["labels"])
 
 
+class TestLocalFnPtrAliasResolution(unittest.TestCase):
+    """When a local variable is assigned a known function name and then
+    passed to a callback registration function, the CALLBACK_ARG edge
+    must target the resolved function, not the variable name.
+
+    SPDK pattern (bdev_nvme.c):
+        spdk_msg_fn msg_fn;
+        if (cond) msg_fn = bdev_nvme_reconnect_ctrlr_now;
+        else       msg_fn = _bdev_nvme_reset_ctrlr;
+        spdk_thread_send_msg(t, msg_fn, ctx);
+    """
+
+    def _scan_with_callback_pattern(self, code):
+        from _scanner.c_scanner import CTreeSitterScanner
+        scanner = CTreeSitterScanner(is_cpp=False)
+        scanner._callback_patterns = {
+            "spdk_thread_send_msg": (1, "callback"),
+        }
+        with tempfile.NamedTemporaryFile(suffix='.c', mode='w',
+                                         delete=False) as f:
+            f.write(code)
+            f.flush()
+            result = scanner.scan_file(f.name, source_root=os.path.dirname(f.name))
+        os.unlink(f.name)
+        return result
+
+    def test_assignment_alias_resolves_callback_target(self):
+        """msg_fn = _bdev_nvme_reset_ctrlr; spdk_thread_send_msg(t, msg_fn, ctx)
+        → edge to _bdev_nvme_reset_ctrlr, NOT to msg_fn."""
+        code = """
+typedef void (*spdk_msg_fn)(void *ctx);
+void spdk_thread_send_msg(void *t, spdk_msg_fn fn, void *ctx);
+
+static void _bdev_nvme_reset_ctrlr(void *ctx) { }
+static void bdev_nvme_reconnect_now(void *ctx) { }
+
+static int bdev_nvme_reset_ctrlr(void *ctx) {
+    spdk_msg_fn msg_fn;
+    msg_fn = _bdev_nvme_reset_ctrlr;
+    spdk_thread_send_msg(ctx, msg_fn, ctx);
+    return 0;
+}
+"""
+        result = self._scan_with_callback_pattern(code)
+        cb_edges = [e for e in result["edges"]
+                    if e.get("confidence") == "CALLBACK_ARG"]
+        targets = {e["target"] for e in cb_edges}
+        # Must have an edge to the resolved function, not the variable
+        self.assertIn("_bdev_nvme_reset_ctrlr", targets,
+                      "CALLBACK_ARG edge must resolve to the aliased function, "
+                      "not the variable name 'msg_fn'. Got targets: %r" % targets)
+        self.assertNotIn("msg_fn", targets,
+                         "CALLBACK_ARG edge must NOT target the variable name")
+
+    def test_conditional_assignment_creates_multiple_edges(self):
+        """if (cond) msg_fn = A; else msg_fn = B; send(t, msg_fn, ctx)
+        → edges to BOTH A and B."""
+        code = """
+typedef void (*spdk_msg_fn)(void *ctx);
+void spdk_thread_send_msg(void *t, spdk_msg_fn fn, void *ctx);
+
+static void func_a(void *ctx) { }
+static void func_b(void *ctx) { }
+
+static int caller(int cond, void *ctx) {
+    spdk_msg_fn msg_fn;
+    if (cond) {
+        msg_fn = func_a;
+    } else {
+        msg_fn = func_b;
+    }
+    spdk_thread_send_msg(ctx, msg_fn, ctx);
+    return 0;
+}
+"""
+        result = self._scan_with_callback_pattern(code)
+        cb_edges = [e for e in result["edges"]
+                    if e.get("confidence") == "CALLBACK_ARG"]
+        targets = {e["target"] for e in cb_edges}
+        self.assertIn("func_a", targets,
+                      "Conditional branch A must produce a CALLBACK_ARG edge")
+        self.assertIn("func_b", targets,
+                      "Conditional branch B must produce a CALLBACK_ARG edge")
+
+
 if __name__ == "__main__":
     unittest.main()

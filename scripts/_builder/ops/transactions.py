@@ -871,8 +871,6 @@ def transaction(graph_dir: str, description: str = "",
 
         try:
             yield tx_state
-            # Commit
-            clear_wal(graph_dir)
             # RPT-P0-15: re-read the state file to pick up any
             # mark_file_dirty() calls made inside the `with` block.
             # mark_file_dirty writes its own copy of the state to disk,
@@ -885,7 +883,15 @@ def transaction(graph_dir: str, description: str = "",
                 tx_state.dirty_file_ids = fresh_state.dirty_file_ids
             tx_state.status = "committed"
             tx_state.ended_at = time.time()
+            # Persist the commit record BEFORE clearing the WAL: the status
+            # file is the durability point. recover_unfinished_wal() treats
+            # status "active" as a crash and restores the snapshot, which
+            # would discard the just-committed writes if we crashed between
+            # clear_wal() and the status write. With the status persisted
+            # first, a crash before clear_wal() lands in the "committed"
+            # recovery branch (WAL kept as evidence for tx-replay-wal).
             _write_tx_state(graph_dir, tx_state)
+            clear_wal(graph_dir)
         except Exception as exc:
             # Rollback — but ONLY for failures that happened BEFORE the
             # commit was written to disk. Once tx_state.status="committed"

@@ -25,6 +25,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from contextlib import redirect_stdout, redirect_stderr
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
@@ -349,6 +350,71 @@ class TestCmdTxListSnapshots(unittest.TestCase):
             result = json.loads(out)
             self.assertEqual(result["count"], 0)
             self.assertEqual(result["snapshots"], [])
+
+
+class TestTransactionCommitOrdering(unittest.TestCase):
+    """The commit record must be durable before the WAL is destroyed.
+
+    recover_unfinished_wal() treats status "active" as a crash and
+    restores the snapshot. If transaction() cleared the WAL before
+    persisting status="committed", a crash in between would discard
+    writes that were already applied to the live db.
+    """
+
+    def test_committed_status_persisted_before_wal_clear(self):
+        events = []
+        real_write = transactions._write_tx_state
+        real_clear = transactions.clear_wal
+
+        def spy_write(graph_dir, state, *a, **kw):
+            events.append(("write", state.status))
+            return real_write(graph_dir, state, *a, **kw)
+
+        def spy_clear(graph_dir, *a, **kw):
+            events.append(("clear_wal", None))
+            return real_clear(graph_dir, *a, **kw)
+
+        with tempfile.TemporaryDirectory() as d:
+            with unittest.mock.patch.object(transactions, "_write_tx_state", spy_write), \
+                 unittest.mock.patch.object(transactions, "clear_wal", spy_clear):
+                with transactions.transaction(d, description="ordering"):
+                    pass
+        writes = [s for kind, s in events if kind == "write"]
+        self.assertIn("committed", writes)
+        commit_idx = events.index(("write", "committed"))
+        clear_indices = [i for i, (kind, _) in enumerate(events)
+                         if kind == "clear_wal"]
+        self.assertTrue(clear_indices,
+                        "WAL was never cleared after commit")
+        post_commit_clears = [i for i in clear_indices if i > commit_idx]
+        self.assertTrue(post_commit_clears,
+                        "clear_wal ran before the committed status write")
+
+    def test_crash_at_wal_clear_keeps_committed_record_and_wal(self):
+        """An interruption at the WAL-clear step must not lose the commit.
+
+        With the durable-first ordering the status file already says
+        "committed" when clear_wal is interrupted, so recovery takes the
+        committed branch (no snapshot rollback of applied writes) and the
+        WAL survives as evidence for tx-replay-wal.
+        """
+        with tempfile.TemporaryDirectory() as d:
+            def crash_on_clear(graph_dir, *a, **kw):
+                raise KeyboardInterrupt("simulated crash at commit point")
+
+            with unittest.mock.patch.object(transactions, "clear_wal",
+                                            crash_on_clear):
+                with self.assertRaises(KeyboardInterrupt):
+                    with transactions.transaction(d, description="crash"):
+                        pass
+            state = transactions._read_tx_state(d)
+            self.assertIsNotNone(state)
+            self.assertEqual(state.status, "committed",
+                             "commit record was not durable before the "
+                             "WAL-clear step")
+            self.assertTrue(os.path.exists(_wal_path(d)),
+                            "WAL evidence was destroyed by the interrupted "
+                            "commit — tx-replay-wal recovery impossible")
 
 
 if __name__ == "__main__":

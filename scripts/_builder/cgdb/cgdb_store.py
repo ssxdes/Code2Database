@@ -251,6 +251,16 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         conn.execute("PRAGMA synchronous = OFF")
         conn.execute("PRAGMA cache_size = -64000")  # 64MB
         conn.execute("BEGIN")
+        # Defer FK enforcement to COMMIT. cgdb_nodes is written with
+        # INSERT OR IGNORE, but child tables (cgdb_edges, basic_blocks,
+        # data_flow, alias_sets, invoke_sites, ops_bindings, sync_primitives,
+        # doc_comments, node_metadata, config_predicates) reference it via
+        # NO-ACTION FKs. During multi-project merges, a node can be written
+        # by several files before its children land; deferring prevents the
+        # intermediate state from tripping an immediate FK violation.
+        # defer_foreign_keys resets to OFF on COMMIT, so it must be re-armed
+        # after every BEGIN (see commit_bulk_checkpoint).
+        conn.execute("PRAGMA defer_foreign_keys = ON")
         self._bulk_load_active = True
 
     def commit_bulk_checkpoint(self) -> None:
@@ -278,6 +288,9 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         conn.execute("BEGIN")
+        # defer_foreign_keys resets to OFF on the COMMIT above; re-arm for
+        # the next batch segment.
+        conn.execute("PRAGMA defer_foreign_keys = ON")
 
     def abort_bulk_load(self) -> None:
         """Rollback a bulk-load transaction and reset PRAGMAs.
@@ -302,6 +315,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         in_explicit_tx = self._bulk_load_active
         if not in_explicit_tx:
             conn.execute("BEGIN")
+            conn.execute("PRAGMA defer_foreign_keys = ON")
         try:
             self._write_file(conn, batch.file)
             self._write_types(conn, batch.types)
@@ -1597,6 +1611,12 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         for n in nodes:
             signature = n.attrs.get("signature", "") if n.attrs else ""
             body_text = n.attrs.get("body_text", "") if n.attrs else ""
+            # INSERT OR IGNORE skips the entire row on any constraint
+            # violation (unlike REPLACE, which substitutes column defaults
+            # for NULL on NOT NULL columns). commit_hash is NOT NULL DEFAULT
+            # 'unknown' in the schema but the dataclass defaults to None,
+            # so coerce it here to avoid silently dropping the row.
+            commit_hash = n.commit_hash if n.commit_hash else "unknown"
             rows.append((
                 n.id, n.kind, n.name, n.fqn, n.file_id, n.line, n.col,
                 n.byte_start, n.byte_end, n.type_spelling, n.type_id,
@@ -1605,10 +1625,10 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                 json.dumps(n.attrs, ensure_ascii=False, default=str),
                 n.source_layer, n.confidence,
                 n.first_seen_version, n.last_seen_version,
-                n.commit_hash, n.legacy_function_id,
+                commit_hash, n.legacy_function_id,
             ))
         conn.executemany(
-            "INSERT OR REPLACE INTO cgdb_nodes "
+            "INSERT OR IGNORE INTO cgdb_nodes "
             "(id, kind, name, fqn, file_id, line, col, byte_start, byte_end, "
             " type_spelling, type_id, config_predicate_id, enclosing_symbol_id, "
             " signature, body_text, source_snippet, "

@@ -535,5 +535,60 @@ class TestSQLiteCGDBStoreBulkLoad(unittest.TestCase):
         self.assertEqual(sync[0], 1)  # NORMAL
 
 
+class TestDeferForeignKeys(unittest.TestCase):
+    """Multi-project merges produce node-ID collisions. INSERT OR IGNORE +
+    PRAGMA defer_foreign_keys must avoid NO-ACTION FK aborts from child
+    tables (cgdb_edges, basic_blocks, data_flow, alias_sets, invoke_sites,
+    ops_bindings, sync_primitives, doc_comments, node_metadata)."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.tmpdir, "cgdb_defer.db")
+        self.addCleanup(self._cleanup)
+        self.store = SQLiteCGDBStore(self.db_path)
+        self.store.create_schema()
+
+    def _cleanup(self):
+        import shutil
+        self.store.close()
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _batch_with_child(self, node_id, edge_id=None):
+        """Build a minimal batch where cgdb_edges references a node, then a
+        second batch re-writes the same node id (simulating an ID collision
+        across merged projects)."""
+        return IngestBatch(
+            file=FileRecord(id=1, path='a.c', language='c',
+                            sha256='h1', content_hash='h1'),
+            nodes=[NodeRecord(id=node_id, kind='function', name='f',
+                              fqn='f', file_id=1)],
+            edges=[EdgeRecord(src_id=node_id, dst_id=node_id,
+                              kind='INVOKES', file_id=1)],
+        )
+
+    def test_duplicate_node_id_with_child_rows_no_fk_abort(self):
+        """Re-writing a node whose id already has child rows (edges) must
+        not abort with 'FOREIGN KEY constraint failed'."""
+        self.store.begin_bulk_load()
+        self.store.write_batch(self._batch_with_child(5001))
+        # Second batch: same node id, different file (collision).
+        batch2 = self._batch_with_child(5001)
+        batch2.file = FileRecord(id=2, path='b.c', language='c',
+                                 sha256='h2', content_hash='h2')
+        self.store.write_batch(batch2)
+        self.store.finalize()
+        # Node must still exist.
+        self.assertIsNotNone(self.store.get_node(5001))
+
+    def test_non_bulk_write_batch_defers_fk(self):
+        """write_batch without bulk load must also defer FKs so child-first
+        ordering within a batch cannot abort."""
+        self.store.write_batch(self._batch_with_child(6001))
+        self.store.close()
+        store2 = SQLiteCGDBStore(self.db_path)
+        self.assertIsNotNone(store2.get_node(6001))
+        store2.close()
+
+
 if __name__ == "__main__":
     unittest.main()

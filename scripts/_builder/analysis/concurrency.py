@@ -1,6 +1,8 @@
 """callgraph builder module: concurrency."""
 
 import re
+import sys
+
 import networkx as nx
 from _builder.utils import _output_result
 from _builder.graph.graph_build import _load_full_graph

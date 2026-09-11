@@ -6,6 +6,7 @@ import os
 import json
 import sys
 import re
+import logging
 from pathlib import Path
 from collections import defaultdict
 import networkx as nx

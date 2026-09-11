@@ -73,7 +73,13 @@ def _parse_unified_diff(diff_text: str) -> dict:
             # Old file path — save but don't set current_file yet
             pending_old_file = line[6:].strip()
             continue
-        if line.startswith("--- "):
+        # Bare "--- " header (non-standard diff without a/ b/ prefixes).
+        # Only recognize it OUTSIDE a hunk: inside a hunk a line beginning
+        # with "--- " is a removed content line whose text starts with "--"
+        # (SQL comment, markdown rule, --help string), and consuming it as
+        # a header drops the removed line and shifts every subsequent line
+        # number in the hunk.
+        if current_hunk is None and line.startswith("--- "):
             pending_old_file = line[4:].strip()
             continue
         if line.startswith("+++ b/"):

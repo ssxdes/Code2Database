@@ -172,3 +172,41 @@ class TestCheckUpdateThreshold(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDiffParsingInHunkHeaders(unittest.TestCase):
+    """A removed content line whose text begins with '--' (SQL comment,
+    markdown rule, --help string) renders as '--- ...' in the diff and
+    must not be consumed as a file header."""
+
+    def test_removed_line_starting_with_dash_dash_is_counted(self):
+        diff = (
+            "--- a/query.sql\n"
+            "+++ b/query.sql\n"
+            "@@ -1,3 +1,2 @@\n"
+            " -- first comment\n"
+            "--- removed SQL comment\n"
+            " -- trailing context\n"
+        )
+        result = _parse_unified_diff(diff)
+        self.assertEqual(len(result["hunks"]), 1)
+        # The removed line "-- removed SQL comment" must be counted as
+        # removed (old file line 2), not swallowed as a file header.
+        self.assertEqual(result["hunks"][0]["removed_lines"], [2])
+        # pending_old_file must not be polluted by the in-hunk '--- ' line
+        self.assertNotIn("removed SQL comment",
+                         result.get("modified_files", [])
+                         + result.get("added_files", [])
+                         + result.get("deleted_files", []))
+
+    def test_multi_file_diff_still_recognizes_a_slash_headers(self):
+        diff = (
+            "--- a/file1.c\n+++ b/file1.c\n@@ -1,2 +1,2 @@\n"
+            " ctx\n-old1\n+new1\n"
+            "--- a/file2.c\n+++ b/file2.c\n@@ -1,2 +1,2 @@\n"
+            " ctx\n-old2\n+new2\n"
+        )
+        result = _parse_unified_diff(diff)
+        self.assertIn("file1.c", result["modified_files"])
+        self.assertIn("file2.c", result["modified_files"])
+        self.assertEqual(len(result["hunks"]), 2)

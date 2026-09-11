@@ -509,6 +509,45 @@ class StreamingGraph:
         self._successors.pop(node_id, None)
         self._predecessors.pop(node_id, None)
 
+    def remove_edge(self, u: str, v: str):
+        """Remove a single edge (u, v). No-op when the edge doesn't exist.
+
+        Mirrors remove_node's edge cleanup: in deferred mode, already-
+        flushed rows must be deleted from SQLite too, or close()'s batch
+        path would leave the removed edge in the DB.
+        """
+        if not self.has_edge(u, v):
+            return
+
+        if self._deferred:
+            try:
+                self._store._conn.execute(
+                    "DELETE FROM edges WHERE invoker_id = ? AND invoked_id = ?",
+                    (u, v))
+            except Exception:
+                raise RuntimeError(
+                    f"StreamingGraph.remove_edge(({u!r}, {v!r})): deleting "
+                    f"the flushed row from SQLite failed — DB and in-memory "
+                    f"state would diverge") from None
+            self._edge_batch = [
+                e for e in self._edge_batch
+                if not (e.get("caller") == u and e.get("callee") == v)
+            ]
+
+        self._edge_set.discard((u, v))
+        # L1 attr cleanup — _edge_data holds attrs in normal mode and for
+        # rebuilt edges (deferred mode keeps attrs in _edge_batch).
+        self._edge_data.pop((u, v), None)
+        self._edge_count -= 1
+        if u in self._out_degree:
+            self._out_degree[u] = max(0, self._out_degree[u] - 1)
+        if v in self._in_degree:
+            self._in_degree[v] = max(0, self._in_degree[v] - 1)
+        if u in self._successors:
+            self._successors[u].discard(v)
+        if v in self._predecessors:
+            self._predecessors[v].discard(u)
+
     # ---- Query operations ----
 
     def has_node(self, node_id: str) -> bool:

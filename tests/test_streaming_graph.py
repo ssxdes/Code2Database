@@ -7,6 +7,7 @@ Covers:
 """
 
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -276,6 +277,65 @@ class TestCloseCommitFailure(unittest.TestCase):
             sg.close()
         self.assertIn("disk is full", str(cm.exception))
         self.assertNotIn("within a transaction", str(cm.exception))
+
+
+class TestStreamingGraphRemoveEdge(unittest.TestCase):
+    """remove_edge must work on both deferred and normal modes.
+
+    graph_build's false-positive cleanup pass calls G.remove_edge(u, v)
+    on whatever graph type it holds — including a StreamingGraph in
+    low-memory builds. A missing method aborted the whole build.
+    """
+
+    def _db_rows(self, db_path):
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        try:
+            return conn.execute(
+                "SELECT invoker_id, invoked_id FROM edges").fetchall()
+        finally:
+            conn.close()
+
+    def test_remove_edge_normal_mode(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        db_path = os.path.join(d, "code2database.db")
+        sg = StreamingGraph(db_path)
+        sg.add_node("f1", name="f1")
+        sg.add_node("f2", name="f2")
+        sg.add_edge("f1", "f2", confidence="EXTRACTED")
+        sg.remove_edge("f1", "f2")
+        self.assertFalse(sg.has_edge("f1", "f2"))
+        self.assertEqual(sg.number_of_edges(), 0)
+        self.assertEqual(list(sg.successors("f1")), [])
+        self.assertEqual(list(sg.predecessors("f2")), [])
+        self.assertEqual(sg.degree("f1"), 0)
+        sg.close()
+        self.assertEqual(self._db_rows(db_path), [])
+
+    def test_remove_edge_deferred_mode_deletes_flushed_row(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        db_path = os.path.join(d, "code2database.db")
+        sg = StreamingGraph(db_path)
+        sg.set_deferred(True)
+        sg.add_node("f1", name="f1")
+        sg.add_node("f2", name="f2")
+        sg.add_edge("f1", "f2", confidence="EXTRACTED")
+        sg._flush_edges()  # row now lives in SQLite
+        sg.remove_edge("f1", "f2")
+        self.assertFalse(sg.has_edge("f1", "f2"))
+        sg.close()
+        self.assertEqual(self._db_rows(db_path), [])
+
+    def test_remove_edge_noop_for_missing_edge(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        sg = StreamingGraph(os.path.join(d, "code2database.db"))
+        sg.add_node("f1", name="f1")
+        sg.remove_edge("f1", "nonexistent")  # must not raise
+        self.assertEqual(sg.number_of_edges(), 0)
+        sg.close()
 
 
 if __name__ == "__main__":

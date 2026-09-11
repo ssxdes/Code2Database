@@ -944,5 +944,106 @@ class TestP5MacroDispatchCap(unittest.TestCase):
                              "macro_dispatch should be capped at 50")
 
 
+class TestProfileTestSegmentsInGraphBuild(unittest.TestCase):
+    """Test-domain routing in graph build honors profile test segments."""
+
+    @staticmethod
+    def _macro_extraction():
+        # No direct call edge: the only dispatch_caller→ztest_probe edge
+        # comes from the registration macro (Category 3).
+        return {
+            "functions": [
+                {"id": "root_dispatch_caller", "name": "dispatch_caller",
+                 "source_file": "core.c", "line": 1,
+                 "domain": "kernel.init", "labels": []},
+                {"id": "root_ztest_probe", "name": "ztest_probe",
+                 "source_file": "ztest/ztest_driver.c", "line": 5,
+                 "domain": "kernel.ztest", "labels": []},
+            ],
+            "edges": [],
+            "domains": ["root"],
+            "lang_stats": {"c": 2},
+            "macro_registrations": [
+                {"struct_var": "ztest_probe", "macro_name": "MODULE_DRIVER",
+                 "source_file": "ztest/ztest_driver.c", "line": 3},
+            ],
+        }
+
+    @staticmethod
+    def _macro_profile(segments):
+        pb = {"test_domain_segments": segments} if segments else {}
+        return {
+            "macro_dispatch": {
+                "registration_macros": [
+                    {"macro_name": "MODULE_DRIVER", "handler_arg_index": 0,
+                     "dispatch_caller": "dispatch_caller"},
+                ]
+            },
+            "project_boundaries": pb,
+        }
+
+    def test_macro_dispatch_edge_skipped_for_profile_segment(self):
+        """A handler in a profile-declared test domain is not a dispatch target."""
+        from _builder.graph.graph_build import build_graph
+        G, _ = build_graph(self._macro_extraction(),
+                           profile=self._macro_profile(["ztest"]))
+        self.assertFalse(
+            G.has_edge("root_dispatch_caller", "root_ztest_probe"),
+            "prod dispatch caller must not dispatch into a declared test domain")
+
+    def test_macro_dispatch_edge_kept_without_profile_segment(self):
+        """Generic defaults don't cover ztest, so the edge is kept."""
+        from _builder.graph.graph_build import build_graph
+        G, _ = build_graph(self._macro_extraction(),
+                           profile=self._macro_profile(None))
+        self.assertTrue(
+            G.has_edge("root_dispatch_caller", "root_ztest_probe"),
+            "undeclared segment keeps the dispatch edge")
+
+    @staticmethod
+    def _dotted_extraction():
+        # Dotted resolution target in a test domain, no production
+        # definition with the same name exists.
+        return {
+            "functions": [
+                {"id": "root_net_send", "name": "net_send",
+                 "source_file": "net.c", "line": 1,
+                 "domain": "kernel.net", "labels": []},
+                {"id": "kernel.ztest.mock_util", "name": "mock_util",
+                 "source_file": "ztest/mock.c", "line": 1,
+                 "domain": "kernel.ztest", "labels": []},
+            ],
+            "edges": [
+                {"source": "root_net_send", "target": "mock_util",
+                 "call_order": 1},
+            ],
+            "domains": ["root"],
+            "lang_stats": {"c": 2},
+        }
+
+    @staticmethod
+    def _dotted_profile(segments):
+        pb = {"test_domain_segments": segments} if segments else {}
+        return {"project_boundaries": pb}
+
+    def test_dotted_test_target_edge_dropped_for_profile_segment(self):
+        """Production callers don't keep edges into declared test domains."""
+        from _builder.graph.graph_build import build_graph
+        G, _ = build_graph(self._dotted_extraction(),
+                           profile=self._dotted_profile(["ztest"]))
+        self.assertFalse(
+            G.has_edge("root_net_send", "kernel.ztest.mock_util"),
+            "prod→test edge with no production alternative must be dropped")
+
+    def test_dotted_test_target_edge_kept_without_profile_segment(self):
+        """Generic defaults don't cover ztest, so the edge is kept."""
+        from _builder.graph.graph_build import build_graph
+        G, _ = build_graph(self._dotted_extraction(),
+                           profile=self._dotted_profile(None))
+        self.assertTrue(
+            G.has_edge("root_net_send", "kernel.ztest.mock_util"),
+            "undeclared segment keeps the prod→test edge")
+
+
 if __name__ == "__main__":
     unittest.main()

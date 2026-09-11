@@ -1427,20 +1427,11 @@ def build_graph(extraction: dict, profile: dict = None,
             tgt_func = target_id.rsplit('.', 1)[-1] if '.' in target_id else target_id
             tgt_func_lower = tgt_func.lower()
             tgt_domain_full = target_id.rsplit('.', 1)[0] if '.' in target_id else ''
-            # A domain is "test" if any segment matches test indicators.
-            # Test segments come from profile.project_boundaries.test_domain_segments
-            # (project-agnostic: generic defaults cover unit/ut/test/fuzz).
-            _TEST_SEGMENTS = frozenset(
-                (profile or {}).get("project_boundaries", {}).get("test_domain_segments")
-                if isinstance(profile, dict)
-                and isinstance((profile or {}).get("project_boundaries"), dict)
-                and (profile or {}).get("project_boundaries", {}).get("test_domain_segments")
-                else ('unit', 'ut', 'fuzz', 'test')
-            )
-            tgt_domain_parts = tgt_domain_full.split('.')
-            tgt_is_test = any(p in _TEST_SEGMENTS for p in tgt_domain_parts)
-            src_domain_parts = source_domain.split('.')
-            src_is_prod = not any(p in _TEST_SEGMENTS for p in src_domain_parts)
+            # A domain is "test" if any segment matches test indicators,
+            # via the shared profile-driven helper (generic defaults cover
+            # unit/ut/test/fuzz; reference profiles may add segments).
+            tgt_is_test = _is_test_domain(tgt_domain_full, profile)
+            src_is_prod = not _is_test_domain(source_domain, profile)
 
             if src_is_prod and tgt_is_test:
                 # Category A: external lib prefix → ext.* endpoint
@@ -1452,8 +1443,9 @@ def build_graph(extraction: dict, profile: dict = None,
                             # this is a project-internal function, not external
                             norm_key = re.sub(r'[^a-z0-9_]', '_', tgt_func_lower)
                             prod_matches = [c for c in suffix_index.get(norm_key, [])
-                                            if not any(p in _TEST_SEGMENTS
-                                                       for p in c.split('.')[:-1])]
+                                            if not _is_test_domain(
+                                                c.rsplit('.', 1)[0] if '.' in c else '',
+                                                profile)]
                             if prod_matches:
                                 # Production definition exists — redirect to it
                                 target_id = prod_matches[0]
@@ -1492,8 +1484,9 @@ def build_graph(extraction: dict, profile: dict = None,
                 if not redirected:
                     norm_key = re.sub(r'[^a-z0-9_]', '_', tgt_func_lower)
                     prod_matches = [c for c in suffix_index.get(norm_key, [])
-                                    if not any(p in _TEST_SEGMENTS
-                                               for p in c.split('.')[:-1])]
+                                    if not _is_test_domain(
+                                        c.rsplit('.', 1)[0] if '.' in c else '',
+                                        profile)]
                     if prod_matches:
                         # Production definition exists — use it instead
                         target_id = prod_matches[0]
@@ -2114,9 +2107,8 @@ def build_graph(extraction: dict, profile: dict = None,
                             # Skip prod→test macro_dispatch edges: test/fuzz
                             # handlers should not appear as dispatch targets
                             # from production iterator functions.
-                            _TEST_SEGS = frozenset({'unit', 'ut', 'fuzz', 'test'})
                             tgt_domain = id_registry.get(target_id, {}).get("domain", "")
-                            if tgt_domain and any(p in _TEST_SEGS for p in tgt_domain.split('.')):
+                            if _is_test_domain(tgt_domain, profile):
                                 continue
 
                             G.add_edge(iterator_id, target_id,
@@ -2167,9 +2159,8 @@ def build_graph(extraction: dict, profile: dict = None,
                             if invoker_id == target_id:
                                 continue
                             # Skip prod→test macro_dispatch edges (Category 3)
-                            _TEST_SEGS = frozenset({'unit', 'ut', 'fuzz', 'test'})
                             tgt_domain = id_registry.get(target_id, {}).get("domain", "")
-                            if tgt_domain and any(p in _TEST_SEGS for p in tgt_domain.split('.')):
+                            if _is_test_domain(tgt_domain, profile):
                                 continue
 
                             G.add_edge(invoker_id, target_id,

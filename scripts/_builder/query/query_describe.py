@@ -824,10 +824,19 @@ def cmd_trace_chain(args):
     """One-shot trace from --from to --to with full annotation."""
     G = _load_full_graph(args.graph)
     from_id = _find_node_id(G, args.from_node)
-    to_id = _find_node_id(G, args.to_node) if args.to_node else None
     if not from_id:
         print(f"Node not found: {args.from_node}", file=sys.stderr)
         sys.exit(1)
+    # Distinguish "--to omitted" (None — full traversal) from "--to given
+    # but unresolved" ("" — error). _find_node_id returns "" on failure,
+    # which used to fall through to the full-traversal branch silently.
+    if args.to_node:
+        to_id = _find_node_id(G, args.to_node)
+        if not to_id:
+            print(f"Node not found: {args.to_node}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        to_id = None
 
     bindings = _parse_bindings(args.bindings) if args.bindings else {}
     globals_map = _load_globals(args.graph)

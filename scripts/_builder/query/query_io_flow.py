@@ -106,7 +106,15 @@ def cmd_io_path(args):
     if not from_id:
         print(f"Node not found: {from_name}", file=sys.stderr)
         sys.exit(1)
-    to_id = _find_node_id(G, to_name) if to_name else None
+    # Distinguish "--to omitted" (None — full traversal) from "--to given
+    # but unresolved" ("" — error). _find_node_id returns "" on failure.
+    if to_name:
+        to_id = _find_node_id(G, to_name)
+        if not to_id:
+            print(f"Node not found: {to_name}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        to_id = None
 
     bindings = _parse_bindings(bindings_raw) if bindings_raw else {}
     globals_map = _load_globals(graph_dir)

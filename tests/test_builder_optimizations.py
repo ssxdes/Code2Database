@@ -94,7 +94,7 @@ class TestP1MacroBridging(unittest.TestCase):
             "edges": [
                 {"source": "root_journal_start", "target": "root___journal_start",
                  "call_order": 1, "call_condition": "",
-                 "concurrency": "INVOKES", "confidence": "EXTRACTED",
+                 "concurrency": "direct_call", "confidence": "EXTRACTED",
                  "source_tag": "ast", "confidence_score": 1.0},
             ],
             "domains": ["root"],
@@ -128,7 +128,7 @@ class TestP2InlineFnPtrDispatch(unittest.TestCase):
             "edges": [
                 {"source": "root_caller", "target": "root_call_method",
                  "call_order": 1, "call_condition": "",
-                 "concurrency": "INVOKES", "confidence": "EXTRACTED",
+                 "concurrency": "direct_call", "confidence": "EXTRACTED",
                  "source_tag": "ast", "confidence_score": 1.0},
             ],
             "domains": ["root"],
@@ -169,7 +169,7 @@ class TestP2InlineFnPtrDispatch(unittest.TestCase):
             "edges": [
                 {"source": "root_caller", "target": "root_call_method",
                  "call_order": 1, "call_condition": "",
-                 "concurrency": "INVOKES", "confidence": "EXTRACTED",
+                 "concurrency": "direct_call", "confidence": "EXTRACTED",
                  "source_tag": "ast", "confidence_score": 1.0},
             ],
             "domains": ["root"],
@@ -209,7 +209,7 @@ class TestP2InlineFnPtrDispatch(unittest.TestCase):
             "edges": [
                 {"source": "root_caller", "target": "root_call_method",
                  "call_order": 1, "call_condition": "",
-                 "concurrency": "INVOKES", "confidence": "EXTRACTED",
+                 "concurrency": "direct_call", "confidence": "EXTRACTED",
                  "source_tag": "ast", "confidence_score": 1.0},
             ],
             "domains": ["root"],
@@ -258,7 +258,7 @@ class TestP2InlineFnPtrDispatch(unittest.TestCase):
                 # caller actually calls call_method (INVOKES)
                 {"source": "root_caller", "target": "root_call_method",
                  "call_order": 2, "call_condition": "",
-                 "concurrency": "INVOKES", "confidence": "EXTRACTED",
+                 "concurrency": "direct_call", "confidence": "EXTRACTED",
                  "source_tag": "ast", "confidence_score": 1.0},
             ],
             "domains": ["root"],
@@ -368,7 +368,7 @@ class TestP4ConditionalParentEdges(unittest.TestCase):
             "edges": [
                 {"source": "root_f", "target": "root_f__cond_0",
                  "call_order": 1, "call_condition": "",
-                 "concurrency": "INVOKES", "confidence": "EXTRACTED",
+                 "concurrency": "direct_call", "confidence": "EXTRACTED",
                  "source_tag": "ast", "confidence_score": 1.0},
             ],
             "domains": ["root"],
@@ -514,10 +514,12 @@ class TestP2AInlineFnPtrFlattening(unittest.TestCase):
                  "domain": "root", "labels": []},
             ],
             "edges": [
-                # real_caller calls the inline wrapper (not a node in the graph)
+                # real_caller calls the inline wrapper (not a node in the graph).
+                # Real scanner edges carry concurrency=direct_call (or none)
+                # and no relation attribute — see c_scanner edge emission.
                 {"source": "root_real_caller", "target": "inline_wrapper",
                  "call_order": 1, "call_condition": "",
-                 "concurrency": "INVOKES", "confidence": "EXTRACTED",
+                 "concurrency": "direct_call", "confidence": "EXTRACTED",
                  "source_tag": "ast", "confidence_score": 1.0},
             ],
             "domains": ["root"],
@@ -633,7 +635,7 @@ class TestP2BExtendedInlineWrapper(unittest.TestCase):
             "edges": [
                 {"source": "root_caller_func", "target": "root_invoke_read",
                  "call_order": 1, "call_condition": "",
-                 "concurrency": "INVOKES", "confidence": "EXTRACTED",
+                 "concurrency": "direct_call", "confidence": "EXTRACTED",
                  "source_tag": "ast", "confidence_score": 1.0},
             ],
             "domains": ["root"],
@@ -675,7 +677,7 @@ class TestP2BExtendedInlineWrapper(unittest.TestCase):
             "edges": [
                 {"source": "root_caller_func", "target": "root_dunder_invoke_write",
                  "call_order": 1, "call_condition": "",
-                 "concurrency": "INVOKES", "confidence": "EXTRACTED",
+                 "concurrency": "direct_call", "confidence": "EXTRACTED",
                  "source_tag": "ast", "confidence_score": 1.0},
             ],
             "domains": ["root"],
@@ -714,7 +716,7 @@ class TestP2BExtendedInlineWrapper(unittest.TestCase):
             "edges": [
                 {"source": "root_caller_func", "target": "root_call_Method",
                  "call_order": 1, "call_condition": "",
-                 "concurrency": "INVOKES", "confidence": "EXTRACTED",
+                 "concurrency": "direct_call", "confidence": "EXTRACTED",
                  "source_tag": "ast", "confidence_score": 1.0},
             ],
             "domains": ["root"],
@@ -754,7 +756,7 @@ class TestP2BExtendedInlineWrapper(unittest.TestCase):
             "edges": [
                 {"source": "root_caller_func", "target": "root_call_ioctl",
                  "call_order": 1, "call_condition": "",
-                 "concurrency": "INVOKES", "confidence": "EXTRACTED",
+                 "concurrency": "direct_call", "confidence": "EXTRACTED",
                  "source_tag": "ast", "confidence_score": 1.0},
             ],
             "domains": ["root"],

@@ -110,6 +110,14 @@ from _builder.graph.state_access import _extract_module_hint, _trace_object_orig
 
 from _builder.graph.thread_models import _detect_thread_models, _propagate_thread_models, _validate_stats_consistency, _compile_dispatch_patterns
 
+# Concurrency values that mark registration / scheduling / structural
+# semantics rather than an invocation (see _edge_is_call).
+_NON_CALL_CONCURRENCY = frozenset({
+    "callback", "CALLBACK_ARG", "callback_register", "async_spawn",
+    "thread_spawn", "spawn_target", "poller", "interrupt",
+    "contains", "imports",
+})
+
 def _wipe_cgdb_data(conn) -> None:
     """Delete all rows from cgdb tables except graph_versions (preserved for
     time-travel). Called at the start of each build so rebuilds don't
@@ -369,6 +377,26 @@ def _domain_hier_match(caller_dom: str, target_dom: str) -> bool:
         return True
     return False
 
+
+def _edge_is_call(edata: dict) -> bool:
+    """True when an in-memory build-graph edge represents an invocation.
+
+    Used by dispatch flattening to decide which predecessors of a node
+    are callers. Call edges carry a concurrency value (direct_call,
+    fn_ptr, vtable_dispatch, ...) and no relation attribute; structural
+    and annotation edges carry a relation (CONTAINS, IMPORTS, DISPATCH)
+    or a registration-style concurrency (callback, thread_spawn, ...).
+    On persist, relation-less edges default to relation='INVOKES'
+    (sqlite_store.store_edges), so a graph reloaded from JSON with
+    explicit relation='INVOKES' also counts.
+    """
+    rel = edata.get("relation")
+    if rel:
+        return rel == "INVOKES"
+    conc = edata.get("concurrency") or ""
+    if conc in _NON_CALL_CONCURRENCY:
+        return False
+    return True
 
 
 def _detect_build_system(source_root: str, build_config_arg: str,
@@ -1677,13 +1705,14 @@ def build_graph(extraction: dict, profile: dict = None,
     # Used by inline fn_ptr_call flattening to find callers of inline wrappers
     _invoked_to_invoker_ids = {}
     for u, v, edata in G.edges(data=True):
-        if edata.get("concurrency") == "INVOKES":
-            callee_name = id_registry.get(v, {}).get("name", "")
-            if not callee_name:
-                # Auto-created nodes may be in G but not id_registry
-                callee_name = G.nodes.get(v, {}).get("name", "")
-            if callee_name:
-                _invoked_to_invoker_ids.setdefault(callee_name, set()).add(u)
+        if not _edge_is_call(edata):
+            continue
+        callee_name = id_registry.get(v, {}).get("name", "")
+        if not callee_name:
+            # Auto-created nodes may be in G but not id_registry
+            callee_name = G.nodes.get(v, {}).get("name", "")
+        if callee_name:
+            _invoked_to_invoker_ids.setdefault(callee_name, set()).add(u)
 
     # Callback field patterns (used by P2A, P2B, and main vtable dispatch)
     _CALLBACK_FIELD_PATTERNS = (
@@ -2223,7 +2252,7 @@ def build_graph(extraction: dict, profile: dict = None,
             field_name = m.group(1) if m.lastindex and m.lastindex >= 1 else ""
             if not field_name:
                 continue  # Pattern matched but no capture group — cannot dispatch
-            # Find callers of this wrapper node (only INVOKES edges)
+            # Find callers of this wrapper node (call edges only)
             wrapper_callers = []
             if nid in G:
                 for pred in G.predecessors(nid):
@@ -2233,7 +2262,7 @@ def build_graph(extraction: dict, profile: dict = None,
                     # subscriptable). get_edge_data returns None if the edge
                     # doesn't exist, or a dict of attributes if it does.
                     _edge_attrs = G.get_edge_data(pred, nid)
-                    if _edge_attrs is not None and _edge_attrs.get("concurrency") == "INVOKES":
+                    if _edge_attrs is not None and _edge_is_call(_edge_attrs):
                         wrapper_callers.append(pred)
             if not wrapper_callers:
                 continue

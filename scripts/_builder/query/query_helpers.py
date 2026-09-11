@@ -540,9 +540,16 @@ def _get_code_snippet(G: nx.DiGraph, node_id: str, source_root: str = "",
         if graph_dir:
             master_path = os.path.join(graph_dir, "code2database_master.json")
         if not master_path or not os.path.exists(master_path):
-            master_path = os.path.join(os.path.dirname(os.path.abspath("")), "code2database_master.json")
+            # Fallback to the CWD, not its parent: os.path.abspath("")
+            # returns the CWD itself, so os.path.dirname(...) yields the
+            # CWD's parent and the master file is never found.
+            master_path = os.path.join(os.getcwd(),
+                                       "code2database_master.json")
         if os.path.exists(master_path):
-            master = json.loads(Path(master_path).read_text(encoding="utf-8"))
+            try:
+                master = json.loads(Path(master_path).read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                master = {}
             source_root = master.get("source_root", "")
             full_path = os.path.join(source_root, source_file)
         else:

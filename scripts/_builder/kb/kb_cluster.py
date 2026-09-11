@@ -83,8 +83,14 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
     if conn is None:
         return {"clustered": False, "reason": "no_db"}
     try:
-        # Reset existing clusters
-        conn.execute("UPDATE kb_paragraphs SET scope_id = NULL, canonical_id = NULL")
+        # Reset existing clusters — scope_id, canonical_id AND principle_ref
+        # (principle_ref was left untouched, so rows whose best match later
+        # scored < 1.0 kept pointing at a principle the current algorithm
+        # would no longer link — breaking the from-scratch / idempotent
+        # contract documented in the module docstring).
+        conn.execute(
+            "UPDATE kb_paragraphs SET scope_id = NULL, canonical_id = NULL, "
+            "principle_ref = NULL")
         # Load all items
         rows = conn.execute(
             "SELECT id, title, body, tags, weight, confidence, kind "

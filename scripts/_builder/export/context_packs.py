@@ -176,7 +176,13 @@ def _build_context_pack(G: nx.DiGraph, outdir: str, source_root: str = "",
     # Add community data to context pack
     comm_path = os.path.join(outdir, ".code2database_communities.json")
     if os.path.exists(comm_path):
-        comm_data = json.loads(Path(comm_path).read_text(encoding="utf-8"))
+        try:
+            comm_data = json.loads(Path(comm_path).read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            # A truncated/corrupt communities file (e.g. a build killed
+            # mid-write) must not abort the whole context-pack build —
+            # export.py wraps the same read this way.
+            comm_data = {}
         pack["community_map"] = {
             c["id"]: {"label": c.get("label", ""),
                       "size": c.get("symbol_count", 0),

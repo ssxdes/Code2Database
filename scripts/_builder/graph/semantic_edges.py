@@ -103,8 +103,11 @@ def _detect_resource_calls(body_text: str, patterns: List[re.Pattern]) -> List[s
     seen: Set[str] = set()
     for pat in patterns:
         for m in pat.finditer(body_text):
-            # Extract the function name (first identifier matched)
-            name = m.group(0).strip().rstrip('(').strip()
+            # Extract the function name (first identifier matched).
+            # Strip both '(' and '{' openers so C++ brace-initialization
+            # (`new Foo{...}`) yields "new Foo", not "new Foo{" — otherwise
+            # the same allocation splits into two distinct ALLOCATES names.
+            name = m.group(0).strip().rstrip('({').strip()
             # For 'new Foo(' patterns, include 'new Foo'
             if name and name not in seen:
                 seen.add(name)

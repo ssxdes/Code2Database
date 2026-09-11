@@ -79,9 +79,37 @@ def _compile_lock_patterns(profile: Optional[Dict]) -> Tuple[List[re.Pattern], L
     conc = profile.get("concurrency_patterns", {}) or {}
     acquire_strs = conc.get("lock_acquire_patterns", []) or []
     release_strs = conc.get("lock_release_patterns", []) or []
-    acquire_pats = [re.compile(p) for p in acquire_strs]
-    release_pats = [re.compile(p) for p in release_strs]
+    # Profiles are user-editable (patch-profile --add-lock-acquire-pattern);
+    # an invalid regex must not crash the whole analyzer. Skip un-compilable
+    # patterns with a debug log, mirroring concurrency_analysis.
+    acquire_pats = []
+    for p in acquire_strs:
+        try:
+            acquire_pats.append(re.compile(p))
+        except re.error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+    release_pats = []
+    for p in release_strs:
+        try:
+            release_pats.append(re.compile(p))
+        except re.error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
     return acquire_pats, release_pats
+
+
+def _groupless_sentinel(pattern: re.Pattern) -> str:
+    """Stable per-pattern lock name for groupless acquire/release patterns.
+
+    All groupless patterns used to share the single sentinel
+    '__rcu_read_lock__': two DIFFERENT primitives (rcu_read_lock vs
+    preempt_disable, both groupless) became 'the same lock', so
+    common_locks was non-empty and real races between them were wrongly
+    suppressed. The sentinel is derived from the pattern text (md5
+    prefix — stable across processes, unlike hash()), matching
+    concurrency_analysis._groupless_sentinel.
+    """
+    import hashlib
+    return f"__groupless_{hashlib.md5(pattern.pattern.encode('utf-8')).hexdigest()[:8]}__"
 
 
 def analyze_lock_coverage(ndata: Dict, profile: Optional[Dict] = None,
@@ -141,12 +169,14 @@ def analyze_lock_coverage(ndata: Dict, profile: Optional[Dict] = None,
         for pat in acquire_pats:
             for m in pat.finditer(line):
                 groups = m.groups()
-                lock_name = groups[0].lstrip("&") if groups else "__rcu_read_lock__"
+                lock_name = (groups[0].lstrip("&") if groups
+                             else _groupless_sentinel(pat))
                 events.append((m.start(), "acquire", lock_name))
         for pat in release_pats:
             for m in pat.finditer(line):
                 groups = m.groups()
-                lock_name = groups[0].lstrip("&") if groups else "__rcu_read_lock__"
+                lock_name = (groups[0].lstrip("&") if groups
+                             else _groupless_sentinel(pat))
                 events.append((m.start(), "release", lock_name))
         # Field accesses — find their position in the line.
         # Pre-filter with substring check before the expensive
@@ -358,8 +388,14 @@ def detect_races_with_lock_coverage(G, profile: Optional[Dict] = None,
                 # Same function — internal consistency, not a cross-function race
                 if func_a == func_b:
                     continue
-                # Same thread model — not concurrent
+                # Same thread model — not concurrent. Two UNKNOWN contexts
+                # (both empty) are assumed to share the default context too —
+                # otherwise every read/write pair between two ordinary
+                # single-threaded functions would be flagged as a race.
+                # (Mirrors concurrency_analysis._same_thread_context.)
                 if tm_a and tm_b and tm_a == tm_b:
+                    continue
+                if not tm_a and not tm_b:
                     continue
                 # At least one must be a write
                 if acc_a.access_type == "read" and acc_b.access_type == "read":

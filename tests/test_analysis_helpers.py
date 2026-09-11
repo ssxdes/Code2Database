@@ -381,6 +381,63 @@ class TestDetectRacesWithLockCoverage(unittest.TestCase):
         races = detect_races_with_lock_coverage(_load_full_graph(gd), _PROFILE)
         self.assertEqual(races, [])
 
+    def test_two_unknown_thread_models_not_a_race(self):
+        """Two ordinary single-threaded functions with no thread_model
+        share the default context — a read/write pair between them is
+        not a race (mirrors concurrency_analysis._same_thread_context)."""
+        gd = _make_graph(
+            [{"id": "f1", "name": "f1",
+              "body_text": "ctx->shared = 1;",
+              "fields_written": [{"field_name": "shared",
+                                   "struct_chain": "ctx->shared"}]},
+             {"id": "f2", "name": "f2",
+              "body_text": "ctx->shared = 2;",
+              "fields_written": [{"field_name": "shared",
+                                   "struct_chain": "ctx->shared"}]}],
+            [])
+        from _builder.graph.graph_build import _load_full_graph
+        races = detect_races_with_lock_coverage(_load_full_graph(gd), _PROFILE)
+        self.assertEqual(races, [],
+                         "two unknown contexts should share the default "
+                         "context, not be reported as concurrent")
+
+    def test_groupless_patterns_use_distinct_sentinels(self):
+        """Two DIFFERENT groupless primitives (rcu_read_lock vs
+        preempt_disable) must NOT alias as the same lock — otherwise
+        their common lockset is non-empty and the race is suppressed."""
+        profile = {
+            "concurrency_patterns": {
+                "lock_acquire_patterns": [
+                    r"rcu_read_lock\(\)",
+                    r"preempt_disable\(\)",
+                ],
+                "lock_release_patterns": [
+                    r"rcu_read_unlock\(\)",
+                    r"preempt_enable\(\)",
+                ],
+            }
+        }
+        # f1 holds rcu_read_lock; f2 holds preempt_disable. Both are
+        # groupless. With the shared '__rcu_read_lock__' sentinel they
+        # aliased as the same lock and the race was suppressed; with
+        # per-pattern sentinels the locksets are disjoint and the race
+        # is reported.
+        gd = _make_graph(
+            [{"id": "f1", "name": "f1", "thread_model": "irq",
+              "body_text": "rcu_read_lock(); ctx->shared = 1; rcu_read_unlock();",
+              "fields_written": [{"field_name": "shared",
+                                   "struct_chain": "ctx->shared"}]},
+             {"id": "f2", "name": "f2", "thread_model": "worker",
+              "body_text": "preempt_disable(); ctx->shared = 2; preempt_enable();",
+              "fields_written": [{"field_name": "shared",
+                                   "struct_chain": "ctx->shared"}]}],
+            [])
+        from _builder.graph.graph_build import _load_full_graph
+        races = detect_races_with_lock_coverage(_load_full_graph(gd), profile)
+        self.assertTrue(races,
+                        "rcu_read_lock vs preempt_disable must race; the "
+                        "shared sentinel used to alias them as one lock")
+
 
 class TestComputeCallerLocks(unittest.TestCase):
     def test_caller_locks_from_caller_body(self):

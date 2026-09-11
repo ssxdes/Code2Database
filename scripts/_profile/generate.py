@@ -1640,28 +1640,29 @@ def auto_infer_endpoint_rules(project_type: str = "",
     """Infer endpoint classification rules based on project type and source analysis.
 
     Strategies:
-      1. Universal rule: main() is always a program entry
-      2. Project-type-specific rules from template
-      3. Constructor functions: detect __attribute__((constructor)) and
+      1. Project-type-specific rules from template
+      2. Constructor functions: detect __attribute__((constructor)) and
          section-based init functions as library_entry endpoints
-      4. Signal handler registration: detect signal()/sigaction() patterns
-      5. Thread entry functions: detect functions passed to pthread_create
+      3. Signal handler registration: detect signal()/sigaction() patterns
+      4. Thread entry functions: detect functions passed to pthread_create
+
+    main() is deliberately NOT covered by a name-only rule: the builder's
+    endpoint classifier resolves it with source-path awareness (production
+    paths → program_entry, test/example/fuzz paths → test_entry), which a
+    blanket ^main$ rule would override.
 
     Returns:
         List of endpoint rule dicts with "pattern" and "endpoint_type".
     """
     rules = []
 
-    # Universal rule: main() is always a program entry
-    rules.append({
-        "pattern": r"^main$",
-        "endpoint_type": "program_entry",
-    })
-
     # Project-type-specific rules from template
     templates = _load_all_templates()
     if project_type in templates:
         for rule in templates[project_type].get("endpoint_classification", {}).get("endpoint_rules", []):
+            # Skip template-carried blanket main() rules for the same
+            # reason no universal rule is inferred here: the builder's
+            # path-aware classifier owns main() classification.
             if rule.get("pattern") == r"^main$":
                 continue
             rules.append(rule)

@@ -1182,7 +1182,8 @@ def _mark_endpoint_nodes(G: nx.DiGraph, outdir: str, profile: dict = None,
         domain = ndata.get("domain", "")
         name = ndata.get("name", nid.split(".")[-1] if "." in nid else nid)
         labels = ndata.get("labels", [])
-        is_already_ep = "out_end" in labels or "unknown_end" in labels or "entry_point" in labels
+        is_already_ep = ("out_end" in labels or "unknown_end" in labels
+                         or "entry_point" in labels or "test_entry" in labels)
 
         # Check profile endpoint_rules first (highest priority)
         ep_type_from_rules = None
@@ -1195,6 +1196,17 @@ def _mark_endpoint_nodes(G: nx.DiGraph, outdir: str, profile: dict = None,
         if ep_type_from_rules:
             ep_type = ep_type_from_rules
             ep_desc = f"Profile rule: {ep_type}"
+            # Name-pattern rules cannot see where a function lives. A main()
+            # under a test/example path is a test entry regardless of rules
+            # (e.g., a blanket ^main$ rule would otherwise claim it as a
+            # program entry); downstream filters rely on the test_entry
+            # label to drop test-only entries from API_entry chains.
+            guard_type, guard_desc = _classify_endpoint(
+                name, domain, profile=profile,
+                has_source_file=bool(ndata.get("source_file", "")),
+                source_file=ndata.get("source_file", ""))
+            if guard_type == 'test_entry':
+                ep_type, ep_desc = guard_type, guard_desc
         else:
             ep_type, ep_desc = _classify_endpoint(name, domain, profile=profile,
                                                    has_source_file=bool(ndata.get("source_file", "")),
@@ -1232,7 +1244,9 @@ def _mark_endpoint_nodes(G: nx.DiGraph, outdir: str, profile: dict = None,
                 if ndata.get("is_empty", False):
                     continue
                 labels = ndata.get("labels", [])
-                is_already_ep = any(l in labels for l in ("out_end", "unknown_end", "entry_point", "API_entry"))
+                is_already_ep = any(l in labels for l in
+                                    ("out_end", "unknown_end", "entry_point",
+                                     "API_entry", "test_entry"))
                 if is_already_ep:
                     continue
                 if score >= threshold:

@@ -132,7 +132,6 @@
     "lib_prefix_map": {},
     "endpoint_rules": [
       {"pattern": "^_start$", "endpoint_type": "program_entry"},
-      {"pattern": "^main$", "endpoint_type": "program_entry"},
       {"pattern": "^_Cstart$", "endpoint_type": "program_entry"},
       {"pattern": "^k_thread_entry$", "endpoint_type": "thread_entry"}
     ]

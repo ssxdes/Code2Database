@@ -1259,5 +1259,89 @@ class TestProfileMigration(unittest.TestCase):
             os.unlink(path)
 
 
+class TestEndpointClassification(unittest.TestCase):
+    """main() endpoint classification must stay source-path aware even when
+    a profile carries a blanket ^main$ endpoint rule."""
+
+    def _mark(self, G, profile=None):
+        from _builder.export.indexes import _mark_endpoint_nodes
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _mark_endpoint_nodes(G, tmpdir, profile=profile, vtable_regs=[])
+        return G
+
+    def _graph_with_main(self, src, domain, entry_score=None):
+        G = nx.DiGraph()
+        attrs = {"name": "main", "domain": domain, "labels": [],
+                 "is_empty": False, "source_file": src}
+        if entry_score is not None:
+            attrs["entry_score"] = entry_score
+        G.add_node(f"{domain}.main", **attrs)
+        return G
+
+    def test_blanket_main_rule_test_path_is_test_entry(self):
+        """A blanket ^main$ rule must not claim a main() that lives in a
+        test/example path — downstream filters rely on the test_entry label."""
+        G = self._graph_with_main("test/unit/test_foo.c", "test.unit")
+        profile = {"endpoint_rules": [
+            {"pattern": r"^main$", "endpoint_type": "program_entry"}]}
+        self._mark(G, profile=profile)
+        labels = G.nodes["test.unit.main"]["labels"]
+        self.assertIn("test_entry", labels)
+        self.assertNotIn("entry_point", labels)
+
+    def test_blanket_main_rule_production_path_is_entry_point(self):
+        G = self._graph_with_main("src/app/main.c", "src.app")
+        profile = {"endpoint_rules": [
+            {"pattern": r"^main$", "endpoint_type": "program_entry"}]}
+        self._mark(G, profile=profile)
+        labels = G.nodes["src.app.main"]["labels"]
+        self.assertIn("entry_point", labels)
+        self.assertNotIn("test_entry", labels)
+
+    def test_no_rules_test_path_main_is_test_entry(self):
+        G = self._graph_with_main("example/demo/main.c", "example.demo")
+        self._mark(G, profile={})
+        labels = G.nodes["example.demo.main"]["labels"]
+        self.assertIn("test_entry", labels)
+        self.assertNotIn("entry_point", labels)
+
+    def test_no_rules_production_path_main_is_entry_point(self):
+        G = self._graph_with_main("src/app/main.c", "src.app")
+        self._mark(G, profile={})
+        labels = G.nodes["src.app.main"]["labels"]
+        self.assertIn("entry_point", labels)
+        self.assertNotIn("test_entry", labels)
+
+    def test_high_entry_score_does_not_relabel_test_entry(self):
+        """A test-path main() with a high entry score keeps its test_entry
+        label instead of also receiving the generic entry_point label."""
+        G = self._graph_with_main("test/unit/test_foo.c", "test.unit",
+                                  entry_score=99.0)
+        self._mark(G, profile={})
+        labels = G.nodes["test.unit.main"]["labels"]
+        self.assertIn("test_entry", labels)
+        self.assertNotIn("entry_point", labels)
+
+    def test_specific_rule_for_other_name_still_applies(self):
+        """Rules for names other than main are unaffected by the guard."""
+        G = nx.DiGraph()
+        G.add_node("app.rte_eal_init", name="rte_eal_init", domain="app",
+                   labels=[], is_empty=False,
+                   source_file="src/app/init.c")
+        profile = {"endpoint_rules": [
+            {"pattern": r"^rte_eal_init$", "endpoint_type": "program_entry"}]}
+        self._mark(G, profile=profile)
+        labels = G.nodes["app.rte_eal_init"]["labels"]
+        self.assertIn("entry_point", labels)
+
+    def test_auto_inferred_rules_have_no_blanket_main(self):
+        from _profile.generate import auto_infer_endpoint_rules
+        for ptype in ("", "zephyr", "spdk"):
+            rules = auto_infer_endpoint_rules(project_type=ptype)
+            self.assertFalse(
+                any(r.get("pattern") == r"^main$" for r in rules),
+                f"blanket ^main$ rule inferred for project_type={ptype!r}")
+
+
 if __name__ == "__main__":
     unittest.main()

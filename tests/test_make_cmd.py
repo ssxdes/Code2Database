@@ -701,6 +701,26 @@ class TestScanVerification(unittest.TestCase):
             self.assertFalse(errors)
             self.assertTrue(warnings)
 
+    def test_split_directory_only_no_unreadable_warning(self):
+        """--large-project mode writes extraction.json.d/ and never the
+        monolithic file.  _verify_scan_completed must not try to open the
+        missing monolithic file and emit a false 'unreadable' warning."""
+        import json
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "src"); os.makedirs(src)
+            split_dir = os.path.join(d, "extraction.json.d")
+            os.makedirs(split_dir)
+            # Write a single chunk so the split dir is non-empty.
+            with open(os.path.join(split_dir, "chunk_0.json"), "w") as f:
+                json.dump({"functions": [{"id": "a"}], "edges": []}, f)
+            errors, warnings = self._verify(src, d)
+            self.assertFalse(errors)
+            # Must NOT warn 'unreadable' — the monolithic file is expected
+            # to be absent in split-directory mode.
+            self.assertFalse(
+                [w for w in warnings if "unreadable" in w],
+                "split-directory mode must not emit 'unreadable': %r" % warnings)
+
 
 class TestDaemonConflictDetection(unittest.TestCase):
     """make must abort if the daemon is running (SQLite write-lock conflict)."""

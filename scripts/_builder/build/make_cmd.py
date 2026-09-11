@@ -526,17 +526,26 @@ def _verify_scan_completed(source, graph_dir, extraction_path):
             "step will decide whether this is fatal"
             % (extraction_path, extraction_path))
     else:
-        try:
-            with open(extraction_path, encoding="utf-8") as f:
-                data = json.load(f)
-            if not data.get("functions") and not data.get("edges"):
+        # --large-project mode writes only the split directory (.d/) and
+        # never creates the monolithic extraction.json.  When only the
+        # split directory exists, validating the monolithic file would
+        # always raise OSError and emit a false "unreadable" warning
+        # (SPDK / DPDK hits this on every build).
+        if os.path.isdir(extraction_path + ".d") and \
+                not os.path.isfile(extraction_path):
+            pass  # split-directory mode — nothing to validate here
+        else:
+            try:
+                with open(extraction_path, encoding="utf-8") as f:
+                    data = json.load(f)
+                if not data.get("functions") and not data.get("edges"):
+                    warnings.append(
+                        "extraction is empty (0 functions, 0 edges) — if the "
+                        "source has implementation files, check the scan "
+                        "output above (backend / compile_commands issues)")
+            except (OSError, ValueError):
                 warnings.append(
-                    "extraction is empty (0 functions, 0 edges) — if the "
-                    "source has implementation files, check the scan "
-                    "output above (backend / compile_commands issues)")
-        except (OSError, ValueError):
-            warnings.append(
-                "extraction at %s is unreadable" % extraction_path)
+                    "extraction at %s is unreadable" % extraction_path)
     return errors, warnings
 
 

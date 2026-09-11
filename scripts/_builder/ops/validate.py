@@ -789,14 +789,64 @@ def _load_master_from_sqlite(db_path: str, outdir: str) -> dict:
                 conn.close()
         # Synthesize a master dict with a single "all" domain, inline so
         # validation checks can read it without a file on disk.
-        domain_data = {
-            "nodes": nodes,
-            "edges": edges,
-        }
+        #
+        # Map DB rows to the shapes the validators consume: function
+        # entries need id/name/source_file/line/labels/signature, and the
+        # JSON master refers to edge endpoints as source/target while the
+        # edges table stores invoker_id/invoked_id. relation
+        # CONTAINS/IMPORTS edges belong in structural_edges; everything
+        # else is a call edge and goes to cross_domain_edges (matching
+        # the JSON master's split).
+        func_entries = []
+        for row in nodes:
+            labels = row.get("labels") or []
+            if isinstance(labels, str):
+                raw = labels.strip()
+                if raw.startswith("["):
+                    try:
+                        labels = json.loads(raw)
+                    except json.JSONDecodeError:
+                        labels = [raw]
+                else:
+                    labels = [lab for lab in raw.split(",") if lab]
+            func_entries.append({
+                "id": row.get("id", ""),
+                "name": row.get("name", ""),
+                "source_file": row.get("source_file", ""),
+                "line": row.get("line_number", 0) or 0,
+                "labels": labels,
+                "signature": row.get("signature", "") or "",
+            })
+
+        cross_domain = []
+        structural = []
+        for e in edges:
+            entry = {
+                "source": e.get("invoker_id", ""),
+                "target": e.get("invoked_id", ""),
+                "relation": e.get("relation", ""),
+                "concurrency": e.get("concurrency") or "",
+                "call_order": e.get("call_order"),
+                "call_condition": e.get("call_condition") or "",
+                "confidence": e.get("confidence") or "",
+                "confidence_score": e.get("confidence_score"),
+                "evidence": e.get("evidence") or "",
+            }
+            if entry["relation"] in ("CONTAINS", "IMPORTS"):
+                structural.append(entry)
+            else:
+                cross_domain.append(entry)
+
         return {
             "type": "code2database_master",
             "version": 1,
-            "domains": {"all": domain_data},
+            "domains": {"all": {
+                "functions": func_entries,
+                "function_details": {},
+            }},
+            "cross_domain_edges": cross_domain,
+            "structural_edges": structural,
+            "total_edges": len(edges),
             "_sqlite_source": True,
         }
     except Exception:

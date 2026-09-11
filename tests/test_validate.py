@@ -304,5 +304,76 @@ class TestValidateAllAndCmd(unittest.TestCase):
         self.assertNotIn("ERRORS", out)
 
 
+class TestSqliteFallbackMaster(unittest.TestCase):
+    """The SQLite fallback must synthesize a master the checks can read.
+
+    Validators consume domains[].functions, cross_domain_edges and
+    structural_edges. A fallback that stores rows under other keys lets
+    every check silently pass on SQLite-only builds.
+    """
+
+    def _make_sqlite_outdir(self, duplicate_edge=False):
+        import sqlite3
+        from _builder.graph.sqlite_store import SQLiteStore
+        d = tempfile.mkdtemp(prefix="c2d_validate_sqlite_")
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        db = os.path.join(d, "code2database.db")
+        with SQLiteStore(db) as store:
+            store.store_functions([
+                {"id": "dom::f1", "name": "f1", "domain": "dom",
+                 "source_file": "a.c", "line_number": 10,
+                 "signature": "int f1()", "labels": ["API_entry"]},
+                {"id": "dom::f2", "name": "f2", "domain": "dom",
+                 "source_file": "a.c", "line_number": 20,
+                 "signature": "void f2()", "labels": []},
+            ])
+            edge = {"invoker": "dom::f1", "invoked": "dom::f2",
+                    "relation": "INVOKES", "concurrency": "direct_call",
+                    "confidence": "EXTRACTED", "evidence": "direct call"}
+            edges = [dict(edge)]
+            if duplicate_edge:
+                edges.append(dict(edge))
+            store.store_edges(edges)
+        return d
+
+    def test_fallback_loads_functions_and_edges(self):
+        from _builder.ops.validate import _load_master_from_sqlite
+        d = self._make_sqlite_outdir()
+        master = _load_master_from_sqlite(os.path.join(d, "code2database.db"),
+                                          d)
+        self.assertIsNotNone(master)
+        funcs = master["domains"]["all"]["functions"]
+        self.assertEqual(len(funcs), 2)
+        by_id = {f["id"]: f for f in funcs}
+        self.assertEqual(by_id["dom::f1"]["labels"], ["API_entry"])
+        self.assertEqual(by_id["dom::f1"]["line"], 10)
+        self.assertEqual(len(master["cross_domain_edges"]), 1)
+        self.assertEqual(master["cross_domain_edges"][0]["source"],
+                         "dom::f1")
+        self.assertEqual(master["cross_domain_edges"][0]["target"],
+                         "dom::f2")
+        self.assertEqual(master["structural_edges"], [])
+
+    def test_validate_all_on_sqlite_dir_runs_checks(self):
+        d = self._make_sqlite_outdir()
+        result = validate_all(d)
+        # The fallback loaded real data — the run must report something
+        # derived from it, not an io error and not an empty pass.
+        self.assertFalse(
+            any(e["category"] == "io" for e in result.errors),
+            f"SQLite fallback failed to load: {result.errors}")
+        self.assertTrue(result.infos or result.warnings or result.errors,
+                        "all checks were silently no-op on SQLite fallback")
+
+    def test_validate_all_on_sqlite_dir_detects_duplicates(self):
+        d = self._make_sqlite_outdir(duplicate_edge=True)
+        result = validate_all(d)
+        dupes = [e for e in result.errors
+                 if "Duplicate edge" in e.get("message", "")]
+        self.assertTrue(dupes,
+                        "duplicate edge in SQLite graph was not detected; "
+                        f"result: {result.errors + result.warnings}")
+
+
 if __name__ == "__main__":
     unittest.main()

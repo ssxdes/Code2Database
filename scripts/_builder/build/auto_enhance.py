@@ -127,16 +127,26 @@ def rollback_to_entry(graph_dir: str, entry_id: int) -> Dict:
         from _builder.ops.update_cmd import (
             _sqlite_update_node, _json_update_node, _detect_backend,
         )
-        # Restore by writing the old_value back as a supplement
-        # (or removing the supplement if old_value was None)
         backend = _detect_backend(graph_dir)
-        attrs = {field_name: old_value} if old_value is not None else {}
+        if old_value is not None:
+            # Restore by writing the old_value back as a supplement.
+            attrs = {field_name: old_value}
+            delete_keys = None
+        else:
+            # The supplement created the field — rolling back means removing
+            # the {field}_supplemented key (and its _supplement_meta entry)
+            # entirely. Passing empty attrs used to be a silent no-op while
+            # the entry was marked "reverted".
+            attrs = {}
+            delete_keys = [field_name]
         if backend == "sqlite":
             _sqlite_update_node(graph_dir, node_id, attrs,
-                                source="rollback", confidence="EXTRACTED")
+                                source="rollback", confidence="EXTRACTED",
+                                delete_keys=delete_keys)
         else:
             _json_update_node(graph_dir, node_id, attrs,
-                              source="rollback", confidence="EXTRACTED")
+                              source="rollback", confidence="EXTRACTED",
+                              delete_keys=delete_keys)
         # Mark the rollback entry as reverted (don't double-revert)
         target["reverted"] = True
         # Rewrite the log with the updated entry

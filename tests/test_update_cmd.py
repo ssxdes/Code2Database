@@ -217,3 +217,76 @@ class TestDetectBackend(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRollbackRemovesCreatedSupplement(unittest.TestCase):
+    """rollback_to_entry must remove a supplement whose old_value was None.
+
+    auto-enhance records old_value=None when it created a field; rolling
+    such an entry back used to pass empty attrs, which the update helpers
+    treated as a no-op while the entry was marked 'reverted'. The
+    supplement stayed in the graph.
+    """
+
+    def setUp(self):
+        import sqlite3
+        import sys
+        scripts = os.path.join(os.path.dirname(__file__), '..', 'scripts')
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        self.tmpdir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.tmpdir, "code2database.db")
+        conn = sqlite3.connect(self.db_path)
+        conn.execute(
+            "CREATE TABLE functions (id TEXT PRIMARY KEY, name TEXT, "
+            "domain TEXT, source_file TEXT, line_number INTEGER, "
+            "signature TEXT, labels TEXT, body_text_compressed BLOB, "
+            "extra_json TEXT, is_api_entry INTEGER DEFAULT 0, "
+            "is_thread_processor INTEGER DEFAULT 0, is_out_end INTEGER "
+            "DEFAULT 0, is_unknown_end INTEGER DEFAULT 0, "
+            "node_type TEXT, stale INTEGER DEFAULT 0, is_empty INTEGER DEFAULT 0)")
+        conn.execute(
+            "INSERT INTO functions (id, name, extra_json) VALUES "
+            "('root::fn', 'fn', '{}')")
+        conn.commit()
+        conn.close()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_rollback_removes_created_supplement(self):
+        import sqlite3
+        from _builder.ops.update_cmd import _sqlite_update_node
+        from _builder.build.auto_enhance import (
+            _append_rollback_entry, rollback_to_entry,
+        )
+        # auto-enhance creates semantic_desc (old_value was None)
+        _sqlite_update_node(self.tmpdir, "root::fn",
+                            {"semantic_desc": "an API entry"},
+                            source="auto-enhance", confidence="INFERRED")
+        conn = sqlite3.connect(self.db_path)
+        extra = json.loads(conn.execute(
+            "SELECT extra_json FROM functions WHERE id='root::fn'"
+        ).fetchone()[0])
+        conn.close()
+        self.assertIn("semantic_desc_supplemented", extra)
+
+        entry_id = _append_rollback_entry(self.tmpdir, {
+            "type": "node", "node_id": "root::fn",
+            "field": "semantic_desc", "old_value": None,
+            "new_value": "an API entry",
+            "source": "auto-enhance", "confidence": "INFERRED",
+        })
+        result = rollback_to_entry(self.tmpdir, entry_id)
+        self.assertTrue(result["rolled_back"], result)
+
+        conn = sqlite3.connect(self.db_path)
+        extra = json.loads(conn.execute(
+            "SELECT extra_json FROM functions WHERE id='root::fn'"
+        ).fetchone()[0])
+        conn.close()
+        self.assertNotIn("semantic_desc_supplemented", extra,
+                         "created supplement must be removed on rollback")
+        self.assertNotIn("semantic_desc_supplemented",
+                         extra.get("_supplement_meta", {}))

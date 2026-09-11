@@ -19,7 +19,7 @@ import os
 import sys
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from _builder.utils import _find_node_id
 import logging
@@ -162,7 +162,8 @@ def _detect_backend(graph_dir: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _json_update_node(graph_dir: str, node_id: str, attrs: Dict,
-                     source: str, confidence: str) -> bool:
+                     source: str, confidence: str,
+                     delete_keys: Optional[List[str]] = None) -> bool:
     """Update a node in JSON backend via _load_full_graph + split_by_domain.
 
     Stores LLM supplements with `_supplemented` suffix to preserve original
@@ -193,6 +194,12 @@ def _json_update_node(graph_dir: str, node_id: str, attrs: Dict,
             "timestamp": timestamp,
             "original": ndata.get(key, ""),
         }
+    # Delete supplements (used by rollback when old_value was None — the
+    # supplement created the field, so rolling back removes it entirely).
+    for key in (delete_keys or []):
+        stored_key = f"{key}_supplemented" if not key.startswith("_") else key
+        ndata.pop(stored_key, None)
+        meta.pop(stored_key, None)
     ndata[meta_key] = meta
 
     master = json.loads(
@@ -268,7 +275,8 @@ def _json_update_edge(graph_dir: str, invoker_id: str, invoked_id: str,
 # ---------------------------------------------------------------------------
 
 def _sqlite_update_node(graph_dir: str, node_id: str, attrs: Dict,
-                       source: str, confidence: str) -> bool:
+                       source: str, confidence: str,
+                       delete_keys: Optional[List[str]] = None) -> bool:
     """Update a node in SQLite backend via direct UPDATE on functions.extra_json.
 
     Loads existing extra_json, merges supplemented keys, writes back.
@@ -307,6 +315,12 @@ def _sqlite_update_node(graph_dir: str, node_id: str, attrs: Dict,
                 "original": extra.get(key, ""),
             }
             extra[stored_key] = val
+        # Delete supplements (used by rollback when old_value was None —
+        # the supplement created the field, so rolling back removes it).
+        for key in (delete_keys or []):
+            stored_key = f"{key}_supplemented" if not key.startswith("_") else key
+            extra.pop(stored_key, None)
+            meta.pop(stored_key, None)
         extra["_supplement_meta"] = meta
 
         # Keep indexed columns in sync with extra_json to prevent

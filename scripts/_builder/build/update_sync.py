@@ -380,7 +380,12 @@ def cmd_sync(args):
             # Fallback: use git show for individual files
             # This handles cases where git archive isn't available (e.g., shallow clones)
             print("git archive unavailable, extracting files individually...")
-            git_graph_dir = os.path.join(temp_dir, os.path.basename(graph_dir))
+            # The git archive branch uses cg_relpath (graph dir relative to
+            # repo root); the per-file extraction writes to temp_dir/<relpath>
+            # (also repo-root-relative), so git_graph_dir must match — using
+            # basename only works when the graph dir sits directly under the
+            # repo root.
+            git_graph_dir = os.path.join(temp_dir, cg_relpath)
             os.makedirs(git_graph_dir, exist_ok=True)
 
             # List all files under cg_relpath in the remote

@@ -269,6 +269,52 @@ class TestBuildUpdate(unittest.TestCase):
             stale, 0,
             "extra_json.$.stale must be set after daemon stale-mark")
 
+    def test_version_bump_covers_nodes_and_edges(self):
+        """After a cross-commit update, cgdb records from UNAFFECTED
+        files must satisfy the time-travel alive predicate
+        (last_seen_version == MAX(version_id)); edges used to keep
+        their old last_seen_version and read as dead."""
+        # 1) Add an independent .c file with an internal call edge (no
+        #    headers — never pulled into another file's include closure)
+        #    so the graph has a cgdb_edges row that must survive the
+        #    next update.
+        _write(self.source, "src/util/extra2.c",
+               "int helper1(int x){return x;}\n"
+               "int helper2(int y){return helper1(y);}\n")
+        proc = self._run_update()
+        self.assertEqual(proc.returncode, 0, proc.stderr[-1500:])
+        max_v_after_add = self._query(
+            "SELECT MAX(version_id) FROM graph_versions")[0][0]
+        surviving_edges = self._query(
+            "SELECT COUNT(*) FROM cgdb_edges")[0][0]
+        self.assertGreater(surviving_edges, 0,
+                           "precondition: extra2.c produced a cgdb edge")
+
+        # 2) Modify math.c only (AST-meaningful: format-only edits are
+        #    skipped) — math.c is re-ingested at a new version while
+        #    extra2.c's records must be bumped to stay alive.
+        math_c = os.path.join(self.source, "src/util/math.c")
+        with open(math_c, "a") as f:
+            f.write("\nint triple_it(int x) {\n    return x + x + x;\n}\n")
+        proc = self._run_update()
+        self.assertEqual(proc.returncode, 0, proc.stderr[-1500:])
+        report = self._report(proc)
+        self.assertGreaterEqual(report["updated_files"], 1)
+        max_v = self._query(
+            "SELECT MAX(version_id) FROM graph_versions")[0][0]
+        self.assertGreater(max_v, max_v_after_add,
+                           "precondition: update recorded a new version")
+        stale_nodes = self._query(
+            "SELECT COUNT(*) FROM cgdb_nodes WHERE last_seen_version < ?",
+            (max_v,))[0][0]
+        stale_edges = self._query(
+            "SELECT COUNT(*) FROM cgdb_edges WHERE last_seen_version < ?",
+            (max_v,))[0][0]
+        self.assertEqual(stale_nodes, 0,
+                         "surviving nodes read as dead at the new version")
+        self.assertEqual(stale_edges, 0,
+                         "surviving edges read as dead at the new version")
+
 
 if __name__ == "__main__":
     unittest.main()

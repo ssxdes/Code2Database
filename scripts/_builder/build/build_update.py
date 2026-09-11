@@ -493,12 +493,12 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
         except Exception:
             pass
 
-    # Bump surviving nodes' last_seen_version to this build's version_id.
-    # The "alive" predicate for time-travel requires
-    # last_seen_version == MAX(version_id) for current nodes; without this
-    # bump, every pre-existing node failed the alive check at the new
-    # version after a cross-commit incremental update (full builds wipe
-    # + re-stamp everything, so they don't need this).
+    # Bump surviving nodes'/edges' last_seen_version to this build's
+    # version_id. The "alive" predicate for time-travel requires
+    # last_seen_version == MAX(version_id) for current records; without
+    # this bump, every pre-existing node/edge failed the alive check at
+    # the new version after a cross-commit incremental update (full
+    # builds wipe + re-stamp everything, so they don't need this).
     if _version_id and _version_id != 1:
         try:
             import sqlite3 as _sqlite3
@@ -508,11 +508,15 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
                     "UPDATE cgdb_nodes SET last_seen_version = ? "
                     "WHERE last_seen_version < ?",
                     (_version_id, _version_id))
+                _bump_conn.execute(
+                    "UPDATE cgdb_edges SET last_seen_version = ? "
+                    "WHERE last_seen_version < ?",
+                    (_version_id, _version_id))
                 _bump_conn.commit()
             finally:
                 _bump_conn.close()
         except Exception as exc:
-            print(f"[build-update] surviving-node version bump skipped: "
+            print(f"[build-update] surviving-record version bump skipped: "
                   f"{exc}", file=sys.stderr)
 
     # Refresh the fingerprint manifest so freshness checks (session-init,

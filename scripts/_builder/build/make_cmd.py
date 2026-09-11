@@ -152,9 +152,16 @@ def decide_backend(requested, lang_counts, libclang, grammars_missing):
                           % (lang, ", ".join(miss), _pip_hint(miss)))
         return "tree-sitter", notes, errors
 
-    # auto: clang for C/C++ when available, tree-sitter otherwise
+    # auto: clang for C/C++ when available, tree-sitter otherwise.
+    # Preserve "auto" through to the scanner subprocess so get_scanner()
+    # constructs DualBackendScanner, which runs tree-sitter for legacy
+    # shape and clang for cgdb_* tables with per-file fallback: when
+    # libclang fails to parse a file (missing compile_commands entry,
+    # broken header path), tree-sitter still produces legacy functions/
+    # edges instead of skipping the file entirely (SPDK: 6912 files,
+    # DPDK: 1654 files dropped on prior builds).
     if has_cc and clang_ok:
-        return "clang", notes, errors
+        return "auto", notes, errors
     if has_cc and not clang_ok:
         notes.append(
             "libclang unavailable -> C/C++ uses tree-sitter (cgdb semantic layer "

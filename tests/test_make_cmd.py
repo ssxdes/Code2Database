@@ -87,10 +87,12 @@ class TestDecideBackend(unittest.TestCase):
     _CLANG_OK = {"bindings": True, "lib_path": "/usr/lib/libclang-18.so.1"}
     _CLANG_NO = {"bindings": False, "lib_path": ""}
 
-    def test_auto_prefers_clang_for_cc(self):
+    def test_auto_preserves_auto_for_cc(self):
+        """auto must stay 'auto' (not collapse to 'clang') so the scanner
+        constructs DualBackendScanner with per-file tree-sitter fallback."""
         backend, notes, errors = make_cmd.decide_backend(
             "auto", {"c": 10}, self._CLANG_OK, {})
-        self.assertEqual(backend, "clang")
+        self.assertEqual(backend, "auto")
         self.assertFalse(errors)
 
     def test_auto_falls_back_with_note(self):
@@ -158,7 +160,7 @@ class TestRunEnvCheck(unittest.TestCase):
                                return_value=TestDecideBackend._CLANG_OK):
             rep = make_cmd.run_env_check(d, os.path.join(d, "g-out"))
         self.assertTrue(rep["ok"], rep["errors"])
-        self.assertEqual(rep["backend"], "clang")
+        self.assertEqual(rep["backend"], "auto")
         self.assertEqual(rep["lang_counts"], {"c": 2})
 
     def test_cc_project_clang_missing_warns_compile_commands_absent(self):
@@ -306,7 +308,7 @@ class TestCmdMake(unittest.TestCase):
         self.assertIn("extraction.json", joined)
         self.assertIn("--auto-profile", joined)
         self.assertIn("--no-interactive", joined)
-        self.assertIn("--extraction-backend clang", joined)
+        self.assertIn("--extraction-backend auto", joined)
         # build
         build = calls[1]
         self.assertIn("code2database_builder.py", build[1])

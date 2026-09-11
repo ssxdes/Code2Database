@@ -15,8 +15,9 @@ If tree-sitter fails, fall back to clang-only (rare) — produces cgdb-only
 output with empty legacy functions/edges.
 
 Coexists with the existing get_scanner() factory in code2database_scanner.py,
-which now returns DualBackendScanner when extraction_backend='auto' or 'clang'
-and lang is c/cpp.
+which returns DualBackendScanner when extraction_backend='auto' and lang is
+c/cpp.  When extraction_backend='clang' (force clang), the factory returns a
+bare ClangScanner with no per-file tree-sitter fallback.
 """
 
 from _scanner.base import BaseScanner

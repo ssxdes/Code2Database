@@ -338,7 +338,7 @@ def validate_semantic_matching(master: dict, result: ValidationResult,
     # Check for test/example main functions in API entries or program_entry
     # Note: 'app' is NOT treated as test — many C projects put production
     # executables in app/. Only test/ut/example/fuzz are unambiguous.
-    test_path_segments = ('test', 'ut', 'example', 'examples',
+    test_path_segments = ('test', 'tests', 'ut', 'example', 'examples',
                           'fuzz', 'benchmark', 'demo', 'sample',
                           'samples')
     bad_mains = 0

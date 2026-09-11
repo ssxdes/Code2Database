@@ -1067,7 +1067,7 @@ def _classify_endpoint(name: str, domain: str, profile: dict = None,
         # Note: 'app' is NOT treated as test — many C projects (e.g., SPDK) put
         # production executables in app/. Only test/ut/example/fuzz directories
         # are unambiguously non-production.
-        _TEST_PATH_SEGMENTS = ('test', 'ut', 'example', 'examples',
+        _TEST_PATH_SEGMENTS = ('test', 'tests', 'ut', 'example', 'examples',
                                'fuzz', 'benchmark', 'demo', 'sample',
                                'samples', 'documentation', 'doc',
                                'tools', 'scripts')

@@ -1772,7 +1772,7 @@ def _derive_labels(func_name: str, api_prefixes: list = None,
     # Test/example/app main functions are not public API entries.
     if func_name == 'main':
         sf_lower = source_file.lower()
-        _TEST_PATH_SEGMENTS = ('test', 'ut', 'example', 'examples', 'app',
+        _TEST_PATH_SEGMENTS = ('test', 'tests', 'ut', 'example', 'examples', 'app',
                                'apps', 'perf', 'benchmark', 'fuzz', 'demo',
                                'sample', 'samples')
         parts = sf_lower.replace('\\', '/').split('/')

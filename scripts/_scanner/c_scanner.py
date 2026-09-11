@@ -958,7 +958,8 @@ class CTreeSitterScanner(BaseScanner):
         # plus project-declared non_api_paths from the profile).
         if _exported_names:
             _NON_API_PATHS_CHECK = ('tools/', 'scripts/', 'selftests/', 'testing/',
-                                     'documentation/', 'samples/', 'examples/'
+                                     'documentation/', 'samples/', 'examples/',
+                                     'test/', 'tests/'
                                      ) + tuple(getattr(self, '_non_api_paths', []) or [])
             for func in functions:
                 if func.get("name") in _exported_names:
@@ -1653,6 +1654,7 @@ class CTreeSitterScanner(BaseScanner):
         _NON_API_PATHS = (
             'tools/', 'scripts/', 'selftests/', 'testing/',
             'documentation/', 'samples/', 'examples/',
+            'test/', 'tests/',
         ) + tuple(getattr(self, '_non_api_paths', []) or [])
         current_fp_normalized = current_fp.replace(os.sep, '/')
         for nap in _NON_API_PATHS:

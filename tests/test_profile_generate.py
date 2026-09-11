@@ -250,5 +250,34 @@ class TestWriteAutoProfile(unittest.TestCase):
         self.assertTrue(any(k in profile for k in ("project_type", "version", "name")))
 
 
+class TestVisitForCallbacksDeepAST(unittest.TestCase):
+    """The callback walker must not overflow the Python recursion limit on
+    deeply nested ASTs (Linux kernel headers can nest >1000 levels)."""
+
+    def test_deeply_nested_ast_does_not_overflow(self):
+        from _profile.generate import _visit_for_callbacks
+
+        class _FakeNode:
+            __slots__ = ("type", "children")
+
+            def __init__(self, type_, children):
+                self.type = type_
+                self.children = children
+
+        # Build a chain 5000 levels deep — far beyond the default 1000 limit.
+        leaf = _FakeNode("identifier", [])
+        depth = 5000
+        node = leaf
+        for _ in range(depth):
+            node = _FakeNode("expression_statement", [node])
+        root = _FakeNode("translation_unit", [node])
+
+        # Must not raise RecursionError.
+        heuristic_apis = {}
+        _visit_for_callbacks(root, b"", heuristic_apis, ())
+        # No callback declarations in a chain of expression_statement nodes.
+        self.assertEqual(heuristic_apis, {})
+
+
 if __name__ == "__main__":
     unittest.main()

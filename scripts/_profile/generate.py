@@ -2037,18 +2037,33 @@ def auto_discover_callbacks_treesitter(source_root: str,
 
     for rel_path, data in collector.iter_files(extensions={'.h'}, in_dirs=["include", "lib"]):
         content_bytes = data['content'].encode('utf-8')
-        tree = parser.parse(content_bytes)
+        try:
+            tree = parser.parse(content_bytes)
+        except Exception:
+            continue
         root = tree.root_node
 
-        # Walk the AST to find function declarations
-        _visit_for_callbacks(root, content_bytes, heuristic_apis, _CB_PARAM_SUFFIXES)
+        # Walk the AST to find function declarations. The iterative walker
+        # cannot overflow the recursion limit, but a malformed AST could still
+        # raise during child access, so guard per-file to avoid aborting the
+        # whole profile.
+        try:
+            _visit_for_callbacks(root, content_bytes, heuristic_apis, _CB_PARAM_SUFFIXES)
+        except Exception:
+            continue
 
     # Also scan .c files for callback registration function definitions
     for rel_path, data in collector.iter_files(extensions={'.c'}, in_dirs=["include", "lib"]):
         content_bytes = data['content'].encode('utf-8')
-        tree = parser.parse(content_bytes)
+        try:
+            tree = parser.parse(content_bytes)
+        except Exception:
+            continue
         root = tree.root_node
-        _visit_for_callbacks(root, content_bytes, heuristic_apis, _CB_PARAM_SUFFIXES)
+        try:
+            _visit_for_callbacks(root, content_bytes, heuristic_apis, _CB_PARAM_SUFFIXES)
+        except Exception:
+            continue
 
     # Build result list, limiting to 50 entries to avoid noise
     result = []
@@ -2061,14 +2076,22 @@ def auto_discover_callbacks_treesitter(source_root: str,
     return result
 
 
-def _visit_for_callbacks(node, source_bytes, heuristic_apis, cb_suffixes):
-    """Recursively visit AST nodes to find function declarations with callback parameters."""
-    # Check for function declaration or definition nodes
-    if node.type in ('declaration', 'function_definition'):
-        _extract_callback_from_decl(node, source_bytes, heuristic_apis, cb_suffixes)
+def _visit_for_callbacks(root, source_bytes, heuristic_apis, cb_suffixes):
+    """Visit AST nodes to find function declarations with callback parameters.
 
-    for child in node.children:
-        _visit_for_callbacks(child, source_bytes, heuristic_apis, cb_suffixes)
+    Uses an explicit stack instead of recursion so deeply nested ASTs (e.g.
+    Linux kernel headers with many ``#ifdef`` layers) cannot overflow the
+    Python recursion limit. ``_extract_callback_from_decl`` only reads node
+    fields, so the order of traversal does not affect the result.
+    """
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if node.type in ('declaration', 'function_definition'):
+            _extract_callback_from_decl(node, source_bytes, heuristic_apis, cb_suffixes)
+        # Push children so they are visited left-to-right; the iteration order
+        # is irrelevant for this collector, so the reverse is only for parity.
+        stack.extend(node.children)
 
 
 def _extract_callback_from_decl(node, source_bytes, heuristic_apis, cb_suffixes):

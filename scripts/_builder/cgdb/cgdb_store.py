@@ -392,12 +392,29 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                 "SELECT id FROM cgdb_edges WHERE file_id = ?", (file_id,)
             ).fetchall()]
             if not node_ids and not edge_ids:
+                # cgdb_includes.source_file_id REFERENCES cgdb_files(id)
+                # with no ON DELETE CASCADE — clear includes first or the
+                # file delete trips the FK (see main path below).
+                conn.execute(
+                    "DELETE FROM cgdb_includes WHERE source_file_id = ?",
+                    (file_id,)
+                )
                 conn.execute("DELETE FROM cgdb_files WHERE id = ?", (file_id,))
                 if _own_tx:
                     conn.execute("COMMIT")
                 return (0, 0)
 
             if node_ids:
+                placeholder = ",".join("?" * len(node_ids))
+                # happens_before rows reference variable node ids of this
+                # file (write_event_id / read_event_id) and have no FK, so
+                # nothing else removes them — without this they would
+                # orphan on every re-ingest of the file.
+                conn.execute(
+                    f"DELETE FROM happens_before WHERE write_event_id IN ({placeholder}) "
+                    f"OR read_event_id IN ({placeholder})",
+                    node_ids + node_ids
+                )
                 placeholder = ",".join("?" * len(node_ids))
                 # Delete dependent records that reference node_ids.
                 # Order matters for FK constraints:

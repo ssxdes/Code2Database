@@ -321,6 +321,51 @@ class TestSQLiteCGDBStoreDeleteFile(unittest.TestCase):
         nodes, edges = self.store.delete_file_records('nonexistent.c')
         self.assertEqual((nodes, edges), (0, 0))
 
+    def test_delete_file_with_includes_but_no_nodes(self):
+        """A file whose only records are include rows must be deletable.
+
+        cgdb_includes.source_file_id REFERENCES cgdb_files(id) without
+        CASCADE; the early-exit branch used to delete the file row
+        without clearing includes, tripping the FK and aborting.
+        """
+        conn = self.store._ensure_conn()
+        conn.execute(
+            "INSERT INTO cgdb_files (id, path, language, sha256) "
+            "VALUES (?, ?, 'c', 'deadbeef')",
+            (424242, "header_only.h"))
+        conn.execute(
+            "INSERT INTO cgdb_includes (source_file_id, included_file_id, "
+            "included_path, is_system) VALUES (424242, NULL, 'stdio.h', 1)")
+        conn.commit()
+        nodes, edges = self.store.delete_file_records('header_only.h')
+        self.assertEqual((nodes, edges), (0, 0))
+        remaining_files = conn.execute(
+            "SELECT COUNT(*) FROM cgdb_files WHERE id = 424242").fetchone()[0]
+        remaining_includes = conn.execute(
+            "SELECT COUNT(*) FROM cgdb_includes WHERE source_file_id = 424242"
+        ).fetchone()[0]
+        self.assertEqual(remaining_files, 0)
+        self.assertEqual(remaining_includes, 0)
+
+    def test_delete_file_removes_happens_before_rows(self):
+        """happens_before rows keyed by the file's variable node ids must
+        not orphan after the file is deleted and re-scanned."""
+        conn = self.store._ensure_conn()
+        node_id = conn.execute(
+            "SELECT id FROM cgdb_nodes LIMIT 1").fetchone()[0]
+        conn.execute(
+            "INSERT INTO happens_before (write_event_id, read_event_id, "
+            "reason, confidence) VALUES (?, ?, 'lock', 0.9)",
+            (node_id, node_id))
+        conn.commit()
+        before = conn.execute("SELECT COUNT(*) FROM happens_before"
+                              ).fetchone()[0]
+        self.assertGreater(before, 0)
+        self.store.delete_file_records('test.c')
+        after = conn.execute("SELECT COUNT(*) FROM happens_before"
+                             ).fetchone()[0]
+        self.assertEqual(after, 0)
+
 
 class TestSQLiteCGDBStoreVersioning(unittest.TestCase):
     """Test record_version creates graph_versions rows."""

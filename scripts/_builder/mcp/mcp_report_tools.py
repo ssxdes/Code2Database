@@ -1206,8 +1206,12 @@ def _tool_commit_db_transaction(args: dict, graph_dir: str) -> dict:
     conn = None
     try:
         conn = _get_conn(graph_dir)
+        # source_root is needed for relative-path resolution and git
+        # operations; the build wrote it to the meta table.
+        from _builder.ops.writeback_pipeline import _read_source_root
+        source_root = _read_source_root(conn)
         result = _commit(
-            conn, graph_dir, graph_dir, tx_id,
+            conn, graph_dir, source_root, tx_id,
             run_compile=run_compile, run_lint=run_lint,
             run_clang_format=run_clang_format,
             git_commit=git_commit, commit_message=commit_message,

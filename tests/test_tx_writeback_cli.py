@@ -154,6 +154,39 @@ class TestTxBeginWithFileIdTracking(unittest.TestCase):
         state = _read_tx_state(self.tmpdir)
         self.assertEqual(state.status, 'rolled_back')
 
+    def test_writeback_uses_meta_source_root_not_graph_dir(self):
+        """tx-begin --file-id + tx-commit must build the WritebackPipeline
+        with the source_root recorded in the meta table, not graph_dir."""
+        import unittest.mock as mock
+        from _builder.ops import writeback_pipeline as wb
+
+        # Record the source_root argument passed to every WritebackPipeline
+        # construction during the begin→commit loop.
+        built = []
+        real_init = wb.WritebackPipeline.__init__
+
+        def spy_init(self, conn, graph_dir, source_root, *a, **kw):
+            built.append(source_root)
+            return real_init(self, conn, graph_dir, source_root, *a, **kw)
+
+        self.conn.execute(
+            "INSERT INTO meta (key, value) VALUES ('source_root', ?)",
+            ("/the/real/source/root",))
+        self.conn.commit()
+        with mock.patch.object(wb.WritebackPipeline, "__init__", spy_init):
+            from io import StringIO
+            from contextlib import redirect_stdout
+            with redirect_stdout(StringIO()):
+                cmd_tx_begin(Namespace(graph=self.tmpdir,
+                                       description="src_root",
+                                       file_id=self.file_id))
+                cmd_tx_commit(Namespace(graph=self.tmpdir))
+        self.assertTrue(built, "WritebackPipeline was never constructed")
+        for sr in built:
+            self.assertEqual(
+                sr, "/the/real/source/root",
+                f"source_root should come from meta, not graph_dir; got {sr!r}")
+
 
 class TestTxSnapshotAndList(unittest.TestCase):
     """tx-snapshot + tx-list-snapshots smoke test."""

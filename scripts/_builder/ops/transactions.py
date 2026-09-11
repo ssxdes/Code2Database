@@ -1206,7 +1206,16 @@ def cmd_tx_begin(args):
                 db_path = os.path.join(graph_dir, "code2database.db")
                 conn = _sqlite3.connect(db_path)
                 try:
-                    pipe = WritebackPipeline(conn, graph_dir, graph_dir)
+                    source_root = ""
+                    try:
+                        row = conn.execute(
+                            "SELECT value FROM meta WHERE key = 'source_root'"
+                        ).fetchone()
+                        if row:
+                            source_root = row[0] or ""
+                    except Exception:
+                        pass
+                    pipe = WritebackPipeline(conn, graph_dir, source_root)
                     writeback_tx_id = pipe.begin(int(file_id))
                     # Stash the writeback_tx_id in tx_state so cmd_tx_commit
                     # can find it later. We use the `error` field as a scratch
@@ -1285,7 +1294,16 @@ def cmd_tx_commit(args):
                 db_path = os.path.join(graph_dir, "code2database.db")
                 conn = _sqlite3.connect(db_path)
                 try:
-                    pipe = WritebackPipeline(conn, graph_dir, graph_dir)
+                    source_root = ""
+                    try:
+                        row = conn.execute(
+                            "SELECT value FROM meta WHERE key = 'source_root'"
+                        ).fetchone()
+                        if row:
+                            source_root = row[0] or ""
+                    except Exception:
+                        pass
+                    pipe = WritebackPipeline(conn, graph_dir, source_root)
                     result = pipe.commit(
                         writeback_tx_id,
                         run_compile=not getattr(args, "skip_compile", False),

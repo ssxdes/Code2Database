@@ -50,6 +50,26 @@ from _builder.export.source_renderer import SourceRenderer
 import logging
 
 
+def _read_source_root(conn: sqlite3.Connection) -> str:
+    """Read source_root from the graph DB's meta table.
+
+    The MCP edit tools and the tx-begin/tx-commit CLI commands don't
+    take a source_root argument, but they need one to resolve relative
+    cgdb_files paths and to run git on the right working tree. The
+    source_root written by the build (graph_build's _store_meta or the
+    scanner's manifest) is the durable answer.
+    """
+    try:
+        row = conn.execute(
+            "SELECT value FROM meta WHERE key = 'source_root'"
+        ).fetchone()
+        if row:
+            return row[0] or ""
+    except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+    return ""
+
+
 @dataclass
 class WritebackResult:
     """Outcome of a commit_db_transaction() call."""
@@ -666,5 +686,5 @@ def rollback_db_transaction(
     conn: sqlite3.Connection, graph_dir: str, transaction_id: str
 ) -> bool:
     """MCP-facing entry point — matches design-report B.4 signature."""
-    pipe = WritebackPipeline(conn, graph_dir, graph_dir)
+    pipe = WritebackPipeline(conn, graph_dir, _read_source_root(conn))
     return pipe.rollback(transaction_id)

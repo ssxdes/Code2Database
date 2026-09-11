@@ -248,6 +248,16 @@
     ],
     "FFI tracing": [
       "ffi-types"
+    ],
+    "On-demand extras": [
+      "domain",
+      "explain-label",
+      "extract-invariants-llm",
+      "intent-query",
+      "serve",
+      "think-chain",
+      "unbalanced-alloc-free",
+      "why-ambiguous"
     ]
   },
   "on_demand_commands": [

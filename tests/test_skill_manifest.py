@@ -16,6 +16,7 @@ import json
 import os
 import sys
 import unittest
+from collections import Counter
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -205,6 +206,27 @@ class TestSkillManifest(unittest.TestCase):
                       "kb-global-share missing from routing_table")
         self.assertIn("kb-global-share-memory", all_routed,
                       "kb-global-share-memory missing from routing_table")
+
+    def test_ops_routing_table_covers_all_commands_exactly_once(self):
+        """Every ops command must be routed in exactly one routing category.
+
+        A command present in commands[] but absent from routing_table is
+        undiscoverable for agents routing by question type; one routed in
+        two categories makes the route ambiguous.
+        """
+        rt = self.ops.get("routing_table", {})
+        self.assertTrue(rt, "routing_table missing or empty")
+        for cat, cmds in rt.items():
+            self.assertTrue(cmds, f"routing category {cat!r} is empty")
+        routed = [c for cmds in rt.values() for c in cmds]
+        dupes = sorted(c for c, n in Counter(routed).items() if n > 1)
+        self.assertEqual(dupes, [],
+                         f"commands in multiple routing categories: {dupes}")
+        self.assertEqual(set(routed), set(self.ops["commands"]),
+                         "routing_table != commands; unrouted: %s, "
+                         "ghosts: %s"
+                         % (sorted(set(self.ops["commands"]) - set(routed)),
+                            sorted(set(routed) - set(self.ops["commands"]))))
 
     # ---- analysis manifest sync ----
     def test_analysis_includes_flow_and_search_commands(self):

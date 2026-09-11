@@ -82,20 +82,22 @@ class DualBackendScanner(BaseScanner):
         # is canonical when available, but tree-sitter provides useful
         # fallbacks when libclang is missing.
         clang_has_cgdb = bool(clang_result.get('cgdb_nodes'))
-        for cgdb_key in ('cgdb_nodes', 'cgdb_types', 'cgdb_edges',
-                         'cgdb_invoke_sites', 'cgdb_predicates',
-                         'cgdb_ops_bindings', 'cgdb_basic_blocks',
-                         'cgdb_cfg_edges', 'cgdb_data_flow',
-                         'cgdb_sync_primitives', 'cgdb_happens_before',
-                         'cgdb_alias_sets', 'cgdb_doc_comments',
-                         'cgdb_metadata', 'cgdb_includes',
-                         'cgdb_conditions'):
+        # Merge every cgdb_* key either scanner actually produced instead
+        # of a hand-maintained list — keys added to either scanner's
+        # output merge without this site needing a matching update.
+        # cgdb_warnings is synthesized below from the per-scanner errors.
+        merge_keys = sorted(
+            {k for k in clang_result
+             if k.startswith('cgdb_') and k != 'cgdb_warnings'} |
+            {k for k in base
+             if k.startswith('cgdb_') and k != 'cgdb_warnings'}
+        )
+        for cgdb_key in merge_keys:
             clang_list = clang_result.get(cgdb_key, [])
             if clang_has_cgdb and clang_list:
                 base[cgdb_key] = clang_list
-            elif cgdb_key not in base:
-                base[cgdb_key] = clang_list
-            # else: keep base (tree-sitter) value
+            # else: keep the value already in base (tree-sitter's, or
+            # clang's own when tree-sitter failed and base is clang_result)
         if clang_has_cgdb:
             base['conditions'] = clang_result.get('conditions', [])
         elif 'conditions' not in base:

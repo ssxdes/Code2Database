@@ -724,6 +724,10 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
     if _node_ids:
         batch.edges = [e for e in batch.edges
                        if e.src_id in _node_ids and e.dst_id in _node_ids]
+        # ops_bindings.edge_id is a FK into cgdb_edges.id: a binding whose
+        # edge was dropped by the node filter above must go too, or the
+        # dangling reference rejects the whole write_batch.
+        _edge_ids = {e.edge_id for e in batch.edges if e.edge_id is not None}
         batch.basic_blocks = [b for b in batch.basic_blocks
                               if b.function_id in _node_ids]
         batch.cfg_edges = [e for e in batch.cfg_edges
@@ -737,7 +741,8 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
                               if i.invoker_id in _node_ids
                               and i.invoked_id in _node_ids]
         batch.ops_bindings = [o for o in batch.ops_bindings
-                              if o.ops_table_id in _node_ids
+                              if o.edge_id in _edge_ids
+                              and o.ops_table_id in _node_ids
                               and o.field_node_id in _node_ids
                               and o.impl_function_id in _node_ids]
         batch.sync_primitives = [s for s in batch.sync_primitives

@@ -207,6 +207,53 @@ class TestCgdbIngest(unittest.TestCase):
         names = {n.name for n in batch.nodes}
         self.assertIn('helper', names)
 
+    def test_ops_binding_dropped_when_its_edge_is_orphaned(self):
+        """A binding whose edge lost an endpoint to the node filter must be
+        dropped, or write_batch trips the ops_bindings.edge_id FK and the
+        whole file's cgdb layer is rolled back."""
+        A, B, C, FIELD = 111, 222, 333, 444
+        MISSING = 999
+        scan_result = {
+            'file': self.c_path,
+            'cgdb_nodes': [
+                {'id': A, 'kind': 'function', 'name': 'a', 'fqn': 'a',
+                 'file_id': 1, 'source_layer': 'analysis', 'confidence': 0.9},
+                {'id': B, 'kind': 'variable', 'name': 'ops', 'fqn': 'ops',
+                 'file_id': 1, 'source_layer': 'analysis', 'confidence': 0.9},
+                {'id': C, 'kind': 'function', 'name': 'c', 'fqn': 'c',
+                 'file_id': 1, 'source_layer': 'analysis', 'confidence': 0.9},
+                {'id': FIELD, 'kind': 'variable', 'name': 'read',
+                 'fqn': 'read', 'file_id': 1, 'source_layer': 'analysis',
+                 'confidence': 0.9},
+            ],
+            'cgdb_edges': [
+                # This OPS_BIND edge references MISSING, which has no
+                # cgdb_node — the node filter drops it.
+                {'edge_id': 5001, 'src_id': B, 'dst_id': MISSING,
+                 'kind': 'OPS_BIND', 'file_id': 1},
+            ],
+            'cgdb_ops_bindings': [
+                # All three node refs are valid, but edge_id 5001 will not
+                # survive the edge filter.
+                {'edge_id': 5001, 'ops_table_id': B,
+                 'field_node_id': FIELD, 'impl_function_id': C,
+                 'signature_match': True},
+            ],
+        }
+        batch = extract_cgdb_batch(scan_result)
+        self.assertEqual(
+            [e.edge_id for e in batch.edges if e.kind == 'OPS_BIND'],
+            [], "orphaned OPS_BIND edge should have been filtered")
+        self.assertEqual(
+            [o.edge_id for o in batch.ops_bindings],
+            [], "binding referencing a dropped edge must be filtered")
+        # The surviving batch must write cleanly under FK enforcement.
+        db_path = os.path.join(self.tmpdir, "cgdb_orphan_binding.db")
+        store = SQLiteCGDBStore(db_path)
+        store.create_schema()
+        store.write_batch(batch)
+        store.close()
+
 
 class TestSqliteStoreCgdbIntegration(unittest.TestCase):
     """Test that SQLiteStore (legacy) now applies cgdb schema."""

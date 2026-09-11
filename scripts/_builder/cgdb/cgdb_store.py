@@ -1896,6 +1896,15 @@ def get_cgdb_store(db_path: str,
                 if create_schema:
                     _GLOBAL_STORE.create_schema()
             return _GLOBAL_STORE
+        # db_path changed (or first call): the previous singleton's self-
+        # owned connection must be closed explicitly — leaving it to GC
+        # keeps WAL/NWM files open and delays checkpointing in long-lived
+        # processes (MCP server, daemon).
+        if _GLOBAL_STORE is not None:
+            try:
+                _GLOBAL_STORE.close()
+            except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
         _GLOBAL_STORE = SQLiteCGDBStore(db_path, conn=conn)
         if create_schema:
             _GLOBAL_STORE.create_schema()

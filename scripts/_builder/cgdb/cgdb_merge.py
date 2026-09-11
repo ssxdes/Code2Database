@@ -158,6 +158,34 @@ def _load_knowledge(graph_dir: str) -> List[dict]:
     return []
 
 
+def _match_function(func_name: str, func_fqn: str, source_sig: str,
+                    target_functions: Dict[str, dict]) -> tuple:
+    """Resolve a source-branch function reference against the target graph.
+
+    Returns (target_fqn_or_None, signature_compatible_bool). Currently
+    only reached by the legacy fact-level knowledge branch, which is
+    gated behind _load_knowledge's empty stub — defining the helper
+    here defuses the latent NameError trap if that stub is ever
+    re-enabled. Matches by FQN first, then by unique function name.
+    """
+    if not target_functions:
+        return None, False
+    if func_fqn and func_fqn in target_functions:
+        tgt = target_functions[func_fqn]
+        sig_compat = (not source_sig or not tgt.get("signature")
+                      or tgt["signature"] == source_sig)
+        return func_fqn, sig_compat
+    if func_name:
+        matches = [tid for tid, tf in target_functions.items()
+                   if tf.get("name") == func_name]
+        if len(matches) == 1:
+            tgt = target_functions[matches[0]]
+            sig_compat = (not source_sig or not tgt.get("signature")
+                          or tgt["signature"] == source_sig)
+            return matches[0], sig_compat
+    return None, False
+
+
 def _load_memory(graph_dir: str) -> List[dict]:
     """Load memory entries from the SQLite memory store (memory.db).
 

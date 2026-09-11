@@ -294,9 +294,24 @@ class IncrementalSync:
             for fpath in file_paths:
                 if not os.path.exists(fpath):
                     delete_paths.append((fpath,))
+                    # DB rows may be stored as source-root-relative paths
+                    # (see detect_changes); delete both forms or the row
+                    # survives and re-reports as changed on every poll.
+                    try:
+                        rel = os.path.relpath(fpath, self.source_root)
+                        if rel != fpath:
+                            delete_paths.append((rel,))
+                    except ValueError:
+                        pass
                 else:
                     h = compute_content_hash(fpath)
                     update_rows.append((h, h, fpath))
+                    try:
+                        rel = os.path.relpath(fpath, self.source_root)
+                        if rel != fpath:
+                            update_rows.append((h, h, rel))
+                    except ValueError:
+                        pass
             if delete_paths:
                 cur = conn.executemany(
                     "DELETE FROM cgdb_files WHERE path = ?",

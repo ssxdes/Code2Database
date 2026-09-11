@@ -10,6 +10,7 @@ Two slice types:
 from __future__ import annotations
 
 import json
+import os
 from collections import deque
 from typing import Any, Dict
 
@@ -28,6 +29,19 @@ def data_flow_slice(graph_dir: str, sink: str, max_depth: int = 8,
     from _builder.graph.graph_build import _load_full_graph
     from _builder.utils import _find_node_id
     G = _load_full_graph(graph_dir)
+    # Attach DATA_FLOW/RETURN_FLOW edges from the side-car file the build
+    # writes (value-flow --build). They are never persisted into the graph
+    # store, so a loaded graph has none and the slice below would collect
+    # only the sink node. Mirrors cmd_value_flow's query-time attach.
+    _df_path = os.path.join(graph_dir, ".code2database_data_flow.json")
+    if os.path.exists(_df_path):
+        try:
+            with open(_df_path, "r", encoding="utf-8") as _f:
+                _df = json.load(_f)
+            from _builder.analysis.value_flow import attach_data_flow_to_graph
+            attach_data_flow_to_graph(G, _df.get("edges", []))
+        except (json.JSONDecodeError, OSError, ImportError):
+            pass
     node_id = _find_node_id(G, sink)
     if not node_id:
         return {"error": f"sink '{sink}' not found"}

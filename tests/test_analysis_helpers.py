@@ -134,6 +134,34 @@ class TestDataFlowSlice(unittest.TestCase):
         r = data_flow_slice(gd, "b")
         self.assertEqual({n["id"] for n in r["nodes"]}, {"a", "b"})
 
+    def test_side_car_data_flow_edges_attached_when_present(self):
+        """Real builds never persist DATA_FLOW edges into the graph store —
+        value-flow --build writes them to .code2database_data_flow.json. The
+        slice must attach them from the side-car or it collects only the
+        sink node on a normally-built graph."""
+        import os, json
+        # Graph with NO DATA_FLOW edges (matches a real build's state);
+        # only an INVOKES edge exists between the functions.
+        gd = _make_graph(
+            [{"id": "producer", "name": "producer"},
+             {"id": "transform", "name": "transform"},
+             {"id": "sink", "name": "sink"}],
+            [{"source": "producer", "target": "sink",
+              "relation": "INVOKES"}])
+        with open(os.path.join(gd, ".code2database_data_flow.json"),
+                  "w", encoding="utf-8") as f:
+            json.dump({"edges": [
+                {"caller": "producer", "callee": "transform",
+                 "relation": "DATA_FLOW"},
+                {"caller": "transform", "callee": "sink",
+                 "relation": "DATA_FLOW"},
+            ], "count": 2}, f)
+        r = data_flow_slice(gd, "sink")
+        ids = {n["id"] for n in r["nodes"]}
+        self.assertEqual(ids, {"sink", "transform", "producer"},
+                         "DATA_FLOW edges from the side-car must drive the "
+                         "slice on a normally-built graph")
+
 
 class TestUsageSlice(unittest.TestCase):
     def setUp(self):

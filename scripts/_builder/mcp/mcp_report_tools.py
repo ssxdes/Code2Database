@@ -262,19 +262,25 @@ def _tool_insert_token(args: dict, graph_dir: str) -> dict:
         )
         # Insert new tokens
         new_ids = []
+        # Track a running byte cursor so multi-byte spellings and the
+        # preceding whitespace don't overlap/collide on the next token.
+        # The previous `anchor_byte + i` assumed one byte per token.
+        cursor = anchor_byte
         for i, tok in enumerate(tokens):
             kind = tok.get("kind", "identifier")
             spelling = tok.get("spelling", "")
             preceding_ws = tok.get("preceding_whitespace", "")
             new_seq = anchor_seq + 1 + i
+            byte_len = len(spelling.encode("utf-8"))
             cur = conn.execute(
                 "INSERT INTO tokens (file_id, seq, kind, spelling, line, col, "
                 "byte_offset, byte_length, preceding_whitespace) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (file_id, new_seq, kind, spelling, anchor_line, anchor_col,
-                 anchor_byte + i, len(spelling), preceding_ws)
+                 cursor, byte_len, preceding_ws)
             )
             new_ids.append(cur.lastrowid)
+            cursor += byte_len + len(preceding_ws.encode("utf-8"))
         conn.commit()
         return {
             "after_token_id": after_token_id,
@@ -1302,11 +1308,18 @@ def _tool_delete_node(args: dict, graph_dir: str) -> dict:
         affected_tokens = [r[0] for r in conn.execute(
             "SELECT id FROM tokens WHERE ast_node_id = ?", (ast_node_id,)
         ).fetchall()]
-        # Soft-delete the node (mark last_seen_version as 0)
+        # Soft-delete the node: set last_seen_version to its first_seen_version
+        # so it fails the alive predicate at the current MAX (first_seen <= MAX-1
+        # for any pre-existing node → dead). The previous last_seen_version = 0
+        # tripped the graph_versions FK (0 is not a valid version_id) under
+        # PRAGMA foreign_keys = ON, and build_update's bump later resurrected it.
+        row = conn.execute(
+            "SELECT first_seen_version FROM cgdb_nodes WHERE id = ?",
+            (ast_node_id,)).fetchone()
+        tombstone_v = row[0] if row and row[0] else 1
         conn.execute(
-            "UPDATE cgdb_nodes SET last_seen_version = 0 WHERE id = ?",
-            (ast_node_id,)
-        )
+            "UPDATE cgdb_nodes SET last_seen_version = ? WHERE id = ?",
+            (tombstone_v, ast_node_id))
         # Soft-delete associated tokens
         conn.execute(
             "UPDATE tokens SET ast_node_id = NULL WHERE ast_node_id = ?",
@@ -1347,9 +1360,14 @@ def _tool_add_function(args: dict, graph_dir: str) -> dict:
             ).fetchone()
             if row is None:
                 return {"error": f"file_id {file_id} not found"}
-        # Parse function name from signature (very naive — just first identifier)
-        sig_words = signature.replace("(", " ").replace("*", " ").split()
-        fn_name = sig_words[1] if len(sig_words) > 1 else sig_words[-1]
+        # Parse the function name from the signature: the identifier
+        # immediately preceding the first '('. The previous sig_words[1]
+        # picked the second word ("void" for "static void foo(...)").
+        paren_idx = signature.find("(")
+        head = signature[:paren_idx] if paren_idx >= 0 else signature
+        head = head.replace("*", " ").strip()
+        sig_words = head.split()
+        fn_name = sig_words[-1] if sig_words else signature.strip()
         # Real write-back tx (pre-edit snapshot) when tokens are attached
         # to a file — a signature-only insert cannot render to disk.
         tx_id = _begin_writeback_tx(conn, graph_dir, file_id) if file_id else None

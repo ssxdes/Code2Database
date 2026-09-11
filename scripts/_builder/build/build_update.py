@@ -506,11 +506,11 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
             try:
                 _bump_conn.execute(
                     "UPDATE cgdb_nodes SET last_seen_version = ? "
-                    "WHERE last_seen_version < ?",
+                    "WHERE last_seen_version > 0 AND last_seen_version < ?",
                     (_version_id, _version_id))
                 _bump_conn.execute(
                     "UPDATE cgdb_edges SET last_seen_version = ? "
-                    "WHERE last_seen_version < ?",
+                    "WHERE last_seen_version > 0 AND last_seen_version < ?",
                     (_version_id, _version_id))
                 _bump_conn.commit()
             finally:

@@ -498,6 +498,11 @@ def _cmd_path_touched(args) -> frozenset:
               touched_nodes_fn=_cmd_path_touched,
               capture_stdout=True)
 def cmd_path(args):
+    if not args.from_node:
+        # --from and its --node alias are both optional in argparse
+        # (either one may be used); fail fast before loading the graph.
+        print("Error: --from (or --node) is required", file=sys.stderr)
+        sys.exit(1)
     G = _load_full_graph(args.graph)
 
     # --source-file disambiguation. When the user supplies
@@ -818,6 +823,13 @@ def _cmd_search_from_sqlite(db_path: str, args):
     """
     import sqlite3
     keywords = [kw.lower() for kw in args.keywords.split()]
+    if not keywords:
+        # argparse only enforces presence, not non-emptiness. Building
+        # the SQL with zero keywords would emit WHERE () — a syntax
+        # error. Match the JSON-backend behavior: zero matches.
+        print("[]")
+        print("\nFound 0 matches, showing top 0", file=sys.stderr)
+        return
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:

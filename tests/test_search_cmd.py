@@ -236,6 +236,14 @@ class TestCmdSearchSqliteMode(unittest.TestCase):
                          _ns(graph=self.graph_dir, keywords="boot", top=10))
         self.assertEqual(_json(out)[0]["labels"], ["API_entry"])
 
+    def test_empty_keywords_return_zero_matches(self):
+        """keywords='' passes argparse (presence-only). The SQLite path
+        must report zero matches, not crash on WHERE ()."""
+        _, out, err = _run(search_cmd.cmd_search,
+                           _ns(graph=self.graph_dir, keywords="", top=10))
+        self.assertEqual(_json(out), [])
+        self.assertIn("Found 0 matches", err)
+
 
 class TestCmdSearchNoGraph(unittest.TestCase):
     def test_missing_master_and_db_exits_1(self):
@@ -282,6 +290,14 @@ class TestCmdPath(unittest.TestCase):
             search_cmd.cmd_path, self._path_args(from_node="zzz"))
         self.assertEqual(code, 1)
         self.assertIn("not found", err)
+
+    def test_missing_from_exits_1_with_usage_error(self):
+        """--from/--node are argparse-optional (alias pair); omitting both
+        must produce a usage error, not an AttributeError on None."""
+        ret, out, err, code = _capture_call(
+            search_cmd.cmd_path, self._path_args(from_node=None))
+        self.assertEqual(code, 1)
+        self.assertIn("--from", err)
 
     def test_no_path_exits_1(self):
         ret, out, err, code = _capture_call(

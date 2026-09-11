@@ -210,5 +210,45 @@ class TestAliasRegex(unittest.TestCase):
         self.assertIsNone(m)
 
 
+class TestAttachDataFlowNonDestructive(unittest.TestCase):
+    """attach_data_flow_to_graph must not mutate its input edge dicts.
+
+    --build serializes the same list to .code2database_data_flow.json
+    after attaching, and later queries re-attach from that file —
+    popping caller/callee corrupted the persisted file and crashed
+    every subsequent query with KeyError.
+    """
+
+    def test_edge_dicts_survive_repeated_attach(self):
+        from _builder.analysis.value_flow import attach_data_flow_to_graph
+        edges = [{"caller": "a", "callee": "b", "relation": "DATA_FLOW",
+                  "evidence": "param 1"}]
+        G1 = nx.DiGraph()
+        G1.add_node("a")
+        G1.add_node("b")
+        attach_data_flow_to_graph(G1, edges)
+        G2 = nx.DiGraph()
+        G2.add_node("a")
+        G2.add_node("b")
+        # Second attach (as a query-time reload would do) must not raise
+        attach_data_flow_to_graph(G2, edges)
+        self.assertEqual(edges[0]["caller"], "a")
+        self.assertEqual(edges[0]["callee"], "b")
+        self.assertEqual(G2.edges["a", "b"]["relation"], "DATA_FLOW")
+
+    def test_annotated_existing_edge_keeps_caller_callee_out_of_attrs(self):
+        from _builder.analysis.value_flow import attach_data_flow_to_graph
+        edges = [{"caller": "a", "callee": "b", "relation": "DATA_FLOW"}]
+        G = nx.DiGraph()
+        G.add_node("a")
+        G.add_node("b")
+        G.add_edge("a", "b", relation="INVOKES")
+        attach_data_flow_to_graph(G, edges)
+        ed = G.edges["a", "b"]
+        self.assertEqual(ed["relation"], "INVOKES")
+        self.assertEqual(ed["data_flow"][0]["relation"], "DATA_FLOW")
+        self.assertNotIn("caller", ed["data_flow"][0])
+
+
 if __name__ == "__main__":
     unittest.main()

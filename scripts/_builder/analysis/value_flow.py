@@ -268,20 +268,31 @@ def build_data_flow_edges(G) -> List[Dict]:
 
 
 def attach_data_flow_to_graph(G, edges: List[Dict]):
-    """Add DATA_FLOW/RETURN_FLOW edges to the NetworkX graph in-place."""
+    """Add DATA_FLOW/RETURN_FLOW edges to the NetworkX graph in-place.
+
+    Non-destructive by contract: --build serializes the same edge list
+    to .code2database_data_flow.json after attaching, and query-time
+    runs re-attach from that file — popping caller/callee here used to
+    corrupt the persisted file and crash every subsequent reverse/
+    taint/interprocedural query with KeyError.
+    """
     for e in edges:
-        caller = e.pop("caller")
-        callee = e.pop("callee")
+        caller = e.get("caller", "")
+        callee = e.get("callee", "")
+        if not caller or not callee:
+            continue
         if caller not in G or callee not in G:
             continue
+        attrs = {k: v for k, v in e.items()
+                 if k not in ("caller", "callee")}
         # If edge already exists (INVOKES), we add data_flow metadata to it;
         # otherwise add a new edge with relation=DATA_FLOW/RETURN_FLOW.
         if G.has_edge(caller, callee):
             existing = G.get_edge_data(caller, callee) or {}
             # Annotate existing edge
-            existing.setdefault("data_flow", []).append(e)
+            existing.setdefault("data_flow", []).append(attrs)
         else:
-            G.add_edge(caller, callee, **e)
+            G.add_edge(caller, callee, **attrs)
 
 
 # ---------------------------------------------------------------------------

@@ -264,8 +264,11 @@ def reverse_data_dep_impact(G, start_id: str, max_depth: int = 5) -> Dict:
     written_globals_found: Set[str] = set()
 
     for cur_id, cur_nd in G.nodes(data=True):
-        if cur_id == start_id:
-            continue
+        # NOTE: do not skip start_id here. A function that writes a global
+        # and then reads it (the common init-then-use pattern) must have
+        # its own writes counted toward written_globals_found, or the read
+        # is falsely reported as uninitialized. start_id is still excluded
+        # from the reported sources list (filtered below).
         if cur_nd.get("is_empty", False) or cur_nd.get("node_type") == "file":
             continue
         for gw in cur_nd.get("globals_written", []) or []:

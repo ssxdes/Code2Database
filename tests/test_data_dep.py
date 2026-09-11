@@ -208,5 +208,23 @@ class TestFindDeadWriters(unittest.TestCase):
         self.assertEqual(len(dead), 0)
 
 
+class TestReverseDataDepSelfInitializedGlobals(unittest.TestCase):
+    """A function that writes a global and then reads it must not flag the
+    read as uninitialized — the common init-then-use pattern."""
+
+    def test_self_initialized_global_not_reported(self):
+        from _builder.analysis.data_dep import reverse_data_dep_impact
+        graph_dir = _make_dep_graph([
+            {"id": "init_use", "name": "init_use",
+             "globals_written": [{"name": "counter", "line": 5}],
+             "globals_read": [{"name": "counter", "line": 10}]},
+        ])
+        G = _load_graph(graph_dir)
+        result = reverse_data_dep_impact(G, "init_use")
+        self.assertEqual(result["uninitialized_reads"], [],
+                         "a self-initialized global (write then read in the "
+                         "same function) must not be reported uninitialized")
+
+
 if __name__ == "__main__":
     unittest.main()

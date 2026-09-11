@@ -70,9 +70,13 @@ def taint_analysis(graph_dir: str, sources: List[str], sinks: List[str],
         visited = {source_id}
         path = [source_id]
         source_name = G.nodes[source_id].get("name", source_id)
+        # Cap is per-source, not global — the previous check against
+        # len(flows) (shared across all sources) cut every source after
+        # the first ~100 short, making results order-dependent.
+        _source_flow_count = [0]
 
         def _dfs(node, is_sanitized, depth):
-            if len(flows) >= _MAX_FLOWS_PER_SOURCE:
+            if _source_flow_count[0] >= _MAX_FLOWS_PER_SOURCE:
                 return
             if depth > max_depth:
                 return
@@ -87,6 +91,7 @@ def taint_analysis(graph_dir: str, sources: List[str], sinks: List[str],
                     "sanitized": is_sanitized,
                     "depth": depth,
                 })
+                _source_flow_count[0] += 1
                 return
 
             for succ in G.successors(node):

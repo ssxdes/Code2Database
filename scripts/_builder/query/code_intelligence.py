@@ -185,6 +185,20 @@ def traverse_graph(graph_dir: str, start: str, mode: str = "bfs",
                 if succ not in visited:
                     visited.add(succ)
                     stack.append((succ, depth + 1))
+            # DFS must traverse predecessors too, matching BFS — otherwise
+            # --mode dfs silently drops callers and returns a different set.
+            for pred in list(G.predecessors(cur)):
+                ed = G.get_edge_data(pred, cur) or {}
+                if ed.get("relation") in ("CONTAINS", "IMPORTS"):
+                    continue
+                edges.append({
+                    "source": pred, "target": cur,
+                    "relation": ed.get("relation", "INVOKES"),
+                    "condition": ed.get("call_condition", ""),
+                })
+                if pred not in visited:
+                    visited.add(pred)
+                    stack.append((pred, depth + 1))
 
     # Token budget: truncate body if needed
     max_chars = max_tokens * 4

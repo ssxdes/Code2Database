@@ -151,6 +151,21 @@ class TestTraverseGraph(unittest.TestCase):
         node_ids = {n["id"] for n in result["nodes"]}
         self.assertEqual(node_ids, {"a", "b", "c", "d", "e"})
 
+    def test_dfs_traverses_predecessors_like_bfs(self):
+        """Starting from the middle of the chain, DFS must reach callers
+        (predecessors) as well as callees — matching BFS. The DFS branch
+        used to iterate successors only, silently dropping callers."""
+        from _builder.query.code_intelligence import traverse_graph
+        bfs = traverse_graph(self.graph_dir, "c", mode="bfs",
+                             max_depth=10, max_nodes=100)
+        dfs = traverse_graph(self.graph_dir, "c", mode="dfs",
+                             max_depth=10, max_nodes=100)
+        self.assertEqual({n["id"] for n in bfs["nodes"]},
+                         {"a", "b", "c", "d", "e"})
+        self.assertEqual({n["id"] for n in dfs["nodes"]},
+                         {"a", "b", "c", "d", "e"},
+                         "DFS must traverse predecessors too, like BFS")
+
     def test_max_depth_truncates(self):
         from _builder.query.code_intelligence import traverse_graph
         result = traverse_graph(self.graph_dir, "a", mode="bfs", max_depth=2, max_nodes=100)

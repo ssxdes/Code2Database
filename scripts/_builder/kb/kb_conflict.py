@@ -151,15 +151,22 @@ def rollback_kb_item(graph_dir: str, item_id: int,
             "version": len(versions) + 1,
             "rolled_back_at": datetime.now().isoformat(),
         }
+        # Pick version to restore from the PRE-append history. Selecting
+        # after the append made the default (to_version=None) pick
+        # versions[-1] — the current state just appended — so the rollback
+        # was a no-op that reported success.
+        old_len = len(versions)
         versions.append(current_snapshot)
-        # Pick version to restore
-        if to_version is None or to_version > len(versions):
-            target = versions[-1] if versions else None
+        if to_version is None:
+            # Default: restore the previous version (the one before current).
+            target = versions[old_len - 1] if old_len >= 1 else None
+        elif 1 <= to_version <= old_len:
+            target = versions[to_version - 1]
         else:
-            target = versions[to_version - 1] if 1 <= to_version <= len(versions) else None
+            target = None
         if not target:
             return {"error": f"no version {to_version} found; "
-                              f"available: 1..{len(versions)}"}
+                              f"available: 1..{old_len}"}
         # Restore from target
         conn.execute(
             "UPDATE kb_items SET title = ?, body = ?, tags = ?, versions_json = ? "

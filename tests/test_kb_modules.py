@@ -347,6 +347,35 @@ class TestKbConflict(unittest.TestCase):
         results = query_kb(self.graph_dir, "title", top_n=5)
         self.assertEqual(len(results), 0)
 
+    def test_rollback_default_restores_prior_version(self):
+        """rollback_kb_item with no to_version must restore the PRIOR
+        version, not the current state. The default used to pick the
+        just-appended current snapshot and report success without
+        changing anything."""
+        from _builder.kb.kb_index import _kb_connect
+        import json as _json
+        conn = _kb_connect(self.graph_dir)
+        # Seed a kb_item with one prior version; current state is "v2".
+        conn.execute(
+            "INSERT INTO kb_items (kind, title, body, tags, versions_json, "
+            "created_at) "
+            "VALUES ('memory_qa', 'current title', 'current body', '[]', ?, ?)",
+            (_json.dumps([{"title": "old title", "body": "old body",
+                           "tags": "[]", "version": 1}]),
+             "2026-01-01T00:00:00"))
+        conn.commit()
+        item_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
+        result = rollback_kb_item(self.graph_dir, item_id)
+        self.assertTrue(result.get("rolled_back"), result)
+        # The restored title must be the prior version, not the current.
+        conn = _kb_connect(self.graph_dir)
+        row = conn.execute("SELECT title, body FROM kb_items WHERE id=?",
+                           (item_id,)).fetchone()
+        conn.close()
+        self.assertEqual(row["title"], "old title")
+        self.assertEqual(row["body"], "old body")
+
 
 class TestKbGlobal(unittest.TestCase):
     def setUp(self):

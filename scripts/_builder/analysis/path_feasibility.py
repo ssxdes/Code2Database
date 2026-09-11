@@ -1126,20 +1126,21 @@ def cmd_path_guards(args):
     writer_guards = []
     if field_name:
         for fw in to_ndata.get("fields_written", []):
-            if fw.get("field_name", "") == field_name:
-                g = fw.get("guard_condition", "")
-                if g:
-                    writer_guards.append(g)
-                # If value filter, also check assigned_value
-                if value_filter:
-                    av = fw.get("assigned_value", "")
-                    # Only consider this writer if its assigned_value matches
-                    # (for NULL-form, use the helper)
-                    from _builder.query.query import _value_is_null_form, _value_is_null_form_match
-                    if av:
-                        if value_filter and not (av == value_filter or _value_is_null_form_match(av, value_filter)):
-                            continue
-                break
+            if fw.get("field_name", "") != field_name:
+                continue
+            # If a value filter is given, only the writer that actually
+            # sets that value contributes its guard — a rejected write's
+            # guard would poison the feasibility solve with the wrong
+            # branch condition.
+            if value_filter:
+                av = fw.get("assigned_value", "")
+                from _builder.query.query import _value_is_null_form, _value_is_null_form_match
+                if av and not (av == value_filter or _value_is_null_form_match(av, value_filter)):
+                    continue
+            g = fw.get("guard_condition", "")
+            if g:
+                writer_guards.append(g)
+            break
 
     # Solve feasibility for each path
     results = []

@@ -391,7 +391,8 @@ def merge_change_graph(graph_dir: str, change_graph_path: str,
 
 def _write_semantic_status(graph_dir: str, stale_count: int = 0,
                            changed_files: int = 0,
-                           semantic_update: bool = False):
+                           semantic_update: bool = False,
+                           auto_threshold_trigger: bool = False):
     """Write .code2database_semantic_status.json tracking update state."""
     status_path = os.path.join(graph_dir, ".code2database_semantic_status.json")
 
@@ -400,13 +401,18 @@ def _write_semantic_status(graph_dir: str, stale_count: int = 0,
         existing = json.loads(Path(status_path).read_text(encoding="utf-8"))
 
     from datetime import datetime
+    now = datetime.now().isoformat()
     existing.update({
-        "last_quick_update": datetime.now().isoformat(),
+        "last_quick_update": now,
         "stale_count_at_last_quick_update": stale_count,
         "changed_files_at_last_quick_update": changed_files,
     })
     if semantic_update:
-        existing["last_semantic_update"] = datetime.now().isoformat()
+        existing["last_semantic_update"] = now
+    if auto_threshold_trigger:
+        # Record the trigger event without claiming the semantic update
+        # actually ran — last_semantic_update must only be set when one did.
+        existing["last_auto_threshold_trigger"] = now
 
     # Atomic write: tmp + os.replace
     _tmp = status_path + ".tmp"
@@ -509,11 +515,13 @@ def cmd_quick_update(args):
             summary["auto_semantic_update_triggered"] = True
             summary["stale_ratio"] = stale_ratio
             summary["auto_threshold"] = threshold_val
-            # Write timestamp so semantic-status knows an update was triggered
+            # Record the trigger event without claiming a semantic update
+            # ran — last_semantic_update must only be set when one did, or
+            # the status file misleads session-init / web UI freshness.
             _write_semantic_status(graph_dir,
                                    stale_count=status.get("stale_count", 0),
                                    changed_files=summary.get("changed_files", 0),
-                                   semantic_update=True)
+                                   auto_threshold_trigger=True)
         else:
             summary["auto_semantic_update_triggered"] = False
             summary["stale_ratio"] = stale_ratio

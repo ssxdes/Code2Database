@@ -844,6 +844,8 @@ def cmd_field_flow(args):
                 return nid
         return None
 
+    _BFS_QUEUE_CAP = 10000  # bound work on dense caller subgraphs
+
     def _reverse_bfs_chains(start_id, depth, max_paths):
         """BFS backward through caller edges. Return up to max_paths chains
         ending at an entry-point (API_entry, thread_processor) or depth limit."""
@@ -851,6 +853,8 @@ def cmd_field_flow(args):
         queue = deque([(start_id, [start_id])])
         seen_paths = set()
         while queue and len(chains) < max_paths:
+            if len(queue) > _BFS_QUEUE_CAP:
+                break  # dense subgraph — return partial chains
             nid, path = queue.popleft()
             if len(path) - 1 >= depth:
                 # Reached depth limit — record this chain
@@ -1331,6 +1335,8 @@ def cmd_reverse_trace(args):
                 queue = _deque([(start_id, [start_id])])
                 seen_paths = set()
                 while queue and len(chains) < max_paths:
+                    if len(queue) > _BFS_QUEUE_CAP:
+                        break  # dense subgraph — return partial chains
                     nid, path = queue.popleft()
                     if len(path) - 1 >= depth:
                         key = tuple(path)

@@ -737,6 +737,27 @@ def cmd_value_flow(args):
         _df_edges = build_data_flow_edges(G)
         attach_data_flow_to_graph(G, _df_edges)
 
+    # Check --interprocedural BEFORE the plain --reverse branch: both are
+    # independent flags on the same subcommand, and the reverse branch
+    # used to run (and return) for `--interprocedural --reverse`, making
+    # the alias-aware reverse interprocedural trace unreachable.
+    if getattr(args, "interprocedural", False):
+        node = args.node
+        pattern = args.pattern or "NULL"
+        direction = "reverse" if getattr(args, "reverse", False) else "forward"
+        from _builder.utils import _find_node_id
+        node_id = _find_node_id(G, node)
+        if not node_id:
+            _log.error("Node not found: %s", node)
+            sys.exit(1)
+        result = interprocedural_value_flow(
+            G, node_id, pattern,
+            max_depth=getattr(args, "max_depth", 10),
+            direction=direction,
+        )
+        _output_value_result(result, getattr(args, "json", False))
+        return
+
     if getattr(args, "reverse", False):
         node = args.node
         pattern = args.pattern or "NULL"
@@ -760,23 +781,6 @@ def cmd_value_flow(args):
             sys.exit(1)
         result = forward_taint_trace(G, node_id, pattern,
                                      getattr(args, "max_depth", 10))
-        _output_value_result(result, getattr(args, "json", False))
-        return
-
-    if getattr(args, "interprocedural", False):
-        node = args.node
-        pattern = args.pattern or "NULL"
-        direction = "reverse" if getattr(args, "reverse", False) else "forward"
-        from _builder.utils import _find_node_id
-        node_id = _find_node_id(G, node)
-        if not node_id:
-            _log.error("Node not found: %s", node)
-            sys.exit(1)
-        result = interprocedural_value_flow(
-            G, node_id, pattern,
-            max_depth=getattr(args, "max_depth", 10),
-            direction=direction,
-        )
         _output_value_result(result, getattr(args, "json", False))
         return
 

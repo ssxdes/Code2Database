@@ -393,12 +393,24 @@ def _merge_range_constraint(existing: Any, op: str, val: Any) -> Tuple[Optional[
             new_is_upper = op in ('<', '<=')
             ex_is_upper = ex_op in ('<', '<=')
             if new_is_lower and ex_is_upper:
-                # new says x > val, existing says x < ex_val (or <=)
-                if val >= ex_val:
-                    return None, f"x {op} {val} conflicts with existing {p}"
+                # new: x {op} val (lower bound), existing: x {ex_op} ex_val
+                # (upper bound). The range is empty only when the lower
+                # bound meets/exceeds the upper bound — and only the
+                # fully-non-strict pair (>= vs <=) is satisfiable at the
+                # boundary (x >= 5 AND x <= 5 → x = 5).
+                if op == ">=" and ex_op == "<=":
+                    if val > ex_val:
+                        return None, f"x {op} {val} conflicts with existing {p}"
+                else:
+                    if val >= ex_val:
+                        return None, f"x {op} {val} conflicts with existing {p}"
             if new_is_upper and ex_is_lower:
-                if val <= ex_val:
-                    return None, f"x {op} {val} conflicts with existing {p}"
+                if op == "<=" and ex_op == ">=":
+                    if val < ex_val:
+                        return None, f"x {op} {val} conflicts with existing {p}"
+                else:
+                    if val <= ex_val:
+                        return None, f"x {op} {val} conflicts with existing {p}"
         return f"{existing},{op}{val}", None
     return f"{op}{val}", None
 

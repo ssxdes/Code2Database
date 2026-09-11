@@ -143,3 +143,21 @@ def test_heuristic_negation_with_conjunction():
     assert r['feasible'] is True
     assert r['bindings']['flag'] is False
     assert r['bindings']['mode'] == 0
+
+
+def test_heuristic_boundary_nonstrict_pair_is_satisfiable():
+    # x >= 5 AND x <= 5 -> x = 5 (satisfiable). The previous strictness
+    # blind spot flagged this as a contradiction and marked the path
+    # infeasible.
+    r = solve_with_heuristic(['x >= 5', 'x <= 5'])
+    assert r['feasible'] is True
+    r2 = solve_with_heuristic(['x <= 5', 'x >= 5'])
+    assert r2['feasible'] is True
+
+
+def test_heuristic_mixed_strictness_boundaries():
+    # Strict on either side at the boundary is genuinely infeasible.
+    for pair in (['x >= 5', 'x < 5'], ['x > 5', 'x <= 5'],
+                 ['x < 5', 'x > 5'], ['x <= 5', 'x > 5']):
+        r = solve_with_heuristic(pair)
+        assert r['feasible'] is False, f"{pair} should be infeasible"

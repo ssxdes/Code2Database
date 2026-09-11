@@ -14,6 +14,33 @@ from typing import Any, Dict
 import logging
 
 
+def _iter_master_candidates(graph_dir: str):
+    """Yield parsed master-JSON dicts for a graph dir.
+
+    Yields the canonical code2database_master.json first, then any other
+    *_master.json files. Unreadable or non-dict files are skipped — a
+    truncated master must not abort the diff.
+    """
+    seen = set()
+    candidates = [os.path.join(graph_dir, "code2database_master.json")]
+    try:
+        candidates.extend(
+            os.path.join(graph_dir, f) for f in os.listdir(graph_dir)
+            if f.endswith("_master.json"))
+    except OSError:
+        pass
+    for path in candidates:
+        if path in seen or not os.path.exists(path):
+            continue
+        seen.add(path)
+        try:
+            master = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if isinstance(master, dict):
+            yield master
+
+
 def graph_diff(before_dir: str, after_dir: str, detail: str = "summary") -> Dict[str, Any]:
     """Compare two graph builds and return structural differences.
 
@@ -55,22 +82,54 @@ def graph_diff(before_dir: str, after_dir: str, detail: str = "summary") -> Dict
                 conn.close()
             if nodes:
                 return nodes
-        # Fallback: load from domain JSON files
-        for fname in os.listdir(graph_dir):
-            if not fname.endswith("_master.json"):
-                continue
-            master = json.loads(Path(os.path.join(graph_dir, fname)).read_text(encoding="utf-8"))
-            for domain, info in master.get("domains", {}).items():
-                for func in info.get("functions", []):
-                    nid = func.get("id", "")
-                    if nid:
-                        nodes[nid] = {
-                            "id": nid, "name": func.get("name", ""),
-                            "domain": func.get("domain", domain),
-                            "source_file": func.get("source_file", ""),
-                            "line": func.get("line", 0),
-                            "labels": ",".join(func.get("labels", [])),
-                        }
+        # Fallback: load the domain JSON files the master points to.
+        # master["domains"][domain] holds a relative file path (see
+        # domain_split.split_by_domain), not an inline dict.
+        for master in _iter_master_candidates(graph_dir):
+            for domain, rel in master.get("domains", {}).items():
+                if not isinstance(rel, str):
+                    continue
+                dom_path = os.path.join(graph_dir, rel)
+                if not os.path.exists(dom_path):
+                    continue
+                try:
+                    dom = json.loads(Path(dom_path).read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    continue
+                for func in dom.get("functions", []):
+                    # func_rows are position-based lists:
+                    # [id, name, source_file, line, labels_json, signature]
+                    if isinstance(func, list) and len(func) >= 5:
+                        nid = func[0]
+                        name, source_file, line = func[1], func[2], func[3]
+                        labels_raw = func[4]
+                    elif isinstance(func, dict):
+                        nid = func.get("id", "")
+                        name = func.get("name", "")
+                        source_file = func.get("source_file", "")
+                        line = func.get("line", 0)
+                        labels_raw = func.get("labels", [])
+                    else:
+                        continue
+                    if not nid:
+                        continue
+                    if isinstance(labels_raw, str):
+                        try:
+                            labels = ",".join(json.loads(labels_raw)) \
+                                if labels_raw else ""
+                        except json.JSONDecodeError:
+                            labels = labels_raw
+                    elif isinstance(labels_raw, list):
+                        labels = ",".join(str(x) for x in labels_raw)
+                    else:
+                        labels = ""
+                    nodes[nid] = {
+                        "id": nid, "name": name or "",
+                        "domain": domain,
+                        "source_file": source_file or "",
+                        "line": line or 0,
+                        "labels": labels,
+                    }
         return nodes
 
     def _load_edges(graph_dir: str) -> set:
@@ -92,6 +151,34 @@ def graph_diff(before_dir: str, after_dir: str, detail: str = "summary") -> Dict
             conn.close()
             if edges:
                 return edges
+        # JSON fallback: per-domain compact edge rows plus the master's
+        # cross-domain/structural edge lists. Compact rows are
+        # position-based: [source, target, call_order, call_condition,
+        # concurrency, confidence, source_tag, confidence_score, extras?]
+        # with the relation living in extras["rel"] when not INVOKES.
+        for master in _iter_master_candidates(graph_dir):
+            for rel in master.get("domains", {}).values():
+                if not isinstance(rel, str):
+                    continue
+                dom_path = os.path.join(graph_dir, rel)
+                if not os.path.exists(dom_path):
+                    continue
+                try:
+                    dom = json.loads(Path(dom_path).read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    continue
+                for row in dom.get("edges", []):
+                    if not (isinstance(row, list) and len(row) >= 2):
+                        continue
+                    extras = row[8] if len(row) > 8 and isinstance(row[8], dict) else {}
+                    edges.add((row[0], row[1],
+                               extras.get("rel", "INVOKES")))
+            for group in ("cross_domain_edges", "structural_edges"):
+                for e in master.get(group, []):
+                    if isinstance(e, dict):
+                        edges.add((e.get("source", ""),
+                                   e.get("target", ""),
+                                   e.get("relation", "INVOKES")))
         return edges
 
     before_nodes = _load_node_ids(before_dir)

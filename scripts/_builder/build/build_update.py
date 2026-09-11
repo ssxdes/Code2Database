@@ -34,8 +34,21 @@ import os
 import sqlite3
 import sys
 
-_SKIP_DIRS = ('.git', '.svn', 'build', 'dist', 'out', '__pycache__',
-              '.cache', 'third_party', 'vendor', 'code2db-out')
+def _manifest_exclude_dirs(graph_dir: str):
+    """Exclude list recorded in the scan manifest living in graph_dir.
+
+    The manifest stores the exclude_dirs the scan walked with ('!name'
+    entries re-include built-in skip directories). Replaying that list
+    keeps this walk aligned with what was actually scanned; returns None
+    when no manifest exists (built-in defaults apply).
+    """
+    mp = os.path.join(graph_dir, ".code2database_manifest.json")
+    try:
+        with open(mp, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("exclude_dirs")
+    except (OSError, ValueError):
+        return None
 
 _C_CPP_HDR_EXTS = ('.h', '.hpp', '.hh', '.hxx')
 
@@ -93,10 +106,18 @@ def detect_db_changes(source_root: str, db_path: str) -> dict:
             stored[ap] = (p, h)
 
     exts = _code_extensions()
+    # Walk with the same skip semantics the scan used (the manifest
+    # records them) so files under re-included directories are compared
+    # against the DB instead of being misreported as deleted, and files
+    # under scan-skipped directories are not reported as new.
+    from _scanner.changes import effective_skip_dirs
+    walk_skip = effective_skip_dirs(
+        _manifest_exclude_dirs(os.path.dirname(os.path.abspath(db_path))))
+    walk_skip = frozenset(walk_skip) | {'code2db-out'}
     changed, added = [], []
     seen = set()
     for root, dirs, files in os.walk(source_root):
-        dirs[:] = [d for d in dirs if d not in _SKIP_DIRS]
+        dirs[:] = [d for d in dirs if d not in walk_skip]
         for fname in files:
             if os.path.splitext(fname)[1].lower() not in exts:
                 continue
@@ -521,9 +542,11 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
 
     # Refresh the fingerprint manifest so freshness checks (session-init,
     # web UI badge) reflect the synced state instead of reporting stale.
+    # Preserve the exclude scope the manifest was created with.
     try:
         from _scanner.changes import save_manifest
-        save_manifest(source_root, graph_dir)
+        save_manifest(source_root, graph_dir,
+                      exclude_dirs=_manifest_exclude_dirs(graph_dir))
     except Exception as exc:
         print(f"[build-update] manifest refresh skipped: {exc}",
               file=sys.stderr)

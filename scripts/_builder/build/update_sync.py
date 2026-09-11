@@ -94,10 +94,18 @@ def _merge_manifest(local_path: str, git_path: str, out_path: str,
     merged_files = dict(git_data.get("files", {}))
     merged_files.update(local_data.get("files", {}))
 
+    # Preserve the recorded exclude scope (local wins) so later change
+    # detection replays the same walk this manifest was produced with.
+    merged_exclude = (local_data.get("exclude_dirs")
+                      if local_data.get("exclude_dirs") is not None
+                      else git_data.get("exclude_dirs"))
+
     merged = {
         "source_root": source_root,
         "files": merged_files,
     }
+    if merged_exclude is not None:
+        merged["exclude_dirs"] = merged_exclude
     Path(out_path).write_text(
         json.dumps(merged, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8"

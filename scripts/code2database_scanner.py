@@ -647,20 +647,11 @@ def scan_directory(source_root: str, lang: str = "auto",
 
     # Collect all source files first
     file_list = []
-    # Directories to skip during scanning (generated/build artifacts, VCS, dependencies)
-    _SKIP_DIRS = frozenset({
-        '__pycache__', 'node_modules', '.git', '.svn', '.hg',
-        'build', 'dist', 'out', 'bin', 'obj',
-        'venv', '.venv', '.env',
-        '.tox', '.mypy_cache', '.pytest_cache',
-        'target',  # Rust/Java
-        'CMakeFiles', 'cmake-build-debug', 'cmake-build-release',
-        '.cache',  # ccache, etc.
-        'third_party', 'vendor', 'external', '3rdparty', 'deps', 'contrib',
-    })
-    _skip_dirs = _SKIP_DIRS
-    if exclude_dirs:
-        _skip_dirs = _SKIP_DIRS | frozenset(exclude_dirs)
+    # Skip set for the walk: built-in generated/VCS/dependency dirs plus
+    # --exclude-dirs additions; '!name' entries re-include a built-in skip
+    # directory (projects with real source under e.g. lib/build/).
+    from _scanner.changes import effective_skip_dirs
+    _skip_dirs = effective_skip_dirs(exclude_dirs)
     for dirpath, dirnames, filenames in os.walk(source_root):
         # Skip hidden directories, build artifacts, VCS, and dependency dirs
         dirnames[:] = [d for d in dirnames
@@ -2275,6 +2266,22 @@ def _prompt_for_compile_commands(source_root: str) -> str:
         return ''
 
 
+def _scan_exclude_dirs(args, profile) -> list:
+    """Effective --exclude-dirs list: CLI value plus profile
+    scan_hints.skip_dirs. Entries starting with '!' re-include a built-in
+    skip directory (see _scanner.changes.effective_skip_dirs)."""
+    exclude = []
+    cli = getattr(args, 'exclude_dirs', '') or ''
+    if cli:
+        exclude.extend(cli.split(","))
+    if profile:
+        skip_dirs = (profile.get("scan_hints", {}) or {}).get("skip_dirs", []) or []
+        for sd in skip_dirs:
+            if sd and sd not in exclude:
+                exclude.append(sd)
+    return exclude
+
+
 def cmd_scan(args):
     from _builder.token_budget import PipelineTracker, estimate_tokens
 
@@ -2495,7 +2502,9 @@ def cmd_scan(args):
     # Incremental scan: only rescan changed files
     if getattr(args, 'incremental', False):
         from _scanner.changes import detect_changes, save_manifest
-        changes = detect_changes(source, os.path.dirname(args.output) if args.output else source)
+        _exc = _scan_exclude_dirs(args, profile)
+        changes = detect_changes(source, os.path.dirname(args.output) if args.output else source,
+                                 exclude_dirs=_exc)
         if changes["needs_full_scan"]:
             # No manifest exists, fall through to full scan
             print("No manifest found, performing full scan", file=sys.stderr)
@@ -2598,7 +2607,8 @@ def cmd_scan(args):
                         existing.setdefault("lang_stats", {})[lang] = existing.get("lang_stats", {}).get(lang, 0) + 1
                     result = existing
             # Update manifest
-            save_manifest(source, os.path.dirname(args.output) if args.output else source)
+            save_manifest(source, os.path.dirname(args.output) if args.output else source,
+                          exclude_dirs=_exc)
             tracker.end(output_tokens=estimate_tokens(json.dumps(result, ensure_ascii=False)),
                         extra={"functions": len(result.get('functions', [])),
                                "edges": len(result.get('edges', [])),
@@ -2651,18 +2661,12 @@ def cmd_scan(args):
         _streaming_path = args.output if args.output else None
         # --large-project auto-enables split_output for better memory management
         _auto_split = getattr(args, 'split_output', False) or getattr(args, 'large_project', False)
-        # O10: merge profile.scan_hints.skip_dirs into --exclude-dirs. This lets
-        # profiles ship project-specific skip lists (e.g., kernel profiles can
-        # skip tools/, samples/, Documentation/) without requiring the user to
-        # pass --exclude-dirs on the CLI every time.
-        _exclude = []
-        if args.exclude_dirs:
-            _exclude.extend(args.exclude_dirs.split(","))
-        if profile:
-            _skip_dirs = (profile.get("scan_hints", {}) or {}).get("skip_dirs", []) or []
-            for _sd in _skip_dirs:
-                if _sd and _sd not in _exclude:
-                    _exclude.append(_sd)
+        # Effective exclude list: CLI --exclude-dirs plus profile
+        # scan_hints.skip_dirs ('!name' re-includes a built-in skip dir).
+        # Profiles ship project-specific skip lists (e.g., kernel profiles
+        # skip tools/, samples/, Documentation/) without requiring the
+        # user to pass --exclude-dirs on the CLI every time.
+        _exclude = _scan_exclude_dirs(args, profile)
         # --scan-subsystems filter — CLI takes precedence;
         # fall back to profile.scan_hints.scan_subsystems if specified.
         # Lets the linux_kernel profile default to ['fs', 'mm', 'block',
@@ -2809,7 +2813,10 @@ def cmd_manifest(args):
     if not os.path.isdir(source):
         print(f"Error: {source} is not a directory", file=sys.stderr)
         sys.exit(1)
-    count = save_manifest(source, outdir)
+    exclude = (getattr(args, 'exclude_dirs', '') or '').split(",")
+    exclude = [d for d in exclude if d]
+    count = save_manifest(source, outdir,
+                          exclude_dirs=exclude if exclude else None)
     print(f"Manifest saved: {count} source files fingerprinted → {outdir}/.code2database_manifest.json")
 
 
@@ -3127,7 +3134,10 @@ def cmd_auto_profile(args):
 def cmd_detect_changes(args):
     source = args.source
     outdir = args.outdir
-    changes = detect_changes(source, outdir)
+    cli = (getattr(args, 'exclude_dirs', '') or '')
+    exclude = [d for d in cli.split(",") if d]
+    changes = detect_changes(source, outdir,
+                             exclude_dirs=exclude if exclude else None)
     print(json.dumps({
         "new_files": len(changes["new_files"]),
         "changed_files": len(changes["changed_files"]),
@@ -3264,10 +3274,16 @@ def main():
     p_manifest = sub.add_parser("manifest", help="Save file fingerprint manifest")
     p_manifest.add_argument("--source", required=True, help="Source directory")
     p_manifest.add_argument("--outdir", required=True, help="Output directory for manifest")
+    p_manifest.add_argument("--exclude-dirs", default="",
+                            help="Comma-separated directory names to skip in addition to "
+                                 "the built-ins; '!name' re-includes a built-in skip directory")
 
     p_detect = sub.add_parser("detect-changes", help="Detect changed files since last manifest")
     p_detect.add_argument("--source", required=True, help="Source directory")
     p_detect.add_argument("--outdir", required=True, help="Callgraph output directory with manifest")
+    p_detect.add_argument("--exclude-dirs", default="",
+                          help="Comma-separated directory names to skip in addition to "
+                               "the built-ins; '!name' re-includes a built-in skip directory")
 
     p_profile = sub.add_parser("profile", help="Generate project profile by scanning source directories")
     p_profile.add_argument("--source", required=True, help="Source root directory of the project")

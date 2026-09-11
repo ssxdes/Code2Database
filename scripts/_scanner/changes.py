@@ -11,7 +11,9 @@ from pathlib import Path
 from _scanner.utils import LANG_EXTENSIONS
 
 
-# Directories to skip (build artifacts, VCS, dependencies)
+# Directories to skip (build artifacts, VCS, dependencies). Mirrors the
+# scanner's built-in skip set so the manifest fingerprints exactly the
+# files a scan visits.
 _SKIP_DIRS = frozenset({
     '__pycache__', 'node_modules', '.git', '.svn', '.hg',
     'build', 'dist', 'out', 'bin', 'obj',
@@ -19,7 +21,27 @@ _SKIP_DIRS = frozenset({
     '.tox', '.mypy_cache', '.pytest_cache',
     'target', 'CMakeFiles', 'cmake-build-debug', 'cmake-build-release',
     '.cache',
+    'third_party', 'vendor', 'external', '3rdparty', 'deps', 'contrib',
 })
+
+
+def effective_skip_dirs(exclude_dirs=None) -> frozenset:
+    """Skip set for source walks: built-ins plus additions, minus removals.
+
+    Follows the --exclude-dirs convention: a plain entry names a directory
+    to skip in addition to the built-ins; an entry starting with '!'
+    re-includes a built-in skip directory — for projects that keep real
+    source under a conventionally generated directory (e.g., lib/build/).
+    """
+    skip = set(_SKIP_DIRS)
+    for d in exclude_dirs or ():
+        if not d:
+            continue
+        if d.startswith('!'):
+            skip.discard(d[1:])
+        else:
+            skip.add(d)
+    return frozenset(skip)
 
 
 def _file_fingerprint(fpath: str) -> str:
@@ -31,10 +53,15 @@ def _file_fingerprint(fpath: str) -> str:
         return ""
 
 
-def save_manifest(source_root: str, outdir: str) -> int:
+def save_manifest(source_root: str, outdir: str,
+                  exclude_dirs: list = None) -> int:
     """Save a manifest of all source file fingerprints.
 
     Returns the number of files fingerprinted.
+
+    exclude_dirs uses the --exclude-dirs convention (see
+    effective_skip_dirs). The effective list is stored in the manifest so
+    later change detection replays the same walk.
 
     Also records source_commit (git/svn HEAD info) so
     engineers can ask "which commit does this graph correspond to?" rather
@@ -44,10 +71,11 @@ def save_manifest(source_root: str, outdir: str) -> int:
     for exts in LANG_EXTENSIONS.values():
         all_extensions |= exts
 
+    skip = effective_skip_dirs(exclude_dirs)
     manifest = {}
     for dirpath, dirnames, filenames in os.walk(source_root):
         dirnames[:] = [d for d in dirnames
-                       if not d.startswith('.') and d not in _SKIP_DIRS]
+                       if not d.startswith('.') and d not in skip]
         for fname in filenames:
             fpath = os.path.join(dirpath, fname)
             ext = Path(fpath).suffix.lower()
@@ -55,7 +83,8 @@ def save_manifest(source_root: str, outdir: str) -> int:
                 rel = os.path.relpath(fpath, source_root)
                 manifest[rel] = _file_fingerprint(fpath)
 
-    manifest_data = {"source_root": source_root, "files": manifest}
+    manifest_data = {"source_root": source_root, "files": manifest,
+                     "exclude_dirs": list(exclude_dirs or [])}
 
     # attach commit metadata so the manifest records which
     # commit the fingerprints correspond to (not just the database write time).
@@ -82,8 +111,13 @@ def save_manifest(source_root: str, outdir: str) -> int:
     return len(manifest)
 
 
-def detect_changes(source_root: str, outdir: str) -> dict:
+def detect_changes(source_root: str, outdir: str,
+                   exclude_dirs: list = None) -> dict:
     """Compare current source tree against stored manifest.
+
+    exclude_dirs, when given, defines the walk (--exclude-dirs
+    convention). When omitted, the list stored in the manifest is
+    replayed so the walk matches the one that produced the manifest.
 
     Returns dict with keys: new_files, changed_files, deleted_files,
     unchanged_count, needs_full_scan.
@@ -95,15 +129,18 @@ def detect_changes(source_root: str, outdir: str) -> dict:
 
     old_manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     old_files = old_manifest.get("files", {})
+    if exclude_dirs is None:
+        exclude_dirs = old_manifest.get("exclude_dirs")
 
     all_extensions = set()
     for exts in LANG_EXTENSIONS.values():
         all_extensions |= exts
 
+    skip = effective_skip_dirs(exclude_dirs)
     current_files = {}
     for dirpath, dirnames, filenames in os.walk(source_root):
         dirnames[:] = [d for d in dirnames
-                       if not d.startswith('.') and d not in _SKIP_DIRS]
+                       if not d.startswith('.') and d not in skip]
         for fname in filenames:
             fpath = os.path.join(dirpath, fname)
             ext = Path(fpath).suffix.lower()

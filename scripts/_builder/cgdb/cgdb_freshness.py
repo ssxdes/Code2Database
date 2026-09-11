@@ -83,11 +83,13 @@ def check_freshness(graph_dir: str, source_root: str = "",
     # Load manifest
     manifest_path = os.path.join(graph_dir, ".code2database_manifest.json")
     manifest = {}
+    manifest_exclude_dirs = None
     if os.path.exists(manifest_path):
         try:
             with open(manifest_path, "r", encoding="utf-8") as f:
                 manifest_data = json.load(f)
                 manifest = manifest_data.get("files", {})
+                manifest_exclude_dirs = manifest_data.get("exclude_dirs")
                 # manifest["source_commit"] is a VCS dict {"type","head",...}
                 # (commit_meta.write_manifest), not a bare string —
                 # comparing it directly to the hash string was always
@@ -128,7 +130,10 @@ def check_freshness(graph_dir: str, source_root: str = "",
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
     from _scanner.utils import LANG_EXTENSIONS
-    from _scanner.changes import _SKIP_DIRS
+    # Replay the scan's exclude list (recorded in the manifest) so the
+    # freshness walk visits the same files the scan did.
+    from _scanner.changes import effective_skip_dirs
+    _skip_dirs = effective_skip_dirs(manifest_exclude_dirs)
     # _ALL_SOURCE_EXTENSIONS no longer exists in _scanner.changes —
     # derive the set the same way build_manifest does.
     all_source_extensions = set()
@@ -140,7 +145,7 @@ def check_freshness(graph_dir: str, source_root: str = "",
     if source_root and os.path.exists(source_root):
         for dirpath, dirnames, filenames in os.walk(source_root):
             dirnames[:] = [d for d in dirnames
-                           if not d.startswith('.') and d not in _SKIP_DIRS]
+                           if not d.startswith('.') and d not in _skip_dirs]
             for fname in filenames:
                 dot = fname.rfind('.')
                 ext = fname[dot:].lower() if dot >= 0 else ''

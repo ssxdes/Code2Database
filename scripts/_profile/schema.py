@@ -89,7 +89,10 @@ _DEFAULT_PROFILE = {
         "header_priority_dirs": ["include"],
         "vtable_module_keys": [],
         "domain_rules": [],
-        "skip_dirs": [],  # Extra directories to skip (in addition to built-in _SKIP_DIRS)
+        # Extra directories to skip (in addition to built-in _SKIP_DIRS).
+        # An entry starting with '!' instead re-includes a built-in skip
+        # directory — for projects that keep real source under e.g. lib/build/.
+        "skip_dirs": [],
         # optional subsystem filter — when set, only files
         # whose path (relative to --source) starts with `<subsystem>/` are
         # scanned. Useful for scanning a monorepo but limiting to specific

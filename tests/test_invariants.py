@@ -273,5 +273,35 @@ class TestExtractInvariantsForNode(unittest.TestCase):
         self.assertIsNone(result["state_machine"])
 
 
+class TestAttachInvariantsToGraph(unittest.TestCase):
+    """attach_invariants_to_graph must tolerate nodes without a
+    state_machine attribute (the common case on JSON/SQLite-loaded
+    graphs where nothing extracted a state machine)."""
+
+    def test_meta_present_without_state_machine_key(self):
+        import networkx as nx
+        from _builder.analysis.invariants import attach_invariants_to_graph
+        G = nx.DiGraph()
+        G.add_node("root::f", name="f", labels=[])
+        attach_invariants_to_graph(G, {"root::f": {
+            "preconditions": [{"condition": "x > 0",
+                               "confidence": "EXTRACTED"}],
+        }})
+        meta = G.nodes["root::f"].get("_invariant_meta")
+        self.assertIsNotNone(meta)
+        self.assertFalse(meta["has_state_machine"])
+        self.assertEqual(meta["precondition_count"], 1)
+
+    def test_state_machine_detectable_when_present(self):
+        import networkx as nx
+        from _builder.analysis.invariants import attach_invariants_to_graph
+        G = nx.DiGraph()
+        G.add_node("root::f", name="f", labels=[], state_machine={
+            "state_var": "s", "transitions": []})
+        attach_invariants_to_graph(G, {"root::f": {}})
+        meta = G.nodes["root::f"].get("_invariant_meta")
+        self.assertTrue(meta["has_state_machine"])
+
+
 if __name__ == "__main__":
     unittest.main()

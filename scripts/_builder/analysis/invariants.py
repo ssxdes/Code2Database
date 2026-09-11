@@ -494,7 +494,7 @@ def attach_invariants_to_graph(G, invariants: Dict[str, Dict]):
             "precondition_count": len(nd["preconditions"]),
             "postcondition_count": len(nd["postconditions"]),
             "loop_invariant_count": len(nd["loop_invariants"]),
-            "has_state_machine": bool(nd["state_machine"]),
+            "has_state_machine": bool(nd.get("state_machine")),
         }
 
 

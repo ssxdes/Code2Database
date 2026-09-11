@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from _builder.build.build_multi import (
     _parse_manifest, _topo_sort, _prefix_domain_with_project,
-    _merge_compile_commands, _normalize_name,
+    _merge_compile_commands, _normalize_name, _resolve_profile_path,
 )
 from _builder.scanner_bridge.c2d_foreign import (
     _connect, _ensure_foreign_tables, _get_db_signature,
@@ -109,6 +109,50 @@ class TestManifestParsing(unittest.TestCase):
         try:
             with self.assertRaises(ValueError):
                 _parse_manifest(path)
+        finally:
+            os.unlink(path)
+
+
+class TestResolveProfilePath(unittest.TestCase):
+    """Per-project profile spec resolution for build-multi manifests."""
+
+    def test_empty_returns_none(self):
+        self.assertIsNone(_resolve_profile_path(""))
+        self.assertIsNone(_resolve_profile_path(None))
+
+    def test_builtin_profile_name(self):
+        """'spdk' resolves to scripts/config/profiles/spdk.json."""
+        path = _resolve_profile_path("spdk")
+        self.assertIsNotNone(path)
+        self.assertTrue(os.path.isfile(path))
+        self.assertIn("spdk.json", path)
+
+    def test_absolute_file_path(self):
+        """A direct file path is returned as-is."""
+        with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as f:
+            f.write(b'{"version": 1}')
+            tmp = f.name
+        try:
+            result = _resolve_profile_path(tmp)
+            self.assertEqual(result, tmp)
+        finally:
+            os.unlink(tmp)
+
+    def test_nonexistent_raises(self):
+        with self.assertRaises(FileNotFoundError):
+            _resolve_profile_path("nonexistent_profile_xyz")
+
+    def test_manifest_with_profile_field_passes_validation(self):
+        """_parse_manifest must accept (not reject) a per-project 'profile' field."""
+        manifest = {"version": 1, "projects": [
+            {"name": "A", "source": "/a", "profile": "spdk"},
+        ]}
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(manifest, f)
+            path = f.name
+        try:
+            parsed = _parse_manifest(path)
+            self.assertEqual(parsed["projects"][0]["profile"], "spdk")
         finally:
             os.unlink(path)
 

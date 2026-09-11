@@ -86,6 +86,35 @@ def _parse_manifest(manifest_path: str) -> Dict[str, Any]:
     return manifest
 
 
+def _resolve_profile_path(spec: str) -> Optional[str]:
+    """Resolve a profile spec from the manifest to a file path.
+
+    Accepts:
+      - A built-in profile name (e.g. 'spdk') → resolves to
+        scripts/config/profiles/<name>.json
+      - A relative/absolute file path (e.g. '/path/to/my.json') → used
+        as-is when the file exists
+    Returns None when *spec* is empty/missing (auto-profile).
+    Raises FileNotFoundError if a name/path does not resolve to a real file.
+    """
+    if not spec:
+        return None
+    spec = spec.strip()
+    if os.path.isfile(spec):
+        return spec
+    # Try built-in profile name: scripts/config/profiles/<name>.json
+    _profile_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))),
+        "config", "profiles")
+    candidate = os.path.join(_profile_dir, f"{spec}.json")
+    if os.path.isfile(candidate):
+        return candidate
+    raise FileNotFoundError(
+        f"Profile '{spec}' not found as a file path or built-in profile "
+        f"name (looked in {_profile_dir})")
+
+
 def _topo_sort(projects: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Topologically sort projects by depends_on.
 
@@ -530,6 +559,22 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
             "workers": jobs,
             "max_workers": max_workers or jobs,
         }
+        # Per-project profile: load the manifest's "profile" field
+        # (built-in name like "spdk" or a JSON file path) and inject
+        # the scanner-config dict so callback_patterns, struct_op_types,
+        # skip_names, non_api_paths etc. are active for this project.
+        # Without this, spdk_thread_send_msg is never recognised as a
+        # callback registration function and dispatch edges are missing.
+        _profile_spec = p.get("profile", "")
+        if _profile_spec:
+            _profile_path = _resolve_profile_path(_profile_spec)
+            if _profile_path:
+                from _profile.schema import ProfileSchema
+                _ps = ProfileSchema.load(_profile_path)
+                scan_kwargs["profile"] = _ps.to_scanner_config()
+                if verbose:
+                    print(f"[build-multi] {project_name}: loaded profile "
+                          f"'{_profile_spec}'", file=sys.stderr)
         # Macros
         macros = p.get("macros", [])
         if macros:
@@ -644,6 +689,17 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
     # instead of build_graph(...) directly — build_graph's signature is
     # build_graph(extraction: dict, profile=None, graph=None) and does
     # NOT accept outdir/jobs, so the old call was a guaranteed TypeError.
+    # For the builder profile, use the first scan-project that declared a
+    # profile in the manifest. cmd_build expects a file-path string.
+    _build_profile_path: Optional[str] = None
+    for p in scan_projects:
+        _spec = p.get("profile", "")
+        if _spec:
+            try:
+                _build_profile_path = _resolve_profile_path(_spec)
+                break
+            except FileNotFoundError:
+                pass
     if joint_extraction["functions"]:
         try:
             import argparse
@@ -654,7 +710,7 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                 jobs=jobs,
                 max_workers=max_workers or 0,
                 build_config="auto",
-                profile=None,
+                profile=_build_profile_path,
                 macros=None,
                 storage="sqlite",
                 auto_enhance=False,

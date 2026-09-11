@@ -1015,6 +1015,99 @@ class TestSuffixIndex(unittest.TestCase):
         self.assertLess(elapsed, 1.0)  # Should complete in under 1 second
 
 
+class TestTestDomainCandidatePreference(unittest.TestCase):
+    """Callee resolution prefers production definitions over test mocks."""
+
+    def setUp(self):
+        from _builder import utils as _utils
+        self._utils = _utils
+        self._orig_segments = _utils._TEST_DOMAIN_SEGMENTS
+        self._orig_ext_prefixes = list(_utils._EXTERNAL_LIB_PREFIXES)
+
+    def tearDown(self):
+        # Restore module globals for other tests in the same process
+        self._utils.set_test_domain_segments(list(self._orig_segments))
+        self._utils.set_external_lib_prefixes(self._orig_ext_prefixes)
+
+    @staticmethod
+    def _registry():
+        # Real scanner IDs are underscore-form; the registry carries the
+        # dotted domain string for each node. The mock is registered
+        # first so resolution cannot pass by candidate ordering alone.
+        return {
+            "app_ut_pool_free": {"id": "app_ut_pool_free",
+                                 "name": "pool_free", "domain": "app.ut"},
+            "app_core_pool_free": {"id": "app_core_pool_free",
+                                   "name": "pool_free", "domain": "app.core"},
+        }
+
+    def test_prod_preferred_for_underscore_ids(self):
+        """Domain attribute drives the test check for underscore-form IDs."""
+        from _builder.utils import _resolve_invoked_id, _build_suffix_index
+        registry = self._registry()
+        idx = _build_suffix_index(registry)
+        result = _resolve_invoked_id("pool_free", "net.eth", registry,
+                                     suffix_index=idx)
+        self.assertEqual(result, "app_core_pool_free")
+
+    def test_profile_segments_honored(self):
+        """Profile-declared segments (e.g. zephyr ztest) filter mocks."""
+        from _builder.utils import (_resolve_invoked_id, _build_suffix_index,
+                                    set_test_domain_segments)
+        set_test_domain_segments(["ut", "ztest"])
+        registry = {
+            "app_ztest_pool_free": {"id": "app_ztest_pool_free",
+                                    "name": "pool_free", "domain": "app.ztest"},
+            "app_core_pool_free": {"id": "app_core_pool_free",
+                                   "name": "pool_free", "domain": "app.core"},
+        }
+        idx = _build_suffix_index(registry)
+        result = _resolve_invoked_id("pool_free", "net.eth", registry,
+                                     suffix_index=idx)
+        self.assertEqual(result, "app_core_pool_free")
+
+    def test_dotted_id_all_segments_checked(self):
+        """Dotted candidates like org.test.unit.* are classified as test."""
+        from _builder.utils import _resolve_invoked_id, _build_suffix_index
+        registry = {
+            "org.test.unit.mock_func": {"id": "org.test.unit.mock_func",
+                                        "domain": "org.test.unit"},
+            "org.core.mock_func": {"id": "org.core.mock_func",
+                                   "domain": "org.core"},
+        }
+        idx = _build_suffix_index(registry)
+        result = _resolve_invoked_id("mock_func", "net.eth", registry,
+                                     suffix_index=idx)
+        self.assertEqual(result, "org.core.mock_func")
+
+    def test_external_prefix_not_shadowed_by_test_mock(self):
+        """A test mock doesn't count as a production match for external prefixes."""
+        from _builder.utils import (_resolve_invoked_id, _build_suffix_index,
+                                    set_external_lib_prefixes)
+        set_external_lib_prefixes(["extlib_"])
+        registry = {
+            "app_ut_extlib_pool_free": {
+                "id": "app_ut_extlib_pool_free",
+                "name": "extlib_pool_free", "domain": "app.ut"},
+        }
+        idx = _build_suffix_index(registry)
+        result = _resolve_invoked_id("extlib_pool_free", "net.eth", registry,
+                                     suffix_index=idx)
+        self.assertEqual(result, "ext:extlib:extlib_pool_free")
+
+    def test_prod_function_with_test_like_name_not_filtered(self):
+        """A production function named test_* stays a valid candidate."""
+        from _builder.utils import _resolve_invoked_id, _build_suffix_index
+        registry = {
+            "app_core_test_helper": {"id": "app_core_test_helper",
+                                     "name": "test_helper", "domain": "app.core"},
+        }
+        idx = _build_suffix_index(registry)
+        result = _resolve_invoked_id("test_helper", "net.eth", registry,
+                                     suffix_index=idx)
+        self.assertEqual(result, "app_core_test_helper")
+
+
 class TestParserArtifactDetection(unittest.TestCase):
     """Test _is_parser_artifact and its integration with _resolve_invoked_id."""
 

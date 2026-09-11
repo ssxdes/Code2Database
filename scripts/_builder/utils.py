@@ -714,6 +714,42 @@ def set_external_lib_prefixes(prefixes):
     _EXTERNAL_LIB_PREFIXES = sorted(prefixes, key=len, reverse=True)
 
 
+# Test domain segments used during callee resolution to prefer production
+# definitions over test mocks/stubs. Populated from the profile's
+# project_boundaries.test_domain_segments at build time; generic defaults
+# cover the common unit/ut/test/fuzz conventions.
+_TEST_DOMAIN_SEGMENTS = ("ut", "ut_mock", "unit", "test", "fuzz")
+
+
+def set_test_domain_segments(segments):
+    """Set test domain segments from profile configuration."""
+    global _TEST_DOMAIN_SEGMENTS
+    if segments:
+        _TEST_DOMAIN_SEGMENTS = tuple(segments)
+
+
+def _candidate_in_test_domain(cid: str, id_registry: dict = None) -> bool:
+    """True when a resolution candidate is defined in a test domain.
+
+    Primary signal is the registry entry's domain attribute (dotted
+    domain string, e.g. "unit.accel"), which works for both dotted and
+    underscore-form node IDs. Entries without a domain fall back to the
+    leading segments of dotted IDs ("unit.accel.func"). Underscore-form
+    IDs without a registry domain are never classified as test — their
+    leading tokens may be part of the function name itself.
+    """
+    attrs = id_registry.get(cid) if id_registry else None
+    if attrs:
+        domain = attrs.get("domain", "")
+        if domain:
+            return any(p in _TEST_DOMAIN_SEGMENTS
+                       for p in domain.split("."))
+    if "." in cid:
+        head = cid.rsplit(".", 1)[0]
+        return any(p in _TEST_DOMAIN_SEGMENTS for p in head.split("."))
+    return False
+
+
 _GENERIC_SKIP_NAMES = frozenset({
     # Standard C library functions
     'malloc', 'calloc', 'realloc', 'free', 'printf', 'fprintf', 'sprintf',
@@ -849,9 +885,8 @@ def _resolve_invoked_id(callee_name: str, domain: str, id_registry: dict,
                 if suffix_index is not None:
                     norm_check = re.sub(r'[^a-z0-9_]', '_', callee_lower)
                     candidates_check = suffix_index.get(norm_check, [])
-                    _TEST_PREFIXES = ('unit.', 'ut.', 'fuzz.', 'test.')
                     prod_matches = [c for c in candidates_check
-                                    if not any(c.startswith(p) for p in _TEST_PREFIXES)]
+                                    if not _candidate_in_test_domain(c, id_registry)]
                     if prod_matches:
                         break  # Found in production code — treat as internal
                 return f"ext:{prefix.rstrip('_')}:{callee_lower}"
@@ -881,7 +916,7 @@ def _resolve_invoked_id(callee_name: str, domain: str, id_registry: dict,
                     parent_prefix = ".".join(domain_parts[i:])
                     parent_matches = [c for c in candidates
                                       if c.startswith(parent_prefix + ".")
-                                      and not any(c.startswith(p) for p in ('unit.', 'ut.', 'fuzz.', 'test.'))]
+                                      and not _candidate_in_test_domain(c, id_registry)]
                     if parent_matches:
                         same_domain = parent_matches
                         break
@@ -900,9 +935,8 @@ def _resolve_invoked_id(callee_name: str, domain: str, id_registry: dict,
             # test mock/stub (e.g., extlib_pool_free matches both
             # env_ext.extlib_pool_free and unit.accel.extlib_pool_free),
             # the production version is the real call target.
-            _TEST_DOMAIN_PREFIXES = ('unit.', 'ut.', 'fuzz.', 'test.')
             prod_candidates = [c for c in candidates
-                               if not any(c.startswith(p) for p in _TEST_DOMAIN_PREFIXES)]
+                               if not _candidate_in_test_domain(c, id_registry)]
             if prod_candidates:
                 candidates = prod_candidates
 

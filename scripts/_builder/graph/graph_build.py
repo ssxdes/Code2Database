@@ -536,7 +536,7 @@ def build_graph(extraction: dict, profile: dict = None,
     # calls. When building via CLI, this is done in main(); when building via
     # API, we do it here.
     if profile:
-        from _builder.utils import set_external_lib_prefixes
+        from _builder.utils import set_external_lib_prefixes, set_test_domain_segments
         # Profile comes from to_builder_config(), which uses flat keys:
         #   lib_prefix_map: {prefix: category, ...}
         #   skip_names_add: [...]
@@ -545,6 +545,12 @@ def build_graph(extraction: dict, profile: dict = None,
         all_ext_prefixes = [k.lower() for k in lib_prefix_map]
         if all_ext_prefixes:
             set_external_lib_prefixes(all_ext_prefixes)
+        # Callee resolution prefers production definitions over test
+        # mocks; the segment set comes from the same profile section the
+        # endpoint classifier uses (_is_test_domain).
+        pb = profile.get("project_boundaries")
+        if isinstance(pb, dict):
+            set_test_domain_segments(pb.get("test_domain_segments", []))
 
     # Project-specific prefixes from profile (e.g., 'proj_', 'rpc_', 'api_').
     # Functions starting with these prefixes are kept even if they look like
@@ -3825,12 +3831,18 @@ def cmd_build(args):
         # creating unresolved external edges.
         # Use builder_profile (flat dict from to_builder_config()) which
         # consolidates all prefixes in lib_prefix_map.
-        from _builder.utils import set_external_lib_prefixes
+        from _builder.utils import set_external_lib_prefixes, set_test_domain_segments
         lib_prefix_map = builder_profile.get("lib_prefix_map", {})
         all_ext_prefixes = [k.lower() for k in lib_prefix_map]
         if all_ext_prefixes:
             set_external_lib_prefixes(all_ext_prefixes)
             print(f"External lib prefixes loaded: {len(all_ext_prefixes)} (from lib_prefix_map)")
+        # Callee resolution prefers production definitions over test
+        # mocks; the segment set comes from the same profile section the
+        # endpoint classifier uses (_is_test_domain).
+        pb = builder_profile.get("project_boundaries")
+        if isinstance(pb, dict):
+            set_test_domain_segments(pb.get("test_domain_segments", []))
 
         # Populate the module-level _ALLOCATION_SITES_MAP
         # from the profile's `allocation_sites` list. This lets

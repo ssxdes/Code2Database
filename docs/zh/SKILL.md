@@ -68,7 +68,7 @@ python3 scripts/code2database_builder.py serve    # MCP 服务器（83 工具）
 
 | 命令 | 用途 | 查询层 |
 |------|------|--------|
-| `c2d` | 覆盖完整生命周期的一键式总入口：`setup`（摄取）→ `session`（上下文）→ `ask`（提问→只读命令配方）→ `capture`（沉淀记忆）；`c2d recipes` 列出路由表 | — |
+| `c2d` | 覆盖完整生命周期的一键式总入口：`setup`（摄取）→ `session`（上下文）→ `ask`（提问→只读命令配方）→ `capture`（沉淀记忆）；另有 `freshen`（新鲜度路由）与 `report`（设计/诊断/图表工件）；`c2d recipes` 列出路由表 | — |
 | `query` | Cypher 子集查询（`MATCH (n:Function) WHERE n.name='foo' RETURN n.id`）。自然语言用 `intent-query` | Graph |
 | `kb-query` | 跨 memory + knowledge 的统一 FTS5+BM25 查询 | Memory+Knowledge |
 | `describe` | 节点详情 + 源码片段 + memory_refs + knowledge_refs（`describe-node` 的别名） | Graph→Source |

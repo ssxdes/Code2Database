@@ -68,7 +68,7 @@ python3 scripts/code2database_builder.py serve    # MCP server (83 tools)
 
 | Command | Purpose | Query Layer |
 |---------|---------|-------------|
-| `c2d` | One-click umbrella over the whole lifecycle: `setup` (ingest) → `session` (context) → `ask` (question → read-only command recipe) → `capture` (save memory); `c2d recipes` lists the routing table | — |
+| `c2d` | One-click umbrella over the whole lifecycle: `setup` (ingest) → `session` (context) → `ask` (question → read-only command recipe) → `capture` (save memory); plus `freshen` (freshness routing) and `report` (design/diagnose/diagram artifacts); `c2d recipes` lists the routing table | — |
 | `query` | Cypher-subset query (`MATCH (n:Function) WHERE n.name='foo' RETURN n.id`). For natural-language, use `intent-query` | Graph |
 | `kb-query` | Unified FTS5+BM25 across memory + knowledge | Memory+Knowledge |
 | `describe` | Node details + source snippet + memory_refs + knowledge_refs (alias for `describe-node`) | Graph→Source |

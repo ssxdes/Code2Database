@@ -16,6 +16,9 @@ Implemented verbs (this module grows verb by verb):
               classify the question, run the matched recipe
     capture  --question ... --answer ...
               save a Q&A into project memory (delegates to save-memory)
+    freshen  check graph freshness and route to the right update path
+    report   --kind design|diagnose|html|mermaid|plantuml
+              produce an artifact (delegates to the export commands)
     recipes  [NAME]
               list recipes, or show one recipe in detail
     verbs    print the lifecycle cheat sheet (also the default action)
@@ -392,6 +395,140 @@ def _action_capture(args) -> int:
     return _delegate(argv, bool(getattr(args, "dry_run", False)))
 
 
+def _action_freshen(args) -> int:
+    """Freshness check with routing to the right update path.
+
+    Exit codes: 0 = fresh (or daemon active), 1 = action needed,
+    2 = usage error.
+    """
+    graph = getattr(args, "graph", "") or ""
+    if not graph:
+        graph = _resolve_graph_dir()
+        print("[graph] --graph not given; using %s" % graph,
+              file=sys.stderr)
+    if not os.path.isfile(os.path.join(graph, "code2database_master.json")):
+        print("[c2d] no graph found at %s" % graph, file=sys.stderr)
+        print("[c2d] build one first: c2d setup --source <dir>",
+              file=sys.stderr)
+        return 1
+    # A running daemon keeps the graph fresh on its own — show its
+    # status rather than duplicating freshness logic.
+    try:
+        from _builder.daemon.daemon import is_daemon_running
+        if is_daemon_running(graph):
+            print("[c2d] daemon is active for this graph and keeps it "
+                  "fresh")
+            print("[c2d] before important queries, block on any in-flight "
+                  "sync with daemon-wait-sync")
+            return _delegate(_builder_argv("daemon-status", "--graph",
+                                           graph),
+                             bool(getattr(args, "dry_run", False)))
+    except ImportError:
+        pass  # daemon module unavailable — fall through to the check
+    # Derive the source root the same way session-init does: the
+    # build wrote the real source path into the master manifest; the
+    # parent dir is only the legacy convention.
+    src_root = ""
+    try:
+        with open(os.path.join(graph, "code2database_master.json"),
+                  encoding="utf-8") as f:
+            src_root = (json.load(f).get("source_root", "") or "")
+    except Exception:
+        pass
+    if not src_root:
+        src_root = os.path.dirname(os.path.abspath(graph))
+    try:
+        from _builder.cgdb.cgdb_freshness import check_freshness
+        fr = check_freshness(graph, src_root)
+    except Exception as exc:
+        print("[c2d] freshness check unavailable: %s" % exc,
+              file=sys.stderr)
+        return 1
+    if fr.get("is_fresh", True):
+        print("[c2d] graph is fresh (source matches the build)")
+        return 0
+    counts = (fr.get("changed_count", 0), fr.get("new_count", 0),
+              fr.get("deleted_count", 0))
+    rec = fr.get("recommendation", "")
+    if any(counts):
+        print("[c2d] graph is STALE — %d changed / %d new / %d deleted"
+              % counts, file=sys.stderr)
+        samples = (fr.get("changed_files") or [])[:3]
+        for s in samples:
+            print("[c2d]   e.g. %s" % s, file=sys.stderr)
+        if fr.get("git_head_changed", False):
+            print("[c2d]   git HEAD moved since the build", file=sys.stderr)
+        if rec:
+            print("[c2d] %s" % rec)
+    else:
+        # Zero counts + not fresh: the check itself could not run
+        # (e.g. no scan manifest) — surface its recommendation.
+        print("[c2d] graph freshness cannot be confirmed", file=sys.stderr)
+        if rec:
+            print("[c2d] %s" % rec, file=sys.stderr)
+    print("[c2d] pick an update path:")
+    print("[c2d]   c2d setup --source %s      (full rebuild, safest)"
+          % src_root)
+    print("[c2d]   daemon-start --graph %s    (watch + auto-sync)"
+          % graph)
+    print("[c2d]   build-update --source %s --graph %s  (per-file)"
+          % (src_root, graph))
+    return 1
+
+
+_REPORT_KINDS = {
+    "design": "design-doc",
+    "diagnose": "diagnose",
+    "html": "export-html",
+    "mermaid": "export-mermaid",
+    "plantuml": "export-plantuml",
+}
+
+
+def _action_report(args) -> int:
+    """Produce an artifact by delegating to the export commands."""
+    kind = getattr(args, "kind", "") or ""
+    if not kind:
+        print("[c2d] report needs --kind (one of: %s)"
+              % ", ".join(sorted(_REPORT_KINDS)), file=sys.stderr)
+        print("[c2d] example: c2d report --kind design --module fs",
+              file=sys.stderr)
+        return 2
+    if kind not in _REPORT_KINDS:
+        print("[c2d] unknown report kind: %r (valid: %s)"
+              % (kind, ", ".join(sorted(_REPORT_KINDS))), file=sys.stderr)
+        return 2
+    graph = getattr(args, "graph", "") or ""
+    if not graph:
+        graph = _resolve_graph_dir()
+        print("[graph] --graph not given; using %s" % graph,
+              file=sys.stderr)
+    argv = _builder_argv(_REPORT_KINDS[kind], "--graph", graph)
+    module = getattr(args, "module", "") or ""
+    if module:
+        argv += ["--module", module]
+    symbols = getattr(args, "symbol", None) or []
+    if kind == "diagnose":
+        if not symbols:
+            print("[c2d] report --kind diagnose needs --symbol <fn>",
+                  file=sys.stderr)
+            return 2
+        argv += ["--symbol", symbols[0]]
+        log = getattr(args, "log", "") or ""
+        if log:
+            argv += ["--log", log]
+    target = getattr(args, "target", "") or ""
+    if kind in ("mermaid", "plantuml") and target:
+        argv += ["--node", target]
+    mode = getattr(args, "mode", "") or ""
+    if kind in ("mermaid", "plantuml") and mode:
+        argv += ["--mode", mode]
+    output = getattr(args, "output", "") or ""
+    if output:
+        argv += ["--output", output]
+    return _delegate(argv, bool(getattr(args, "dry_run", False)))
+
+
 def _action_recipes(args) -> int:
     name = getattr(args, "recipe", "") or ""
     if name:
@@ -448,7 +585,11 @@ def _print_lifecycle() -> None:
     print("                  sessions")
     print("                  c2d capture --question \"...\" --answer \"...\"")
     print()
-    print("  as needed:  c2d recipes — list the ask recipes")
+    print("  as needed:  c2d freshen — check graph freshness, route to")
+    print("              the right update path")
+    print("              c2d report --kind design|diagnose|html|")
+    print("              mermaid|plantuml — produce an artifact")
+    print("              c2d recipes — list the ask recipes")
     print("              (self-documenting, with detail views)")
     print()
     print("Every recipe step and delegation is a normal CLI subcommand,")
@@ -467,6 +608,10 @@ def cmd_c2d(args) -> None:
         sys.exit(_action_session(args))
     if action == "capture":
         sys.exit(_action_capture(args))
+    if action == "freshen":
+        sys.exit(_action_freshen(args))
+    if action == "report":
+        sys.exit(_action_report(args))
     if action == "recipes":
         sys.exit(_action_recipes(args))
     if action == "verbs":

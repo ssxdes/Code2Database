@@ -1099,7 +1099,7 @@ def main():
              "to a read-only command recipe (see `c2d recipes`)")
     p_c2d.add_argument("action", nargs="?", default="verbs",
                        choices=["setup", "session", "ask", "capture",
-                                "recipes", "verbs"],
+                                "freshen", "report", "recipes", "verbs"],
                        help="Lifecycle verb (default: verbs — print the cheat sheet)")
     # --graph default "" (not None): the umbrella resolves the graph
     # lazily inside graph-needing verbs, so non-graph verbs stay
@@ -1136,6 +1136,16 @@ def main():
                        help="(session) top known-unknowns to show (default: command default)")
     p_c2d.add_argument("--check", action="store_true",
                        help="(setup) environment check only, no build")
+    p_c2d.add_argument("--kind", default="",
+                       help="(report) artifact kind: design|diagnose|html|mermaid|plantuml")
+    p_c2d.add_argument("--module", default="",
+                       help="(report design) focus module")
+    p_c2d.add_argument("--log", default="",
+                       help="(report diagnose) log file to cross-check")
+    p_c2d.add_argument("--output", default="",
+                       help="(report) output file for the artifact")
+    p_c2d.add_argument("--mode", default="",
+                       help="(report mermaid/plantuml) diagram mode")
     p_c2d.add_argument("--dry-run", action="store_true",
                        help="Print the translated commands without running them")
     p_c2d.add_argument("--json", action="store_true",

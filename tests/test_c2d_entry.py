@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from types import SimpleNamespace
@@ -520,6 +521,208 @@ class TestDelegationVerbs(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 rc = entry._action_capture(
                     _ns(action="capture", question="q", answer="a",
+                        dry_run=True))
+        self.assertEqual(rc, 0)
+        run.assert_not_called()
+
+
+class TestFreshenVerb(unittest.TestCase):
+    """freshen: freshness check with routing to the right update path."""
+
+    def _graph_with_master(self, tmpdir, source_root="/proj"):
+        g = os.path.join(tmpdir, "graph")
+        os.makedirs(g, exist_ok=True)
+        with open(os.path.join(g, "code2database_master.json"),
+                  "w") as f:
+            json.dump({"source_root": source_root}, f)
+        return g
+
+    def test_no_graph_points_to_setup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            buf = io.StringIO()
+            with mock.patch.object(sys, "stderr", buf):
+                with redirect_stdout(io.StringIO()):
+                    rc = entry._action_freshen(
+                        _ns(action="freshen", graph=os.path.join(tmp, "g")))
+        self.assertEqual(rc, 1)
+        self.assertIn("c2d setup --source", buf.getvalue())
+
+    def test_daemon_active_delegates_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            g = self._graph_with_master(tmp)
+            with mock.patch(
+                    "_builder.daemon.daemon.is_daemon_running",
+                    return_value=True):
+                with mock.patch.object(
+                        entry.subprocess, "run",
+                        return_value=mock.Mock(returncode=0)) as run:
+                    with redirect_stdout(io.StringIO()):
+                        rc = entry._action_freshen(
+                            _ns(action="freshen", graph=g))
+            self.assertEqual(rc, 0)
+            argv = run.call_args[0][0]
+            self.assertIn("daemon-status", argv)
+            self.assertIn(g, argv)
+
+    def test_fresh_graph_returns_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            g = self._graph_with_master(tmp)
+            fr = {"is_fresh": True}
+            with mock.patch(
+                    "_builder.daemon.daemon.is_daemon_running",
+                    return_value=False):
+                with mock.patch(
+                        "_builder.cgdb.cgdb_freshness.check_freshness",
+                        return_value=fr):
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        rc = entry._action_freshen(
+                            _ns(action="freshen", graph=g))
+            self.assertEqual(rc, 0)
+            self.assertIn("graph is fresh", buf.getvalue())
+
+    def test_stale_graph_lists_update_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            g = self._graph_with_master(tmp, source_root="/my/proj")
+            fr = {"is_fresh": False, "changed_count": 1, "new_count": 2,
+                  "deleted_count": 0, "changed_files": ["a.c"],
+                  "git_head_changed": True,
+                  "recommendation": "1 files changed. Run: quick-update"}
+            with mock.patch(
+                    "_builder.daemon.daemon.is_daemon_running",
+                    return_value=False):
+                with mock.patch(
+                        "_builder.cgdb.cgdb_freshness.check_freshness",
+                        return_value=fr):
+                    out, err = io.StringIO(), io.StringIO()
+                    with redirect_stdout(out):
+                        with mock.patch.object(sys, "stderr", err):
+                            rc = entry._action_freshen(
+                                _ns(action="freshen", graph=g))
+            self.assertEqual(rc, 1)
+            combined = out.getvalue() + err.getvalue()
+            self.assertIn("STALE", combined)
+            self.assertIn("a.c", combined)
+            self.assertIn("git HEAD moved", combined)
+            self.assertIn("quick-update", combined)
+            self.assertIn("c2d setup --source /my/proj", combined)
+            self.assertIn("daemon-start", combined)
+            self.assertIn("build-update", combined)
+
+    def test_unconfirmed_leads_with_recommendation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            g = self._graph_with_master(tmp)
+            fr = {"is_fresh": False, "changed_count": 0, "new_count": 0,
+                  "deleted_count": 0, "changed_files": [],
+                  "recommendation": "No scan manifest found."}
+            with mock.patch(
+                    "_builder.daemon.daemon.is_daemon_running",
+                    return_value=False):
+                with mock.patch(
+                        "_builder.cgdb.cgdb_freshness.check_freshness",
+                        return_value=fr):
+                    out, err = io.StringIO(), io.StringIO()
+                    with redirect_stdout(out):
+                        with mock.patch.object(sys, "stderr", err):
+                            rc = entry._action_freshen(
+                                _ns(action="freshen", graph=g))
+            self.assertEqual(rc, 1)
+            combined = out.getvalue() + err.getvalue()
+            self.assertIn("cannot be confirmed", combined)
+            self.assertIn("No scan manifest found", combined)
+            self.assertNotIn("STALE —", combined)
+
+
+class TestReportVerb(unittest.TestCase):
+    """report: artifact generation via the export commands."""
+
+    def _delegate_run(self, **kw):
+        run = mock.patch.object(entry.subprocess, "run",
+                                return_value=mock.Mock(returncode=0))
+        buf = io.StringIO()
+        with run as r:
+            with redirect_stdout(buf):
+                rc = entry._action_report(_ns(action="report", **kw))
+        return rc, r.call_args[0][0] if r.call_args else None
+
+    def test_missing_kind_lists_valid_kinds(self):
+        buf = io.StringIO()
+        with mock.patch.object(sys, "stderr", buf):
+            with redirect_stdout(io.StringIO()):
+                rc = entry._action_report(_ns(action="report"))
+        self.assertEqual(rc, 2)
+        for kind in ("design", "diagnose", "html", "mermaid", "plantuml"):
+            self.assertIn(kind, buf.getvalue())
+
+    def test_unknown_kind_rejected(self):
+        buf = io.StringIO()
+        with mock.patch.object(sys, "stderr", buf):
+            with redirect_stdout(io.StringIO()):
+                rc = entry._action_report(_ns(action="report", kind="pdf"))
+        self.assertEqual(rc, 2)
+
+    def test_design_delegates_with_module_and_output(self):
+        rc, argv = self._delegate_run(kind="design", graph="/g",
+                                      module="fs", output="doc.md")
+        self.assertEqual(rc, 0)
+        self.assertIn("design-doc", argv)
+        self.assertIn("--module", argv)
+        self.assertIn("fs", argv)
+        self.assertIn("--output", argv)
+        self.assertIn("doc.md", argv)
+        self.assertIn("--graph", argv)
+
+    def test_diagnose_requires_symbol(self):
+        buf = io.StringIO()
+        with mock.patch.object(sys, "stderr", buf):
+            with redirect_stdout(io.StringIO()):
+                rc = entry._action_report(
+                    _ns(action="report", kind="diagnose", graph="/g"))
+        self.assertEqual(rc, 2)
+        self.assertIn("--symbol", buf.getvalue())
+
+    def test_diagnose_delegates_with_symbol_and_log(self):
+        rc, argv = self._delegate_run(kind="diagnose", graph="/g",
+                                      symbol=["util_sum"], log="app.log")
+        self.assertEqual(rc, 0)
+        self.assertIn("diagnose", argv)
+        self.assertIn("--symbol", argv)
+        self.assertIn("util_sum", argv)
+        self.assertIn("--log", argv)
+        self.assertIn("app.log", argv)
+
+    def test_mermaid_translates_target_to_node(self):
+        rc, argv = self._delegate_run(kind="mermaid", graph="/g",
+                                      target="util_sum", mode="domain",
+                                      output="d.mmd")
+        self.assertEqual(rc, 0)
+        self.assertIn("export-mermaid", argv)
+        self.assertIn("--node", argv)
+        self.assertIn("util_sum", argv)
+        self.assertIn("--mode", argv)
+        self.assertIn("domain", argv)
+        self.assertIn("--output", argv)
+
+    def test_plantuml_delegates(self):
+        rc, argv = self._delegate_run(kind="plantuml", graph="/g",
+                                      mode="structure")
+        self.assertEqual(rc, 0)
+        self.assertIn("export-plantuml", argv)
+        self.assertIn("--mode", argv)
+        self.assertIn("structure", argv)
+
+    def test_html_delegates(self):
+        rc, argv = self._delegate_run(kind="html", graph="/g",
+                                      output="v.html")
+        self.assertEqual(rc, 0)
+        self.assertIn("export-html", argv)
+        self.assertIn("--output", argv)
+
+    def test_dry_run_does_not_execute(self):
+        with mock.patch.object(entry.subprocess, "run") as run:
+            with redirect_stdout(io.StringIO()):
+                rc = entry._action_report(
+                    _ns(action="report", kind="design", graph="/g",
                         dry_run=True))
         self.assertEqual(rc, 0)
         run.assert_not_called()

@@ -266,5 +266,187 @@ class TestCheckCyclesCLI(unittest.TestCase):
         self.assertEqual(data["total_cycles"], 1)
 
 
+class TestCheckRecursion(unittest.TestCase):
+
+    def test_direct_recursion_with_base_case_is_safe(self):
+        from _builder.analysis.quality_checks import check_recursion
+        body = ("int fact(int n) {\n"
+                "  if (n <= 1)\n"
+                "    return 1;\n"
+                "  return fact(n - 1);\n"
+                "}\n")
+        g = _make_quality_graph(
+            [{"id": "a", "name": "fact", "body_text": body}],
+            [{"source": "a", "target": "a"}],
+        )
+        result = check_recursion(g)
+        self.assertEqual(result["total_recursive_functions"], 1)
+        f = result["findings"][0]
+        self.assertEqual(f["kind"], "direct")
+        self.assertEqual(f["termination"], "safe")
+        self.assertTrue(f["has_base_return"])
+        self.assertEqual(f["recursive_call_lines"], [4])
+        self.assertEqual(f["guarded_call_lines"], [4])
+
+    def test_unconditional_recursion_is_risky(self):
+        from _builder.analysis.quality_checks import check_recursion
+        body = ("void spin(void) {\n"
+                "  spin();\n"
+                "}\n")
+        g = _make_quality_graph(
+            [{"id": "a", "name": "spin", "body_text": body}],
+            [{"source": "a", "target": "a"}],
+        )
+        result = check_recursion(g)
+        f = result["findings"][0]
+        self.assertEqual(f["termination"], "risky")
+        self.assertEqual(f["guarded_call_lines"], [])
+
+    def test_conditional_recursion_without_base_is_caution(self):
+        from _builder.analysis.quality_checks import check_recursion
+        body = ("void walk(int n) {\n"
+                "  if (n > 0)\n"
+                "    walk(n - 1);\n"
+                "}\n")
+        g = _make_quality_graph(
+            [{"id": "a", "name": "walk", "body_text": body}],
+            [{"source": "a", "target": "a"}],
+        )
+        result = check_recursion(g)
+        f = result["findings"][0]
+        self.assertEqual(f["termination"], "caution")
+        self.assertFalse(f["has_base_return"])
+        self.assertEqual(f["guarded_call_lines"], [3])
+
+    def test_missing_body_is_unknown(self):
+        from _builder.analysis.quality_checks import check_recursion
+        g = _make_quality_graph(
+            [{"id": "a", "name": "opaque"}],
+            [{"source": "a", "target": "a"}],
+        )
+        result = check_recursion(g)
+        self.assertEqual(result["findings"][0]["termination"], "unknown")
+
+    def test_indirect_recursion_reports_both_functions(self):
+        from _builder.analysis.quality_checks import check_recursion
+        body_a = ("int is_even(int n) {\n"
+                  "  if (n == 0)\n"
+                  "    return 1;\n"
+                  "  return is_odd(n - 1);\n"
+                  "}\n")
+        body_b = ("int is_odd(int n) {\n"
+                  "  if (n == 0)\n"
+                  "    return 0;\n"
+                  "  return is_even(n - 1);\n"
+                  "}\n")
+        g = _make_quality_graph(
+            [{"id": "a", "name": "is_even", "body_text": body_a},
+             {"id": "b", "name": "is_odd", "body_text": body_b}],
+            [{"source": "a", "target": "b"}, {"source": "b", "target": "a"}],
+        )
+        result = check_recursion(g)
+        self.assertEqual(result["total_recursive_functions"], 2)
+        self.assertEqual(result["indirect"], 2)
+        self.assertEqual(result["direct"], 0)
+        for f in result["findings"]:
+            self.assertEqual(f["kind"], "indirect")
+            self.assertEqual(f["termination"], "safe")
+            self.assertEqual(sorted(f["cycle"]), ["is_even", "is_odd"])
+
+    def test_risky_findings_sort_first(self):
+        from _builder.analysis.quality_checks import check_recursion
+        body_safe = ("int f(int n) {\n  if (n)\n    return f(n-1);\n"
+                     "  return 0;\n}\n")
+        body_risky = "void g(void) {\n  g();\n}\n"
+        g = _make_quality_graph(
+            [{"id": "f", "name": "f", "body_text": body_safe},
+             {"id": "g", "name": "g", "body_text": body_risky}],
+            [{"source": "f", "target": "f"}, {"source": "g", "target": "g"}],
+        )
+        result = check_recursion(g)
+        self.assertEqual([f["termination"] for f in result["findings"]],
+                         ["risky", "safe"])
+
+    def test_brace_nesting_conditional_tracking(self):
+        """Recursive call nested in plain block inside an if is guarded."""
+        from _builder.analysis.quality_checks import check_recursion
+        body = ("void h(int n) {\n"
+                "  if (n > 0) {\n"
+                "    {\n"
+                "      h(n - 1);\n"
+                "    }\n"
+                "  }\n"
+                "  return;\n"
+                "}\n")
+        g = _make_quality_graph(
+            [{"id": "a", "name": "h", "body_text": body}],
+            [{"source": "a", "target": "a"}],
+        )
+        result = check_recursion(g)
+        f = result["findings"][0]
+        self.assertEqual(f["termination"], "safe")
+        self.assertEqual(f["recursive_call_lines"], [4])
+        self.assertEqual(f["guarded_call_lines"], [4])
+
+    def test_short_circuit_guard_counts(self):
+        from _builder.analysis.quality_checks import check_recursion
+        body = ("int k(int n) {\n"
+                "  return n > 0 && k(n - 1);\n"
+                "}\n")
+        g = _make_quality_graph(
+            [{"id": "a", "name": "k", "body_text": body}],
+            [{"source": "a", "target": "a"}],
+        )
+        result = check_recursion(g)
+        f = result["findings"][0]
+        self.assertEqual(f["guarded_call_lines"], [2])
+        self.assertNotEqual(f["termination"], "risky")
+
+    def test_while_loop_header_guards_body(self):
+        from _builder.analysis.quality_checks import check_recursion
+        body = ("void w(int n) {\n"
+                "  while (n > 0) {\n"
+                "    w(n - 1);\n"
+                "  }\n"
+                "  return;\n"
+                "}\n")
+        g = _make_quality_graph(
+            [{"id": "a", "name": "w", "body_text": body}],
+            [{"source": "a", "target": "a"}],
+        )
+        result = check_recursion(g)
+        f = result["findings"][0]
+        self.assertEqual(f["guarded_call_lines"], [3])
+        self.assertEqual(f["termination"], "safe")
+
+    def test_scope_filter(self):
+        from _builder.analysis.quality_checks import check_recursion
+        g = _make_quality_graph(
+            [{"id": "a", "name": "keep_me"}, {"id": "b", "name": "drop_me"}],
+            [{"source": "a", "target": "a"}, {"source": "b", "target": "b"}],
+        )
+        result = check_recursion(g, scope="keep")
+        self.assertEqual(result["total_recursive_functions"], 1)
+        self.assertEqual(result["findings"][0]["name"], "keep_me")
+
+    def test_data_flow_self_loop_is_not_recursion(self):
+        from _builder.analysis.quality_checks import check_recursion
+        g = _make_quality_graph(
+            [{"id": "a"}],
+            [{"source": "a", "target": "a", "relation": "DATA_FLOW"}],
+        )
+        result = check_recursion(g)
+        self.assertEqual(result["total_recursive_functions"], 0)
+
+    def test_result_is_json_serializable(self):
+        from _builder.analysis.quality_checks import check_recursion
+        body = "void z(void) {\n  z();\n}\n"
+        g = _make_quality_graph(
+            [{"id": "a", "name": "z", "body_text": body}],
+            [{"source": "a", "target": "a"}],
+        )
+        json.dumps(check_recursion(g))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -5,6 +5,8 @@ the scanner captured it):
 
   - cycle detection — call cycles between functions and include
     cycles between files (see ``check_cycles``)
+  - recursion detection — direct self-loops and indirect cycles with
+    termination staging (see ``check_recursion``)
 
 All detectors are read-only analyses over a built graph directory;
 they never modify graph state. Output is JSON-friendly dicts so the
@@ -17,6 +19,7 @@ cannot fabricate call cycles.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 # ---------------------------------------------------------------------------
@@ -287,6 +290,185 @@ def cmd_check_cycles(args):
     result = check_cycles(
         args.graph,
         kind=getattr(args, "kind", "calls"),
+        max_length=getattr(args, "max_length", 10),
+        scope=getattr(args, "scope", None),
+        limit=getattr(args, "limit", 50),
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
+# ---------------------------------------------------------------------------
+# Recursion detection (check-recursion)
+# ---------------------------------------------------------------------------
+
+_COND_HEADER_RE = re.compile(r"\b(?:if|else|while|for|switch|do)\b")
+_SHORT_CIRCUIT_RE = re.compile(r"&&|\|\||\?")
+_RETURN_RE = re.compile(r"^\s*(?:\}\s*)?return\b")
+_TERMINATION_ORDER = {"risky": 0, "caution": 1, "safe": 2, "unknown": 3}
+
+
+def _conditional_context(body: str) -> Dict[int, bool]:
+    """Per-line (1-based) flag: is the statement on this line conditional?
+
+    Tracks brace depth (blocks opened under an if/else/while/for/switch/
+    do header are conditional and nesting inherits it) plus a pending
+    state for brace-less single-statement bodies (`if (x) f();`).
+    Short-circuit operators on the line itself also count, covering
+    `x && f()` argument guards.
+    """
+    lines = body.split("\n")
+    guard: Dict[int, bool] = {}
+    stack: List[bool] = []
+    pending = False
+    for i, raw in enumerate(lines, 1):
+        stripped = raw.strip()
+        header = _COND_HEADER_RE.search(raw)
+        in_cond = any(stack)
+        guard[i] = (in_cond or header is not None or pending
+                    or _SHORT_CIRCUIT_RE.search(raw) is not None)
+        opens_cond_block = header is not None or in_cond or pending
+        if stripped and pending:
+            pending = False
+        if header is not None and "{" not in raw:
+            pending = True
+        for ch in raw:
+            if ch == "{":
+                stack.append(opens_cond_block)
+            elif ch == "}" and stack:
+                stack.pop()
+    return guard
+
+
+def _strip_signature(body: str, call_names: List[str]) -> str:
+    """Drop a leading function signature when body_text includes it.
+
+    Some scanners store the signature line inside body_text; the
+    definition `int fact(int n) {` would otherwise register as a call
+    site of ``fact``. A head segment is a signature when it has no
+    semicolon and one of the names appears in call position before
+    the first brace.
+    """
+    idx = body.find("{")
+    if idx <= 0:
+        return body
+    head = body[:idx]
+    if ";" in head:
+        return body
+    for n in call_names:
+        if n and re.search(r"\b" + re.escape(n) + r"\s*\(", head):
+            return body[idx:]
+    return body
+
+
+def _analyze_termination(body: str, call_names: List[str]) -> Dict[str, Any]:
+    """Stage termination behavior of a recursive function.
+
+    - risky: some recursive call sits on an unconditional path with no
+      conditional early-return ahead of it (every invocation recurses)
+    - caution: all recursive calls are conditional, but no return
+      statement exists outside recursive call lines (no visible base
+      case)
+    - safe: all recursive calls conditional (or shielded by a
+      conditional early-return) and a base-case return exists
+    - unknown: body text unavailable
+    """
+    if not body or not body.strip():
+        return {"termination": "unknown", "recursive_call_lines": [],
+                "guarded_call_lines": [], "has_base_return": False}
+    body = _strip_signature(body, call_names)
+    lines = body.split("\n")
+    guard = _conditional_context(body)
+    call_res = [re.compile(r"\b" + re.escape(n) + r"\s*\(")
+                for n in call_names if n]
+    # Conditional early-returns (base-case checks): a return inside a
+    # conditional construct that executes before a later call shields
+    # that call — reaching it requires passing the base case.
+    cond_return_lines = [i for i, raw in enumerate(lines, 1)
+                         if _RETURN_RE.match(raw) and guard.get(i)]
+    call_lines: List[int] = []
+    guarded_lines: List[int] = []
+    base_return = False
+    for i, raw in enumerate(lines, 1):
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("//") or stripped.startswith("*"):
+            continue
+        has_call = any(r.search(raw) for r in call_res)
+        if has_call:
+            call_lines.append(i)
+            if guard.get(i) or any(cr < i for cr in cond_return_lines):
+                guarded_lines.append(i)
+        elif _RETURN_RE.match(raw):
+            base_return = True
+    if not call_lines:
+        # No textual call site found (indirect via fn pointer etc.)
+        return {"termination": "unknown", "recursive_call_lines": [],
+                "guarded_call_lines": [], "has_base_return": base_return}
+    unguarded = [ln for ln in call_lines if ln not in guarded_lines]
+    if unguarded:
+        termination = "risky"
+    elif base_return:
+        termination = "safe"
+    else:
+        termination = "caution"
+    return {"termination": termination,
+            "recursive_call_lines": call_lines,
+            "guarded_call_lines": guarded_lines,
+            "has_base_return": base_return}
+
+
+def check_recursion(graph_dir: str, max_length: int = 10,
+                    scope: Optional[str] = None,
+                    limit: int = 50) -> Dict[str, Any]:
+    """Detect recursion with termination staging.
+
+    Direct recursion = call-graph self-loop; indirect = call cycle of
+    two or more functions. Every function on a reported cycle gets a
+    finding with its own termination stage derived from its body text.
+
+    Returns:
+        {total_recursive_functions, direct, indirect, truncated,
+         findings: [{function, name, file, kind, cycle, termination,
+                    recursive_call_lines, guarded_call_lines,
+                    has_base_return}]}
+    """
+    G = _load_graph(graph_dir)
+    adj = _build_call_adjacency(G, scope)
+    budget = _CycleBudget(max_cycles=limit, max_steps=20000)
+    cycles, truncated = _enumerate_cycles(adj, max_length, budget)
+
+    findings: List[Dict[str, Any]] = []
+    for cyc in cycles:
+        cycle_names = [_node_display(G, n) for n in cyc]
+        kind = "direct" if len(cyc) == 1 else "indirect"
+        for nid in cyc:
+            nd = G.nodes[nid]
+            analysis = _analyze_termination(nd.get("body_text", ""),
+                                            cycle_names)
+            findings.append({
+                "function": nid,
+                "name": _node_display(G, nid),
+                "file": nd.get("source_file", ""),
+                "kind": kind,
+                "cycle": cycle_names,
+                **analysis,
+            })
+    findings.sort(key=lambda f: (_TERMINATION_ORDER[f["termination"]],
+                                 f["function"]))
+
+    return {
+        "total_recursive_functions": len({f["function"] for f in findings}),
+        "direct": sum(1 for f in findings if f["kind"] == "direct"),
+        "indirect": sum(1 for f in findings if f["kind"] == "indirect"),
+        "truncated": truncated,
+        "findings": findings,
+    }
+
+
+def cmd_check_recursion(args):
+    """CLI handler for `code2database_builder.py check-recursion`."""
+    import json
+    result = check_recursion(
+        args.graph,
         max_length=getattr(args, "max_length", 10),
         scope=getattr(args, "scope", None),
         limit=getattr(args, "limit", 50),

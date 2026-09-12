@@ -1549,6 +1549,18 @@ def main():
     p_cyc.add_argument("--limit", type=int, default=50,
                        help="Maximum cycles to report")
 
+    # Recursion detection (code quality)
+    p_rec = sub.add_parser("check-recursion",
+                           help="Detect recursion (direct self-loops and indirect "
+                                "call cycles) with termination staging")
+    p_rec.add_argument("--graph", required=True)
+    p_rec.add_argument("--max-length", type=int, default=10,
+                       help="Maximum nodes in an indirect recursion cycle")
+    p_rec.add_argument("--scope", default=None,
+                       help="Substring filter over node id/name/file")
+    p_rec.add_argument("--limit", type=int, default=50,
+                       help="Maximum cycles to report")
+
     # Semantic search (neural embeddings)
     p_ss = sub.add_parser("semantic-search",
                           help="Neural semantic search: FTS5 BM25 + neural embedding + RRF fusion")
@@ -2995,6 +3007,7 @@ def main():
         "ast-search": cmd_ast_search,
         "taint-analysis": cmd_taint_analysis,
         "check-cycles": _lazy("_builder.analysis.quality_checks", "cmd_check_cycles"),
+        "check-recursion": _lazy("_builder.analysis.quality_checks", "cmd_check_recursion"),
         "semantic-search": cmd_semantic_search,
         "code-slice": cmd_code_slice,
         "sarif-export": cmd_sarif_export,

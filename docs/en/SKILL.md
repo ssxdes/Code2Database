@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, and 19 cgdb semantic tables. 83 MCP tools (55 base + 28 design-report) + 259 CLI commands (251 builder + 8 scanner). Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
+description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, and 19 cgdb semantic tables. 83 MCP tools (55 base + 28 design-report) + 260 CLI commands (252 builder + 8 scanner). Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
 trigger: /Code2Database
 ---
 
@@ -64,10 +64,11 @@ python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_s
 python3 scripts/code2database_builder.py serve    # MCP server (83 tools)
 ```
 
-## Core Commands (26)
+## Core Commands (27)
 
 | Command | Purpose | Query Layer |
 |---------|---------|-------------|
+| `c2d` | One-click umbrella: `ask` routes a natural-language question to a read-only command recipe (list with `c2d recipes`) | — |
 | `query` | Cypher-subset query (`MATCH (n:Function) WHERE n.name='foo' RETURN n.id`). For natural-language, use `intent-query` | Graph |
 | `kb-query` | Unified FTS5+BM25 across memory + knowledge | Memory+Knowledge |
 | `describe` | Node details + source snippet + memory_refs + knowledge_refs (alias for `describe-node`) | Graph→Source |
@@ -95,7 +96,7 @@ python3 scripts/code2database_builder.py serve    # MCP server (83 tools)
 | `daemon` | Show daemon status (alias for `daemon-status`; to start sync use `daemon-start`) | Ops |
 | `health` | Profile health score (requires `--source`) (alias for `profile-health`). For graph freshness use `daemon-status` or `session-init` | — |
 
-All 259 CLI commands remain accessible; the 26 above cover ~95% of agent workflows. Additional short aliases (not listed above): `export` → `export-mermaid`.
+All 260 CLI commands remain accessible; the 27 above cover ~95% of agent workflows. Additional short aliases (not listed above): `export` → `export-mermaid`.
 
 ## Supported Languages
 

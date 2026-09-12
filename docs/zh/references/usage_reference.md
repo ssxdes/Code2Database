@@ -802,9 +802,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## 完整 CLI 命令参考（259 个命令）
+## 完整 CLI 命令参考（260 个命令）
 
-全部 259 个 CLI 子命令，涵盖 `code2database_builder.py`（251 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
+全部 260 个 CLI 子命令，涵盖 `code2database_builder.py`（252 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
 
 | 命令 | 说明 |
 |------|------|

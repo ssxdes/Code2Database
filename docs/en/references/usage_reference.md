@@ -803,9 +803,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (259 commands)
+## Complete CLI Command Reference (260 commands)
 
-All 259 CLI subparsers across `code2database_builder.py` (251) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
+All 260 CLI subparsers across `code2database_builder.py` (252) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
 
 | Command | Description |
 |---------|-------------|

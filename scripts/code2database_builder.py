@@ -1091,6 +1091,36 @@ def main():
                       help="Disable post-build LLM auto-enhancement (heuristic generator "
                            "still runs). Forwarded to the builder.")
 
+    # c2d — goal-oriented umbrella over the full command surface
+    p_c2d = sub.add_parser(
+        "c2d",
+        help="One-click goal-oriented entry: ask routes a natural-language "
+             "question to a read-only command recipe (see `c2d recipes`)")
+    p_c2d.add_argument("action", nargs="?", default="verbs",
+                       choices=["ask", "recipes", "verbs"],
+                       help="Lifecycle verb (default: verbs — print the cheat sheet)")
+    p_c2d.add_argument("--graph", required=False,
+                       help="Call graph output directory (default: auto-discover code2db-out/)")
+    p_c2d.add_argument("--question", "--q", dest="question", default="",
+                       help="(ask) natural-language question to classify and route")
+    p_c2d.add_argument("--recipe", default="",
+                       help="(ask) run this recipe directly, skipping classification; "
+                            "(recipes) show this recipe in detail")
+    p_c2d.add_argument("--target", "--node", dest="target", default="",
+                       help="(ask) explicit target function/symbol (overrides extraction)")
+    p_c2d.add_argument("--from", dest="from_node", default="",
+                       help="(ask) path start, for from/to recipes")
+    p_c2d.add_argument("--to", dest="to_node", default="",
+                       help="(ask) path end, for from/to recipes")
+    p_c2d.add_argument("--query", default="",
+                       help="(ask) free-text query, for explore-style recipes")
+    p_c2d.add_argument("--source", default="",
+                       help="(ask) source directory for recipes that need one")
+    p_c2d.add_argument("--dry-run", action="store_true",
+                       help="Print the translated commands without running them")
+    p_c2d.add_argument("--json", action="store_true",
+                       help="(ask) print a structured JSON summary after the run")
+
     # sync
     p_sync = sub.add_parser("sync", help="Sync local code2db-out with git-tracked version (local wins)")
     p_sync.add_argument("--graph", required=True, help="Local code2db-out directory")
@@ -3030,6 +3060,7 @@ def main():
         "fed-neighbors": _lazy("_builder.query.federated", "cmd_fed_neighbors"),
         "fed-path": _lazy("_builder.query.federated", "cmd_fed_path"),
         "make": _lazy("_builder.build.make_cmd", "cmd_make"),
+        "c2d": _lazy("_builder.flow.entry", "cmd_c2d"),
         "load": cmd_load,
         "search": cmd_search,
         "describe-node": cmd_describe_node,

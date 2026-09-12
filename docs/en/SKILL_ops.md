@@ -32,46 +32,21 @@ This sub-skill assumes `code2db-out/` already exists (built by the parent `/Code
 
 LLM MUST get user confirmation before any DB-modifying command. This is the core principle: **content may be missing but must be accurate.**
 
-**Commands requiring user confirmation** (default: y/N prompt):
+**Commands requiring user confirmation** (default: y/N prompt) — grouped by family; per-command detail in `references/ops_commands.md`:
 
-- `update-node` — LLM-driven incremental node attribute supplement
-- `update-edge` — LLM-driven incremental edge attribute supplement
-- `patch-profile` — LLM-driven incremental auto-profile calibration
-- `apply-semantics` — Apply LLM-filled semantic descriptions to graph
-- `classify-endpoints` — Apply LLM endpoint classification results
-- `manage-memory --action add/correct/reshape/promote/refine/split/merge/move` — Write persistent memory
-- `save-memory` — Save Q&A memory
-- `kb-rebuild-index` — Rebuild unified FTS5 index from memory.db + brief.json (run after each build/update or edit)
-- `kb-cluster` — Cluster similar kb items + link memory_qa → knowledge_principle
-- `kb-migrate` — Migrate kb_paragraphs to kb_items (fact-level + versions + provenance)
-- `kb-forget --id N` — Immediately delete a kb_paragraph (no decay; writes audit_log)
-- `kb-rollback --id N --to-version M` — Roll back a kb_item to a prior version (saves current as version)
-- `apply-invariants` — Apply extracted invariants; **AMBIGUOUS never applied**; INFERRED require confirmation; EXTRACTED auto-applied
-- `auto-enhance` — LLM auto-semantic enhancement; EXTRACTED+evidence auto-writes; **INFERRED require confirmation**; AMBIGUOUS rejected
-- `batch-confirm` — Batch-confirm pending INFERRED enhancements
-- `profile-evolve --apply` — Apply EXTRACTED-confidence profile suggestions; **INFERRED require confirmation**
-- `doc-mark-stale` — Mark a node's doc as stale (non-destructive but visible)
-- `ffi-types` — Update type marshalling table for an FFI edge
-- `merge-changes` — Merge change-graph JSON into the existing graph (writes nodes/edges)
-- `tx-commit` — For write transactions; commits snapshot + WAL entries to the live DB
+- Graph edits: `update-node`, `update-edge`, `patch-profile`, `classify-endpoints`, `apply-semantics`, `merge-changes`
+- Memory / knowledge writes: `save-memory`, `manage-memory --action add/correct/reshape/promote/refine/split/merge/move`, `kb-rebuild-index`, `kb-cluster`, `kb-migrate`, `kb-forget`, `kb-rollback`
+- Enhancement / invariants / profile: `apply-invariants` (**AMBIGUOUS never applied**; INFERRED require confirmation; EXTRACTED auto-applied), `auto-enhance` (EXTRACTED+evidence auto-writes; **INFERRED require confirmation**), `batch-confirm`, `profile-evolve --apply` (**INFERRED require confirmation**), `doc-mark-stale`, `ffi-types`
+- Transactions: `tx-commit` (write transactions: commits snapshot + WAL entries to the live DB)
 
 **LLM behavior rules**:
 
-1. Before executing the above commands, **MUST** report to the user in conversation:
-   - Which node/edge/profile field will be modified
-   - What is the old value, what is the new value
-   - Information source (LLM read source / user told / extracted from docs)
-   - Confidence level (EXTRACTED / INFERRED / AMBIGUOUS)
+1. Before executing, report in conversation: which node/edge/profile field changes (old value → new value), the information source (LLM read / user told / extracted from docs), and confidence (EXTRACTED / INFERRED / AMBIGUOUS)
 2. Wait for explicit user consent ("yes" / "confirm" / "proceed") before calling the command
-3. **NEVER** use `--yes` / `-y` flag to bypass confirmation prompt unless user explicitly authorizes in conversation
+3. **NEVER** use `--yes` / `-y` to bypass the confirmation prompt unless the user explicitly authorizes it in conversation
 4. If user declines, do not retry the same write
 
-**Non-destructive write guarantee**:
-
-- `update-node` and `update-edge` store LLM supplements as `{key}_supplemented` fields, **NOT overwriting** original scan data
-- Each supplement includes `_supplement_meta` (recording source / confidence / timestamp / original), auditable in `describe-node` output
-- `apply-invariants`, `auto-enhance`, and `profile-evolve` follow the same supplement pattern; `rollback` reverts by time or scope
-- This guarantees "database accuracy": original scan facts are always preserved, LLM incremental data is traceable and rollback-able
+**Non-destructive write guarantee**: `update-node` / `update-edge` / `apply-invariants` / `auto-enhance` / `profile-evolve` store LLM supplements as `{key}_supplemented` fields — original scan data is never overwritten. Each supplement carries `_supplement_meta` (source / confidence / timestamp / original), visible in `describe-node` output; `rollback` reverts by time or scope. Original scan facts are always preserved; LLM incremental data is traceable and rollback-able.
 
 ## Tier 1 — High-weight Commands (Quick Reference)
 
@@ -79,7 +54,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 |---------|---------|
 | `tx-begin` | Begin a transaction (snapshot + WAL) |
 | `tx-commit` | Commit current transaction (**requires user confirmation** for writes) |
-| `tx-rollback` | Rollback current transaction (restores snapshot) |
+| `tx-rollback` | Roll back current transaction (restores snapshot) |
 | `tx-status` | Show transaction status |
 | `daemon-start` | Start background daemon (foreground; blocks) — inotify + transactional sync |
 | `daemon-stop` | Stop a running daemon |

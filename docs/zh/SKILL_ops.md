@@ -30,48 +30,23 @@ parent_skill: Code2Database
 
 ## 数据库写入约束（重要）
 
-LLM 执行任何修改 code graph database的命令时，**必须先获得用户确认**。这是核心原则：**内容可缺少但必须准确**。
+LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。这是核心原则：**内容可缺少但必须准确**。
 
-**需用户确认的命令**（默认会弹出 y/N 提示）：
+**需用户确认的命令**（默认 y/N 提示）——按家族分组；逐命令细节见 `references/ops_commands.md`：
 
-- `update-node` — LLM 增量补充节点属性
-- `update-edge` — LLM 增量补充/纠正边属性
-- `patch-profile` — LLM 增量校准 auto-profile
-- `apply-semantics` — 应用 LLM 填写的语义描述到图
-- `classify-endpoints` — 应用 LLM 端点分类结果
-- `manage-memory --action add/correct/reshape/promote/refine` — 写入持久记忆
-- `save-memory` — 保存 Q&A 记忆
-- `kb-rebuild-index` — 从 memory.db + brief.json 重建统一 FTS5 索引（每次 build/update 或修改后运行）
-- `kb-cluster` — 聚类相似 kb 条目 + 链接 memory_qa → knowledge_principle
-- `kb-migrate` — 把 kb_paragraphs 迁移到 kb_items（fact 级 + versions + provenance）
-- `kb-forget --id N` — 立即删除某条 kb_paragraph（不靠 decay，写 audit_log）
-- `kb-rollback --id N --to-version M` — 把 kb_item 回滚到旧版本（保留当前为版本历史）
-- `apply-invariants` — 应用提取的不变量；**AMBIGUOUS 永不应用**；INFERRED 需确认；EXTRACTED 自动应用
-- `auto-enhance` — LLM 自动语义增强；EXTRACTED+证据自动写入；**INFERRED 需确认**；AMBIGUOUS 拒绝
-- `batch-confirm` — 批量确认待处理的 INFERRED 增强
-- `profile-evolve --apply` — 应用 EXTRACTED 置信度的 profile 建议；**INFERRED 需确认**
-- `doc-mark-stale` — 标记某节点文档为陈旧（非破坏性但可见）
-- `ffi-types` — 更新某条 FFI 边的类型映射表
-- `merge-changes` — 将变更图 JSON 合并入现有图（写入节点/边）
-- `tx-commit` — 写入事务；将快照 + WAL 条目提交到活动数据库
+- 图编辑：`update-node`、`update-edge`、`patch-profile`、`classify-endpoints`、`apply-semantics`、`merge-changes`
+- 记忆/知识写入：`save-memory`、`manage-memory --action add/correct/reshape/promote/refine/split/merge/move`、`kb-rebuild-index`、`kb-cluster`、`kb-migrate`、`kb-forget`、`kb-rollback`
+- 增强/不变量/profile：`apply-invariants`（**AMBIGUOUS 永不应用**；INFERRED 需确认；EXTRACTED 自动应用）、`auto-enhance`（EXTRACTED+证据自动写入；**INFERRED 需确认**）、`batch-confirm`、`profile-evolve --apply`（**INFERRED 需确认**）、`doc-mark-stale`、`ffi-types`
+- 事务：`tx-commit`（写事务：将快照 + WAL 条目提交到活动数据库）
 
 **LLM 行为准则**：
 
-1. 执行上述命令前，**必须**先在对话中向用户报告：
-   - 要修改哪个节点/边/profile 字段
-   - 旧值是什么、新值是什么
-   - 信息来源（LLM 读源码推断 / 用户告知 / 文档提取）
-   - 置信度（EXTRACTED / INFERRED / AMBIGUOUS）
-2. 等待用户明确同意（"yes" / "确认" / "继续"）后，再调用命令
-3. **禁止**使用 `--yes` / `-y` 标志绕过确认提示，除非用户在对话中明确授权
-4. 如果用户拒绝，不得再次尝试同一写入
+1. 执行前在对话中报告：要修改哪个节点/边/profile 字段（旧值 → 新值）、信息来源（LLM 读源码 / 用户告知 / 文档提取）、置信度（EXTRACTED / INFERRED / AMBIGUOUS）
+2. 等待用户明确同意（"yes" / "确认" / "继续"）后再调用命令
+3. **禁止**使用 `--yes` / `-y` 绕过确认提示，除非用户在对话中明确授权
+4. 用户拒绝后不得再次尝试同一写入
 
-**非破坏性写入保证**：
-
-- `update-node` 和 `update-edge` 把 LLM 补充信息存储为 `{key}_supplemented` 字段，**不覆盖**原始扫描数据
-- 每条补充信息附带 `_supplement_meta`（记录 source / confidence / timestamp / original），可在 `describe-node` 输出中审计
-- `apply-invariants`、`auto-enhance`、`profile-evolve` 遵循同样的补充模式；`rollback` 按时间或范围回滚
-- 这保证了"数据库准确性"：原始扫描事实始终保留，LLM 增量数据可追溯、可回滚
+**非破坏性写入保证**：`update-node` / `update-edge` / `apply-invariants` / `auto-enhance` / `profile-evolve` 把 LLM 补充存储为 `{key}_supplemented` 字段——原始扫描数据永不覆盖。每条补充带 `_supplement_meta`（source / confidence / timestamp / original），可在 `describe-node` 输出中追溯；`rollback` 按时间或范围回滚。原始扫描事实始终保留，LLM 增量数据可追溯、可回滚。
 
 ## Tier 1 — 高权重命令（速查）
 

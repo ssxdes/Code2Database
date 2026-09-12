@@ -36,18 +36,20 @@ class TestClassifyIntent(unittest.TestCase):
         self.assertEqual(result["matched_intent"], "why_ambiguous")
 
     def test_who_calls(self):
-        """'who calls my_function?' routes to callers with extracted node name."""
+        """'who calls my_function?' routes to impact --direction reverse."""
         result = classify_intent("who calls my_function?")
         self.assertIsNotNone(result)
-        self.assertEqual(result["command"], "callers")
+        self.assertEqual(result["command"], "impact")
         self.assertEqual(result["args"]["node"], "my_function")
+        self.assertEqual(result["args"]["direction"], "reverse")
 
     def test_what_does_call(self):
-        """'what does my_function call?' routes to callees."""
+        """'what does my_function call?' routes to impact --direction forward."""
         result = classify_intent("what does my_function call?")
         self.assertIsNotNone(result)
-        self.assertEqual(result["command"], "callees")
+        self.assertEqual(result["command"], "impact")
         self.assertEqual(result["args"]["node"], "my_function")
+        self.assertEqual(result["args"]["direction"], "forward")
 
     def test_call_chain(self):
         """'call chain from foo to bar' routes to call-chain with from/to."""
@@ -143,7 +145,7 @@ class TestIntentQuery(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["question"], "who calls foo?")
         self.assertIsNotNone(result["routing"])
-        self.assertIn("code2database_builder.py callers", result["suggestion"])
+        self.assertIn("code2database_builder.py impact", result["suggestion"])
 
     def test_no_match_returns_suggestion_message(self):
         """No-match returns ok=False with helpful message."""
@@ -200,6 +202,31 @@ class TestIntentRules(unittest.TestCase):
         """Every command in the rules has at least one rule."""
         commands = {rule["command"] for rule in INTENT_RULES}
         self.assertGreater(len(commands), 5)
+
+
+class TestIntentRulesReferenceRealCommands(unittest.TestCase):
+    """Ghost-command guard: every rule must target a real builder subcommand.
+
+    The router used to suggest `callers` / `callees` — subcommands that do
+    not exist in the CLI — so following the suggestion crashed with an
+    argparse error. This test introspects the real argparse tree (same
+    helper the skill-manifest test uses) so a rule pointing at a
+    non-existent (or renamed) command fails CI.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from tests.test_skill_manifest import _builder_commands
+        cls.builder_commands = _builder_commands()
+
+    def test_every_rule_targets_a_real_command(self):
+        ghosts = sorted(
+            {r["command"] for r in INTENT_RULES} - self.builder_commands)
+        self.assertEqual(
+            ghosts, [],
+            "INTENT_RULES reference commands that do not exist in the "
+            "builder CLI: %s — following the suggestion would crash"
+            % ghosts)
 
 
 class TestCmdIntentQuery(unittest.TestCase):

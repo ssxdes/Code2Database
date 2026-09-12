@@ -803,9 +803,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (252 commands)
+## Complete CLI Command Reference (253 commands)
 
-All 252 CLI subparsers across `code2database_builder.py` (244) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
+All 253 CLI subparsers across `code2database_builder.py` (245) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
 
 | Command | Description |
 |---------|-------------|
@@ -868,6 +868,7 @@ All 252 CLI subparsers across `code2database_builder.py` (244) and `code2databas
 | `cgdb-write-coverage` | Rewrite coverage reports |
 | `check-bounds` | Scan array subscript accesses and infer guard coverage from preceding conditions (`--scope`, `--limit`, `--window`) |
 | `check-cycles` | Detect circular dependencies: call cycles between functions or include cycles between files (`--kind calls|includes`, `--max-length`, `--scope`, `--limit`) |
+| `check-infinite-loop` | Scan constant-true loop headers (while(true)/for(;;)/do-while(true)) and analyze exit statements (`--scope`, `--limit`) |
 | `check-recursion` | Detect recursion (direct self-loops and indirect call cycles) with termination staging (risky/caution/safe) from body text |
 | `classify-endpoints` | Apply LLM endpoint classification to the graph |
 | `co-change` | Mine git log for co-change coupling edges |

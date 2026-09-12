@@ -802,9 +802,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## 完整 CLI 命令参考（252 个命令）
+## 完整 CLI 命令参考（253 个命令）
 
-全部 252 个 CLI 子命令，涵盖 `code2database_builder.py`（244 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
+全部 253 个 CLI 子命令，涵盖 `code2database_builder.py`（245 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
 
 | 命令 | 说明 |
 |------|------|
@@ -867,6 +867,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `cgdb-write-coverage` | Rewrite coverage reports |
 | `check-bounds` | 扫描数组下标访问并结合前置条件推断守卫覆盖（`--scope`、`--limit`、`--window`） |
 | `check-cycles` | 检测循环依赖：函数间调用环或文件间 include 环（`--kind calls|includes`、`--max-length`、`--scope`、`--limit`） |
+| `check-infinite-loop` | 扫描恒真循环头（while(true)/for(;;)/do-while(true)）并分析退出语句（`--scope`、`--limit`） |
 | `check-recursion` | 检测递归（直接自环与间接调用环），并基于函数体文本做终止性分级（risky/caution/safe） |
 | `classify-endpoints` | Apply LLM endpoint classification to the graph |
 | `co-change` | Mine git log for co-change coupling edges |

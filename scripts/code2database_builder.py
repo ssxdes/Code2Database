@@ -1573,6 +1573,17 @@ def main():
     p_cb.add_argument("--window", type=int, default=20,
                       help="Look-back window (lines) for guard inference")
 
+    # Unbounded loops (code quality)
+    p_il = sub.add_parser("check-infinite-loop",
+                          help="Scan constant-true loop headers "
+                               "(while(true)/for(;;)/do-while(true)) and "
+                               "analyze exit statements")
+    p_il.add_argument("--graph", required=True)
+    p_il.add_argument("--scope", default=None,
+                      help="Substring filter over node id/name/file")
+    p_il.add_argument("--limit", type=int, default=100,
+                      help="Maximum findings to report")
+
     # Semantic search (neural embeddings)
     p_ss = sub.add_parser("semantic-search",
                           help="Neural semantic search: FTS5 BM25 + neural embedding + RRF fusion")
@@ -3021,6 +3032,7 @@ def main():
         "check-cycles": _lazy("_builder.analysis.quality_checks", "cmd_check_cycles"),
         "check-recursion": _lazy("_builder.analysis.quality_checks", "cmd_check_recursion"),
         "check-bounds": _lazy("_builder.analysis.quality_checks", "cmd_check_bounds"),
+        "check-infinite-loop": _lazy("_builder.analysis.quality_checks", "cmd_check_infinite_loop"),
         "semantic-search": cmd_semantic_search,
         "code-slice": cmd_code_slice,
         "sarif-export": cmd_sarif_export,

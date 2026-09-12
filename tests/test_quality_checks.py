@@ -610,5 +610,202 @@ class TestCheckBounds(unittest.TestCase):
         json.dumps(check_bounds(g))
 
 
+class TestCheckInfiniteLoop(unittest.TestCase):
+
+    def test_while_true_with_break_is_safe(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = ("void pump(void) {\n"
+                "  while (true) {\n"
+                "    if (queue_empty())\n"
+                "      break;\n"
+                "  }\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "pump", "body_text": body}], [])
+        result = check_infinite_loop(g)
+        self.assertEqual(result["total_loops"], 1)
+        f = result["findings"][0]
+        self.assertEqual(f["pattern"], "while_true")
+        self.assertEqual(f["classification"], "safe")
+        self.assertIn("break", f["exits"])
+        self.assertFalse(f["unparsed"])
+        self.assertEqual(f["line"], 2)
+
+    def test_while_true_without_exit_is_risky(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = ("void spin(void) {\n"
+                "  while (true) {\n"
+                "    do_work();\n"
+                "  }\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "spin", "body_text": body}], [])
+        result = check_infinite_loop(g)
+        self.assertEqual(result["risky"], 1)
+        f = result["findings"][0]
+        self.assertEqual(f["exits"], [])
+        self.assertEqual(f["classification"], "risky")
+
+    def test_for_empty_header(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = ("void loop(void) {\n"
+                "  for (;;) {\n"
+                "    if (done())\n"
+                "      return;\n"
+                "  }\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "loop", "body_text": body}], [])
+        result = check_infinite_loop(g)
+        self.assertEqual(result["total_loops"], 1)
+        f = result["findings"][0]
+        self.assertEqual(f["pattern"], "for_empty")
+        self.assertIn("return", f["exits"])
+
+    def test_do_while_true(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = ("void retry(void) {\n"
+                "  do {\n"
+                "    if (try_send())\n"
+                "      break;\n"
+                "  } while (1);\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "retry", "body_text": body}], [])
+        result = check_infinite_loop(g)
+        self.assertEqual(result["total_loops"], 1)
+        f = result["findings"][0]
+        self.assertEqual(f["pattern"], "do_while_true")
+        self.assertIn("break", f["exits"])
+
+    def test_do_while_false_condition_not_reported(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = ("void once(void) {\n"
+                "  do {\n"
+                "    step();\n"
+                "  } while (0);\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "once", "body_text": body}], [])
+        result = check_infinite_loop(g)
+        self.assertEqual(result["total_loops"], 0)
+
+    def test_normal_condition_loop_not_reported(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = ("void count(void) {\n"
+                "  while (n < 10) {\n"
+                "    n++;\n"
+                "  }\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "count", "body_text": body}], [])
+        result = check_infinite_loop(g)
+        self.assertEqual(result["total_loops"], 0)
+
+    def test_single_statement_body(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = ("void idle(void) {\n"
+                "  while (1) poll();\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "idle", "body_text": body}], [])
+        result = check_infinite_loop(g)
+        self.assertEqual(result["total_loops"], 1)
+        self.assertEqual(result["risky"], 1)
+
+    def test_single_statement_body_with_return(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = ("void guard(void) {\n"
+                "  while (1) return;\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "guard", "body_text": body}], [])
+        result = check_infinite_loop(g)
+        self.assertEqual(result["safe"], 1)
+
+    def test_goto_and_throw_counted(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = ("void g1(void) {\n"
+                "  while (true) {\n"
+                "    if (x) goto out;\n"
+                "  }\n"
+                "out:;\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "g1", "body_text": body}], [])
+        result = check_infinite_loop(g)
+        self.assertEqual(result["safe"], 1)
+        self.assertIn("goto", result["findings"][0]["exits"])
+
+    def test_braces_in_string_literals_do_not_break_extraction(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = ("void s(void) {\n"
+                "  while (true) {\n"
+                "    log(\"}{ tricky\");\n"
+                "    if (x) break;\n"
+                "  }\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "s", "body_text": body}], [])
+        result = check_infinite_loop(g)
+        self.assertEqual(result["safe"], 1)
+
+    def test_commented_loop_ignored(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = ("void c(void) {\n"
+                "  // while (true) { do_work(); }\n"
+                "  /* while (1) */\n"
+                "  return;\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "c", "body_text": body}], [])
+        result = check_infinite_loop(g)
+        self.assertEqual(result["total_loops"], 0)
+
+    def test_unbalanced_braces_reported_safe_unparsed(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = "void u(void) {\n  while (true) {\n    do_work();\n"
+        g = _make_quality_graph([{"id": "a", "name": "u", "body_text": body}], [])
+        result = check_infinite_loop(g)
+        self.assertEqual(result["total_loops"], 1)
+        f = result["findings"][0]
+        self.assertTrue(f["unparsed"])
+        self.assertEqual(f["classification"], "safe")
+
+    def test_continue_flagged_but_not_exit(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = ("void cc(void) {\n"
+                "  while (1) {\n"
+                "    continue;\n"
+                "  }\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "cc", "body_text": body}], [])
+        result = check_infinite_loop(g)
+        f = result["findings"][0]
+        self.assertTrue(f["has_continue"])
+        self.assertEqual(f["classification"], "risky")
+
+    def test_multiple_loops_and_risky_first_sorting(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = ("void m(void) {\n"
+                "  while (true) {\n"
+                "    if (a) break;\n"
+                "  }\n"
+                "  while (1) {\n"
+                "    work();\n"
+                "  }\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "m", "body_text": body}], [])
+        result = check_infinite_loop(g)
+        self.assertEqual(result["total_loops"], 2)
+        self.assertEqual([f["classification"] for f in result["findings"]],
+                         ["risky", "safe"])
+
+    def test_scope_filter(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = "void f(void) {\n  while (1) {}\n}\n"
+        g = _make_quality_graph(
+            [{"id": "a", "name": "keep_me", "body_text": body},
+             {"id": "b", "name": "drop_me", "body_text": body}], [])
+        result = check_infinite_loop(g, scope="keep")
+        self.assertEqual(result["total_loops"], 1)
+        self.assertEqual(result["findings"][0]["name"], "keep_me")
+
+    def test_result_is_json_serializable(self):
+        from _builder.analysis.quality_checks import check_infinite_loop
+        body = "void f(void) {\n  while (1) {}\n}\n"
+        g = _make_quality_graph([{"id": "a", "name": "f", "body_text": body}], [])
+        json.dumps(check_infinite_loop(g))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -9,6 +9,8 @@ the scanner captured it):
     termination staging (see ``check_recursion``)
   - array bounds exposure — subscript scan with guard inference
     (see ``check_bounds``)
+  - unbounded loops — constant-true loop headers with exit analysis
+    (see ``check_infinite_loop``)
 
 All detectors are read-only analyses over a built graph directory;
 they never modify graph state. Output is JSON-friendly dicts so the
@@ -631,5 +633,207 @@ def cmd_check_bounds(args):
         scope=getattr(args, "scope", None),
         limit=getattr(args, "limit", 100),
         window=getattr(args, "window", 20),
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
+# ---------------------------------------------------------------------------
+# Unbounded loops (check-infinite-loop)
+# ---------------------------------------------------------------------------
+
+_TRUE_COND = r"(?:true|1|TRUE|!0)"
+_LOOP_HEADER_RES = [
+    ("while_true", re.compile(r"\bwhile\s*\(\s*" + _TRUE_COND + r"\s*\)")),
+    ("for_empty", re.compile(r"\bfor\s*\(\s*;\s*;\s*\)")),
+]
+_DO_OPEN_RE = re.compile(r"\bdo\s*\{")
+_DO_TAIL_RE = re.compile(r"\}\s*while\s*\(\s*" + _TRUE_COND + r"\s*\)\s*;")
+_EXIT_RES = [
+    ("break", re.compile(r"\bbreak\b")),
+    ("return", re.compile(r"\breturn\b")),
+    ("throw", re.compile(r"\bthrow\b")),
+    ("goto", re.compile(r"\bgoto\s+\w+\s*;")),
+]
+_CONTINUE_RE = re.compile(r"\bcontinue\b")
+
+
+def _match_in_comment(text: str, pos: int) -> bool:
+    """True when position ``pos`` sits inside a comment."""
+    line_start = text.rfind("\n", 0, pos) + 1
+    if "//" in text[line_start:pos]:
+        return True
+    last_open = text.rfind("/*", 0, pos)
+    if last_open != -1:
+        last_close = text.rfind("*/", 0, pos)
+        if last_close < last_open:
+            return True
+    return False
+
+
+def _extract_brace_block(text: str, open_pos: int) -> Optional[Tuple[int, int]]:
+    """Span of a brace block starting at ``open_pos`` (the opening brace).
+
+    String and char literals are skipped so braces inside them do not
+    affect depth. Returns (open, close) offsets or None when unbalanced.
+    """
+    depth = 0
+    i = open_pos
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "\\":
+            i += 2
+            continue
+        if ch in "\"'":
+            quote = ch
+            i += 1
+            while i < n and text[i] != quote:
+                if text[i] == "\\":
+                    i += 1
+                i += 1
+            i += 1
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return (open_pos, i)
+        i += 1
+    return None
+
+
+def _extract_single_statement(text: str, pos: int) -> Tuple[int, int]:
+    """Span of the single statement starting at ``pos`` (up to `;`)."""
+    end = text.find(";", pos)
+    if end == -1:
+        return (pos, len(text))
+    return (pos, end + 1)
+
+
+def _classify_loop_body(body_text: str) -> Dict[str, Any]:
+    """Find exit statements inside an extracted loop body."""
+    exits = sorted(kind for kind, rx in _EXIT_RES if rx.search(body_text))
+    return {
+        "exits": exits,
+        "has_continue": bool(_CONTINUE_RE.search(body_text)),
+        "classification": "safe" if exits else "risky",
+    }
+
+
+def check_infinite_loop(graph_dir: str, scope: Optional[str] = None,
+                        limit: int = 100) -> Dict[str, Any]:
+    """Scan constant-true loop headers and analyze their exits.
+
+    Matches ``while (true|1|TRUE|!0)``, ``for (;;)`` and
+    ``do { ... } while (true|1|TRUE|!0)``. The loop body is the brace
+    block after the header (or the single statement up to ``;``) and
+    is scanned for break/return/throw/goto exits. Loops whose body
+    cannot be extracted are reported safe with ``unparsed`` set, biasing
+    against false alarms. A break that only exits an inner nested loop
+    also counts — same conservative bias.
+
+    Returns:
+        {total_loops, risky, safe, truncated, findings: [{function,
+        name, file, line, pattern, exits, has_continue,
+        classification, unparsed}]}
+    """
+    G = _load_graph(graph_dir)
+    findings: List[Dict[str, Any]] = []
+    truncated = False
+    for nid in sorted(G.nodes):
+        if truncated:
+            break
+        if scope and not _scope_matches(G, nid, scope):
+            continue
+        nd = G.nodes[nid]
+        body = nd.get("body_text", "") or ""
+        if not body.strip():
+            continue
+        base = {"function": nid, "name": _node_display(G, nid),
+                "file": nd.get("source_file", "")}
+
+        def _line_of(pos: int) -> int:
+            return body.count("\n", 0, pos) + 1
+
+        # do { ... } while (true) first — the trailing `while (1)` must
+        # not be re-reported by the while_true header pattern.
+        do_tail_spans: List[Tuple[int, int]] = []
+        for m in _DO_OPEN_RE.finditer(body):
+            if _match_in_comment(body, m.start()):
+                continue
+            open_pos = m.end() - 1
+            span = _extract_brace_block(body, open_pos)
+            if span is None:
+                continue
+            tail = body[span[1]:span[1] + 60]
+            tm = _DO_TAIL_RE.match(tail)
+            if not tm:
+                continue
+            do_tail_spans.append((span[1] + tm.start(),
+                                  span[1] + tm.end()))
+            info = _classify_loop_body(body[open_pos:span[1] + 1])
+            findings.append({**base, "line": _line_of(m.start()),
+                             "pattern": "do_while_true", "unparsed": False,
+                             **info})
+            if len(findings) >= limit:
+                truncated = True
+                break
+        if truncated:
+            continue
+
+        for pattern, rx in _LOOP_HEADER_RES:
+            for m in rx.finditer(body):
+                if _match_in_comment(body, m.start()):
+                    continue
+                if any(t0 <= m.start() < t1 for t0, t1 in do_tail_spans):
+                    continue
+                after = m.end()
+                while after < len(body) and body[after] in " \t\r\n":
+                    after += 1
+                if after < len(body) and body[after] == "{":
+                    span = _extract_brace_block(body, after)
+                    if span is None:
+                        findings.append({**base, "line": _line_of(m.start()),
+                                         "pattern": pattern, "exits": [],
+                                         "has_continue": False,
+                                         "classification": "safe",
+                                         "unparsed": True})
+                    else:
+                        info = _classify_loop_body(body[span[0]:span[1] + 1])
+                        findings.append({**base, "line": _line_of(m.start()),
+                                         "pattern": pattern, "unparsed": False,
+                                         **info})
+                else:
+                    span = _extract_single_statement(body, after)
+                    info = _classify_loop_body(body[span[0]:span[1]])
+                    findings.append({**base, "line": _line_of(m.start()),
+                                     "pattern": pattern, "unparsed": False,
+                                     **info})
+                if len(findings) >= limit:
+                    truncated = True
+                    break
+            if truncated:
+                break
+
+    order = {"risky": 0, "safe": 1}
+    findings.sort(key=lambda f: (order[f["classification"]],
+                                 f["file"], f["line"], f["function"]))
+    return {
+        "total_loops": len(findings),
+        "risky": sum(1 for f in findings if f["classification"] == "risky"),
+        "safe": sum(1 for f in findings if f["classification"] == "safe"),
+        "truncated": truncated,
+        "findings": findings,
+    }
+
+
+def cmd_check_infinite_loop(args):
+    """CLI handler for `code2database_builder.py check-infinite-loop`."""
+    import json
+    result = check_infinite_loop(
+        args.graph,
+        scope=getattr(args, "scope", None),
+        limit=getattr(args, "limit", 100),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))

@@ -1015,6 +1015,76 @@ class TestSuffixIndex(unittest.TestCase):
         self.assertLess(elapsed, 1.0)  # Should complete in under 1 second
 
 
+class TestTestSourceClassification(unittest.TestCase):
+    """_is_test_source handles root-level and Windows test paths."""
+
+    def test_root_level_test_dirs(self):
+        from _builder.graph.graph_build import _is_test_source
+        self.assertTrue(_is_test_source("tests/foo.c"))
+        self.assertTrue(_is_test_source("test/foo.c"))
+        self.assertTrue(_is_test_source("ut/foo.c"))
+        self.assertTrue(_is_test_source("unit/foo.c"))
+        self.assertTrue(_is_test_source("fuzz/foo.c"))
+
+    def test_nested_test_dirs(self):
+        from _builder.graph.graph_build import _is_test_source
+        self.assertTrue(_is_test_source("src/tests/foo.c"))
+        self.assertTrue(_is_test_source("a/b/unit/foo.c"))
+
+    def test_production_source(self):
+        from _builder.graph.graph_build import _is_test_source
+        self.assertFalse(_is_test_source("src/core.c"))
+        self.assertFalse(_is_test_source("lib/driver.c"))
+        self.assertFalse(_is_test_source(""))
+
+    def test_backslash_paths(self):
+        from _builder.graph.graph_build import _is_test_source
+        self.assertTrue(_is_test_source("tests\\foo.c"))
+        self.assertTrue(_is_test_source("src\\tests\\foo.c"))
+
+    def test_file_suffix(self):
+        from _builder.graph.graph_build import _is_test_source
+        self.assertTrue(_is_test_source("src/foo_test.c"))
+        self.assertTrue(_is_test_source("foo_ut.cpp"))
+
+    def test_profile_test_path_patterns(self):
+        from _builder.graph.graph_build import _is_test_source
+        profile = {"project_boundaries": {"test_path_patterns": ["/ztest/"]}}
+        self.assertTrue(_is_test_source("ztest/foo.c", profile))
+        self.assertFalse(_is_test_source("src/foo.c", profile))
+
+
+class TestResolverStateReset(unittest.TestCase):
+    """reset_resolver_state clears profile-driven globals to defaults."""
+
+    def test_reset_clears_segments_and_prefixes(self):
+        from _builder import utils as _utils
+        _utils.set_test_domain_segments(["ztest", "custom"])
+        _utils.set_external_lib_prefixes(["custom_"])
+        self.assertEqual(_utils._TEST_DOMAIN_SEGMENTS, ("ztest", "custom"))
+        _utils.reset_resolver_state()
+        self.assertEqual(_utils._TEST_DOMAIN_SEGMENTS,
+                         _utils._DEFAULT_TEST_DOMAIN_SEGMENTS)
+        self.assertEqual(_utils._EXTERNAL_LIB_PREFIXES, [])
+
+    def test_build_graph_does_not_leak_state_across_calls(self):
+        from _builder.graph.graph_build import build_graph, _is_test_source
+        from _builder import utils as _utils
+        # Build with a profile declaring a custom test segment and prefix.
+        extraction = {"functions": [], "edges": [], "domains": ["root"],
+                      "lang_stats": {}}
+        build_graph(extraction, profile={
+            "lib_prefix_map": {"custom_": "lib"},
+            "project_boundaries": {"test_domain_segments": ["ztest"]},
+        })
+        # The globals must be reset to defaults at the next build_graph
+        # entry, so a following no-profile build sees the generic defaults.
+        build_graph(extraction)
+        self.assertEqual(_utils._TEST_DOMAIN_SEGMENTS,
+                         _utils._DEFAULT_TEST_DOMAIN_SEGMENTS)
+        self.assertEqual(_utils._EXTERNAL_LIB_PREFIXES, [])
+
+
 class TestTestDomainCandidatePreference(unittest.TestCase):
     """Callee resolution prefers production definitions over test mocks."""
 

@@ -334,7 +334,14 @@ def _is_test_source(source_file: str, profile: dict = None) -> bool:
     """
     if not source_file:
         return False
-    lower = source_file.lower()
+    # Normalize separators so the same patterns match Windows and POSIX
+    # paths, and wrap with slashes so root-level test trees ("tests/foo.c")
+    # match patterns written as "/tests/".
+    lower = source_file.lower().replace('\\', '/')
+    if not lower.startswith('/'):
+        lower = '/' + lower
+    if not lower.endswith('/'):
+        lower = lower + '/'
     pb = (profile or {}).get("project_boundaries", {}) if isinstance(profile, dict) else {}
     # Test directory patterns from profile (or generic defaults)
     patterns = pb.get("test_path_patterns")
@@ -342,15 +349,16 @@ def _is_test_source(source_file: str, profile: dict = None) -> bool:
         patterns = ("/test/", "/tests/", "/unit/", "/ut/", "/unittest/",
                     "/fuzz/", "\\test\\", "\\tests\\", "\\unit\\")
     for pattern in patterns:
-        if pattern in lower:
+        if pattern.lower().replace('\\', '/') in lower:
             return True
     # Test file suffixes from profile (or generic defaults)
     suffixes = pb.get("test_file_suffixes")
     if not suffixes:
         suffixes = ("_test.c", "_test.cpp", "_ut.c", "_ut.cpp",
                     "_unittest.c", "_unittest.cpp", "test_.c", "test_.cpp")
+    bare = source_file.lower().replace('\\', '/')
     for suffix in suffixes:
-        if lower.endswith(suffix):
+        if bare.endswith(suffix):
             return True
     return False
 
@@ -521,6 +529,12 @@ def build_graph(extraction: dict, profile: dict = None,
                Can be a StreamingGraph instance for --storage sqlite builds.
     """
     from _builder.build.import_resolve import _compute_fqn
+
+    # Reset resolver module globals to defaults before applying this build's
+    # profile, so state from a prior build_graph call in the same process
+    # (build_multi, scripted builds, tests) cannot leak across builds.
+    from _builder.utils import reset_resolver_state
+    reset_resolver_state()
 
     # Callback field regex — used in both FN_PTR field_dispatch and
     # passthrough_bridged field_assignments fallback paths to skip

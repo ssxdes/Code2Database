@@ -718,7 +718,8 @@ def set_external_lib_prefixes(prefixes):
 # definitions over test mocks/stubs. Populated from the profile's
 # project_boundaries.test_domain_segments at build time; generic defaults
 # cover the common unit/ut/test/fuzz conventions.
-_TEST_DOMAIN_SEGMENTS = ("ut", "ut_mock", "unit", "test", "fuzz")
+_DEFAULT_TEST_DOMAIN_SEGMENTS = ("ut", "ut_mock", "unit", "test", "fuzz")
+_TEST_DOMAIN_SEGMENTS = _DEFAULT_TEST_DOMAIN_SEGMENTS
 
 
 def set_test_domain_segments(segments):
@@ -726,6 +727,18 @@ def set_test_domain_segments(segments):
     global _TEST_DOMAIN_SEGMENTS
     if segments:
         _TEST_DOMAIN_SEGMENTS = tuple(segments)
+
+
+def reset_resolver_state():
+    """Reset resolver module globals to their import-time defaults.
+
+    Each call to build_graph resets these first so a build does not inherit
+    external-prefix or test-segment state from a prior build_graph call in
+    the same process (build_multi, scripted multi-project builds, tests).
+    """
+    global _EXTERNAL_LIB_PREFIXES, _TEST_DOMAIN_SEGMENTS
+    _EXTERNAL_LIB_PREFIXES = []
+    _TEST_DOMAIN_SEGMENTS = _DEFAULT_TEST_DOMAIN_SEGMENTS
 
 
 def _candidate_in_test_domain(cid: str, id_registry: dict = None) -> bool:

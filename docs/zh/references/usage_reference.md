@@ -59,6 +59,18 @@ $BUILDER c2d ask --question "..." --dry-run    # 预览翻译后的命令
 | 保持图谱最新 | — | `daemon-start` → `daemon-status` → `daemon-wait-sync`，或 `build-update` |
 | 记忆与知识管理 | — | `kb-query`、`search-memory`、`manage-memory`、`brief-*` |
 
+## 行为细则 — power 使用注意事项
+
+分析层的精度边界，集中于此按需阅读：
+
+- **大图（>=5 万函数）**：`update`/`merge`/`sync` 需要内存图，回退为 LazySQLiteGraph（只读）并打印友好错误指向 `daemon-start` 或 `build`。增量同步用 `daemon-start`，精确的单文件更新用 `build-update --source SRC --graph DIR`（内容哈希检测 + `#include` 闭包；纯格式修改会被结构性跳过）。
+- **`build-update` 跨文件边局限**：只重扫变更文件。文件 A 中的函数改名/删除后，指向 A 的跨文件调用边会被删除但不会重建 — 调用方文件未重扫，新的函数 ID（内嵌文件路径）不会匹配。跨文件边在完整 `build` 前一直缺失。频繁跨文件重构的项目优先 `daemon-start`（事务化同步）或定期完整构建。
+- **并发分析是函数级、非访问点级**：不检测 TOCTOU 竞态；锁检测用正则而非 CFG。结果可能有误报/漏报 — 更细粒度用 `lock-coverage`。
+- **`path`/`trace-chain` 同名歧义**：不同文件中的同名函数需要 `--source-file` 消歧。带 `--source-file` 时 `--from`/`--to` 接受函数名（按名+文件解析）；不带时必须是节点 ID；多处命中会打印候选源文件警告。`path --domain-filter fs,block` 将遍历硬限制在白名单域（+ `root`），用于跨子系统可达性查询。
+- **C++ 虚派发不解析**：tree-sitter C++ 把虚方法调用解析为普通 `call_expression` — 只解析到静态类型方法。C 风格 ops-table vtable 派发已支持（`vtable_dispatch` 边）。C++ 类层次结构的 `virtual`/`override` 用 `concurrency-analyze` 或手工检查 override 集。
+- **FFI 边需要 `make`**：单独的 `build` 命令不运行 FFI 检测 — 多语言项目在裸 `build` 后运行 `ffi-detect --apply`（`make` 流水线自动执行）。
+- **`--scan-subsystems` 丢弃跨子系统边**：子系统过滤把扫描限制在顶层目录；共享头文件与进入未扫描子系统的调用变成幻影外部节点（边保留、目标未解析）。省略该标志或包含 `include` 以获得完整跨子系统保真度。
+
 ## 第0步 — 检查前置条件
 
 **手动编写Profile**：详见 `docs/PROFILE_MANUAL.md`，包含完整字段说明、示例和编写流程。

@@ -59,6 +59,18 @@ Start here: find the task, use the one call, or drop to the direct command seque
 | Keep the graph current | — | `daemon-start` → `daemon-status` → `daemon-wait-sync`, or `build-update` |
 | Memory & knowledge management | — | `kb-query`, `search-memory`, `manage-memory`, `brief-*` |
 
+## Behavior Notes — power-use caveats
+
+Accuracy boundaries of the analysis layer, consolidated here for on-demand reading:
+
+- **Large graphs (>=50K functions)**: `update`/`merge`/`sync` require an in-memory graph and fall back to LazySQLiteGraph (read-only); they print a friendly error pointing to `daemon-start` or `build`. Use `daemon-start` for incremental sync or `build-update --source SRC --graph DIR` for precise per-file updates (content-hash detection + `#include` closure; format-only edits skipped structurally).
+- **`build-update` cross-file edge limitation**: only changed files are rescanned. When a function is renamed/deleted in file A, cross-file call edges into A are deleted but not recreated — the calling files are not rescanned, so the new function ID (which embeds the file path) will not match. Cross-file edges into the changed file are lost until a full `build`. For frequent cross-file refactors prefer `daemon-start` (transactional sync) or schedule periodic full builds.
+- **Concurrency analysis is function-level, not access-site-level**: TOCTOU races are NOT detected; lock detection uses regex, not CFG. Results may contain false positives/negatives — use `lock-coverage` for finer-grained analysis.
+- **`path`/`trace-chain` same-name ambiguity**: functions with the same name in different files need `--source-file` to disambiguate. With `--source-file`, `--from`/`--to` accept function names (resolved by name+file); without it they must be node IDs. Multiple resolutions print a warning listing candidate source files. `path --domain-filter fs,block` hard-restricts traversal to allowlisted domains (+ `root`) for cross-subsystem reachability queries.
+- **C++ virtual dispatch not resolved**: tree-sitter C++ parses virtual method calls as regular `call_expression` — they resolve to the statically-typed method only. C-style ops-table vtable dispatch IS handled (`vtable_dispatch` edges). For C++ class hierarchies with `virtual`/`override`, use `concurrency-analyze` or inspect override sets manually.
+- **FFI edges need `make`**: the standalone `build` command does NOT run FFI detection — run `ffi-detect --apply` after a bare `build` on multi-language projects (the `make` pipeline runs it automatically).
+- **`--scan-subsystems` drops cross-subsystem edges**: subsystem filtering restricts the scan to top-level directories; shared headers and calls into unscanned subsystems become phantom external nodes (edge preserved, target unresolved). Omit the flag or include `include` for full cross-subsystem fidelity.
+
 ## Step 0 — Check Prerequisites
 
 **Manual Profile writing**: See `docs/PROFILE_MANUAL.md` for complete field descriptions, examples, and writing workflow.

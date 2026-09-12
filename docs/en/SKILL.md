@@ -23,7 +23,7 @@ You do not need to memorize the 260-command surface. One command covers the whol
 
 - `c2d recipes` lists the question→command routing recipes (13 built in; detail view: `c2d recipes --recipe thread-safety`). `c2d ask` classifies `--question` against them, or run one directly with `--recipe NAME`; no match falls back to the single-command intent router.
 - Every step is a normal read-only subcommand, echoed before it runs — preview any verb with `--dry-run`; `c2d ask` also accepts `--json` for a structured summary.
-- The full command surface stays available for direct use (Core Commands below).
+- The full command surface stays available for direct use (Tier-1 list below; intent index in `references/usage_reference.md`).
 
 ## ⚠ MANDATORY FIRST STEP — session-init
 
@@ -60,25 +60,15 @@ top kb hits as a `_hints` field alongside graph rows.
 ## Quick Start
 
 ```bash
-# 0. First time on a project: one-click ingestion (env-check fails fast)
+# 0. First time on a project: one-click ingest (env-check fails fast;
+#    re-runs are safe — graph artifacts rebuilt, memory/knowledge preserved)
 python3 scripts/code2database_builder.py c2d setup --source /path/to/project
-#   (= make — stage 1 env-check BEFORE any build step: missing
-#     compile_commands.json / libclang / tree-sitter grammars are
-#     reported up front, never mid-build; stage 2: scan -> build ->
-#     derived artifacts (value-flow, data-dep, #ifdef signals, FFI,
-#     brief, kb index, embeddings) -> exports -> profile-health;
-#     --check = env-check only; re-runs are safe: graph artifacts
-#     rebuilt, memory/knowledge preserved)
 
-# 1. Session start (MANDATORY): load the full project context
+# 1. Session start (MANDATORY): brief + veteran memory digest + graph state + known-unknowns
 python3 scripts/code2database_builder.py c2d session
-#   (= session-init — brief + veteran memory digest + graph state +
-#     unanswered questions; if no brief yet: brief-extract to
-#     bootstrap, then curate with brief-update)
 
 # 2. Ask (repeatable) — recipes pick the right read-only commands
 python3 scripts/code2database_builder.py c2d ask --question "is bdev_start thread safe?"
-python3 scripts/code2database_builder.py c2d ask --question "what breaks if I change util_sum?"
 python3 scripts/code2database_builder.py c2d ask --recipe impact --target bdev_start
 
 # 3. Capture valuable Q&A into memory (as needed)
@@ -87,46 +77,21 @@ python3 scripts/code2database_builder.py c2d capture --question "..." \
 
 # Raw commands remain available for power use:
 python3 scripts/code2database_builder.py describe --node bdev_start
-python3 scripts/code2database_builder.py kb-query --query "bdev register"
 python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_start
-python3 scripts/code2database_builder.py serve    # MCP server (83 tools)
 ```
 
-## Core Commands (27)
+## Core Commands (Tier-1)
 
-The direct command surface for power use — the `c2d` umbrella above wraps the most common paths.
+The 27 Tier-1 commands cover ~95% of agent workflows. Task→command navigation: the intent index in `references/usage_reference.md`, or `c2d recipes` / `c2d verbs` at runtime.
 
-| Command | Purpose | Query Layer |
-|---------|---------|-------------|
-| `c2d` | One-click umbrella over the whole lifecycle: `setup` (ingest) → `session` (context) → `ask` (question → read-only command recipe) → `capture` (save memory); plus `freshen` (freshness routing) and `report` (design/diagnose/diagram artifacts); `c2d recipes` lists the routing table | — |
-| `query` | Cypher-subset query (`MATCH (n:Function) WHERE n.name='foo' RETURN n.id`). For natural-language, use `intent-query` | Graph |
-| `kb-query` | Unified FTS5+BM25 across memory + knowledge | Memory+Knowledge |
-| `describe` | Node details + source snippet + memory_refs + knowledge_refs (alias for `describe-node`) | Graph→Source |
-| `trace` | Call chain A→B with conditions (alias for `trace-chain`) | Graph |
-| `impact` | What breaks if I change X? | Graph |
-| `find` | Find invariants by pattern (`--var`/`--value`/`--kind`) (alias for `find-invariants`). For macros, use `find-macros` | Graph |
-| `flow` | Value flow (DATA_FLOW/RETURN_FLOW edges) (alias for `value-flow`). For data deps use `data-dep`; for params use `param-flow` | Graph |
-| `concurrency` | List concurrency risk pairs (function-level) (alias for `concurrency-risks`). For race detection use `detect-races` | Graph |
-| `context` | Describe a node by ID/name (alias for `describe-node`). Not location-based | Graph |
-| `make` | One-click ingestion: env-check (fail fast) then scan + build + all derived artifacts + exports | — |
-| `build` | Scan + build graph (manual, make wraps it) | — |
-| `update` | Incremental re-scan | — |
-| `session-init` | One-shot session context: brief + memory digest + graph (+staleness check) + known-unknowns (alias: `init`) | Memory+Knowledge |
-| `save-memory` | Save Q&A to memory, `--category bdev/nvme/pcie` `--author` `--symbol fn` repeatable — grounds the memory to code (alias: `save`) | Memory |
-| `search-memory` | Search memory: FTS5 + `--category/--tags/--author/--symbol` filters, CJK-aware (alias: `recall`) | Memory |
-| `knowledge-brief` | Render project brief — load at session start (alias: `brief`) | Knowledge |
-| `kb-rebuild-index` | Rebuild FTS5 index from memory.db + brief.json | Memory+Knowledge |
-| `kb-cluster` | Cluster similar items + link principles | Memory+Knowledge |
-| `kb-known-unknowns` | List unanswered queries (feedback loop) | Memory+Knowledge |
-| `kb-audit` | Knowledge audit (citations, staleness, confidence) | Memory+Knowledge |
-| `kb-forget` | Immediately delete a memory/knowledge item | Memory+Knowledge |
-| `serve` | Start MCP server (83 tools) | All |
-| `web-ui` | Interactive browser (cytoscape.js) | All |
-| `tx-begin` | Start a transaction | Ops |
-| `daemon` | Show daemon status (alias for `daemon-status`; to start sync use `daemon-start`) | Ops |
-| `health` | Profile health score (requires `--source`) (alias for `profile-health`). For graph freshness use `daemon-status` or `session-init` | — |
+- **Lifecycle**: `c2d`, `make`, `build`, `update`
+- **Query**: `query` (Cypher; natural language: `intent-query`), `describe`, `trace`, `impact`, `context`, `find`, `flow`, `concurrency`
+- **Memory & knowledge**: `session-init`, `kb-query`, `save-memory`, `search-memory`, `knowledge-brief`, `kb-rebuild-index`, `kb-cluster`, `kb-known-unknowns`, `kb-audit`, `kb-forget`
+- **Serving & ops**: `serve` (MCP, 83 tools), `web-ui`, `tx-begin`, `daemon`, `health`
 
-All 260 CLI commands remain accessible; the 27 above cover ~95% of agent workflows. Additional short aliases (not listed above): `export` → `export-mermaid`.
+Aliases: `describe`/`context` → describe-node, `trace` → trace-chain, `find` → find-invariants, `flow` → value-flow, `concurrency` → concurrency-risks, `save` → save-memory, `recall` → search-memory, `brief` → knowledge-brief, `health` → profile-health, `daemon` → daemon-status, `export` → export-mermaid.
+
+All 260 CLI commands remain accessible.
 
 ## Supported Languages
 
@@ -140,80 +105,16 @@ C/C++ | Go | Python | Java | Rust | ASM (6 + ASM, C/C++ share scanner)
 
 ## MCP Server
 
-```bash
-# Local (stdio) — for Claude Desktop, Cursor local, etc.
-python3 scripts/code2database_builder.py serve --graph code2db-out/
-
-# Remote (HTTP) — for cross-network access, shared memory/knowledge
-python3 scripts/code2database_builder.py serve --graph code2db-out/ \
-    --transport http --host 0.0.0.0 --port 8765 \
-    --token my-secret --read-only
-```
-
-83 tools: 36 `code2database_*` (incl. `code2database_session_init` one-shot session context, `code2database_save_memory` for MCP-side experience accumulation, `code2database_kb_query` for unified memory+knowledge search) + 19 `cgdb_*` (clang semantic layer) + 28 design-report.
-
-HTTP transport (`--transport http`) enables remote MCP clients to access your code graph and shared memory/knowledge base over the network. All 83 tools are available, and multiple clients share the same `memory/memory.db` — experiences saved by one agent are immediately visible to others. Use `--token` for Bearer auth and `--read-only` to disable write tools on public endpoints. The `deploy/` directory (systemd + nginx configs) exists only in the source repo — clone it to access deployment templates.
+`serve --graph code2db-out/` for local stdio, or `--transport http --host 0.0.0.0 --port 8765 --token SECRET --read-only` for remote (Bearer auth, TLS, `--max-clients`, shared `memory/memory.db` across clients — experiences saved by one agent are immediately visible to others). 83 tools: 36 `code2database_*` (incl. `code2database_session_init`, `code2database_save_memory`, `code2database_kb_query`) + 19 `cgdb_*` (clang layer) + 28 design-report. Deploy templates (systemd + nginx) in `deploy/` — source repo only.
 
 ## Constraints
 
-- **Session start**: run `session-init` (alias `init`) FIRST — brief (mandatory rules/modes/pitfalls) + memory digest (veteran experience) + graph state with source-freshness warning (rebuild before trusting a STALE graph) + known-unknowns, in one prompt-ready output
-- **Correction protocol**: before answering a project question, `search-memory` first; if an answer is WRONG use `save-memory --correct` (reshapes the most similar entry in place — no duplicate variant); if MISSING use `save-memory --category ... --author ... --symbol fn`; if a query repeatedly misses (known-unknowns in session-init), capture the answer into memory
-- **Symbol grounding**: when a memory is about a specific function/type, pass `--symbol <name>` (repeatable) — the web UI shows that Q&A on the symbol's node page, and `search-memory --symbol` / `code2database_memory_search(symbol=)` filter by it. Memories absorb symbols on merge and re-ground on `--correct`
-- **Capture triggers** (when to save-memory, so accumulation doesn't depend on luck): after (a) solving a non-trivial problem — the resolution path IS the answer; (b) hitting a pitfall that cost real debugging time; (c) discovering a mandatory rule/constraint the brief doesn't capture yet; (d) correcting a wrong answer (`--correct`); (e) answering a known-unknowns query from session-init. Skip anything the graph answers in one query.
-- Run `kb-rebuild-index` after `build`/`update` or after memory/brief edits
-- Memory is a shared accumulating store (memory.db): save with `--category path/to/topic` + `--author`; govern with `manage-memory --action split/merge/move/compact/categories` (compact merges near-duplicate roots automatically after every build); `brief-suggest` proposes graduating high-weight memories into the brief
-- Knowledge (brief.json) must stay lean: `brief-validate` warns above 3000 chars; move overflow into memory instead
-- Start with `context_pack_micro` → `context_pack_lite` → `describe`/`trace`
-- Only 7 labels: API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end
-- Edge confidence: EXTRACTED / INFERRED / AMBIGUOUS
-- DB writes require user confirmation
-- Daemon freshness: check `daemon-status` before important queries; note the daemon holds (does not sync) events during its startup grace window (`startup_grace_active`)
-- `update`/`merge`/`sync` commands require in-memory nx.DiGraph. On large projects
-  (>=50K functions), `_load_full_graph` returns LazySQLiteGraph (read-only SQLite view).
-  These commands will print a friendly error directing to `daemon-start` or `build`.
-  Use `daemon-start` for incremental sync (designed for SQLite-backed large graphs), or
-  `build-update --source SRC --graph DIR` for a precise per-file update of the
-  SQLite graph (content-hash detection + #include closure; format-only edits
-  are skipped structurally).
-- **`build-update` cross-file edge limitation**: `build-update`
-  rescans only changed files. When a function is renamed or deleted in file A,
-  edges from *other* files that called A's old function are deleted (via
-  `_delete_legacy_rows`) but **not recreated** — the calling files aren't
-  rescanned, so the new function ID (which embeds the file path) won't match.
-  Cross-file call edges pointing into the changed file are permanently lost
-  until a full `build` is run. For projects with frequent cross-file refactors,
-  prefer `daemon-start` (which handles this via the daemon's transactional
-  sync) or schedule periodic full builds.
-- Concurrency analysis (`detect-races`, `concurrency-analyze`) is function-level,
-  not access-site-level. TOCTOU races are NOT detected. Lock detection uses regex,
-  not CFG. Results may have false positives/negatives — use `lock-coverage` for
-  finer-grained analysis.
-- `path`/`trace-chain` may return ambiguous results for same-name functions in
-  different source files. Use `--source-file` to disambiguate. When `--source-file`
-  is provided, `--from`/`--to` accept function names (resolved by name+file);
-  without `--source-file`, they must be node IDs. If a name resolves to multiple
-  nodes across files, a warning is printed listing the candidate source files.
-- `path --domain-filter fs,block` hard-restricts traversal to nodes whose domain
-  is in the allowlist (or `root`). Use for cross-subsystem reachability queries
-  that must stay within a known set of subsystems. Comma-separated list supported.
-- **C++ virtual dispatch not resolved**: tree-sitter C++ has no separate
-  `virtual_call` node type — virtual method calls are parsed as regular
-  `call_expression` and only resolve to the statically-typed method, not to
-  dynamic dispatch targets. C-style ops-table vtable dispatch IS handled
-  (`vtable_dispatch` edges connect dispatch functions to registered targets).
-  For C++ class hierarchies with `virtual`/`override`, use `concurrency-analyze`
-  or manually inspect override sets.
-- **FFI edges require `make` or explicit `ffi-detect`**: the standalone `build`
-  command produces the invocation graph but does NOT run FFI detection.
-  Cross-language FFI bridges (Python ctypes, Go cgo, Rust extern "C") are
-  detected by `ffi-detect` (called automatically in the `make` pipeline) or
-  can be run separately after `build`. If you use `build` instead of `make`
-  on a multi-language project, run `ffi-detect --apply` afterward to add
-  FFI bridge edges.
-- **`--scan-subsystems` drops cross-subsystem edges**: subsystem filtering
-  restricts the scan to top-level directories (e.g. `--scan-subsystems fs,block`).
-  Shared header files in `include/` and calls from the scanned subsystem into
-  unscanned subsystems become phantom external nodes — the call edge is
-  preserved but the target node is unresolved. For full call-graph fidelity
-  across subsystem boundaries, omit `--scan-subsystems` or include the
-  `include` directory in the filter list.
+- **Session start**: run `session-init` FIRST — brief (mandatory rules/modes/pitfalls) + memory digest (veteran experience) + graph state with source-freshness warning + known-unknowns, in one prompt-ready output
+- **Correction protocol**: `search-memory` before answering a project question; WRONG answer → `save-memory --correct` (reshapes the most similar entry in place — no duplicate variant); MISSING → `save-memory --category ... --author ... --symbol fn`; repeatedly-missed queries (known-unknowns in session-init) → capture the answer into memory
+- **Symbol grounding**: memories about a specific function/type pass `--symbol <name>` (repeatable) — shown on the symbol's node page in the web UI; `search-memory --symbol` filters by it; memories absorb symbols on merge and re-ground on `--correct`
+- **Capture triggers**: save after (a) solving something non-trivial, (b) hitting a pitfall that cost real debugging time, (c) discovering a mandatory rule the brief lacks, (d) correcting a wrong answer, (e) answering a known-unknown; skip anything the graph answers in one query
+- Run `kb-rebuild-index` after `build`/`update` or memory/brief edits; govern memory with `manage-memory --action split/merge/move/compact/categories` (compact auto-runs after every build); `brief-suggest` proposes graduating memories into the brief; keep the brief lean (`brief-validate` warns above 3000 chars — move overflow into memory)
+- Start with `context_pack_micro` → `context_pack_lite` → `describe`/`trace`; never bulk-read output files
+- Only 7 labels: API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end; every edge carries EXTRACTED / INFERRED / AMBIGUOUS confidence
+- DB writes require user confirmation; check `daemon-status` before important queries (the daemon holds — does not sync — events during its startup grace window)
+- **Accuracy caveats** (function-level concurrency, C++ virtual dispatch, `build-update` cross-file edges, `--scan-subsystems`): see Behavior Notes in `references/usage_reference.md`

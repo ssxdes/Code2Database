@@ -23,7 +23,7 @@ trigger: /Code2Database
 
 - `c2d recipes` 列出 提问→命令 路由配方（内置 13 个；详情：`c2d recipes --recipe thread-safety`）。`c2d ask` 用 `--question` 自动分类匹配，或用 `--recipe NAME` 直接指定；无匹配时回退到单命令意图路由。
 - 每一步都是普通的只读子命令，执行前先回显 — 任意动词可用 `--dry-run` 预览；`c2d ask` 还支持 `--json` 结构化摘要。
-- 完整命令面保持可直接使用（见下方核心命令）。
+- 完整命令面保持可直接使用（见下方 Tier-1 名单；意图索引在 `references/usage_reference.md`）。
 
 ## ⚠ 强制第一步 — session-init
 
@@ -60,22 +60,15 @@ python3 scripts/code2database_builder.py session-init   # --graph 自动发现 c
 ## 快速开始
 
 ```bash
-# 0. 首次接入项目：一键建库（env-check 前置校验，缺件立即报出）
+# 0. 首次接入项目：一键建库（env-check 缺件前置报出；重复执行安全——
+#    图产物重建，memory/knowledge 保留）
 python3 scripts/code2database_builder.py c2d setup --source /path/to/project
-#   （= make — 阶段 1 env-check 在任何构建步骤之前：缺 compile_commands.json /
-#     libclang / tree-sitter 语法包都会预先报出（绝不中途失败）；
-#     阶段 2：扫描 -> 构建 -> 派生产物（value-flow、data-dep、#ifdef 信号、
-#     FFI、简报、kb 索引、embeddings）-> 导出 -> profile 健康报告；
-#     --check = 只做环境校验；重复执行安全：图产物重建，memory/knowledge 保留）
 
-# 1. 会话启动（必须）：加载完整项目上下文
+# 1. 会话启动（必须）：简报 + 前辈记忆摘要 + 图状态 + 已知未知
 python3 scripts/code2database_builder.py c2d session
-#   （= session-init — 简报 + 前辈记忆摘要 + 图状态 + 已知未知；
-#     若无简报：brief-extract 自举模板，再用 brief-update 精炼）
 
 # 2. 提问（可重复）— 配方自动选择正确的只读命令
 python3 scripts/code2database_builder.py c2d ask --question "is bdev_start thread safe?"
-python3 scripts/code2database_builder.py c2d ask --question "what breaks if I change util_sum?"
 python3 scripts/code2database_builder.py c2d ask --recipe impact --target bdev_start
 
 # 3. 沉淀有价值的 Q&A 到记忆（按需）
@@ -84,46 +77,21 @@ python3 scripts/code2database_builder.py c2d capture --question "..." \
 
 # 原生命令保持可用（进阶用法）：
 python3 scripts/code2database_builder.py describe --node bdev_start
-python3 scripts/code2database_builder.py kb-query --query "bdev register"
 python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_start
-python3 scripts/code2database_builder.py serve    # MCP 服务器（83 工具）
 ```
 
-## 核心命令（27 个）
+## 核心命令（Tier-1）
 
-直接命令面，供进阶使用 — 上方 `c2d` 总入口已封装最常用路径。
+27 个 Tier-1 命令覆盖 ~95% 的 agent 工作流。任务→命令导航：`references/usage_reference.md` 的意图索引，或运行时的 `c2d recipes` / `c2d verbs`。
 
-| 命令 | 用途 | 查询层 |
-|------|------|--------|
-| `c2d` | 覆盖完整生命周期的一键式总入口：`setup`（摄取）→ `session`（上下文）→ `ask`（提问→只读命令配方）→ `capture`（沉淀记忆）；另有 `freshen`（新鲜度路由）与 `report`（设计/诊断/图表工件）；`c2d recipes` 列出路由表 | — |
-| `query` | Cypher 子集查询（`MATCH (n:Function) WHERE n.name='foo' RETURN n.id`）。自然语言用 `intent-query` | Graph |
-| `kb-query` | 跨 memory + knowledge 的统一 FTS5+BM25 查询 | Memory+Knowledge |
-| `describe` | 节点详情 + 源码片段 + memory_refs + knowledge_refs（`describe-node` 的别名） | Graph→Source |
-| `trace` | A→B 调用链（含条件）（`trace-chain` 的别名） | Graph |
-| `impact` | 改了 X 会影响什么？ | Graph |
-| `find` | 按模式查找不变式（`--var`/`--value`/`--kind`）（`find-invariants` 的别名）。查找宏用 `find-macros` | Graph |
-| `flow` | 值流（DATA_FLOW/RETURN_FLOW 边）（`value-flow` 的别名）。数据依赖用 `data-dep`；参数流用 `param-flow` | Graph |
-| `concurrency` | 列出并发风险对（函数级）（`concurrency-risks` 的别名）。真正的竞争检测用 `detect-races` | Graph |
-| `context` | 按 ID/名称描述节点（`describe-node` 的别名）。非基于位置 | Graph |
-| `make` | 一键建库：env-check（缺件前置报出）+ 扫描构建 + 全部派生产物与导出 | — |
-| `build` | 扫描 + 构建图（手动，make 已封装） | — |
-| `update` | 增量重扫 | — |
-| `session-init` | 一站式会话上下文：简报 + 记忆摘要 + 图状态（含过期检查）+ 未解答问题（别名：`init`） | Memory+Knowledge |
-| `save-memory` | 保存 Q&A 到记忆，支持 `--category bdev/nvme/pcie` `--author` `--symbol fn`（可重复，把记忆锚定到代码符号）（别名：`save`） | Memory |
-| `search-memory` | 搜索记忆：FTS5 + `--category/--tags/--author/--symbol` 过滤，中文感知（别名：`recall`） | Memory |
-| `knowledge-brief` | 渲染项目简报 — 会话启动必载（别名：`brief`） | Knowledge |
-| `kb-rebuild-index` | 从 memory.db + brief.json 重建 FTS5 索引 | Memory+Knowledge |
-| `kb-cluster` | 聚类相似项 + 链接 principle | Memory+Knowledge |
-| `kb-known-unknowns` | 列出未命中的查询（feedback loop） | Memory+Knowledge |
-| `kb-audit` | 知识审计（引用、过期、置信度） | Memory+Knowledge |
-| `kb-forget` | 立即删除 memory/knowledge 项 | Memory+Knowledge |
-| `serve` | 启动 MCP 服务器（83 工具 (55 base + 28 design-report)） | 全部 |
-| `web-ui` | 交互式浏览器（cytoscape.js） | 全部 |
-| `tx-begin` | 开始事务 | Ops |
-| `daemon` | 显示守护进程状态（`daemon-status` 的别名；启动同步用 `daemon-start`） | Ops |
-| `health` | Profile 健康评分（需要 `--source`）（`profile-health` 的别名）。图谱新鲜度用 `daemon-status` 或 `session-init` | — |
+- **生命周期**：`c2d`、`make`、`build`、`update`
+- **查询**：`query`（Cypher；自然语言用 `intent-query`）、`describe`、`trace`、`impact`、`context`、`find`、`flow`、`concurrency`
+- **记忆与知识**：`session-init`、`kb-query`、`save-memory`、`search-memory`、`knowledge-brief`、`kb-rebuild-index`、`kb-cluster`、`kb-known-unknowns`、`kb-audit`、`kb-forget`
+- **服务与运维**：`serve`（MCP，83 工具）、`web-ui`、`tx-begin`、`daemon`、`health`
 
-全部 260 个 CLI 命令仍可访问；上述 27 个覆盖 ~95% 的 agent 工作流。其他短别名（未列入上表）：`export` → `export-mermaid`。
+别名：`describe`/`context` → describe-node、`trace` → trace-chain、`find` → find-invariants、`flow` → value-flow、`concurrency` → concurrency-risks、`save` → save-memory、`recall` → search-memory、`brief` → knowledge-brief、`health` → profile-health、`daemon` → daemon-status、`export` → export-mermaid。
+
+全部 260 个 CLI 命令仍可访问。
 
 ## 支持语言
 
@@ -137,67 +105,16 @@ C/C++ | Go | Python | Java | Rust | ASM（6 + ASM，C/C++ 共享扫描器）
 
 ## MCP 服务器
 
-```bash
-# 本地（stdio）— 用于 Claude Desktop、Cursor 本地等
-python3 scripts/code2database_builder.py serve --graph code2db-out/
-
-# 远程（HTTP）— 跨网络访问，共享 memory/knowledge
-python3 scripts/code2database_builder.py serve --graph code2db-out/ \
-    --transport http --host 0.0.0.0 --port 8765 \
-    --token my-secret --read-only
-```
-
-83 工具 (55 base + 28 design-report)：36 个 `code2database_*`（含 `code2database_session_init` 一站式会话上下文、`code2database_save_memory` MCP 侧经验沉淀、`code2database_kb_query` 跨 memory+knowledge 查询）+ 19 个 `cgdb_*`（clang 语义层）。
-
-HTTP 传输（`--transport http`）让远程 MCP 客户端跨网络访问代码图谱和共享 memory/knowledge 库。全部 83 个工具可用，多个客户端共享同一个 `memory/memory.db`——一个 agent 沉淀的经验对其他 agent 立即可见。使用 `--token` 做 Bearer 认证，`--read-only` 在公开端点禁用写入工具。`deploy/` 目录（systemd + nginx 配置）仅存在于源码仓库——克隆源码仓库以获取部署模板。
+`serve --graph code2db-out/` 本地 stdio；或 `--transport http --host 0.0.0.0 --port 8765 --token SECRET --read-only` 远程模式（Bearer 认证、TLS、`--max-clients`、多客户端共享 `memory/memory.db`——一个 agent 沉淀的经验对其他 agent 立即可见）。83 工具 (55 base + 28 design-report)：36 个 `code2database_*`（含 `code2database_session_init`、`code2database_save_memory`、`code2database_kb_query`）+ 19 个 `cgdb_*`（clang 语义层）。部署模板（systemd + nginx）在 `deploy/`——仅源码仓库。
 
 ## 约束
 
-- **会话启动**：先运行 `session-init`（别名 `init`）— 简报（强制规则/模式/坑）+ 记忆摘要（前辈经验）+ 图状态（含源码新鲜度告警——图过期先重建再信任）+ 未解答问题，一次输出
-- **纠错协议**：回答项目问题前先 `search-memory`；答案错了用 `save-memory --correct`（原地重塑最相似条目——不产生重复变体）；缺答案用 `save-memory --category ... --author ... --symbol fn`；查询反复未命中（session-init 的 known-unknowns）时把答案沉淀进记忆
-- **符号锚定**：记忆关于某个具体函数/类型时，传 `--symbol <name>`（可重复）——Web UI 会在该符号的节点页展示这条问答，`search-memory --symbol` / `code2database_memory_search(symbol=)` 可按符号过滤。合并时记忆吸收符号，`--correct` 时可重新锚定
-- **沉淀触发**（什么时候该 save-memory，让经验积累不靠运气）：(a) 解决了一个非平凡问题——排查路径本身就是答案；(b) 踩了耗费真实调试时间的坑；(c) 发现简报未覆盖的强制规则/约束；(d) 纠正了错误答案（`--correct`）；(e) 回答了 session-init 中反复出现的 known-unknowns 问题。图谱一次查询就能回答的不要存。
-- `build`/`update` 或修改 memory/brief 后运行 `kb-rebuild-index`
-- Memory 是共享积累库（memory.db）：保存时带 `--category 路径/主题` + `--author`；治理用 `manage-memory --action split/merge/move/compact/categories`（compact 在每次 build 后自动合并近似重复根）；`brief-suggest` 建议把高权重记忆毕业进简报
-- Knowledge（brief.json）必须精简：`brief-validate` 超过 3000 字符告警；溢出内容放入 memory
-- 从 `context_pack_micro` → `context_pack_lite` → `describe`/`trace` 开始
-- 只有 7 个标签：API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end
-- 边置信度：EXTRACTED / INFERRED / AMBIGUOUS
-- DB 写入需用户确认
-- 守护进程新鲜度：重要查询前检查 `daemon-status`；注意守护进程在启动宽限期（`startup_grace_active`）内会持有事件而不同步
-- `update`/`merge`/`sync` 命令需要内存中的 nx.DiGraph。大型项目（>=5万函数）
-  时 `_load_full_graph` 返回 LazySQLiteGraph（只读 SQLite 视图）。这些命令会打印
-  友好错误提示使用 `daemon-start` 或 `build`。用 `daemon-start` 做增量同步，或用
-  `build-update --source 源码目录 --graph 图目录` 对 SQLite 图做精确的按文件更新
-  （content-hash 检测 + #include 闭包；纯格式改动按结构跳过）。
-- **`build-update` 跨文件边限制**：`build-update` 只重扫变更的文件。
-  当文件 A 中的函数被重命名或删除时，其他文件指向 A 旧函数的调用边会被删除
-  （通过 `_delete_legacy_rows`），但**不会重建**——因为调用方文件没有被重扫，
-  新的函数 ID（内嵌文件路径）不会匹配。指向变更文件的跨文件调用边在运行完整
-  `build` 之前会永久丢失。对于频繁跨文件重构的项目，优先使用 `daemon-start`
-  （通过守护进程的事务同步处理此场景），或定期安排完整构建。
-- 并发分析（`detect-races`、`concurrency-analyze`）是函数级而非访问点级。
-  TOCTOU 竞态不被检测。锁检测用 regex 而非 CFG。结果可能有误报/漏报——
-  用 `lock-coverage` 做更细粒度分析。
-- `path`/`trace-chain` 对不同源文件中的同名函数可能返回歧义结果。
-  用 `--source-file` 消歧。传入 `--source-file` 时，`--from`/`--to`
-  接受函数名（按 name+file 解析）；不传 `--source-file` 时必须用节点 ID。
-  若名字在多文件中都有同名节点，会打印警告列出候选文件。
-- `path --domain-filter fs,block` 硬限制遍历只在指定 domain（或 `root`）
-  的节点上进行。用于跨子系统可达性查询，确保只在已知子系统集合内搜索。
-  支持逗号分隔列表。
-- **C++ 虚函数分发未解析**：tree-sitter C++ 没有独立的 `virtual_call` 节点
-  类型——虚方法调用被当作常规 `call_expression` 解析，仅解析到静态类型的方法，
-  而非动态分发目标。C 风格的 ops-table vtable 分发已处理（`vtable_dispatch`
-  边正确连接分发函数与注册目标）。对于 C++ 类层次结构中的 `virtual`/`override`，
-  请用 `concurrency-analyze` 或手动检查 override 集合。
-- **FFI 边需要 `make` 或显式 `ffi-detect`**：单独运行 `build` 命令会生成调用图，
-  但不运行 FFI 检测。跨语言 FFI 桥接（Python ctypes、Go cgo、Rust extern "C"）
-  由 `ffi-detect` 检测（在 `make` 流水线中自动调用），也可在 `build` 后单独运行。
-  如果在多语言项目上用 `build` 而非 `make`，请在之后运行 `ffi-detect --apply`
-  来添加 FFI 桥接边。
-- **`--scan-subsystems` 丢失跨子系统边**：子系统过滤将扫描范围限制在顶级目录
-  （如 `--scan-subsystems fs,block`）。`include/` 中的共享头文件和从被扫描
-  子系统到未扫描子系统的调用会变成 phantom external 节点——调用边保留但目标
-  节点未解析。如需跨子系统边界的完整调用图保真度，请省略 `--scan-subsystems`
-  或将 `include` 目录加入过滤列表。
+- **会话启动**：先运行 `session-init`（别名 `init`）— 简报（强制规则/模式/坑）+ 记忆摘要（前辈经验）+ 图状态（含源码新鲜度告警——图过期先重建再信任）+ 未解答疑问，一次输出
+- **纠错协议**：回答项目疑问前先 `search-memory`；答案错了用 `save-memory --correct`（原地重塑最相似条目——不产生重复变体）；缺答案用 `save-memory --category ... --author ... --symbol fn`；查询反复未命中（known-unknowns）时把答案沉淀进记忆
+- **符号锚定**：记忆关于某个具体函数/类型时，传 `--symbol <name>`（可重复）——Web UI 在该符号的节点页展示这条问答，`search-memory --symbol` 可按符号过滤；合并时记忆吸收符号，`--correct` 时可重新锚定
+- **沉淀触发**：(a) 解决了非平凡疑问——排查路径本身就是答案；(b) 踩了耗费真实调试时间的坑；(c) 发现简报未覆盖的强制规则/约束；(d) 纠正了错误答案（`--correct`）；(e) 回答了 session-init 中的 known-unknowns。图谱一次查询就能回答的不要存。
+- `build`/`update` 或修改 memory/brief 后运行 `kb-rebuild-index`；记忆治理用 `manage-memory --action split/merge/move/compact/categories`（compact 在每次 build 后自动运行）；`brief-suggest` 建议把高权重记忆毕业进简报；简报必须精简（`brief-validate` 超过 3000 字符告警，溢出放入 memory）
+- 从 `context_pack_micro` → `context_pack_lite` → `describe`/`trace` 开始；不批量读取输出文件
+- 只有 7 个标签：API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end；边置信度 EXTRACTED / INFERRED / AMBIGUOUS
+- DB 写入需用户确认；重要查询前检查 `daemon-status`（守护进程在启动宽限期 `startup_grace_active` 内持有事件而不同步）
+- **精度边界**（函数级并发分析、C++ 虚派发、`build-update` 跨文件边、`--scan-subsystems`）：见 `references/usage_reference.md` 的行为细则

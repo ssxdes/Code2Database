@@ -121,10 +121,10 @@ class TestSkillManifest(unittest.TestCase):
         self.assertEqual(ghosts, set(),
                          f"on_demand ghosts: {sorted(ghosts)}")
 
-    def test_builder_command_count_is_249(self):
+    def test_builder_command_count_is_250(self):
         """Pin the builder subcommand count — docs reference this number."""
-        self.assertEqual(len(self.builder), 249,
-                         "Builder subcommand count drifted from 249; "
+        self.assertEqual(len(self.builder), 250,
+                         "Builder subcommand count drifted from 250; "
                          "update SKILL.md/AGENTS.md to match: %d"
                          % len(self.builder))
 

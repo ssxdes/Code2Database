@@ -1,7 +1,7 @@
 {
   "name": "Code2Database-ops",
   "version": "1.3.0",
-  "description": "Graph editing + operations for Code2Database. Activated when the user asks about transactions, daemon control, profile health, doc-code alignment, exports, or memory management. All 257 commands (249 builder + 8 scanner) remain accessible from the parent skill.",
+  "description": "Graph editing + operations for Code2Database. Activated when the user asks about transactions, daemon control, profile health, doc-code alignment, exports, or memory management. All 258 commands (250 builder + 8 scanner) remain accessible from the parent skill.",
   "trigger": "/Code2Database-ops",
   "parent_skill": "Code2Database",
   "languages": [
@@ -64,6 +64,7 @@
     "daemon-status",
     "daemon-stop",
     "daemon-wait-sync",
+    "design-doc",
     "doc-alignment-report",
     "doc-code-check",
     "doc-mark-stale",
@@ -208,6 +209,7 @@
     ],
     "Export / plugin / benchmark": [
       "bug-benchmark",
+      "design-doc",
       "export-html",
       "export-obsidian",
       "export-plantuml",

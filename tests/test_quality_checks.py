@@ -29,13 +29,18 @@ import unittest
 def _make_quality_graph(nodes_spec, edges_spec) -> str:
     """Build a graph fixture from explicit node/edge lists.
 
-    nodes_spec: list of dicts with keys id, name, source_file, and
-                optionally body_text, labels, node_type
+    nodes_spec: list of dicts; id/name/source_file/body_text/labels/
+                node_type/signature/domain are normalized, and any
+                other keys (globals_read, thread_entry, ...) pass
+                through to the node attributes verbatim
     edges_spec: list of dicts with keys source, target, and optionally
-                relation, confidence
+                relation, confidence, concurrency (extra keys pass
+                through verbatim)
     """
     tmp = tempfile.mkdtemp(prefix="c2d_quality_test_")
     nodes = []
+    _known = {"id", "name", "source_file", "line", "labels", "domain",
+              "body_text", "node_type", "signature"}
     for spec in nodes_spec:
         node = {"id": spec["id"], "name": spec.get("name", spec["id"]),
                 "source_file": spec.get("source_file", "/x.c"),
@@ -44,12 +49,16 @@ def _make_quality_graph(nodes_spec, edges_spec) -> str:
                 "body_text": spec.get("body_text", ""),
                 "node_type": spec.get("node_type", ""),
                 "signature": spec.get("signature", "")}
+        for k, v in spec.items():
+            if k not in _known:
+                node[k] = v
         nodes.append(node)
     edges = []
     for spec in edges_spec:
         edges.append({"source": spec["source"], "target": spec["target"],
                       "relation": spec.get("relation", ""),
-                      "confidence": spec.get("confidence", "EXTRACTED")})
+                      "confidence": spec.get("confidence", "EXTRACTED"),
+                      "concurrency": spec.get("concurrency", "")})
     domain_data = {"nodes": nodes, "edges": edges}
     domain_filename = "domain_test.json"
     with open(os.path.join(tmp, domain_filename), "w") as f:

@@ -802,9 +802,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## 完整 CLI 命令参考（257 个命令）
+## 完整 CLI 命令参考（258 个命令）
 
-全部 257 个 CLI 子命令，涵盖 `code2database_builder.py`（249 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
+全部 258 个 CLI 子命令，涵盖 `code2database_builder.py`（250 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
 
 | 命令 | 说明 |
 |------|------|
@@ -893,6 +893,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `delete-node` | Soft-delete an AST node by ID |
 | `delete-token` | Delete a token by token_id |
 | `describe-commit` | Show which nodes/edges a commit affected |
+| `design-doc` | 基于图谱数据为模块（domain 或源文件）生成九章结构设计文档 |
 | `describe-node` | Get info about a node. Use --detail brief|standard|full to control output size |
 | `detect-changes` | Detect changed files since last manifest |
 | `detect-races` | Detect data races between different thread contexts |

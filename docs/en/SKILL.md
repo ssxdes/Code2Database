@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, and 19 cgdb semantic tables. 83 MCP tools (55 base + 28 design-report) + 257 CLI commands (249 builder + 8 scanner). Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
+description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, and 19 cgdb semantic tables. 83 MCP tools (55 base + 28 design-report) + 258 CLI commands (250 builder + 8 scanner). Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
 trigger: /Code2Database
 ---
 
@@ -95,7 +95,7 @@ python3 scripts/code2database_builder.py serve    # MCP server (83 tools)
 | `daemon` | Show daemon status (alias for `daemon-status`; to start sync use `daemon-start`) | Ops |
 | `health` | Profile health score (requires `--source`) (alias for `profile-health`). For graph freshness use `daemon-status` or `session-init` | — |
 
-All 257 CLI commands remain accessible; the 26 above cover ~95% of agent workflows. Additional short aliases (not listed above): `export` → `export-mermaid`.
+All 258 CLI commands remain accessible; the 26 above cover ~95% of agent workflows. Additional short aliases (not listed above): `export` → `export-mermaid`.
 
 ## Supported Languages
 

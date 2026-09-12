@@ -1633,6 +1633,16 @@ def main():
     p_rsn.add_argument("--trace", action="store_true",
                        help="Include the rule-firing trace")
 
+    # Structured design document
+    p_dd = sub.add_parser("design-doc",
+                          help="Generate a nine-section design document for a "
+                               "module (domain or source file) from the graph")
+    p_dd.add_argument("--graph", required=True)
+    p_dd.add_argument("--module", required=True,
+                      help="Domain name (exact) or source-file substring")
+    p_dd.add_argument("--output", default=None,
+                      help="Output file path (stdout if omitted)")
+
     # Semantic search (neural embeddings)
     p_ss = sub.add_parser("semantic-search",
                           help="Neural semantic search: FTS5 BM25 + neural embedding + RRF fusion")
@@ -3097,6 +3107,7 @@ def main():
         "check-clones": _lazy("_builder.analysis.quality_checks", "cmd_check_clones"),
         "hw-reach": _lazy("_builder.analysis.hw_reach", "cmd_hw_reach"),
         "reason": _lazy("_builder.analysis.reasoning", "cmd_reason"),
+        "design-doc": _lazy("_builder.export.design_doc", "cmd_design_doc"),
         "semantic-search": cmd_semantic_search,
         "code-slice": cmd_code_slice,
         "sarif-export": cmd_sarif_export,

@@ -803,9 +803,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (257 commands)
+## Complete CLI Command Reference (258 commands)
 
-All 257 CLI subparsers across `code2database_builder.py` (249) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
+All 258 CLI subparsers across `code2database_builder.py` (250) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
 
 | Command | Description |
 |---------|-------------|
@@ -894,6 +894,7 @@ All 257 CLI subparsers across `code2database_builder.py` (249) and `code2databas
 | `delete-node` | Soft-delete an AST node by ID |
 | `delete-token` | Delete a token by token_id |
 | `describe-commit` | Show which nodes/edges a commit affected |
+| `design-doc` | Generate a nine-section design document for a module (domain or source file) from graph data |
 | `describe-node` | Get info about a node. Use --detail brief|standard|full to control output size |
 | `detect-changes` | Detect changed files since last manifest |
 | `detect-races` | Detect data races between different thread contexts |

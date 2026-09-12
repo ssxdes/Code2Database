@@ -1,6 +1,6 @@
 ---
 name: Code2Database-analysis
-description: "Code2Database 的深度语义分析子技能。当用户询问并发安全、数据竞争、值流、参数流、数据依赖、约束下路径可行性、不变量（前置/后置/循环不变量/状态机）、FFI 边界（Python ctypes / Go cgo / Rust extern C）、提交级来源、锁持有区域、资源分配/释放、变更影响范围，或想通过 19 个 cgdb_* MCP 工具直接查询 cgdb（代码图谱数据库）层时激活。提供分层路由：Quick Reference 显示 13 个 Tier-1 高权重命令，路由表按问题类型映射到中权重命令组，按需部分仅列出低权重实验性命令名。当 /Code2Database 检测到深度分析问题并显式移交，或用户输入 /Code2Database-analysis 时使用。不适用于：图谱构建、扫描、简单浏览（用父 /Code2Database）；不适用于事务、守护进程、profile 编辑、导出（用 /Code2Database-ops）。"
+description: "Code2Database 深度语义分析子技能。当用户询问并发安全、数据竞争、值流、参数流、数据依赖、路径可行性、不变量、FFI 边界、提交来源、锁持有区域、资源分配/释放、影响面，或通过 19 个 cgdb_* MCP 工具直查 cgdb 层时激活。当 /Code2Database 移交深度分析提问，或用户输入 /Code2Database-analysis 时使用。不适用于：图谱构建/扫描/浏览（父技能 /Code2Database）；事务/守护进程/profile/导出（/Code2Database-ops）。"
 trigger: /Code2Database-analysis
 parent_skill: Code2Database
 ---

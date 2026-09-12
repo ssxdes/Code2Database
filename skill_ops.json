@@ -1,7 +1,7 @@
 {
   "name": "Code2Database-ops",
   "version": "1.3.0",
-  "description": "Graph editing + operations for Code2Database. Activated when the user asks about transactions, daemon control, profile health, doc-code alignment, exports, or memory management. All 260 commands (252 builder + 8 scanner) remain accessible from the parent skill.",
+  "description": "Operations sub-skill for Code2Database. Activated when the user asks about safe graph editing (transactions, snapshots, WAL replay), keeping the graph up to date (daemon, git hooks, patch-from-diff/git), profile health/evolution, doc-code alignment, graph versioning, persistent memory, exports, plugins, embeddings, or the BUG benchmark. DB-modifying commands require user confirmation. Use when /Code2Database hands off an ops question, or when the user types /Code2Database-ops. Not for: graph queries (parent); deep analysis (/Code2Database-analysis).",
   "trigger": "/Code2Database-ops",
   "parent_skill": "Code2Database",
   "languages": [

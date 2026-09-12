@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. Supports C/C++/Go/Python/Java/Rust/ASM with invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, and 19 cgdb semantic tables. 83 MCP tools (55 base + 28 design-report) + 260 CLI commands (252 builder + 8 scanner). Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
+description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. C/C++/Go/Python/Java/Rust/ASM invocation graphs: conditional paths, concurrency analysis, data flow, FFI tracing, 19 cgdb semantic tables. One-shot lifecycle via the c2d umbrella (setup → session → ask → capture). 83 MCP tools + 260 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
 trigger: /Code2Database
 ---
 

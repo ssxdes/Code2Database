@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "将代码库转为可查询的代码数据库。扫描一次，永久查询——不再需要 grep/glob/Read。支持 C/C++/Go/Python/Java/Rust/ASM，调用图、条件路径、并发分析、数据流、FFI 追踪、19 个 cgdb 语义表。83 个 MCP (55 base + 28 design-report) 工具 + 260 个 CLI 命令 (252 builder + 8 scanner)。当代码问题涉及结构、调用链、影响面、并发或数据流时使用 /Code2Database。"
+description: "将代码库转为可查询的代码数据库。扫描一次，永久查询——不再需要 grep/glob/Read。C/C++/Go/Python/Java/Rust/ASM 调用图：条件路径、并发分析、数据流、FFI 追踪、19 个 cgdb 语义表。通过 c2d 总入口一键生命周期（setup → session → ask → capture）。83 个 MCP 工具 + 260 个 CLI 命令。当代码提问涉及结构、调用链、影响分析、并发或数据流时使用 /Code2Database。"
 trigger: /Code2Database
 ---
 

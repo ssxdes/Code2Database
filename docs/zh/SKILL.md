@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "将代码库转为可查询的代码数据库。扫描一次，永久查询——不再需要 grep/glob/Read。支持 C/C++/Go/Python/Java/Rust/ASM，调用图、条件路径、并发分析、数据流、FFI 追踪、19 个 cgdb 语义表。83 个 MCP (55 base + 28 design-report) 工具 + 258 个 CLI 命令 (250 builder + 8 scanner)。当代码问题涉及结构、调用链、影响面、并发或数据流时使用 /Code2Database。"
+description: "将代码库转为可查询的代码数据库。扫描一次，永久查询——不再需要 grep/glob/Read。支持 C/C++/Go/Python/Java/Rust/ASM，调用图、条件路径、并发分析、数据流、FFI 追踪、19 个 cgdb 语义表。83 个 MCP (55 base + 28 design-report) 工具 + 259 个 CLI 命令 (251 builder + 8 scanner)。当代码问题涉及结构、调用链、影响面、并发或数据流时使用 /Code2Database。"
 trigger: /Code2Database
 ---
 
@@ -95,7 +95,7 @@ python3 scripts/code2database_builder.py serve    # MCP 服务器（83 工具）
 | `daemon` | 显示守护进程状态（`daemon-status` 的别名；启动同步用 `daemon-start`） | Ops |
 | `health` | Profile 健康评分（需要 `--source`）（`profile-health` 的别名）。图谱新鲜度用 `daemon-status` 或 `session-init` | — |
 
-全部 258 个 CLI 命令仍可访问；上述 26 个覆盖 ~95% 的 agent 工作流。其他短别名（未列入上表）：`export` → `export-mermaid`。
+全部 259 个 CLI 命令仍可访问；上述 26 个覆盖 ~95% 的 agent 工作流。其他短别名（未列入上表）：`export` → `export-mermaid`。
 
 ## 支持语言
 

@@ -1643,6 +1643,24 @@ def main():
     p_dd.add_argument("--output", default=None,
                       help="Output file path (stdout if omitted)")
 
+    # Symptom-driven diagnosis
+    p_dg = sub.add_parser("diagnose",
+                          help="Six-dimension diagnosis report for a symbol: "
+                               "symptom parsing, impact area, call chains, "
+                               "cross validation, special patterns, "
+                               "root-cause hypotheses")
+    p_dg.add_argument("--graph", required=True)
+    p_dg.add_argument("--symbol", required=True, help="Function name or node ID")
+    p_dg.add_argument("--log", default=None,
+                      help="Optional log file to parse for symptoms")
+    p_dg.add_argument("--depth", type=int, default=6, help="Traversal depth")
+    p_dg.add_argument("--max-chains", type=int, default=5,
+                      help="Maximum forward chains to trace")
+    p_dg.add_argument("--output", default=None,
+                      help="Output file path (stdout if omitted)")
+    p_dg.add_argument("--json", action="store_true",
+                      help="Emit structured JSON instead of Markdown")
+
     # Semantic search (neural embeddings)
     p_ss = sub.add_parser("semantic-search",
                           help="Neural semantic search: FTS5 BM25 + neural embedding + RRF fusion")
@@ -3108,6 +3126,7 @@ def main():
         "hw-reach": _lazy("_builder.analysis.hw_reach", "cmd_hw_reach"),
         "reason": _lazy("_builder.analysis.reasoning", "cmd_reason"),
         "design-doc": _lazy("_builder.export.design_doc", "cmd_design_doc"),
+        "diagnose": _lazy("_builder.analysis.diagnose", "cmd_diagnose"),
         "semantic-search": cmd_semantic_search,
         "code-slice": cmd_code_slice,
         "sarif-export": cmd_sarif_export,

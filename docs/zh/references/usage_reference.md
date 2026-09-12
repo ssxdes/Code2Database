@@ -802,9 +802,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## 完整 CLI 命令参考（258 个命令）
+## 完整 CLI 命令参考（259 个命令）
 
-全部 258 个 CLI 子命令，涵盖 `code2database_builder.py`（250 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
+全部 259 个 CLI 子命令，涵盖 `code2database_builder.py`（251 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
 
 | 命令 | 说明 |
 |------|------|
@@ -895,6 +895,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `describe-commit` | Show which nodes/edges a commit affected |
 | `design-doc` | 基于图谱数据为模块（domain 或源文件）生成九章结构设计文档 |
 | `describe-node` | Get info about a node. Use --detail brief|standard|full to control output size |
+| `diagnose` | 符号六维度诊断报告：症状解析（`--log`）、影响面、调用链、交叉验证、特殊模式、根因假设（`--json` 输出结构化数据） |
 | `detect-changes` | Detect changed files since last manifest |
 | `detect-races` | Detect data races between different thread contexts |
 | `diff-chains` | Compare execution paths under two different bindings |

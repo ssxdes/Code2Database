@@ -803,9 +803,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (258 commands)
+## Complete CLI Command Reference (259 commands)
 
-All 258 CLI subparsers across `code2database_builder.py` (250) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
+All 259 CLI subparsers across `code2database_builder.py` (251) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
 
 | Command | Description |
 |---------|-------------|
@@ -896,6 +896,7 @@ All 258 CLI subparsers across `code2database_builder.py` (250) and `code2databas
 | `describe-commit` | Show which nodes/edges a commit affected |
 | `design-doc` | Generate a nine-section design document for a module (domain or source file) from graph data |
 | `describe-node` | Get info about a node. Use --detail brief|standard|full to control output size |
+| `diagnose` | Six-dimension diagnosis report for a symbol: symptom parsing (`--log`), impact area, call chains, cross validation, special patterns, root-cause hypotheses (`--json` for structured output) |
 | `detect-changes` | Detect changed files since last manifest |
 | `detect-races` | Detect data races between different thread contexts |
 | `diff-chains` | Compare execution paths under two different bindings |

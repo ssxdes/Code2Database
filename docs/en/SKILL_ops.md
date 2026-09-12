@@ -104,6 +104,8 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 
 ## Routing Table — Medium-weight Commands by Question Type
 
+> **Executable shortcut**: several routing families here (quality checks, doc-alignment) are also runnable in one call from the parent skill — `c2d ask --recipe quality` / `c2d ask --question "..."` (see `c2d recipes`).
+
 | Question Type | Command Sequence |
 |---------------|------------------|
 | **Safe graph editing** | `tx-begin` → `tx-status` → `update-node` / `update-edge` / `patch-profile` / `classify-endpoints` / `auto-enhance` / `heuristic-enhance` / `batch-confirm` / `rollback` / `fill-request` / `add-semantic-edges` / `semantic-status` / `audit-log` → `tx-commit` (with confirmation) → fallback `tx-restore` / `tx-list-snapshots` / `tx-replay-wal` if needed |

@@ -6,6 +6,31 @@ Code2Database 的详细命令语法、参数和输出说明。
 
 > **这带来的转变**：下面的每条命令都是*对持久代码数据库的查询*，不是逐文件搜索。`explore-flow` 一次调用返回相关节点 + 路径（vs. N 次 grep/Read 往返）。`trace-chain` 返回带条件标注的 A→B（vs. 手动走调用点）。`detect-races` 返回跨线程隐患（vs. 阅读共享资源的每个调用者）。`field-access` 返回谁读写了某字段（vs. 全代码库 grep）。图谱是索引；命令是查询语言。
 
+## 一键式入口 — `c2d` 总入口
+
+下方每个生命周期步骤都有目标导向的封装：`c2d` 把动词（或自然语言提问）映射到正确的命令序列，无需记忆完整命令面。
+
+```bash
+BUILDER="python3 $SKILL_DIR/scripts/code2database_builder.py"
+
+# 生命周期：setup -> session -> ask -> capture（+ freshen / report）
+$BUILDER c2d setup --source SOURCE_PATH        # = make（一键建库）
+$BUILDER c2d session                           # = session-init
+$BUILDER c2d ask --question "is bdev_start thread safe?"
+$BUILDER c2d ask --recipe impact --target bdev_start
+$BUILDER c2d capture --question "..." --answer "..." --category bdev --author you
+$BUILDER c2d freshen                           # 新鲜度检查 + 更新路由
+$BUILDER c2d report --kind design --module fs  # design|diagnose|html|mermaid|plantuml
+
+# 自文档化
+$BUILDER c2d recipes                           # 列出路由配方
+$BUILDER c2d recipes --recipe thread-safety    # 详情：模式 + 步骤
+$BUILDER c2d verbs                             # 生命周期速查表
+$BUILDER c2d ask --question "..." --dry-run    # 预览翻译后的命令
+```
+
+`ask` 用 `--question` 对配方注册表分类 — 内置 13 个配方：thread-safety、race-scan、value-origin、impact、call-path、path-feasibility、invariants、ffi、provenance、resource、quality、doc-alignment、explore — 并执行匹配的只读命令序列（分步横幅 + 聚合摘要，`--json` 输出结构化结果）。显式参数（`--target/--from/--to/--query/--source`）优先于提问提取；无匹配时回退到单命令意图路由。配方步骤永远只读（引擎拒绝写命令与写标志）；每步执行前回显，任意动词可用 `--dry-run` 预览。
+
 ## 第0步 — 检查前置条件
 
 **手动编写Profile**：详见 `docs/PROFILE_MANUAL.md`，包含完整字段说明、示例和编写流程。

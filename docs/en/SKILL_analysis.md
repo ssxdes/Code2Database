@@ -51,6 +51,8 @@ These are the commands you'll reach for most often. Each one replaces dozens of 
 
 When the question type matches one of these, use the listed command sequence. Read the reference file (`references/analysis_commands.md`) only when you need detailed syntax.
 
+> **Executable shortcut**: the question families marked with a recipe are also runnable in one call from the parent skill — `c2d ask --question "..."` classifies and executes the sequence (see `c2d recipes`).
+
 | Question Type | Command Sequence |
 |---------------|------------------|
 | **Is this thread-safe?** | `concurrency-risks` → `concurrency-analyze` → `detect-races` → `lock-coverage` → `happens-before` → `memory-ordering` → `who-locks` |

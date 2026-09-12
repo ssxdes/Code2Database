@@ -104,6 +104,8 @@ LLM 执行任何修改 code graph database的命令时，**必须先获得用户
 
 ## 路由表 — 按问题类型分组的中权重命令
 
+> **可执行捷径**：这里的多个路由族（质量检查、文档对齐）也可从父技能一次调用完成 — `c2d ask --recipe quality` / `c2d ask --question "..."`（见 `c2d recipes`）。
+
 | 问题类型 | 命令序列 |
 |---------|---------|
 | **安全图谱编辑** | `tx-begin` → `tx-status` → `update-node` / `update-edge` / `patch-profile` / `classify-endpoints` / `auto-enhance` / `heuristic-enhance` / `batch-confirm` / `rollback` / `fill-request` / `add-semantic-edges` / `semantic-status` / `audit-log` → `tx-commit`（带确认）→ 必要时 `tx-restore` / `tx-list-snapshots` / `tx-replay-wal` |

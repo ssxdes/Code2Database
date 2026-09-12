@@ -8,12 +8,30 @@ trigger: /Code2Database
 
 **Scan once → persistent graph → query instead of grep.** One tool call answers questions that would otherwise require multiple grep/glob/Read across files.
 
+## One-Click Lifecycle — the `c2d` Umbrella
+
+You do not need to memorize the 260-command surface. One command covers the whole workflow — learn 4 verbs:
+
+| Verb | Purpose | Example |
+|------|---------|---------|
+| `c2d setup` | One-click ingest: env-check (fail fast) → scan → build → derived artifacts → exports | `c2d setup --source /path/to/project` |
+| `c2d session` | One-shot context load: brief + memory digest + graph state + known-unknowns | `c2d session` |
+| `c2d ask` | Ask any code question — the matched recipe runs the right read-only command sequence with aggregated output | `c2d ask --question "is bdev_start thread safe?"` |
+| `c2d capture` | Save a Q&A into project memory | `c2d capture --question "..." --answer "..." --category bdev --author you` |
+| `c2d freshen` | Freshness check → routes to full rebuild / daemon watch / per-file update | `c2d freshen` |
+| `c2d report` | Generate an artifact: design doc / diagnosis / html / mermaid / plantuml | `c2d report --kind design --module fs` |
+
+- `c2d recipes` lists the question→command routing recipes (13 built in; detail view: `c2d recipes --recipe thread-safety`). `c2d ask` classifies `--question` against them, or run one directly with `--recipe NAME`; no match falls back to the single-command intent router.
+- Every step is a normal read-only subcommand, echoed before it runs — preview any verb with `--dry-run`; `c2d ask` also accepts `--json` for a structured summary.
+- The full command surface stays available for direct use (Core Commands below).
+
 ## ⚠ MANDATORY FIRST STEP — session-init
 
 **Before any other C2D command, run `session-init` exactly once per AI session.**
 
 ```bash
 python3 scripts/code2database_builder.py session-init   # --graph auto-discovers code2db-out/
+# umbrella form: c2d session
 ```
 
 This loads the complete project knowledge (brief — architecture rules, hard_rules, pitfalls, query_paths) + veteran memory digest + graph state + known-unknowns. **Without this step, the project's knowledge底蕴 is invisible** — every subsequent query operates blind to mandatory rules and prior experience. Session-init is the only command that surfaces the full brief; `query` and `describe` only show FTS5-matched fragments.
@@ -43,21 +61,31 @@ top kb hits as a `_hints` field alongside graph rows.
 
 ```bash
 # 0. First time on a project: one-click ingestion (env-check fails fast)
-python3 scripts/code2database_builder.py make --source /path/to/project
-#   → stage 1 env-check BEFORE any build step: missing compile_commands.json /
-#     libclang / tree-sitter grammars are reported up front (never mid-build)
-#   → stage 2: scan -> build -> derived artifacts (value-flow, data-dep,
-#     #ifdef signals, FFI, brief, kb index, embeddings) -> exports
-#     (Obsidian vault, HTML) -> profile-health report
-#   → make --check: env-check only, no build
-#   → re-runs are safe: graph artifacts rebuilt, memory/knowledge preserved
+python3 scripts/code2database_builder.py c2d setup --source /path/to/project
+#   (= make — stage 1 env-check BEFORE any build step: missing
+#     compile_commands.json / libclang / tree-sitter grammars are
+#     reported up front, never mid-build; stage 2: scan -> build ->
+#     derived artifacts (value-flow, data-dep, #ifdef signals, FFI,
+#     brief, kb index, embeddings) -> exports -> profile-health;
+#     --check = env-check only; re-runs are safe: graph artifacts
+#     rebuilt, memory/knowledge preserved)
 
 # 1. Session start (MANDATORY): load the full project context
-python3 scripts/code2database_builder.py session-init    # --graph auto-discovers code2db-out/
-#   → brief + veteran memory digest + graph state + unanswered questions
-#   → if no brief yet: brief-extract to bootstrap, then curate with brief-update
+python3 scripts/code2database_builder.py c2d session
+#   (= session-init — brief + veteran memory digest + graph state +
+#     unanswered questions; if no brief yet: brief-extract to
+#     bootstrap, then curate with brief-update)
 
-# 2. Query (repeatable)
+# 2. Ask (repeatable) — recipes pick the right read-only commands
+python3 scripts/code2database_builder.py c2d ask --question "is bdev_start thread safe?"
+python3 scripts/code2database_builder.py c2d ask --question "what breaks if I change util_sum?"
+python3 scripts/code2database_builder.py c2d ask --recipe impact --target bdev_start
+
+# 3. Capture valuable Q&A into memory (as needed)
+python3 scripts/code2database_builder.py c2d capture --question "..." \
+    --answer "..." --category bdev --author you
+
+# Raw commands remain available for power use:
 python3 scripts/code2database_builder.py describe --node bdev_start
 python3 scripts/code2database_builder.py kb-query --query "bdev register"
 python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_start
@@ -65,6 +93,8 @@ python3 scripts/code2database_builder.py serve    # MCP server (83 tools)
 ```
 
 ## Core Commands (27)
+
+The direct command surface for power use — the `c2d` umbrella above wraps the most common paths.
 
 | Command | Purpose | Query Layer |
 |---------|---------|-------------|

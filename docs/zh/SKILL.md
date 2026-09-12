@@ -8,12 +8,30 @@ trigger: /Code2Database
 
 **扫描一次 → 持久图 → 查询替代 grep。** 一次工具调用即可回答原本需要多次 grep/glob/Read 的问题。
 
+## 一键式生命周期 — `c2d` 总入口
+
+不需要记住 260 个命令。一个命令覆盖完整工作流 — 只需掌握 4 个动词：
+
+| 动词 | 用途 | 示例 |
+|------|------|------|
+| `c2d setup` | 一键建库：env-check（缺件前置报出）→ 扫描 → 构建 → 派生产物 → 导出 | `c2d setup --source /path/to/project` |
+| `c2d session` | 一次加载上下文：简报 + 记忆摘要 + 图状态 + 已知未知 | `c2d session` |
+| `c2d ask` | 提出任意代码疑问 — 匹配的配方自动执行正确的只读命令序列并聚合输出 | `c2d ask --question "is bdev_start thread safe?"` |
+| `c2d capture` | 把 Q&A 沉淀到项目记忆 | `c2d capture --question "..." --answer "..." --category bdev --author you` |
+| `c2d freshen` | 新鲜度检查 → 路由到全量重建 / 守护进程 / 按文件更新 | `c2d freshen` |
+| `c2d report` | 产出工件：设计文档 / 诊断 / html / mermaid / plantuml | `c2d report --kind design --module fs` |
+
+- `c2d recipes` 列出 提问→命令 路由配方（内置 13 个；详情：`c2d recipes --recipe thread-safety`）。`c2d ask` 用 `--question` 自动分类匹配，或用 `--recipe NAME` 直接指定；无匹配时回退到单命令意图路由。
+- 每一步都是普通的只读子命令，执行前先回显 — 任意动词可用 `--dry-run` 预览；`c2d ask` 还支持 `--json` 结构化摘要。
+- 完整命令面保持可直接使用（见下方核心命令）。
+
 ## ⚠ 强制第一步 — session-init
 
 **在执行任何其他 C2D 命令之前，每个 AI 会话必须运行一次 `session-init`（且仅需一次）。**
 
 ```bash
 python3 scripts/code2database_builder.py session-init   # --graph 自动发现 code2db-out/
+# 总入口形式：c2d session
 ```
 
 此命令加载完整的项目知识底蕴（brief — 架构规则、hard_rules、陷阱、query_paths）+ 前辈记忆摘要 + 图状态 + 已知未知。**如果不执行此步骤，项目的知识底蕴完全不可见** — 后续所有查询都在无视强制规则和前辈经验的情况下盲操作。session-init 是唯一返回完整 brief 的命令；`query` 和 `describe` 只显示 FTS5 匹配的片段。
@@ -43,21 +61,28 @@ python3 scripts/code2database_builder.py session-init   # --graph 自动发现 c
 
 ```bash
 # 0. 首次接入项目：一键建库（env-check 前置校验，缺件立即报出）
-python3 scripts/code2database_builder.py make --source /path/to/project
-#   → 阶段 1 env-check 在任何构建步骤之前：缺 compile_commands.json /
-#     libclang / tree-sitter 语法包都会预先报出（绝不中途失败）
-#   → 阶段 2：扫描 -> 构建 -> 派生产物（value-flow、data-dep、
-#     #ifdef 信号、FFI、简报、kb 索引、embeddings）-> 导出
-#     （Obsidian 库、HTML）-> profile 健康报告
-#   → make --check：只做环境校验，不构建
-#   → 重复执行安全：图产物重建，memory/knowledge 保留
+python3 scripts/code2database_builder.py c2d setup --source /path/to/project
+#   （= make — 阶段 1 env-check 在任何构建步骤之前：缺 compile_commands.json /
+#     libclang / tree-sitter 语法包都会预先报出（绝不中途失败）；
+#     阶段 2：扫描 -> 构建 -> 派生产物（value-flow、data-dep、#ifdef 信号、
+#     FFI、简报、kb 索引、embeddings）-> 导出 -> profile 健康报告；
+#     --check = 只做环境校验；重复执行安全：图产物重建，memory/knowledge 保留）
 
 # 1. 会话启动（必须）：加载完整项目上下文
-python3 scripts/code2database_builder.py session-init    # --graph 自动发现 code2db-out/
-#   → 简报 + 前辈记忆摘要 + 图状态 + 未解答问题
-#   → 若无简报：brief-extract 自举模板，再用 brief-update 精炼
+python3 scripts/code2database_builder.py c2d session
+#   （= session-init — 简报 + 前辈记忆摘要 + 图状态 + 已知未知；
+#     若无简报：brief-extract 自举模板，再用 brief-update 精炼）
 
-# 2. 查询（可重复）
+# 2. 提问（可重复）— 配方自动选择正确的只读命令
+python3 scripts/code2database_builder.py c2d ask --question "is bdev_start thread safe?"
+python3 scripts/code2database_builder.py c2d ask --question "what breaks if I change util_sum?"
+python3 scripts/code2database_builder.py c2d ask --recipe impact --target bdev_start
+
+# 3. 沉淀有价值的 Q&A 到记忆（按需）
+python3 scripts/code2database_builder.py c2d capture --question "..." \
+    --answer "..." --category bdev --author you
+
+# 原生命令保持可用（进阶用法）：
 python3 scripts/code2database_builder.py describe --node bdev_start
 python3 scripts/code2database_builder.py kb-query --query "bdev register"
 python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_start
@@ -65,6 +90,8 @@ python3 scripts/code2database_builder.py serve    # MCP 服务器（83 工具）
 ```
 
 ## 核心命令（27 个）
+
+直接命令面，供进阶使用 — 上方 `c2d` 总入口已封装最常用路径。
 
 | 命令 | 用途 | 查询层 |
 |------|------|--------|

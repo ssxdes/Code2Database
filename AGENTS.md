@@ -65,7 +65,8 @@ The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts
 ## Pipeline Architecture
 
 ```
-make (one-click: env-check → scan → build → derived artifacts → exports)
+c2d (umbrella: setup → session → ask → capture, + freshen/report; `ask` routes a question to a read-only recipe)
+make (one-click: env-check → scan → build → derived artifacts → exports; c2d setup delegates here)
 Profile → Scan (AST extraction) → Build (graph construction) → Query
                                   ↓
                             Daemon auto-refresh loop

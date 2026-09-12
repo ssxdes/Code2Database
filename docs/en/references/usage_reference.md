@@ -6,6 +6,31 @@ Read this file on demand when you need specific command details. Do not load int
 
 > **The shift this enables**: every command below is a *query into a persistent code database*, not a file-by-file search. `explore-flow` returns relevant nodes + paths in one call (vs. N grep/Read round-trips). `trace-chain` returns A→B with conditions annotated (vs. manually walking invocation sites). `detect-races` returns cross-thread hazards (vs. reading every invoker of a shared resource). `field-access` returns who reads/writes a field (vs. grep across the codebase). The graph is the index; the commands are the query language.
 
+## One-Click Entry — the `c2d` Umbrella
+
+Every lifecycle step below also has a goal-oriented wrapper: `c2d` maps a verb (or a natural-language question) onto the right command sequence, so the full command surface never has to be memorized.
+
+```bash
+BUILDER="python3 $SKILL_DIR/scripts/code2database_builder.py"
+
+# Lifecycle: setup -> session -> ask -> capture (+ freshen / report)
+$BUILDER c2d setup --source SOURCE_PATH        # = make (one-shot ingest)
+$BUILDER c2d session                           # = session-init
+$BUILDER c2d ask --question "is bdev_start thread safe?"
+$BUILDER c2d ask --recipe impact --target bdev_start
+$BUILDER c2d capture --question "..." --answer "..." --category bdev --author you
+$BUILDER c2d freshen                           # freshness check + update routing
+$BUILDER c2d report --kind design --module fs  # design|diagnose|html|mermaid|plantuml
+
+# Self-documentation
+$BUILDER c2d recipes                           # list the routing recipes
+$BUILDER c2d recipes --recipe thread-safety    # detail: patterns + steps
+$BUILDER c2d verbs                             # lifecycle cheat sheet
+$BUILDER c2d ask --question "..." --dry-run    # preview the translated commands
+```
+
+`ask` classifies `--question` against the recipe registry — 13 built-in recipes: thread-safety, race-scan, value-origin, impact, call-path, path-feasibility, invariants, ffi, provenance, resource, quality, doc-alignment, explore — and executes the matched read-only command sequence with per-step banners and an aggregated summary (`--json` for structured output). Explicit flags (`--target/--from/--to/--query/--source`) override question extraction; when nothing matches, it falls back to the single-command intent router. Recipe steps are always read-only (write commands and write flags are refused by the engine); every step is echoed before it runs and any verb can be previewed with `--dry-run`.
+
 ## Step 0 — Check Prerequisites
 
 **Manual Profile writing**: See `docs/PROFILE_MANUAL.md` for complete field descriptions, examples, and writing workflow.

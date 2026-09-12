@@ -49,6 +49,8 @@ parent_skill: Code2Database
 
 ## 路由表 — 按问题类型分组的中权重命令
 
+> **可执行捷径**：带配方的提问族也可从父技能一次调用完成 — `c2d ask --question "..."` 自动分类并执行序列（见 `c2d recipes`）。
+
 当问题类型匹配下列某项时，使用所列命令序列。仅在需要详细语法时才读取参考文档（`references/analysis_commands.md`）。
 
 | 问题类型 | 命令序列 |

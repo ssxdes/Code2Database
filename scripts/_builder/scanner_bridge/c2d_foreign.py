@@ -430,6 +430,12 @@ def add_foreign(graph_dir: str, foreign_c2d_path: str,
                      "unresolved", edge["call_order"], edge["call_condition"])
                 )
                 summary["unresolved_count"] += 1
+        # Commit BEFORE DETACH: the resolution reads above run inside
+        # the implicit transaction opened by the foreign_refs INSERTs,
+        # and an in-transaction read of the attached db holds a read
+        # lock that makes DETACH fail ("database foreign_db is locked")
+        # — the whole resolution batch was then rolled back at close.
+        conn.commit()
         conn.execute("DETACH DATABASE foreign_db")
         conn.commit()
         # Count totals
@@ -440,6 +446,13 @@ def add_foreign(graph_dir: str, foreign_c2d_path: str,
         summary["total_foreign_refs"] = total
     except sqlite3.Error as e:
         summary["error"] = str(e)
+        # Roll back the partial batch and release the in-transaction
+        # read lock so the DETACH retry below can succeed.
+        try:
+            conn.rollback()
+        except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            pass
         try:
             conn.execute("DETACH DATABASE foreign_db")
         except sqlite3.Error:
@@ -638,6 +651,13 @@ def sync_foreign(graph_dir: str, foreign_c2d_path: str = "",
                      current_sig.get("functions_count", 0),
                      datetime.now().isoformat(), c2d_path)
                 )
+                # Commit BEFORE the context manager's DETACH: the
+                # ref updates above opened a transaction that also read
+                # the attached db, and an in-transaction read holds a
+                # read lock — DETACH would fail and be swallowed, the
+                # alias would stay attached, and the NEXT watched c2d's
+                # ATTACH of the same alias would abort the whole sync.
+                conn.commit()
             # with_foreign_attached guarantees DETACH here
             summary["synced_c2ds"].append({
                 "c2d_path": c2d_path,
@@ -839,6 +859,10 @@ def resolve_foreign_by_name(graph_dir: str, foreign_c2d_path: str = "",
                     summary["re_resolved"] += 1
                 else:
                     summary["still_unresolved"] += 1
+            # Commit before DETACH (same read-lock interaction as
+            # add_foreign): keeps the alias detached for the next
+            # watched c2d instead of silently skipping it.
+            conn.commit()
             try:
                 conn.execute("DETACH DATABASE resolve_db")
             except sqlite3.Error:

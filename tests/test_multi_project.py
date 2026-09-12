@@ -306,7 +306,20 @@ class TestForeignRefsCycle(unittest.TestCase):
     def test_add_foreign_resolves_calls(self):
         summary = add_foreign(self.b_dir, self.a_dir, "A", verbose=False)
         self.assertTrue(summary.get("added"))
+        self.assertNotIn("error", summary,
+                         "resolution batch failed: %s" % summary.get("error"))
         self.assertGreater(summary.get("resolved_count", 0), 0)
+        # The refs must actually be persisted, not just counted in the
+        # summary (a summary-only success masks a rolled-back batch).
+        import sqlite3 as _sq
+        conn = _sq.connect(os.path.join(self.b_dir, "code2database.db"))
+        try:
+            persisted = conn.execute(
+                "SELECT COUNT(*) FROM foreign_refs WHERE status = 'resolved'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(persisted, summary["resolved_count"])
 
     def test_list_foreign_shows_watched(self):
         add_foreign(self.b_dir, self.a_dir, "A", verbose=False)
@@ -319,18 +332,18 @@ class TestForeignRefsCycle(unittest.TestCase):
         summary = sync_foreign(self.b_dir, verbose=False)
         # No changes since we just added
         self.assertIn("synced_c2ds", summary)
+        self.assertNotIn("error", summary)
 
     def test_remove_foreign_orphans_refs(self):
         add_summary = add_foreign(self.b_dir, self.a_dir, "A", verbose=False)
-        # Only test orphaning if add_foreign actually created refs
-        if add_summary.get("resolved_count", 0) == 0:
-            self.skipTest("add_foreign did not resolve any refs; skipping orphan test")
+        self.assertNotIn("error", add_summary)
+        self.assertGreater(add_summary.get("resolved_count", 0), 0)
         summary = remove_foreign(self.b_dir, self.a_dir)
         self.assertTrue(summary.get("removed"))
-        # orphaned_refs may be 0 if add_foreign's INSERT used INSERT OR REPLACE
-        # with autoincrement id (always inserts new, never conflicts) — so
-        # the UPDATE should match. If it didn't, the foreign_c2d_path didn't match.
-        self.assertGreaterEqual(summary.get("orphaned_refs", 0), 0)
+        self.assertEqual(summary.get("orphaned_refs", 0),
+                         add_summary["resolved_count"]
+                         + add_summary.get("unresolved_count", 0),
+                         "every ref of the watched c2d goes orphaned")
         # List should be empty now
         result = list_foreign(self.b_dir)
         self.assertEqual(len(result), 0)

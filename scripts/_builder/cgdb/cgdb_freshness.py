@@ -93,10 +93,13 @@ def check_freshness(graph_dir: str, source_root: str = "",
                 # manifest["source_commit"] is a VCS dict {"type","head",...}
                 # (commit_meta.write_manifest), not a bare string —
                 # comparing it directly to the hash string was always
-                # unequal → git_head_changed always True.
+                # unequal → git_head_changed always True. Non-git
+                # projects record head: None, and dict.get("head", "")
+                # does NOT default on an explicit None — guard with
+                # `or ""` before slicing.
                 _sc = manifest_data.get("source_commit", "unknown")
                 if isinstance(_sc, dict):
-                    _sc = _sc.get("head", "")[:12] or "unknown"
+                    _sc = (_sc.get("head") or "")[:12] or "unknown"
                 result["last_scan_commit"] = _sc
         except (OSError, json.JSONDecodeError):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)

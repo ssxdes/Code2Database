@@ -2633,6 +2633,14 @@ def cmd_scan(args):
             return
 
     _files_from_arg = getattr(args, 'files_from', '') or ''
+    # Effective exclude list: CLI --exclude-dirs plus profile
+    # scan_hints.skip_dirs ('!name' re-includes a built-in skip dir).
+    # Profiles ship project-specific skip lists (e.g., kernel profiles
+    # skip tools/, samples/, Documentation/) without requiring the
+    # user to pass --exclude-dirs on the CLI every time. Computed once
+    # here so both the scan walk and the manifest fingerprint walk
+    # (saved at scan completion) replay the same scope.
+    _exclude = _scan_exclude_dirs(args, profile)
     if args.files or _files_from_arg:
         file_list = []
         if args.files:
@@ -2661,12 +2669,6 @@ def cmd_scan(args):
         _streaming_path = args.output if args.output else None
         # --large-project auto-enables split_output for better memory management
         _auto_split = getattr(args, 'split_output', False) or getattr(args, 'large_project', False)
-        # Effective exclude list: CLI --exclude-dirs plus profile
-        # scan_hints.skip_dirs ('!name' re-includes a built-in skip dir).
-        # Profiles ship project-specific skip lists (e.g., kernel profiles
-        # skip tools/, samples/, Documentation/) without requiring the
-        # user to pass --exclude-dirs on the CLI every time.
-        _exclude = _scan_exclude_dirs(args, profile)
         # --scan-subsystems filter — CLI takes precedence;
         # fall back to profile.scan_hints.scan_subsystems if specified.
         # Lets the linux_kernel profile default to ['fs', 'mm', 'block',
@@ -2755,6 +2757,22 @@ def cmd_scan(args):
               file=sys.stderr)
         if result.get('lang_stats'):
             print(f"Language stats: {result['lang_stats']}", file=sys.stderr)
+        # Persist the scan manifest so freshness checks (session-init,
+        # c2d freshen, detect-changes, incremental rescan) have a
+        # baseline to compare against. The incremental branch above
+        # already saves it after merging; the full-scan path previously
+        # never did, leaving every make-built graph without a freshness
+        # baseline. Skipped for partial scans (--files/--files-from):
+        # those track an explicit file list, not the whole tree.
+        if not (args.files or _files_from_arg):
+            # Import under an alias: the incremental branch above binds
+            # a function-local `save_manifest`, which shadows the
+            # module-level import for the whole function body.
+            from _scanner.changes import save_manifest as _save_manifest
+            _n = _save_manifest(source, os.path.dirname(output) or '.',
+                                exclude_dirs=_exclude if _exclude else None)
+            print(f"Manifest saved: {_n} source files fingerprinted",
+                  file=sys.stderr)
         # Write pipeline stats
         outdir = os.path.dirname(output) or '.'
         report = tracker.write_report(outdir)

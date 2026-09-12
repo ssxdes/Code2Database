@@ -137,7 +137,6 @@ class TestManifestExcludeScope(unittest.TestCase):
 
 
 class TestScanDirectoryReinclude(unittest.TestCase):
-
     def test_reinclude_build_scans_source_there(self):
         from code2database_scanner import scan_directory
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -209,6 +208,92 @@ class TestBuildUpdateWalkScope(unittest.TestCase):
             db = self._make_db(graph, [])
             result = detect_db_changes(src, db)
             self.assertEqual(result["added"], [])
+
+
+class TestFullScanWritesManifest(unittest.TestCase):
+    """A full `scan` (the make pipeline's step 1) must persist the
+    fingerprint manifest — otherwise every make-built graph lacks a
+    freshness baseline and session-init / freshen / detect-changes
+    can only say "manifest missing". Partial scans (--files) keep the
+    old behavior: they track an explicit list, not the tree.
+    """
+
+    def _scan(self, source, out, extra=()):
+        import subprocess
+        scanner = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "scripts", "code2database_scanner.py")
+        return subprocess.run(
+            [sys.executable, scanner, "scan",
+             "--source", source, "--output",
+             os.path.join(out, "extraction.json"),
+             "--no-interactive", "--memory-limit", "9999",
+             "--memory-warn-threshold", "99", "--memory-crit-threshold",
+             "99"] + list(extra),
+            capture_output=True, text=True, timeout=300)
+
+    def test_full_scan_persists_freshness_baseline(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = os.path.join(tmpdir, "src")
+            out = os.path.join(tmpdir, "out")
+            os.makedirs(out)
+            _touch(os.path.join(src, "main.c"),
+                   "int main(void) { return 0; }\n")
+            proc = self._scan(src, out)
+            self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
+            manifest = _read_manifest(out)
+            self.assertIn("main.c", manifest["files"])
+            changes = detect_changes(src, out)
+            self.assertFalse(changes["needs_full_scan"])
+            self.assertEqual(changes["changed_files"], [])
+            self.assertEqual(changes["new_files"], [])
+            self.assertEqual(changes["deleted_files"], [])
+            # a modification flips the baseline
+            _touch(os.path.join(src, "main.c"),
+                   "int main(void) { return 1; }\n")
+            changes = detect_changes(src, out)
+            changed = {os.path.relpath(p, src) for p in changes["changed_files"]}
+            self.assertIn("main.c", changed)
+
+    def test_partial_files_scan_skips_manifest(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = os.path.join(tmpdir, "src")
+            out = os.path.join(tmpdir, "out")
+            os.makedirs(out)
+            _touch(os.path.join(src, "main.c"),
+                   "int main(void) { return 0; }\n")
+            proc = self._scan(src, out,
+                              extra=["--files", os.path.join(src, "main.c")])
+            self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
+            self.assertFalse(
+                os.path.exists(os.path.join(out,
+                                            ".code2database_manifest.json")))
+
+
+class TestFreshnessHandlesNullCommitHead(unittest.TestCase):
+    """Non-git projects record source_commit.head: None — the freshness
+    check must not crash on it (dict.get("head", "") does not default
+    on an explicit None)."""
+
+    def test_none_head_is_treated_as_unknown(self):
+        from _builder.cgdb.cgdb_freshness import check_freshness
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = os.path.join(tmpdir, "src")
+            out = os.path.join(tmpdir, "out")
+            os.makedirs(out)
+            _touch(os.path.join(src, "main.c"),
+                   "int main(void) { return 0; }\n")
+            save_manifest(src, out)
+            with open(os.path.join(out, ".code2database_manifest.json")) as f:
+                data = json.load(f)
+            data["source_commit"] = {"type": "none", "head": None}
+            with open(os.path.join(out, ".code2database_manifest.json"),
+                      "w") as f:
+                json.dump(data, f)
+            fr = check_freshness(out, src)
+            self.assertEqual(fr["last_scan_commit"], "unknown")
+            self.assertFalse(fr["git_head_changed"])
+            self.assertTrue(fr["is_fresh"])
 
 
 class TestMergeManifestPreservesScope(unittest.TestCase):

@@ -1598,6 +1598,23 @@ def main():
     p_cl.add_argument("--limit", type=int, default=50,
                       help="Maximum clone groups to report")
 
+    # Hardware reachability
+    p_hr = sub.add_parser("hw-reach",
+                          help="Trace a symbol's call chain toward hardware "
+                               "terminals and classify it (hardware-reaching / "
+                               "hold-flush / software-gate / software-only)")
+    p_hr.add_argument("--graph", required=True)
+    p_hr.add_argument("--node", required=True, help="Function name or node ID")
+    p_hr.add_argument("--depth", type=int, default=6,
+                      help="Maximum BFS depth along call edges")
+    p_hr.add_argument("--max-paths", type=int, default=5,
+                      help="Maximum terminal paths to report")
+    p_hr.add_argument("--profile", default=None,
+                      help="Profile JSON path (default: "
+                           "<graph>/.code2database_profile.json)")
+    p_hr.add_argument("--terminals", default="",
+                      help="Comma-separated extra terminal name regexes")
+
     # Semantic search (neural embeddings)
     p_ss = sub.add_parser("semantic-search",
                           help="Neural semantic search: FTS5 BM25 + neural embedding + RRF fusion")
@@ -3060,6 +3077,7 @@ def main():
         "check-bounds": _lazy("_builder.analysis.quality_checks", "cmd_check_bounds"),
         "check-infinite-loop": _lazy("_builder.analysis.quality_checks", "cmd_check_infinite_loop"),
         "check-clones": _lazy("_builder.analysis.quality_checks", "cmd_check_clones"),
+        "hw-reach": _lazy("_builder.analysis.hw_reach", "cmd_hw_reach"),
         "semantic-search": cmd_semantic_search,
         "code-slice": cmd_code_slice,
         "sarif-export": cmd_sarif_export,

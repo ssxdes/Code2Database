@@ -207,6 +207,17 @@ _DEFAULT_PROFILE = {
     # EMPTY by default — built-in reference profiles populate this for
     # project-specific allocation APIs.
     "allocation_sites": [],
+    # project-declared hardware terminal patterns.
+    # Regex patterns matching function names that perform direct hardware
+    # access (register reads/writes, bus transactions). The hw-reach
+    # command BFS-traces call chains from a symbol toward these terminals
+    # and classifies the symbol: hardware-reaching / hold-flush /
+    # software-gate / software-only. Built-in defaults cover common
+    # register-access naming (Write/Read + BitReg/BitData, Spi/PCIe I2C
+    # transfers, batch writes); projects add their own terminal names here.
+    # EMPTY by default — built-in reference profiles populate this for
+    # project-specific hardware access APIs.
+    "hardware_terminals": [],
     # project-declared lock semantics.
     # Maps lock primitive function names to their semantic effect (acquire or
     # release) plus the argument index that identifies the lock object. Lets
@@ -711,6 +722,27 @@ class ProfileSchema:
                     f"allocation_sites[{i}] has unknown keys: {unknown}"
                 )
 
+        # hardware_terminals must be a list of valid regex strings.
+        ht = d.get("hardware_terminals", [])
+        if not isinstance(ht, list):
+            raise ValueError(
+                "hardware_terminals must be a list of regex strings, "
+                f"got {type(ht).__name__}"
+            )
+        for i, pattern in enumerate(ht):
+            if not isinstance(pattern, str):
+                raise ValueError(
+                    f"hardware_terminals[{i}] must be a string, "
+                    f"got {type(pattern).__name__}"
+                )
+            import re as _re_mod
+            try:
+                _re_mod.compile(pattern)
+            except _re_mod.error as e:
+                raise ValueError(
+                    f"hardware_terminals[{i}] is not a valid regex: {e}"
+                )
+
         # lock_semantics must be list of dicts with required keys.
         _LOCK_SEM_REQUIRED = ("function", "kind")
         _LOCK_SEM_OPTIONAL = ("arg_index", "locks_object_at", "description")
@@ -897,6 +929,7 @@ class ProfileSchema:
             "io_classification": d.get("io_classification", {}),
             "guard_functions": d.get("guard_functions", []),
             "allocation_sites": d.get("allocation_sites", []),
+            "hardware_terminals": d.get("hardware_terminals", []),
             "lock_semantics": d.get("lock_semantics", []),
         }
 

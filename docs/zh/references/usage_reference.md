@@ -802,9 +802,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## 完整 CLI 命令参考（255 个命令）
+## 完整 CLI 命令参考（256 个命令）
 
-全部 255 个 CLI 子命令，涵盖 `code2database_builder.py`（247 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
+全部 256 个 CLI 子命令，涵盖 `code2database_builder.py`（248 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
 
 | 命令 | 说明 |
 |------|------|
@@ -946,6 +946,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `happens-before` | Check happens-before between a writer and reader via locks, RCU, or memory barriers |
 | `heuristic-enhance` | Generate heuristic supplements for empty fields — no LLM required (always-works fallback) |
 | `hub-nodes` | Most connected nodes (highest in+out degree) |
+| `hw-reach` | 追踪符号调用链至硬件终端并分类（`--depth`、`--max-paths`、`--profile`、`--terminals`） |
 | `hybrid-search` | Hybrid search: FTS5 BM25 + optional embedding + RRF fusion |
 | `impact` | Impact analysis for a node |
 | `import-foreign-knowledge` | Copy foreign C2D's knowledge/*.md into local knowledge/ |

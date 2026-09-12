@@ -803,9 +803,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (255 commands)
+## Complete CLI Command Reference (256 commands)
 
-All 255 CLI subparsers across `code2database_builder.py` (247) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
+All 256 CLI subparsers across `code2database_builder.py` (248) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
 
 | Command | Description |
 |---------|-------------|
@@ -947,6 +947,7 @@ All 255 CLI subparsers across `code2database_builder.py` (247) and `code2databas
 | `happens-before` | Check happens-before between a writer and reader via locks, RCU, or memory barriers |
 | `heuristic-enhance` | Generate heuristic supplements for empty fields — no LLM required (always-works fallback) |
 | `hub-nodes` | Most connected nodes (highest in+out degree) |
+| `hw-reach` | Trace a symbol's call chain toward hardware terminals and classify it (`--depth`, `--max-paths`, `--profile`, `--terminals`) |
 | `hybrid-search` | Hybrid search: FTS5 BM25 + optional embedding + RRF fusion |
 | `impact` | Impact analysis for a node |
 | `import-foreign-knowledge` | Copy foreign C2D's knowledge/*.md into local knowledge/ |

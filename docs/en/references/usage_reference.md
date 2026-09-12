@@ -52,7 +52,7 @@ Start here: find the task, use the one call, or drop to the direct command seque
 | Explore a topic | `c2d ask --recipe explore --query TOPIC` | `hybrid-search` → `explore-flow` |
 | Ingest a project (first time) | `c2d setup --source DIR` | `make` (env-check → scan → build → derived artifacts → exports) |
 | Load session context | `c2d session` | `session-init` |
-| Freshness check + update routing | `c2d freshen` | `check-freshness` → `make` / `daemon-start` / `build-update` |
+| Freshness check + update routing | `c2d freshen` | `cgdb-freshness` → `make` / `daemon-start` / `build-update` |
 | Generate a report artifact | `c2d report --kind KIND` | `design-doc` / `diagnose` / `export-html` / `export-mermaid` / `export-plantuml` |
 | Save a Q&A into memory | `c2d capture --question .. --answer ..` | `save-memory` |
 | Safe graph editing | — | `tx-begin` → `update-node` / `update-edge` / `patch-profile` → `tx-commit` |

@@ -52,7 +52,7 @@ $BUILDER c2d ask --question "..." --dry-run    # 预览翻译后的命令
 | 探索某个主题 | `c2d ask --recipe explore --query TOPIC` | `hybrid-search` → `explore-flow` |
 | 首次建库 | `c2d setup --source DIR` | `make`（env-check → scan → build → 派生产物 → exports） |
 | 加载会话上下文 | `c2d session` | `session-init` |
-| 新鲜度检查与更新路由 | `c2d freshen` | `check-freshness` → `make` / `daemon-start` / `build-update` |
+| 新鲜度检查与更新路由 | `c2d freshen` | `cgdb-freshness` → `make` / `daemon-start` / `build-update` |
 | 生成报告工件 | `c2d report --kind KIND` | `design-doc` / `diagnose` / `export-html` / `export-mermaid` / `export-plantuml` |
 | 沉淀问答到记忆 | `c2d capture --question .. --answer ..` | `save-memory` |
 | 安全的图编辑 | — | `tx-begin` → `update-node` / `update-edge` / `patch-profile` → `tx-commit` |

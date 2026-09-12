@@ -2788,6 +2788,18 @@ def main():
                       help="Multi-project mode: render A -> B -> C dependency graph "
                            "with project-level nodes (boxes) and edge counts")
 
+    p_ep = sub.add_parser("export-plantuml",
+                          help="Export the code graph as PlantUML text diagrams")
+    p_ep.add_argument("--graph", required=True)
+    p_ep.add_argument("--mode", choices=["call", "module", "impact", "structure"],
+                      default="call", help="Export mode")
+    p_ep.add_argument("--node", default=None, help="Function name/ID (call/impact modes)")
+    p_ep.add_argument("--file", default=None, help="Source file substring (structure mode)")
+    p_ep.add_argument("--domain", default=None, help="Domain name (structure mode)")
+    p_ep.add_argument("--depth", type=int, default=2, help="Traversal depth")
+    p_ep.add_argument("--max-nodes", type=int, default=60, help="Node rendering cap")
+    p_ep.add_argument("--output", default=None, help="Output file path (stdout if omitted)")
+
     # --- Report-layer CLI commands (13 new) ---
     p_rs = sub.add_parser("render-source", help="Render source from DB tokens")
     p_rs.add_argument("--graph", required=True)
@@ -3192,6 +3204,7 @@ def main():
         "cgdb-freshness": _lazy("_builder.cgdb.cgdb_freshness", "cmd_cgdb_freshness"),
         "cgdb-compare": _lazy("_builder.cgdb.cgdb_compare", "cmd_cgdb_compare"),
         "export-mermaid": _lazy("_builder.export.export_mermaid", "cmd_export_mermaid"),
+        "export-plantuml": _lazy("_builder.export.export_plantuml", "cmd_export_plantuml"),
         "export": _lazy("_builder.export.export_mermaid", "cmd_export_mermaid"),  # SKILL.md alias
         "render-source": cmd_render_source,
         "verify-consistency": cmd_verify_consistency,

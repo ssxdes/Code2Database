@@ -803,9 +803,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (254 commands)
+## Complete CLI Command Reference (255 commands)
 
-All 254 CLI subparsers across `code2database_builder.py` (246) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
+All 255 CLI subparsers across `code2database_builder.py` (247) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
 
 | Command | Description |
 |---------|-------------|
@@ -912,6 +912,7 @@ All 254 CLI subparsers across `code2database_builder.py` (246) and `code2databas
 | `export-changes` | Export change graph from git/svn changelog |
 | `export-html` | Export invocation graph as interactive HTML |
 | `export-mermaid` | Export call chains as Mermaid flowchart diagrams |
+| `export-plantuml` | Export the code graph as PlantUML text diagrams (`--mode call|module|impact|structure`) |
 | `export-obsidian` | Export invocation graph as Obsidian vault with [[links]] = calls |
 | `extract-invariants` | Extract preconditions/postconditions/loop_invariants + state machines from function bodies |
 | `extract-invariants-llm` | Extract invariants with LLM consensus and continuous confidence |

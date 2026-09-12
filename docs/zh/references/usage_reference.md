@@ -802,9 +802,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## 完整 CLI 命令参考（254 个命令）
+## 完整 CLI 命令参考（255 个命令）
 
-全部 254 个 CLI 子命令，涵盖 `code2database_builder.py`（246 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
+全部 255 个 CLI 子命令，涵盖 `code2database_builder.py`（247 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
 
 | 命令 | 说明 |
 |------|------|
@@ -911,6 +911,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `export-changes` | Export change graph from git/svn changelog |
 | `export-html` | Export invocation graph as interactive HTML |
 | `export-mermaid` | Export call chains as Mermaid flowchart diagrams |
+| `export-plantuml` | 将代码图导出为 PlantUML 文本图（`--mode call|module|impact|structure`） |
 | `export-obsidian` | Export invocation graph as Obsidian vault with [[links]] = calls |
 | `extract-invariants` | Extract preconditions/postconditions/loop_invariants + state machines from function bodies |
 | `extract-invariants-llm` | Extract invariants with LLM consensus and continuous confidence |

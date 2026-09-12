@@ -7,7 +7,7 @@ parent_skill: Code2Database
 
 # /Code2Database-analysis
 
-**Deep semantic analysis layer for Code2Database.** Activated when the user's question goes beyond "what calls what" — concurrency safety, data races, value flow, path feasibility under constraints, invariants, FFI boundaries, commit-level provenance, or direct cgdb (code graph database) queries via the 19 `cgdb_*` MCP tools.
+**Deep semantic analysis layer for Code2Database** — beyond "what calls what": concurrency safety, data races, value flow, path feasibility, invariants, FFI boundaries, commit-level provenance, and direct cgdb (code graph database) queries via the 19 `cgdb_*` MCP tools.
 
 This sub-skill does **not** re-scan or rebuild the graph. It assumes `code2db-out/` is already built (via the parent `/Code2Database` skill) and the graph is fresh (run `daemon-status` / `daemon-wait-sync` first if a daemon is running).
 
@@ -69,29 +69,9 @@ When the question type matches one of these, use the listed command sequence. Re
 
 ## cgdb MCP Tools (clang backend — 19 tools)
 
-When the user wants to query the cgdb layer directly (clang-derived semantic tables), use these MCP tools. They are accessible regardless of sub-skill activation — MCP is separate from the skill layer.
+Direct queries into the clang-derived semantic tables (AST nodes, types, config predicates, CFG, data flow, alias, ops bindings, sync primitives, happens-before, provenance, time-travel versions). MCP is separate from the skill layer — the tools are accessible regardless of sub-skill activation. Full list with per-tool syntax: `references/analysis_commands.md`.
 
-| MCP Tool | Purpose |
-|----------|---------|
-| `cgdb_search_symbols` | FTS5 search across AST nodes (functions, types, vars) |
-| `cgdb_find_invokers` | Find invokers of a function (CGDB invoke_sites) |
-| `cgdb_find_invoked` | Find invoked of a function |
-| `cgdb_get_definition` | Get the definition node of a symbol |
-| `cgdb_get_function_body` | Get the function body source range |
-| `cgdb_get_struct_layout` | Get struct field layout |
-| `cgdb_find_type_definition` | Find type definition by name |
-| `cgdb_find_ops_impls` | Find ops-table implementations (typed vtable dispatch) |
-| `cgdb_find_cfg_paths` | Find paths in the control-flow graph |
-| `cgdb_find_data_flow` | Find def-use chains in data-flow analysis |
-| `cgdb_find_aliases` | Find aliases of a pointer (stub — MVP) |
-| `cgdb_find_lock_held_calls` | Find calls made while a lock is held |
-| `cgdb_check_race_condition` | Check for race conditions on a variable |
-| `cgdb_find_configs_for` | Find config predicates affecting a node |
-| `cgdb_find_nodes_under_config` | Find all nodes under a config predicate |
-| `cgdb_index_status` | Show cgdb indexing status (per-file, per-layer) |
-| `cgdb_time_travel_query` | Query the graph at a past version |
-| `cgdb_list_versions` | List all recorded graph versions |
-| `cgdb_get_source` | Get source text for a node with byte-precise attribution |
+Commonly used: `cgdb_search_symbols`, `cgdb_find_invokers` / `cgdb_find_invoked`, `cgdb_get_definition`, `cgdb_get_function_body`, `cgdb_struct_layout`, `cgdb_find_ops_impls`, `cgdb_find_cfg_paths`, `cgdb_find_data_flow`, `cgdb_find_lock_held_calls`, `cgdb_check_race_condition`, `cgdb_find_configs_for`, `cgdb_time_travel_query`, `cgdb_index_status`.
 
 **Prerequisite**: cgdb tables are populated only when the `clang` extraction backend is enabled (auto-detected when libclang is installed, or forced with `--extraction-backend clang`). In tree-sitter-only mode, cgdb tables are empty and these MCP tools return empty results — fall back to the standard `code2database_*` MCP tools.
 

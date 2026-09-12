@@ -7,9 +7,9 @@ parent_skill: Code2Database
 
 # /Code2Database-analysis
 
-**Code2Database 的深度语义分析层。** 当用户问题超越"谁调用谁"——涉及并发安全、数据竞争、值流、约束下路径可行性、不变量、FFI 边界、提交级来源、或直接通过 19 个 `cgdb_*` MCP 工具查询 cgdb（代码图谱数据库）层时激活。
+**Code2Database 的深度语义分析层**——超越"谁调用谁"：并发安全、数据竞争、值流、约束下路径可行性、不变量、FFI 边界、提交级来源，以及通过 19 个 `cgdb_*` MCP 工具直接查询 cgdb（代码图谱数据库）层。
 
-本子技能**不**重新扫描或重建图谱。它假设 `code2db-out/` 已构建完成（通过父技能 `/Code2Database`）且图谱是新鲜的（若守护进程在运行，先调用 `daemon-status` / `daemon-wait-sync`）。
+本子技能**不**重新扫描或重建图谱。它假设 `code2db-out/` 已构建完成（通过父技能 `/Code2Database`）且图谱新鲜（若守护进程在运行，先调用 `daemon-status` / `daemon-wait-sync`）。
 
 ## 何时激活
 
@@ -49,9 +49,9 @@ parent_skill: Code2Database
 
 ## 路由表 — 按问题类型分组的中权重命令
 
-> **可执行捷径**：带配方的提问族也可从父技能一次调用完成 — `c2d ask --question "..."` 自动分类并执行序列（见 `c2d recipes`）。
-
 当问题类型匹配下列某项时，使用所列命令序列。仅在需要详细语法时才读取参考文档（`references/analysis_commands.md`）。
+
+> **可执行捷径**：带配方的提问族也可从父技能一次调用完成 — `c2d ask --question "..."` 自动分类并执行序列（见 `c2d recipes`）。
 
 | 问题类型 | 命令序列 |
 |---------|---------|
@@ -69,31 +69,11 @@ parent_skill: Code2Database
 
 ## cgdb MCP 工具（clang 后端 — 19 个工具）
 
-当用户想直接查询 cgdb 层（clang 衍生的语义表）时，使用这些 MCP 工具。无论子技能是否激活，它们都可访问——MCP 与技能层分离。
+直接查询 clang 衍生的语义表（AST 节点、类型、配置谓词、CFG、数据流、别名、ops 绑定、同步原语、happens-before、来源、时间旅行版本）。MCP 与技能层分离——无论子技能是否激活，这些工具都可访问。完整清单与各工具语法：`references/analysis_commands.md`。
 
-| MCP 工具 | 用途 |
-|---------|------|
-| `cgdb_search_symbols` | FTS5 搜索 AST 节点（函数、类型、变量） |
-| `cgdb_find_invokers` | 查找某函数的调用者（CGDB invoke_sites） |
-| `cgdb_find_invoked` | 查找某函数的被调用者 |
-| `cgdb_get_definition` | 获取某符号的定义节点 |
-| `cgdb_get_function_body` | 获取函数体源码范围 |
-| `cgdb_get_struct_layout` | 获取 struct 字段布局 |
-| `cgdb_find_type_definition` | 按名查找类型定义 |
-| `cgdb_find_ops_impls` | 查找 ops 表实现（类型化 vtable 派发） |
-| `cgdb_find_cfg_paths` | 在控制流图中查找路径 |
-| `cgdb_find_data_flow` | 在数据流分析中查找 def-use 链 |
-| `cgdb_find_aliases` | 查找某指针的别名（stub — MVP） |
-| `cgdb_find_lock_held_calls` | 查找在持有锁时发出的调用 |
-| `cgdb_check_race_condition` | 检查某变量上的竞争条件 |
-| `cgdb_find_configs_for` | 查找影响某节点的配置谓词 |
-| `cgdb_find_nodes_under_config` | 查找某配置谓词下的所有节点 |
-| `cgdb_index_status` | 显示 cgdb 索引状态（按文件、按层） |
-| `cgdb_time_travel_query` | 在过去版本查询图谱 |
-| `cgdb_list_versions` | 列出所有已记录的图谱版本 |
-| `cgdb_get_source` | 获取节点的源文本（字节级精确归因） |
+常用：`cgdb_search_symbols`、`cgdb_find_invokers` / `cgdb_find_invoked`、`cgdb_get_definition`、`cgdb_get_function_body`、`cgdb_struct_layout`、`cgdb_find_ops_impls`、`cgdb_find_cfg_paths`、`cgdb_find_data_flow`、`cgdb_find_lock_held_calls`、`cgdb_check_race_condition`、`cgdb_find_configs_for`、`cgdb_time_travel_query`、`cgdb_index_status`。
 
-**前置条件**：仅当 `clang` 提取后端启用时（安装 libclang 后自动检测，或用 `--extraction-backend clang` 强制）才会填充 cgdb 表。在 tree-sitter-only 模式下，cgdb 表为空，这些 MCP 工具返回空结果——回退到标准 `code2database_*` MCP 工具。
+**前置条件**：仅当 `clang` 提取后端启用时（安装 libclang 后自动检测，或用 `--extraction-backend clang` 强制）才会填充 cgdb 表。tree-sitter-only 模式下 cgdb 表为空，这些 MCP 工具返回空结果——回退到标准 `code2database_*` MCP 工具。
 
 ## 按需命令（低权重，实验性 / 罕用）
 

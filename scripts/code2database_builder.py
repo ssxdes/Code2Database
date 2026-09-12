@@ -1584,6 +1584,20 @@ def main():
     p_il.add_argument("--limit", type=int, default=100,
                       help="Maximum findings to report")
 
+    # Near-clone detection (code quality)
+    p_cl = sub.add_parser("check-clones",
+                          help="Detect near-clone function bodies via "
+                               "MinHash + LSH banding over token trigrams")
+    p_cl.add_argument("--graph", required=True)
+    p_cl.add_argument("--min-lines", type=int, default=5,
+                      help="Bodies shorter than this many lines are skipped")
+    p_cl.add_argument("--threshold", type=float, default=0.95,
+                      help="Signature Jaccard threshold for a clone pair")
+    p_cl.add_argument("--scope", default=None,
+                      help="Substring filter over node id/name/file")
+    p_cl.add_argument("--limit", type=int, default=50,
+                      help="Maximum clone groups to report")
+
     # Semantic search (neural embeddings)
     p_ss = sub.add_parser("semantic-search",
                           help="Neural semantic search: FTS5 BM25 + neural embedding + RRF fusion")
@@ -3033,6 +3047,7 @@ def main():
         "check-recursion": _lazy("_builder.analysis.quality_checks", "cmd_check_recursion"),
         "check-bounds": _lazy("_builder.analysis.quality_checks", "cmd_check_bounds"),
         "check-infinite-loop": _lazy("_builder.analysis.quality_checks", "cmd_check_infinite_loop"),
+        "check-clones": _lazy("_builder.analysis.quality_checks", "cmd_check_clones"),
         "semantic-search": cmd_semantic_search,
         "code-slice": cmd_code_slice,
         "sarif-export": cmd_sarif_export,

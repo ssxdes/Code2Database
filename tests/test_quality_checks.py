@@ -807,5 +807,150 @@ class TestCheckInfiniteLoop(unittest.TestCase):
         json.dumps(check_infinite_loop(g))
 
 
+class TestCheckClones(unittest.TestCase):
+
+    CLONE_BODY = ("int calc(int a, int b) {\n"
+                  "  int total = 0;\n"
+                  "  for (int i = 0; i < b; i++) {\n"
+                  "    total += a * factor[i];\n"
+                  "  }\n"
+                  "  if (total > ceiling) {\n"
+                  "    total = ceiling;\n"
+                  "  }\n"
+                  "  return total;\n"
+                  "}\n")
+
+    def test_identical_bodies_detected(self):
+        from _builder.analysis.quality_checks import check_clones
+        g = _make_quality_graph(
+            [{"id": "a", "name": "calc_v1", "source_file": "/x.c",
+              "body_text": self.CLONE_BODY},
+             {"id": "b", "name": "calc_v2", "source_file": "/y.c",
+              "body_text": self.CLONE_BODY},
+             {"id": "c", "name": "unrelated", "source_file": "/z.c",
+              "body_text": "int unrelated(void) {\n  return 42;\n}\n"}],
+            [])
+        result = check_clones(g)
+        self.assertEqual(result["clone_groups"], 1)
+        group = result["groups"][0]
+        self.assertEqual(group["size"], 2)
+        names = sorted(m["name"] for m in group["members"])
+        self.assertEqual(names, ["calc_v1", "calc_v2"])
+        self.assertGreaterEqual(group["similarity"], 0.95)
+        self.assertEqual(result["total_functions_scanned"], 2)
+
+    def test_whitespace_and_comment_differences_still_clone(self):
+        from _builder.analysis.quality_checks import check_clones
+        variant = ("int calc(int a, int b) {\n"
+                   "  // leading remark\n"
+                   "  int total = 0;\n"
+                   "\n"
+                   "  for (int i = 0; i < b; i++) {\n"
+                   "    total += a * factor[i];\n"
+                   "  }\n"
+                   "  /* clamp */\n"
+                   "  if (total > ceiling) {\n"
+                   "    total = ceiling;\n"
+                   "  }\n"
+                   "  return total;\n"
+                   "}\n")
+        g = _make_quality_graph(
+            [{"id": "a", "name": "f1", "body_text": self.CLONE_BODY},
+             {"id": "b", "name": "f2", "body_text": variant}], [])
+        result = check_clones(g)
+        self.assertEqual(result["clone_groups"], 1)
+
+    def test_different_bodies_not_paired(self):
+        from _builder.analysis.quality_checks import check_clones
+        other = ("int other(int a, int b) {\n"
+                 "  int diff = a - b;\n"
+                 "  while (diff > 0) {\n"
+                 "    diff -= step_size;\n"
+                 "  }\n"
+                 "  if (diff < floor_val) {\n"
+                 "    diff = floor_val;\n"
+                 "  }\n"
+                 "  return diff;\n"
+                 "}\n")
+        g = _make_quality_graph(
+            [{"id": "a", "name": "f1", "body_text": self.CLONE_BODY},
+             {"id": "b", "name": "f2", "body_text": other}], [])
+        result = check_clones(g)
+        self.assertEqual(result["clone_groups"], 0)
+
+    def test_min_lines_filter(self):
+        from _builder.analysis.quality_checks import check_clones
+        tiny = "int t(void) {\n  return 1;\n}\n"
+        g = _make_quality_graph(
+            [{"id": "a", "name": "t1", "body_text": tiny},
+             {"id": "b", "name": "t2", "body_text": tiny}], [])
+        result = check_clones(g)
+        self.assertEqual(result["total_functions_scanned"], 0)
+        self.assertEqual(result["clone_groups"], 0)
+
+    def test_three_way_clone_group(self):
+        from _builder.analysis.quality_checks import check_clones
+        g = _make_quality_graph(
+            [{"id": "a", "name": "m1", "body_text": self.CLONE_BODY},
+             {"id": "b", "name": "m2", "body_text": self.CLONE_BODY},
+             {"id": "c", "name": "m3", "body_text": self.CLONE_BODY}], [])
+        result = check_clones(g)
+        self.assertEqual(result["clone_groups"], 1)
+        self.assertEqual(result["groups"][0]["size"], 3)
+
+    def test_threshold_gate(self):
+        from _builder.analysis.quality_checks import check_clones
+        g = _make_quality_graph(
+            [{"id": "a", "name": "m1", "body_text": self.CLONE_BODY},
+             {"id": "b", "name": "m2", "body_text": self.CLONE_BODY}], [])
+        result = check_clones(g, threshold=1.01)
+        self.assertEqual(result["clone_groups"], 0)
+
+    def test_bucket_cap_suppresses_boilerplate(self):
+        from _builder.analysis.quality_checks import check_clones
+        nodes = [{"id": "n%03d" % i, "name": "dup%03d" % i,
+                  "body_text": self.CLONE_BODY} for i in range(250)]
+        g = _make_quality_graph(nodes, [])
+        result = check_clones(g)
+        self.assertEqual(result["clone_groups"], 0)
+
+    def test_scope_filter(self):
+        from _builder.analysis.quality_checks import check_clones
+        g = _make_quality_graph(
+            [{"id": "a", "name": "keep_me", "body_text": self.CLONE_BODY},
+             {"id": "b", "name": "keep_too", "body_text": self.CLONE_BODY},
+             {"id": "c", "name": "drop_me", "body_text": self.CLONE_BODY}], [])
+        result = check_clones(g, scope="keep")
+        self.assertEqual(result["groups"][0]["size"], 2)
+
+    def test_limit_truncates_groups(self):
+        from _builder.analysis.quality_checks import check_clones
+        other = ("int alt(int q, int r) {\n"
+                 "  int acc = 0;\n"
+                 "  for (int j = 0; j < r; j++) {\n"
+                 "    acc += q * weights[j];\n"
+                 "  }\n"
+                 "  if (acc > cap) {\n"
+                 "    acc = cap;\n"
+                 "  }\n"
+                 "  return acc;\n"
+                 "}\n")
+        g = _make_quality_graph(
+            [{"id": "a", "name": "g1a", "body_text": self.CLONE_BODY},
+             {"id": "b", "name": "g1b", "body_text": self.CLONE_BODY},
+             {"id": "c", "name": "g2a", "body_text": other},
+             {"id": "d", "name": "g2b", "body_text": other}], [])
+        result = check_clones(g, limit=1)
+        self.assertEqual(result["clone_groups"], 1)
+        self.assertTrue(result["truncated"])
+
+    def test_result_is_json_serializable(self):
+        from _builder.analysis.quality_checks import check_clones
+        g = _make_quality_graph(
+            [{"id": "a", "name": "f1", "body_text": self.CLONE_BODY},
+             {"id": "b", "name": "f2", "body_text": self.CLONE_BODY}], [])
+        json.dumps(check_clones(g))
+
+
 if __name__ == "__main__":
     unittest.main()

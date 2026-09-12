@@ -11,6 +11,8 @@ the scanner captured it):
     (see ``check_bounds``)
   - unbounded loops — constant-true loop headers with exit analysis
     (see ``check_infinite_loop``)
+  - near-clone detection — MinHash + LSH banding over body token
+    trigrams (see ``check_clones``)
 
 All detectors are read-only analyses over a built graph directory;
 they never modify graph state. Output is JSON-friendly dicts so the
@@ -23,6 +25,8 @@ cannot fabricate call cycles.
 """
 from __future__ import annotations
 
+import hashlib
+import random
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -835,5 +839,185 @@ def cmd_check_infinite_loop(args):
         args.graph,
         scope=getattr(args, "scope", None),
         limit=getattr(args, "limit", 100),
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
+# ---------------------------------------------------------------------------
+# Near-clone detection (check-clones)
+# ---------------------------------------------------------------------------
+
+_CLONE_TOKEN_RE = re.compile(r"[a-zA-Z_]\w*|[{}();,<>]")
+_CLONE_LINE_COMMENT_RE = re.compile(r"//[^\n]*")
+_CLONE_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+_CLONE_MERSENNE = (1 << 31) - 1
+_CLONE_SIGNATURE_DIMS = 128
+_CLONE_BAND_SIZE = 4
+_CLONE_MIN_TRIGRAMS = 8
+_CLONE_MAX_BUCKET = 200
+
+
+def _clone_hash_params() -> List[Tuple[int, int]]:
+    """Deterministic (a, b) pairs for the MinHash linear family."""
+    rnd = random.Random(20260912)
+    return [(rnd.randrange(1, _CLONE_MERSENNE),
+             rnd.randrange(0, _CLONE_MERSENNE))
+            for _ in range(_CLONE_SIGNATURE_DIMS)]
+
+
+_CLONE_PARAMS = _clone_hash_params()
+
+
+def _strip_comments(body: str) -> str:
+    body = _CLONE_BLOCK_COMMENT_RE.sub(" ", body)
+    return _CLONE_LINE_COMMENT_RE.sub(" ", body)
+
+
+def _minhash_signature(body: str) -> Optional[Tuple[int, ...]]:
+    """MinHash signature over the token-trigram set of a body.
+
+    Returns None for bodies that are too small to judge (fewer than
+    8 trigrams). Comment text is stripped so comment-only differences
+    do not hide clones.
+    """
+    tokens = _CLONE_TOKEN_RE.findall(_strip_comments(body))
+    if len(tokens) < _CLONE_MIN_TRIGRAMS:
+        return None
+    trigrams = set()
+    for i in range(len(tokens) - 2):
+        digest = hashlib.md5(
+            "\x00".join(tokens[i:i + 3]).encode("utf-8")).hexdigest()
+        trigrams.add(int(digest[:8], 16))
+    if len(trigrams) < _CLONE_MIN_TRIGRAMS:
+        return None
+    sig = []
+    for a, b in _CLONE_PARAMS:
+        sig.append(min((a * h + b) % _CLONE_MERSENNE for h in trigrams))
+    return tuple(sig)
+
+
+def _signature_jaccard(s1: Tuple[int, ...], s2: Tuple[int, ...]) -> float:
+    if len(s1) != len(s2):
+        return 0.0
+    matches = sum(1 for x, y in zip(s1, s2) if x == y)
+    return matches / len(s1)
+
+
+def check_clones(graph_dir: str, min_lines: int = 5, threshold: float = 0.95,
+                 scope: Optional[str] = None, limit: int = 50) -> Dict[str, Any]:
+    """Detect near-clone function bodies via MinHash + LSH banding.
+
+    Two-stage approximation: 128-dimension MinHash signatures over
+    body token trigrams are banded (32 bands x 4 rows); pairs landing
+    in a shared band become candidates and are scored by exact
+    signature Jaccard. Pairs at or above ``threshold`` are merged into
+    groups by union-find. Bands with more than 200 members are
+    dropped (shared boilerplate would explode the candidate set).
+
+    Returns:
+        {total_functions_scanned, clone_groups, truncated, groups:
+        [{size, similarity, members: [{id, name, file, line}]}]}
+    """
+    G = _load_graph(graph_dir)
+    sigs: Dict[str, Tuple[int, ...]] = {}
+    scanned = 0
+    for nid in sorted(G.nodes):
+        if scope and not _scope_matches(G, nid, scope):
+            continue
+        nd = G.nodes[nid]
+        body = nd.get("body_text", "") or ""
+        if not body.strip():
+            continue
+        if len([ln for ln in body.split("\n") if ln.strip()]) < min_lines:
+            continue
+        sig = _minhash_signature(body)
+        if sig is None:
+            continue
+        scanned += 1
+        sigs[nid] = sig
+
+    n_bands = _CLONE_SIGNATURE_DIMS // _CLONE_BAND_SIZE
+    buckets: Dict[Tuple[int, Tuple[int, ...]], List[str]] = {}
+    for nid, sig in sigs.items():
+        for b in range(n_bands):
+            key = (b, sig[b * _CLONE_BAND_SIZE:(b + 1) * _CLONE_BAND_SIZE])
+            buckets.setdefault(key, []).append(nid)
+
+    pairs: Set[Tuple[str, str]] = set()
+    for key in sorted(buckets):
+        members = buckets[key]
+        if len(members) < 2 or len(members) > _CLONE_MAX_BUCKET:
+            continue
+        members = sorted(members)
+        for i in range(len(members)):
+            for j in range(i + 1, len(members)):
+                pairs.add((members[i], members[j]))
+
+    parent: Dict[str, str] = {nid: nid for nid in sigs}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x: str, y: str) -> None:
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[max(rx, ry)] = min(rx, ry)
+
+    pair_sims: Dict[Tuple[str, str], float] = {}
+    for a, b in sorted(pairs):
+        j = _signature_jaccard(sigs[a], sigs[b])
+        if j >= threshold:
+            union(a, b)
+            pair_sims[(a, b)] = j
+
+    clusters: Dict[str, List[str]] = {}
+    for nid in sigs:
+        clusters.setdefault(find(nid), []).append(nid)
+
+    groups = []
+    truncated = False
+    for root in sorted(clusters, key=lambda r: (-len(clusters[r]), r)):
+        members = sorted(clusters[root])
+        if len(members) < 2:
+            continue
+        sims = [pair_sims[(a, b)]
+                for i, a in enumerate(members)
+                for b in members[i + 1:]
+                if (a, b) in pair_sims]
+        similarity = sum(sims) / len(sims) if sims else 0.0
+        groups.append({
+            "size": len(members),
+            "similarity": round(similarity, 4),
+            "members": [{
+                "id": nid,
+                "name": _node_display(G, nid),
+                "file": G.nodes[nid].get("source_file", ""),
+                "line": G.nodes[nid].get("line", 0),
+            } for nid in members],
+        })
+        if len(groups) >= limit:
+            truncated = True
+            break
+
+    return {
+        "total_functions_scanned": scanned,
+        "clone_groups": len(groups),
+        "truncated": truncated,
+        "groups": groups,
+    }
+
+
+def cmd_check_clones(args):
+    """CLI handler for `code2database_builder.py check-clones`."""
+    import json
+    result = check_clones(
+        args.graph,
+        min_lines=getattr(args, "min_lines", 5),
+        threshold=getattr(args, "threshold", 0.95),
+        scope=getattr(args, "scope", None),
+        limit=getattr(args, "limit", 50),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))

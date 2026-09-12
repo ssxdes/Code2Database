@@ -803,9 +803,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (253 commands)
+## Complete CLI Command Reference (254 commands)
 
-All 253 CLI subparsers across `code2database_builder.py` (245) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
+All 254 CLI subparsers across `code2database_builder.py` (246) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
 
 | Command | Description |
 |---------|-------------|
@@ -867,6 +867,7 @@ All 253 CLI subparsers across `code2database_builder.py` (245) and `code2databas
 | `cgdb-views` | List/run predefined analysis views (hub functions, sync hotspots, doc coverage, etc.) |
 | `cgdb-write-coverage` | Rewrite coverage reports |
 | `check-bounds` | Scan array subscript accesses and infer guard coverage from preceding conditions (`--scope`, `--limit`, `--window`) |
+| `check-clones` | Detect near-clone function bodies via MinHash + LSH banding over token trigrams (`--min-lines`, `--threshold`, `--scope`, `--limit`) |
 | `check-cycles` | Detect circular dependencies: call cycles between functions or include cycles between files (`--kind calls|includes`, `--max-length`, `--scope`, `--limit`) |
 | `check-infinite-loop` | Scan constant-true loop headers (while(true)/for(;;)/do-while(true)) and analyze exit statements (`--scope`, `--limit`) |
 | `check-recursion` | Detect recursion (direct self-loops and indirect call cycles) with termination staging (risky/caution/safe) from body text |

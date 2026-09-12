@@ -802,9 +802,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## 完整 CLI 命令参考（253 个命令）
+## 完整 CLI 命令参考（254 个命令）
 
-全部 253 个 CLI 子命令，涵盖 `code2database_builder.py`（245 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
+全部 254 个 CLI 子命令，涵盖 `code2database_builder.py`（246 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
 
 | 命令 | 说明 |
 |------|------|
@@ -866,6 +866,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `cgdb-views` | List/run predefined analysis views (hub functions, sync hotspots, doc coverage, etc.) |
 | `cgdb-write-coverage` | Rewrite coverage reports |
 | `check-bounds` | 扫描数组下标访问并结合前置条件推断守卫覆盖（`--scope`、`--limit`、`--window`） |
+| `check-clones` | 基于 token 三元组的 MinHash + LSH 分带检测近似克隆函数体（`--min-lines`、`--threshold`、`--scope`、`--limit`） |
 | `check-cycles` | 检测循环依赖：函数间调用环或文件间 include 环（`--kind calls|includes`、`--max-length`、`--scope`、`--limit`） |
 | `check-infinite-loop` | 扫描恒真循环头（while(true)/for(;;)/do-while(true)）并分析退出语句（`--scope`、`--limit`） |
 | `check-recursion` | 检测递归（直接自环与间接调用环），并基于函数体文本做终止性分级（risky/caution/safe） |

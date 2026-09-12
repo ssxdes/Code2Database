@@ -31,6 +31,34 @@ $BUILDER c2d ask --question "..." --dry-run    # preview the translated commands
 
 `ask` classifies `--question` against the recipe registry — 13 built-in recipes: thread-safety, race-scan, value-origin, impact, call-path, path-feasibility, invariants, ffi, provenance, resource, quality, doc-alignment, explore — and executes the matched read-only command sequence with per-step banners and an aggregated summary (`--json` for structured output). Explicit flags (`--target/--from/--to/--query/--source`) override question extraction; when nothing matches, it falls back to the single-command intent router. Recipe steps are always read-only (write commands and write flags are refused by the engine); every step is echoed before it runs and any verb can be previewed with `--dry-run`.
 
+## Intent Index — task → one call → direct commands
+
+Start here: find the task, use the one call, or drop to the direct command sequence. The recipe rows are executable — `c2d recipes --recipe NAME` shows the match patterns and steps; `c2d ask --question "..."` auto-classifies.
+
+| Task | One call | Direct commands |
+|------|----------|-----------------|
+| Thread safety of a function | `c2d ask --recipe thread-safety --target FN` | `concurrency-analyze` → `detect-races` → `lock-coverage` → `memory-ordering` |
+| Graph-wide race scan | `c2d ask --recipe race-scan` | `concurrency-risks` → `detect-races` |
+| Where a value originates / flows | `c2d ask --recipe value-origin --target VAR` | `value-flow` → `data-dep` |
+| What breaks if I change X | `c2d ask --recipe impact --target FN` | `impact` → `blast-radius` → `neighbors` |
+| Call chain A → B | `c2d ask --recipe call-path --from A --to B` | `path` |
+| Feasibility of a guarded path | `c2d ask --recipe path-feasible --from A --to B` | `path-guards` → `path-feasible` |
+| Invariants of a function | `c2d ask --recipe invariants --target FN` | `extract-invariants` → `find-invariants` |
+| Cross-language FFI boundaries | `c2d ask --recipe ffi` | `ffi-detect` → `ffi-list` → `ffi-trace` |
+| Which commits introduced / changed X | `c2d ask --recipe provenance --target FN` | `blame-node` → `node-history` → `find-commits` |
+| Who allocates / frees a resource | `c2d ask --recipe resource --target RES` | `who-allocates` → `who-frees` → `unbalanced-alloc-free` |
+| Quality scan (cycles, recursion, bounds, loops, clones) | `c2d ask --recipe quality` | `check-cycles` → `check-recursion` → `check-bounds` → `check-infinite-loop` → `check-clones` |
+| Doc-vs-code alignment | `c2d ask --recipe doc-alignment` | `doc-code-check` → `doc-alignment-report` |
+| Explore a topic | `c2d ask --recipe explore --query TOPIC` | `hybrid-search` → `explore-flow` |
+| Ingest a project (first time) | `c2d setup --source DIR` | `make` (env-check → scan → build → derived artifacts → exports) |
+| Load session context | `c2d session` | `session-init` |
+| Freshness check + update routing | `c2d freshen` | `check-freshness` → `make` / `daemon-start` / `build-update` |
+| Generate a report artifact | `c2d report --kind KIND` | `design-doc` / `diagnose` / `export-html` / `export-mermaid` / `export-plantuml` |
+| Save a Q&A into memory | `c2d capture --question .. --answer ..` | `save-memory` |
+| Safe graph editing | — | `tx-begin` → `update-node` / `update-edge` / `patch-profile` → `tx-commit` |
+| Keep the graph current | — | `daemon-start` → `daemon-status` → `daemon-wait-sync`, or `build-update` |
+| Memory & knowledge management | — | `kb-query`, `search-memory`, `manage-memory`, `brief-*` |
+
 ## Step 0 — Check Prerequisites
 
 **Manual Profile writing**: See `docs/PROFILE_MANUAL.md` for complete field descriptions, examples, and writing workflow.

@@ -31,6 +31,34 @@ $BUILDER c2d ask --question "..." --dry-run    # 预览翻译后的命令
 
 `ask` 用 `--question` 对配方注册表分类 — 内置 13 个配方：thread-safety、race-scan、value-origin、impact、call-path、path-feasibility、invariants、ffi、provenance、resource、quality、doc-alignment、explore — 并执行匹配的只读命令序列（分步横幅 + 聚合摘要，`--json` 输出结构化结果）。显式参数（`--target/--from/--to/--query/--source`）优先于提问提取；无匹配时回退到单命令意图路由。配方步骤永远只读（引擎拒绝写命令与写标志）；每步执行前回显，任意动词可用 `--dry-run` 预览。
 
+## 意图索引 — 任务 → 一键调用 → 直接命令
+
+从这里开始：先找任务，再用一键调用，或直接落到命令序列。配方行可执行 — `c2d recipes --recipe 名称` 查看匹配模式与步骤；`c2d ask --question "..."` 自动分类。
+
+| 任务 | 一键调用 | 直接命令 |
+|------|----------|----------|
+| 某函数是否线程安全 | `c2d ask --recipe thread-safety --target FN` | `concurrency-analyze` → `detect-races` → `lock-coverage` → `memory-ordering` |
+| 全图数据竞态扫描 | `c2d ask --recipe race-scan` | `concurrency-risks` → `detect-races` |
+| 某值来自哪里、如何流动 | `c2d ask --recipe value-origin --target VAR` | `value-flow` → `data-dep` |
+| 修改某函数的影响面 | `c2d ask --recipe impact --target FN` | `impact` → `blast-radius` → `neighbors` |
+| A → B 的调用链 | `c2d ask --recipe call-path --from A --to B` | `path` |
+| 带守卫路径的可达性 | `c2d ask --recipe path-feasibility --from A --to B` | `path-guards` → `path-feasible` |
+| 某函数强制的不变量 | `c2d ask --recipe invariants --target FN` | `extract-invariants` → `find-invariants` |
+| 跨语言 FFI 边界 | `c2d ask --recipe ffi` | `ffi-detect` → `ffi-list` → `ffi-trace` |
+| 哪些提交引入/修改了 X | `c2d ask --recipe provenance --target FN` | `blame-node` → `node-history` → `find-commits` |
+| 谁分配/释放某资源 | `c2d ask --recipe resource --target RES` | `who-allocates` → `who-frees` → `unbalanced-alloc-free` |
+| 质量扫描（调用环、递归、越界、死循环、克隆） | `c2d ask --recipe quality` | `check-cycles` → `check-recursion` → `check-bounds` → `check-infinite-loop` → `check-clones` |
+| 文档与代码一致性 | `c2d ask --recipe doc-alignment` | `doc-code-check` → `doc-alignment-report` |
+| 探索某个主题 | `c2d ask --recipe explore --query TOPIC` | `hybrid-search` → `explore-flow` |
+| 首次建库 | `c2d setup --source DIR` | `make`（env-check → scan → build → 派生产物 → exports） |
+| 加载会话上下文 | `c2d session` | `session-init` |
+| 新鲜度检查与更新路由 | `c2d freshen` | `check-freshness` → `make` / `daemon-start` / `build-update` |
+| 生成报告工件 | `c2d report --kind KIND` | `design-doc` / `diagnose` / `export-html` / `export-mermaid` / `export-plantuml` |
+| 沉淀问答到记忆 | `c2d capture --question .. --answer ..` | `save-memory` |
+| 安全的图编辑 | — | `tx-begin` → `update-node` / `update-edge` / `patch-profile` → `tx-commit` |
+| 保持图谱最新 | — | `daemon-start` → `daemon-status` → `daemon-wait-sync`，或 `build-update` |
+| 记忆与知识管理 | — | `kb-query`、`search-memory`、`manage-memory`、`brief-*` |
+
 ## 第0步 — 检查前置条件
 
 **手动编写Profile**：详见 `docs/PROFILE_MANUAL.md`，包含完整字段说明、示例和编写流程。

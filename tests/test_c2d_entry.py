@@ -30,6 +30,8 @@ from _builder.flow.recipes import RECIPES, classify_question, get_recipe  # noqa
 def _ns(**kw):
     base = dict(action="ask", graph="code2db-out", question="", recipe="",
                 target="", from_node="", to_node="", query="", source="",
+                answer="", category="", author="", symbol=None,
+                correct=False, top=0, check=False,
                 dry_run=False, json=False)
     base.update(kw)
     return argparse.Namespace(**base)
@@ -402,6 +404,127 @@ class TestActionAsk(unittest.TestCase):
         self.assertIn("c2d recipes", buf.getvalue())
 
 
+class TestDelegationVerbs(unittest.TestCase):
+    """setup / session / capture delegate to the underlying commands."""
+
+    def test_setup_requires_source(self):
+        buf = io.StringIO()
+        with mock.patch.object(sys, "stderr", buf):
+            with redirect_stdout(io.StringIO()):
+                rc = entry._action_setup(_ns(action="setup"))
+        self.assertEqual(rc, 2)
+        self.assertIn("--source", buf.getvalue())
+
+    def test_setup_delegates_to_make(self):
+        with mock.patch.object(entry.subprocess, "run",
+                               return_value=mock.Mock(returncode=0)) as run:
+            with redirect_stdout(io.StringIO()) as buf:
+                rc = entry._action_setup(
+                    _ns(action="setup", source="/proj", graph=""))
+        self.assertEqual(rc, 0)
+        run.assert_called_once()
+        argv = run.call_args[0][0]
+        self.assertIn("make", argv)
+        self.assertIn("--source", argv)
+        self.assertIn("/proj", argv)
+        # no explicit --graph -> not forwarded (make defaults it)
+        self.assertNotIn("--graph", argv)
+        self.assertIn("next: c2d session", buf.getvalue())
+
+    def test_setup_forwards_graph_and_check(self):
+        with mock.patch.object(entry.subprocess, "run",
+                               return_value=mock.Mock(returncode=0)) as run:
+            with redirect_stdout(io.StringIO()):
+                rc = entry._action_setup(
+                    _ns(action="setup", source="/proj", graph="/g",
+                        check=True))
+        self.assertEqual(rc, 0)
+        argv = run.call_args[0][0]
+        self.assertIn("--graph", argv)
+        self.assertIn("/g", argv)
+        self.assertIn("--check", argv)
+
+    def test_setup_dry_run_does_not_execute(self):
+        with mock.patch.object(entry.subprocess, "run") as run:
+            with redirect_stdout(io.StringIO()):
+                rc = entry._action_setup(
+                    _ns(action="setup", source="/proj", dry_run=True))
+        self.assertEqual(rc, 0)
+        run.assert_not_called()
+
+    def test_setup_failure_propagates_rc(self):
+        with mock.patch.object(entry.subprocess, "run",
+                               return_value=mock.Mock(returncode=3)):
+            with redirect_stdout(io.StringIO()):
+                rc = entry._action_setup(
+                    _ns(action="setup", source="/proj"))
+        self.assertEqual(rc, 3)
+
+    def test_session_delegates_to_session_init(self):
+        with mock.patch.object(entry.subprocess, "run",
+                               return_value=mock.Mock(returncode=0)) as run:
+            with redirect_stdout(io.StringIO()):
+                rc = entry._action_session(
+                    _ns(action="session", graph="/g", top=7, json=True))
+        self.assertEqual(rc, 0)
+        argv = run.call_args[0][0]
+        self.assertIn("session-init", argv)
+        self.assertIn("--graph", argv)
+        self.assertIn("--top", argv)
+        self.assertIn("7", argv)
+        self.assertIn("--json", argv)
+
+    def test_session_omits_unset_flags(self):
+        with mock.patch.object(entry.subprocess, "run",
+                               return_value=mock.Mock(returncode=0)) as run:
+            with redirect_stdout(io.StringIO()):
+                rc = entry._action_session(_ns(action="session"))
+        self.assertEqual(rc, 0)
+        argv = run.call_args[0][0]
+        self.assertNotIn("--top", argv)
+        self.assertNotIn("--json", argv)
+
+    def test_capture_requires_question_and_answer(self):
+        buf = io.StringIO()
+        with mock.patch.object(sys, "stderr", buf):
+            with redirect_stdout(io.StringIO()):
+                rc = entry._action_capture(
+                    _ns(action="capture", question="only q"))
+        self.assertEqual(rc, 2)
+
+    def test_capture_delegates_to_save_memory(self):
+        with mock.patch.object(entry.subprocess, "run",
+                               return_value=mock.Mock(returncode=0)) as run:
+            with redirect_stdout(io.StringIO()):
+                rc = entry._action_capture(
+                    _ns(action="capture", question="q?", answer="a.",
+                        category="bdev", author="me",
+                        symbol=["fn1", "fn2"], correct=True))
+        self.assertEqual(rc, 0)
+        argv = run.call_args[0][0]
+        self.assertIn("save-memory", argv)
+        self.assertIn("--question", argv)
+        self.assertIn("q?", argv)
+        self.assertIn("--answer", argv)
+        self.assertIn("a.", argv)
+        self.assertIn("--category", argv)
+        self.assertIn("bdev", argv)
+        self.assertIn("--author", argv)
+        self.assertEqual(argv.count("--symbol"), 2)
+        self.assertIn("fn1", argv)
+        self.assertIn("fn2", argv)
+        self.assertIn("--correct", argv)
+
+    def test_capture_dry_run_does_not_execute(self):
+        with mock.patch.object(entry.subprocess, "run") as run:
+            with redirect_stdout(io.StringIO()):
+                rc = entry._action_capture(
+                    _ns(action="capture", question="q", answer="a",
+                        dry_run=True))
+        self.assertEqual(rc, 0)
+        run.assert_not_called()
+
+
 class TestListingActions(unittest.TestCase):
 
     def test_recipes_listing_names_all(self):
@@ -436,9 +559,16 @@ class TestListingActions(unittest.TestCase):
         with redirect_stdout(buf):
             entry.cmd_c2d(_ns(action="verbs"))
         out = buf.getvalue()
+        self.assertIn("setup", out)
+        self.assertIn("session", out)
         self.assertIn("ask", out)
-        self.assertIn("recipes", out)
+        self.assertIn("capture", out)
+        self.assertIn("c2d setup --source", out)
         self.assertIn("c2d ask --question", out)
+        # lifecycle order: setup before session before ask before capture
+        self.assertLess(out.index("1. setup"), out.index("2. session"))
+        self.assertLess(out.index("2. session"), out.index("3. ask"))
+        self.assertLess(out.index("3. ask"), out.index("4. capture"))
 
     def test_default_action_is_verbs(self):
         buf = io.StringIO()

@@ -1094,15 +1094,25 @@ def main():
     # c2d — goal-oriented umbrella over the full command surface
     p_c2d = sub.add_parser(
         "c2d",
-        help="One-click goal-oriented entry: ask routes a natural-language "
-             "question to a read-only command recipe (see `c2d recipes`)")
+        help="One-click goal-oriented entry: setup → session → ask → "
+             "capture lifecycle; ask routes a natural-language question "
+             "to a read-only command recipe (see `c2d recipes`)")
     p_c2d.add_argument("action", nargs="?", default="verbs",
-                       choices=["ask", "recipes", "verbs"],
+                       choices=["setup", "session", "ask", "capture",
+                                "recipes", "verbs"],
                        help="Lifecycle verb (default: verbs — print the cheat sheet)")
-    p_c2d.add_argument("--graph", required=False,
+    # --graph default "" (not None): the umbrella resolves the graph
+    # lazily inside graph-needing verbs, so non-graph verbs stay
+    # noise-free and setup can forward (or omit) the user's --graph.
+    p_c2d.add_argument("--graph", default="",
                        help="Call graph output directory (default: auto-discover code2db-out/)")
+    p_c2d.add_argument("--source", default="",
+                       help="(setup) source directory to ingest; "
+                            "(ask) source dir for recipes that need one")
     p_c2d.add_argument("--question", "--q", dest="question", default="",
-                       help="(ask) natural-language question to classify and route")
+                       help="(ask/capture) natural-language question")
+    p_c2d.add_argument("--answer", "--a", dest="answer", default="",
+                       help="(capture) answer text to store")
     p_c2d.add_argument("--recipe", default="",
                        help="(ask) run this recipe directly, skipping classification; "
                             "(recipes) show this recipe in detail")
@@ -1114,12 +1124,22 @@ def main():
                        help="(ask) path end, for from/to recipes")
     p_c2d.add_argument("--query", default="",
                        help="(ask) free-text query, for explore-style recipes")
-    p_c2d.add_argument("--source", default="",
-                       help="(ask) source directory for recipes that need one")
+    p_c2d.add_argument("--category", default="",
+                       help="(capture) memory category path (e.g. bdev/nvme)")
+    p_c2d.add_argument("--author", default="",
+                       help="(capture) author name recorded with the memory")
+    p_c2d.add_argument("--symbol", action="append", default=None,
+                       help="(capture) ground the memory to a graph symbol (repeatable)")
+    p_c2d.add_argument("--correct", action="store_true",
+                       help="(capture) reshape the closest existing memory in place")
+    p_c2d.add_argument("--top", type=int, default=0,
+                       help="(session) top known-unknowns to show (default: command default)")
+    p_c2d.add_argument("--check", action="store_true",
+                       help="(setup) environment check only, no build")
     p_c2d.add_argument("--dry-run", action="store_true",
                        help="Print the translated commands without running them")
     p_c2d.add_argument("--json", action="store_true",
-                       help="(ask) print a structured JSON summary after the run")
+                       help="(ask/session) structured JSON output")
 
     # sync
     p_sync = sub.add_parser("sync", help="Sync local code2db-out with git-tracked version (local wins)")

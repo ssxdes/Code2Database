@@ -9,17 +9,23 @@ command sequence with aggregated output.
 
 Implemented verbs (this module grows verb by verb):
 
+    setup    --source DIR
+              one-click ingest (delegates to make)
+    session  load the project context (delegates to session-init)
     ask      --question "..." | --recipe NAME [explicit params]
               classify the question, run the matched recipe
+    capture  --question ... --answer ...
+              save a Q&A into project memory (delegates to save-memory)
     recipes  [NAME]
               list recipes, or show one recipe in detail
     verbs    print the lifecycle cheat sheet (also the default action)
 
-Every recipe step runs as a subprocess of this same CLI (same model as
-`make`), so steps are isolated, streaming, and use the exact same code
-paths as manual invocations. Steps are restricted to read-only
-commands: WRITE_COMMANDS is refused at execution time, and the test
-suite pins every recipe step against the real argparse tree.
+Every recipe step and every delegation runs as a subprocess of this
+same CLI (same model as `make`), so steps are isolated, streaming, and
+use the exact same code paths as manual invocations. Recipe steps are
+restricted to read-only commands: WRITE_COMMANDS is refused at
+execution time, and the test suite pins every recipe step against the
+real argparse tree.
 """
 import json
 import os
@@ -68,6 +74,41 @@ WRITE_COMMANDS = frozenset({
 # writer (e.g. `extract-invariants --apply`). Refused alongside
 # WRITE_COMMANDS.
 WRITE_FLAGS = frozenset({"--apply", "--correct"})
+
+
+def _resolve_graph_dir() -> str:
+    """Locate the graph directory when --graph is omitted.
+
+    Mirrors the builder's own auto-discovery (code2database_builder.py
+    _resolve_graph_dir). The umbrella resolves the graph lazily — only
+    inside verbs that need one (ask) — so non-graph verbs (verbs,
+    recipes, setup) stay noise-free and setup can forward the user's
+    explicit --graph (or none) to make untouched.
+    """
+    d = os.getcwd()
+    while True:
+        cand = os.path.join(d, "code2db-out")
+        if os.path.isfile(os.path.join(cand, "code2database.db")):
+            return cand
+        if os.path.isfile(os.path.join(d, "code2database.db")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return "code2db-out"
+        d = parent
+
+
+def _builder_argv(*extra: str) -> List[str]:
+    """Argv for a subprocess of this same CLI."""
+    return [sys.executable, _BUILDER] + list(extra)
+
+
+def _delegate(argv: List[str], dry_run: bool) -> int:
+    """Run a delegated command as a subprocess, echoing it first."""
+    print("[c2d] $ %s" % " ".join(argv))
+    if dry_run:
+        return 0
+    return subprocess.run(argv).returncode
 
 
 def _placeholder_name(token: str) -> Optional[str]:
@@ -242,6 +283,10 @@ def _run_intent_fallback(question: str, graph: str,
 def _action_ask(args) -> int:
     explicit = _explicit_params(args)
     graph = getattr(args, "graph", "") or ""
+    if not graph:
+        graph = _resolve_graph_dir()
+        print("[graph] --graph not given; using %s" % graph,
+              file=sys.stderr)
     recipe = None
     extracted: Dict[str, str] = {}
     if getattr(args, "recipe", ""):
@@ -281,6 +326,70 @@ def _action_ask(args) -> int:
                    dry_run=bool(getattr(args, "dry_run", False)),
                    json_out=bool(getattr(args, "json", False)))
     return 0
+
+
+def _action_setup(args) -> int:
+    """One-click ingest: delegate to make with translated args."""
+    source = getattr(args, "source", "") or ""
+    if not source:
+        print("[c2d] setup needs --source <dir>", file=sys.stderr)
+        print("[c2d] example: c2d setup --source /path/to/project",
+              file=sys.stderr)
+        return 2
+    dry_run = bool(getattr(args, "dry_run", False))
+    argv = _builder_argv("make", "--source", source)
+    graph = getattr(args, "graph", "") or ""
+    if graph:
+        argv += ["--graph", graph]
+    if getattr(args, "check", False):
+        argv += ["--check"]
+    rc = _delegate(argv, dry_run)
+    if rc == 0 and not dry_run and not getattr(args, "check", False):
+        print("[c2d] ingest complete — next: c2d session")
+    return rc
+
+
+def _action_session(args) -> int:
+    """One-shot context load: delegate to session-init."""
+    argv = _builder_argv("session-init")
+    graph = getattr(args, "graph", "") or ""
+    if graph:
+        argv += ["--graph", graph]
+    top = getattr(args, "top", 0) or 0
+    if top:
+        argv += ["--top", str(top)]
+    if getattr(args, "json", False):
+        argv += ["--json"]
+    return _delegate(argv, bool(getattr(args, "dry_run", False)))
+
+
+def _action_capture(args) -> int:
+    """Save a Q&A into project memory: delegate to save-memory."""
+    question = getattr(args, "question", "") or ""
+    answer = getattr(args, "answer", "") or ""
+    if not question or not answer:
+        print("[c2d] capture needs --question and --answer",
+              file=sys.stderr)
+        print("[c2d] example: c2d capture --question \"...\" "
+              "--answer \"...\" --category bdev --author you",
+              file=sys.stderr)
+        return 2
+    argv = _builder_argv("save-memory", "--question", question,
+                         "--answer", answer)
+    graph = getattr(args, "graph", "") or ""
+    if graph:
+        argv += ["--graph", graph]
+    category = getattr(args, "category", "") or ""
+    if category:
+        argv += ["--category", category]
+    author = getattr(args, "author", "") or ""
+    if author:
+        argv += ["--author", author]
+    for sym in getattr(args, "symbol", None) or []:
+        argv += ["--symbol", sym]
+    if getattr(args, "correct", False):
+        argv += ["--correct"]
+    return _delegate(argv, bool(getattr(args, "dry_run", False)))
 
 
 def _action_recipes(args) -> int:
@@ -323,18 +432,28 @@ def _action_recipes(args) -> int:
 def _print_lifecycle() -> None:
     print("Code2Database lifecycle — the only flow you need:")
     print()
-    print("  1. ask       — ask any code question; recipes pick the right")
+    print("  1. setup    — build the code database from a source tree")
+    print("                  c2d setup --source /path/to/project")
+    print()
+    print("  2. session  — load the project context (brief + memory +")
+    print("                  graph state + known-unknowns)")
+    print("                  c2d session")
+    print()
+    print("  3. ask      — ask any code question; recipes pick the right")
     print("                  read-only command sequence and aggregate output")
     print("                  c2d ask --question \"is bdev_start thread safe?\"")
     print("                  c2d ask --recipe impact --target bdev_start")
     print()
-    print("  2. recipes   — list the available ask recipes (self-documenting)")
-    print("                  c2d recipes")
-    print("                  c2d recipes --recipe thread-safety")
+    print("  4. capture  — save a Q&A into project memory for future")
+    print("                  sessions")
+    print("                  c2d capture --question \"...\" --answer \"...\"")
     print()
-    print("Every recipe step is a normal CLI subcommand, shown before it")
-    print("runs (preview with --dry-run). The full command surface stays")
-    print("available for direct use.")
+    print("  as needed:  c2d recipes — list the ask recipes")
+    print("              (self-documenting, with detail views)")
+    print()
+    print("Every recipe step and delegation is a normal CLI subcommand,")
+    print("shown before it runs (preview with --dry-run). The full")
+    print("command surface stays available for direct use.")
 
 
 def cmd_c2d(args) -> None:
@@ -342,6 +461,12 @@ def cmd_c2d(args) -> None:
     action = getattr(args, "action", "verbs") or "verbs"
     if action == "ask":
         sys.exit(_action_ask(args))
+    if action == "setup":
+        sys.exit(_action_setup(args))
+    if action == "session":
+        sys.exit(_action_session(args))
+    if action == "capture":
+        sys.exit(_action_capture(args))
     if action == "recipes":
         sys.exit(_action_recipes(args))
     if action == "verbs":

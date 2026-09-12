@@ -1045,5 +1045,87 @@ class TestProfileTestSegmentsInGraphBuild(unittest.TestCase):
             "undeclared segment keeps the prod→test edge")
 
 
+class TestTestSourceRoutingInDispatch(unittest.TestCase):
+    """Test-source classification in dispatch routing uses the shared helper."""
+
+    @staticmethod
+    def _vtable_extraction(caller_src, reg_src):
+        return {
+            "functions": [
+                {"id": "root_prod_run", "name": "prod_run",
+                 "source_file": caller_src, "line": 1,
+                 "domain": "app.core", "labels": []},
+                {"id": "root_ut_submit", "name": "ut_submit",
+                 "source_file": reg_src, "line": 2,
+                 "domain": "app.core", "labels": []},
+            ],
+            "edges": [],
+            "domains": ["root"],
+            "lang_stats": {"c": 2},
+            "fn_ptr_calls": {
+                "prod_run": [{
+                    "callee_name": "submit", "fn_ptr_expr": "g_ops->submit",
+                    "field_name": "submit", "struct_chain": "g_ops",
+                    "call_order": 1, "line": 3,
+                }],
+            },
+            "vtable_registrations": [{
+                "struct_type": "ops_if", "var_name": "g_ops",
+                "source_file": reg_src,
+                "registrations": [
+                    {"field": "submit", "func_name": "ut_submit",
+                     "source_file": reg_src},
+                ],
+            }],
+        }
+
+    def test_prod_caller_skips_registration_in_ut_dir(self):
+        """A mock registered from ut/ is not a dispatch target for prod callers."""
+        from _builder.graph.graph_build import build_graph
+        G, _ = build_graph(self._vtable_extraction("src/core.c", "ut/ut_submit.c"))
+        self.assertFalse(G.has_edge("root_prod_run", "root_ut_submit"),
+                         "prod caller must not dispatch to a ut/ mock")
+
+    def test_test_caller_keeps_registration_in_test_dir(self):
+        """A tests/ caller dispatching to a test/ mock keeps the edge."""
+        from _builder.graph.graph_build import build_graph
+        G, _ = build_graph(self._vtable_extraction("tests/core.c", "test/ut_submit.c"))
+        self.assertTrue(G.has_edge("root_prod_run", "root_ut_submit"),
+                        "test→test dispatch must be kept")
+
+    @staticmethod
+    def _callback_extraction(caller_src, target_src):
+        return {
+            "functions": [
+                {"id": "root_prod_run", "name": "prod_run",
+                 "source_file": caller_src, "line": 1,
+                 "domain": "app.core", "labels": []},
+                {"id": "root_test_helper", "name": "test_helper",
+                 "source_file": target_src, "line": 2,
+                 "domain": "app.core", "labels": []},
+            ],
+            "edges": [
+                {"source": "root_prod_run", "target": "test_helper",
+                 "call_order": 1, "confidence": "CALLBACK_ARG"},
+            ],
+            "domains": ["root"],
+            "lang_stats": {"c": 2},
+        }
+
+    def test_callback_arg_edge_to_tests_helper_dropped(self):
+        """Bare-identifier args from prod don't link to tests/ helpers."""
+        from _builder.graph.graph_build import build_graph
+        G, _ = build_graph(self._callback_extraction("src/core.c", "tests/helper.c"))
+        self.assertFalse(G.has_edge("root_prod_run", "root_test_helper"),
+                         "CALLBACK_ARG noise into tests/ must be dropped")
+
+    def test_callback_arg_edge_from_tests_caller_kept(self):
+        """A tests/ caller passing test/ helpers keeps the callback edge."""
+        from _builder.graph.graph_build import build_graph
+        G, _ = build_graph(self._callback_extraction("tests/core.c", "test/helper.c"))
+        self.assertTrue(G.has_edge("root_prod_run", "root_test_helper"),
+                        "test→test callback edge must be kept")
+
+
 if __name__ == "__main__":
     unittest.main()

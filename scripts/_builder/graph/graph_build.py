@@ -1524,13 +1524,9 @@ def build_graph(extraction: dict, profile: dict = None,
         # an argument, it shouldn't create an edge to unit.thread.channel.
         if edge.get("confidence") == "CALLBACK_ARG":
             caller_src = id_registry.get(source_id, {}).get("source_file", "")
-            caller_is_test = ('/test/' in f'/{caller_src}/'
-                              or caller_src.startswith('test/'))
-            if not caller_is_test and target_id in id_registry:
+            if not _is_test_source(caller_src, profile) and target_id in id_registry:
                 target_src = id_registry[target_id].get("source_file", "")
-                target_is_test = ('/test/' in f'/{target_src}/'
-                                  or target_src.startswith('test/'))
-                if target_is_test:
+                if _is_test_source(target_src, profile):
                     continue
 
         call_order = edge.get("call_order")
@@ -1901,10 +1897,9 @@ def build_graph(extraction: dict, profile: dict = None,
                 for struct_type in matched_structs:
                     fields = vtable_index[struct_type]
 
-                    # Determine if caller is from test directory
+                    # Determine if caller is from a test source
                     caller_src = id_registry.get(invoker_id, {}).get("source_file", "")
-                    caller_is_test = ('/test/' in f'/{caller_src}/'
-                                      or caller_src.startswith('test/'))
+                    caller_is_test = _is_test_source(caller_src, profile)
 
                     # Var-name filtering: when struct_chain is a g_-prefixed
                     # global variable name (conventional C pattern for static
@@ -1953,8 +1948,7 @@ def build_graph(extraction: dict, profile: dict = None,
                         # of vtable fields (e.g., dev_ut_if.get_io_channel), but these
                         # should not create dispatch edges from production callers.
                         reg_src = reg.get("source_file", "")
-                        reg_is_test = ('/test/' in f'/{reg_src}/'
-                                       or reg_src.startswith('test/'))
+                        reg_is_test = _is_test_source(reg_src, profile)
                         if not caller_is_test and reg_is_test:
                             continue
 

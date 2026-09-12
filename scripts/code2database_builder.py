@@ -1615,6 +1615,24 @@ def main():
     p_hr.add_argument("--terminals", default="",
                       help="Comma-separated extra terminal name regexes")
 
+    # Rule-based reasoning
+    p_rsn = sub.add_parser("reason",
+                           help="Rule-based reasoning over the graph "
+                                "(datalog + forward chaining + abduction)")
+    p_rsn.add_argument("--graph", required=True)
+    p_rsn.add_argument("--rule", action="append", default=None,
+                       help="Run only these rule IDs (repeatable; default: all)")
+    p_rsn.add_argument("--rules-file", default=None,
+                       help="JSON file with custom rules")
+    p_rsn.add_argument("--explain", default=None,
+                       help="Explain an observation, e.g. 'reachableFromEntry(fn_x)'")
+    p_rsn.add_argument("--max-facts", type=int, default=200000,
+                       help="Edge-fact budget for the fact loader")
+    p_rsn.add_argument("--limit", type=int, default=100,
+                       help="Maximum sample facts in the output")
+    p_rsn.add_argument("--trace", action="store_true",
+                       help="Include the rule-firing trace")
+
     # Semantic search (neural embeddings)
     p_ss = sub.add_parser("semantic-search",
                           help="Neural semantic search: FTS5 BM25 + neural embedding + RRF fusion")
@@ -3078,6 +3096,7 @@ def main():
         "check-infinite-loop": _lazy("_builder.analysis.quality_checks", "cmd_check_infinite_loop"),
         "check-clones": _lazy("_builder.analysis.quality_checks", "cmd_check_clones"),
         "hw-reach": _lazy("_builder.analysis.hw_reach", "cmd_hw_reach"),
+        "reason": _lazy("_builder.analysis.reasoning", "cmd_reason"),
         "semantic-search": cmd_semantic_search,
         "code-slice": cmd_code_slice,
         "sarif-export": cmd_sarif_export,

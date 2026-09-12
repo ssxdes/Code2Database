@@ -803,9 +803,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (256 commands)
+## Complete CLI Command Reference (257 commands)
 
-All 256 CLI subparsers across `code2database_builder.py` (248) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
+All 257 CLI subparsers across `code2database_builder.py` (249) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
 
 | Command | Description |
 |---------|-------------|
@@ -1002,6 +1002,7 @@ All 256 CLI subparsers across `code2database_builder.py` (248) and `code2databas
 | `query` | Run a Cypher-subset query against the graph (unified query language) |
 | `quick-update` | One-click: patch + light-scan, no LLM needed |
 | `references-of` | List ALL source locations where a symbol is referenced (declaration+calls+reads+writes) |
+| `reason` | Rule-based reasoning over the graph: datalog (recursive, semi-naive) + forward chaining + abduction (`--rule`, `--rules-file`, `--explain`, `--trace`) |
 | `render-source` | Render source from DB tokens |
 | `resolve-chain` | Trace call chain from a node with variable bindings to prune dead branches |
 | `reverse-trace` | Reverse trace from crash point through callers with condition/concurrency annotation |

@@ -802,9 +802,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## 完整 CLI 命令参考（256 个命令）
+## 完整 CLI 命令参考（257 个命令）
 
-全部 256 个 CLI 子命令，涵盖 `code2database_builder.py`（248 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
+全部 257 个 CLI 子命令，涵盖 `code2database_builder.py`（249 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
 
 | 命令 | 说明 |
 |------|------|
@@ -1001,6 +1001,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `query` | Run a Cypher-subset query against the graph (unified query language) |
 | `quick-update` | One-click: patch + light-scan, no LLM needed |
 | `references-of` | List ALL source locations where a symbol is referenced (declaration+calls+reads+writes) |
+| `reason` | 图谱规则推理：datalog（递归、半朴素）+ 前向链 + 溯因（`--rule`、`--rules-file`、`--explain`、`--trace`） |
 | `render-source` | Render source from DB tokens |
 | `resolve-chain` | Trace call chain from a node with variable bindings to prune dead branches |
 | `reverse-trace` | Reverse trace from crash point through callers with condition/concurrency annotation |

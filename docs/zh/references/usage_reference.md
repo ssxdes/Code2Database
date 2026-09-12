@@ -802,9 +802,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## 完整 CLI 命令参考（249 个命令）
+## 完整 CLI 命令参考（250 个命令）
 
-全部 249 个 CLI 子命令，涵盖 `code2database_builder.py`（241 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
+全部 250 个 CLI 子命令，涵盖 `code2database_builder.py`（242 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
 
 | 命令 | 说明 |
 |------|------|
@@ -865,6 +865,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `cgdb-versions` | List graph_versions rows (newest first), or diff two versions |
 | `cgdb-views` | List/run predefined analysis views (hub functions, sync hotspots, doc coverage, etc.) |
 | `cgdb-write-coverage` | Rewrite coverage reports |
+| `check-cycles` | 检测循环依赖：函数间调用环或文件间 include 环（`--kind calls|includes`、`--max-length`、`--scope`、`--limit`） |
 | `classify-endpoints` | Apply LLM endpoint classification to the graph |
 | `co-change` | Mine git log for co-change coupling edges |
 | `code-slice` | Extract minimal context: data-flow slice or usage slice for LLM |

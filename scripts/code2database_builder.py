@@ -1535,6 +1535,20 @@ def main():
     p_ta.add_argument("--sanitizers", default="", help="Comma-separated sanitizer function names")
     p_ta.add_argument("--max-depth", type=int, default=10)
 
+    # Cycle detection (code quality)
+    p_cyc = sub.add_parser("check-cycles",
+                           help="Detect circular dependencies: call cycles between "
+                                "functions or include cycles between files")
+    p_cyc.add_argument("--graph", required=True)
+    p_cyc.add_argument("--kind", choices=["calls", "includes"], default="calls",
+                       help="calls = function call cycles; includes = file #include cycles")
+    p_cyc.add_argument("--max-length", type=int, default=10,
+                       help="Maximum nodes in a reported cycle")
+    p_cyc.add_argument("--scope", default=None,
+                       help="Substring filter over node id/name/file")
+    p_cyc.add_argument("--limit", type=int, default=50,
+                       help="Maximum cycles to report")
+
     # Semantic search (neural embeddings)
     p_ss = sub.add_parser("semantic-search",
                           help="Neural semantic search: FTS5 BM25 + neural embedding + RRF fusion")
@@ -2980,6 +2994,7 @@ def main():
         "co-change": cmd_co_change,
         "ast-search": cmd_ast_search,
         "taint-analysis": cmd_taint_analysis,
+        "check-cycles": _lazy("_builder.analysis.quality_checks", "cmd_check_cycles"),
         "semantic-search": cmd_semantic_search,
         "code-slice": cmd_code_slice,
         "sarif-export": cmd_sarif_export,

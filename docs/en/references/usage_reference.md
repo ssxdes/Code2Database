@@ -803,9 +803,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (249 commands)
+## Complete CLI Command Reference (250 commands)
 
-All 249 CLI subparsers across `code2database_builder.py` (241) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
+All 250 CLI subparsers across `code2database_builder.py` (242) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
 
 | Command | Description |
 |---------|-------------|
@@ -866,6 +866,7 @@ All 249 CLI subparsers across `code2database_builder.py` (241) and `code2databas
 | `cgdb-versions` | List graph_versions rows (newest first), or diff two versions |
 | `cgdb-views` | List/run predefined analysis views (hub functions, sync hotspots, doc coverage, etc.) |
 | `cgdb-write-coverage` | Rewrite coverage reports |
+| `check-cycles` | Detect circular dependencies: call cycles between functions or include cycles between files (`--kind calls|includes`, `--max-length`, `--scope`, `--limit`) |
 | `classify-endpoints` | Apply LLM endpoint classification to the graph |
 | `co-change` | Mine git log for co-change coupling edges |
 | `code-slice` | Extract minimal context: data-flow slice or usage slice for LLM |

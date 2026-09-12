@@ -448,5 +448,167 @@ class TestCheckRecursion(unittest.TestCase):
         json.dumps(check_recursion(g))
 
 
+class TestCheckBounds(unittest.TestCase):
+
+    def test_unguarded_variable_index_is_risky(self):
+        from _builder.analysis.quality_checks import check_bounds
+        body = ("int get(int *buf, int i) {\n"
+                "  return buf[i];\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "get", "body_text": body}], [])
+        result = check_bounds(g)
+        self.assertEqual(result["risky"], 1)
+        f = result["findings"][0]
+        self.assertEqual((f["var"], f["index"]), ("buf", "i"))
+        self.assertEqual(f["line"], 2)
+        self.assertIsNone(f["guard_line"])
+
+    def test_preceding_if_guard_makes_safe(self):
+        from _builder.analysis.quality_checks import check_bounds
+        body = ("int get(int *buf, int i) {\n"
+                "  if (i >= 32)\n"
+                "    return -1;\n"
+                "  return buf[i];\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "get", "body_text": body}], [])
+        result = check_bounds(g)
+        self.assertEqual(result["safe"], 1)
+        self.assertEqual(result["risky"], 0)
+        f = result["findings"][0]
+        self.assertEqual(f["guard_kind"], "condition")
+        self.assertEqual(f["guard_line"], 2)
+
+    def test_assert_guard_makes_safe(self):
+        from _builder.analysis.quality_checks import check_bounds
+        body = ("int get(int *buf, int i) {\n"
+                "  assert(i < 32);\n"
+                "  return buf[i];\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "get", "body_text": body}], [])
+        result = check_bounds(g)
+        self.assertEqual(result["safe"], 1)
+
+    def test_guard_for_different_variable_does_not_count(self):
+        from _builder.analysis.quality_checks import check_bounds
+        body = ("int get(int *buf, int i, int j) {\n"
+                "  if (j >= 32)\n"
+                "    return -1;\n"
+                "  return buf[i];\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "get", "body_text": body}], [])
+        result = check_bounds(g)
+        self.assertEqual(result["risky"], 1)
+
+    def test_single_letter_index_does_not_match_if_keyword(self):
+        """`i` must not be considered guarded by `if (j < n)` line."""
+        from _builder.analysis.quality_checks import check_bounds
+        body = ("int get(int *b, int i) {\n"
+                "  return b[i];\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "get", "body_text": body}], [])
+        result = check_bounds(g)
+        self.assertEqual(result["risky"], 1)
+
+    def test_constant_indices_skipped(self):
+        from _builder.analysis.quality_checks import check_bounds
+        body = ("int get(int *buf) {\n"
+                "  int x = buf[0] + buf[1] + buf[0x10];\n"
+                "  x += buf[sizeof(int)];\n"
+                "  x += buf[MAX_LEN];\n"
+                "  return x;\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "get", "body_text": body}], [])
+        result = check_bounds(g)
+        self.assertEqual(result["total_accesses"], 0)
+
+    def test_string_key_skipped(self):
+        from _builder.analysis.quality_checks import check_bounds
+        body = ("int get(config_t *c) {\n"
+                "  return c->table[\"mode\"];\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "get", "body_text": body}], [])
+        result = check_bounds(g)
+        self.assertEqual(result["total_accesses"], 0)
+
+    def test_map_variable_skipped(self):
+        from _builder.analysis.quality_checks import check_bounds
+        body = ("int get(void) {\n"
+                "  std::map<int,int> m;\n"
+                "  return m[k];\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "get", "body_text": body}], [])
+        result = check_bounds(g)
+        self.assertEqual(result["total_accesses"], 0)
+
+    def test_comment_lines_ignored(self):
+        from _builder.analysis.quality_checks import check_bounds
+        body = ("int get(int *buf, int i) {\n"
+                "  // buf[i] legacy access\n"
+                "  /* buf[i] also comment */\n"
+                "  return 0;\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "get", "body_text": body}], [])
+        result = check_bounds(g)
+        self.assertEqual(result["total_accesses"], 0)
+
+    def test_guard_outside_window_counts_as_risky(self):
+        from _builder.analysis.quality_checks import check_bounds
+        lines = ["int get(int *buf, int i) {", "  if (i < 32)", "    return -1;"]
+        lines += ["  int pad = 0;"] * 25
+        lines += ["  return buf[i];", "}"]
+        body = "\n".join(lines) + "\n"
+        g = _make_quality_graph([{"id": "a", "name": "get", "body_text": body}], [])
+        result = check_bounds(g, window=10)
+        self.assertEqual(result["risky"], 1)
+
+    def test_risky_sorted_first(self):
+        from _builder.analysis.quality_checks import check_bounds
+        body_risky = "int a1(int *buf, int i) {\n  return buf[i];\n}\n"
+        body_safe = ("int a2(int *buf, int i) {\n"
+                     "  if (i < 32) return -1;\n"
+                     "  return buf[i];\n}\n")
+        g = _make_quality_graph(
+            [{"id": "a", "name": "a1", "source_file": "/a.c", "body_text": body_risky},
+             {"id": "b", "name": "a2", "source_file": "/a.c", "body_text": body_safe}], [])
+        result = check_bounds(g)
+        self.assertEqual([f["classification"] for f in result["findings"]],
+                         ["risky", "safe"])
+
+    def test_limit_truncates(self):
+        from _builder.analysis.quality_checks import check_bounds
+        body = "int get(int *buf, int i, int j) {\n  return buf[i] + buf[j];\n}\n"
+        g = _make_quality_graph([{"id": "a", "name": "get", "body_text": body}], [])
+        result = check_bounds(g, limit=1)
+        self.assertEqual(result["total_accesses"], 1)
+        self.assertTrue(result["truncated"])
+
+    def test_scope_filter(self):
+        from _builder.analysis.quality_checks import check_bounds
+        body = "int f(int *buf, int i) {\n  return buf[i];\n}\n"
+        g = _make_quality_graph(
+            [{"id": "a", "name": "keep_me", "body_text": body},
+             {"id": "b", "name": "drop_me", "body_text": body}], [])
+        result = check_bounds(g, scope="keep")
+        self.assertEqual(result["total_accesses"], 1)
+        self.assertEqual(result["findings"][0]["name"], "keep_me")
+
+    def test_safe_access_pattern(self):
+        from _builder.analysis.quality_checks import check_bounds
+        body = ("int get(int *buf, int i) {\n"
+                "  int v = lookup.at(i);\n"
+                "  return buf[i] + v;\n"
+                "}\n")
+        g = _make_quality_graph([{"id": "a", "name": "get", "body_text": body}], [])
+        result = check_bounds(g)
+        self.assertEqual(result["safe"], 1)
+        self.assertEqual(result["findings"][0]["guard_kind"], "safe_access")
+
+    def test_result_is_json_serializable(self):
+        from _builder.analysis.quality_checks import check_bounds
+        body = "int get(int *buf, int i) {\n  return buf[i];\n}\n"
+        g = _make_quality_graph([{"id": "a", "name": "get", "body_text": body}], [])
+        json.dumps(check_bounds(g))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,7 +1,7 @@
 {
   "name": "Code2Database-analysis",
   "version": "1.3.0",
-  "description": "Deep semantic analysis for Code2Database. Activated when the user asks about concurrency safety, data races, value flow, invariants, FFI boundaries, path feasibility, or cgdb tables. All 251 commands (243 builder + 8 scanner) remain accessible from the parent skill.",
+  "description": "Deep semantic analysis for Code2Database. Activated when the user asks about concurrency safety, data races, value flow, invariants, FFI boundaries, path feasibility, or cgdb tables. All 252 commands (244 builder + 8 scanner) remain accessible from the parent skill.",
   "trigger": "/Code2Database-analysis",
   "parent_skill": "Code2Database",
   "languages": [
@@ -35,6 +35,7 @@
     "audit-log",
     "blame-node",
     "blast-radius",
+    "check-bounds",
     "check-cycles",
     "check-recursion",
     "code-slice",

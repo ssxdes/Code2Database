@@ -7,6 +7,8 @@ the scanner captured it):
     cycles between files (see ``check_cycles``)
   - recursion detection — direct self-loops and indirect cycles with
     termination staging (see ``check_recursion``)
+  - array bounds exposure — subscript scan with guard inference
+    (see ``check_bounds``)
 
 All detectors are read-only analyses over a built graph directory;
 they never modify graph state. Output is JSON-friendly dicts so the
@@ -472,5 +474,162 @@ def cmd_check_recursion(args):
         max_length=getattr(args, "max_length", 10),
         scope=getattr(args, "scope", None),
         limit=getattr(args, "limit", 50),
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
+# ---------------------------------------------------------------------------
+# Array bounds exposure (check-bounds)
+# ---------------------------------------------------------------------------
+
+_SUBSCRIPT_RE = re.compile(r"(\w+)\s*\[\s*([^\]\'\"]+)\s*\]")
+_CONST_INDEX_RES = [
+    re.compile(r"^\d+$"),
+    re.compile(r"^0[xX][0-9a-fA-F]+$"),
+    re.compile(r"\bsizeof\b"),
+    re.compile(r"^[A-Z][A-Z_0-9]*$"),
+]
+_MAP_DECL_RES = [
+    re.compile(r"\bstd::(?:unordered_)?map\s*<[^;]*?>\s*(\w+)"),
+    re.compile(r"\bauto\s+(\w+)\s*=\s*\w+Get\w*Map"),
+]
+_GUARD_KEYWORD_RE = re.compile(r"\b(?:if|assert|unlikely|likely|BUG_ON|WARN_ON)\b")
+_GUARD_COMPARE_RE = re.compile(r"[<>]=?|!=")
+_RANGE_CHECK_RE = re.compile(r"\b(?:out_of_range|outOfRange)\b")
+_SAFE_ACCESS_RE = re.compile(r"\.(?:at|value_or)\s*\(")
+
+
+def _is_skippable_source_line(stripped: str) -> bool:
+    """Comment / preprocessor / label lines cannot host real accesses."""
+    if not stripped:
+        return True
+    return (stripped.startswith("//") or stripped.startswith("/*")
+            or stripped.startswith("*") or stripped.startswith("#"))
+
+
+def _map_variable_names(body: str) -> Set[str]:
+    names: Set[str] = set()
+    for rx in _MAP_DECL_RES:
+        for m in rx.finditer(body):
+            names.add(m.group(1))
+    return names
+
+
+def _needle_in(raw: str, needle: str) -> bool:
+    """Word-boundary containment so `i` does not match inside `if`."""
+    if not needle:
+        return False
+    return re.search(r"\b" + re.escape(needle) + r"\b", raw) is not None
+
+
+def _find_guard(lines: List[str], access_idx: int, index_expr: str,
+                window: int) -> Optional[Tuple[int, str]]:
+    """Look back up to ``window`` lines for a guard on ``index_expr``.
+
+    Returns (1-based line number, guard kind) or None. Kinds:
+    condition (if/assert with a comparison naming the index),
+    range_check (out_of_range markers), safe_access (.at(/.value_or().
+    """
+    needle = index_expr.strip()
+    lo = max(0, access_idx - window)
+    for i in range(access_idx, lo - 1, -1):
+        raw = lines[i]
+        if _is_skippable_source_line(raw.strip()):
+            continue
+        if _RANGE_CHECK_RE.search(raw):
+            return i + 1, "range_check"
+        if (_GUARD_KEYWORD_RE.search(raw) and _GUARD_COMPARE_RE.search(raw)
+                and _needle_in(raw, needle)):
+            return i + 1, "condition"
+    for i in range(access_idx, lo - 1, -1):
+        if _SAFE_ACCESS_RE.search(lines[i]):
+            return i + 1, "safe_access"
+    return None
+
+
+def check_bounds(graph_dir: str, scope: Optional[str] = None,
+                 limit: int = 100, window: int = 20) -> Dict[str, Any]:
+    """Scan array subscript accesses and infer guard coverage.
+
+    For every function with body text, ``var[index]`` accesses are
+    collected; constant indices (decimal, hex, sizeof, ALL_CAPS
+    macros), string keys, and map-typed variables are treated as
+    non-exposures. Remaining accesses are classified by looking back
+    up to ``window`` lines for a guarding condition, range check, or
+    safe-access pattern.
+
+    Returns:
+        {total_accesses, risky, safe, truncated, findings: [{function,
+        name, file, line, var, index, classification, guard_line,
+        guard_kind}]}
+    """
+    G = _load_graph(graph_dir)
+    findings: List[Dict[str, Any]] = []
+    truncated = False
+    for nid in sorted(G.nodes):
+        if scope and not _scope_matches(G, nid, scope):
+            continue
+        nd = G.nodes[nid]
+        body = nd.get("body_text", "") or ""
+        if not body.strip():
+            continue
+        lines = body.split("\n")
+        map_vars = _map_variable_names(body)
+        for i, raw in enumerate(lines):
+            if _is_skippable_source_line(raw.strip()):
+                continue
+            for m in _SUBSCRIPT_RE.finditer(raw):
+                var, index_expr = m.group(1), m.group(2).strip()
+                if var in map_vars:
+                    continue
+                if any(rx.search(index_expr) for rx in _CONST_INDEX_RES):
+                    continue
+                if index_expr.startswith('"') or index_expr.startswith("'"):
+                    continue
+                guard = _find_guard(lines, i, index_expr, window)
+                if guard is not None:
+                    guard_line, guard_kind = guard
+                    classification, line_no = "safe", guard_line
+                else:
+                    classification, guard_line, guard_kind = "risky", None, None
+                findings.append({
+                    "function": nid,
+                    "name": _node_display(G, nid),
+                    "file": nd.get("source_file", ""),
+                    "line": i + 1,
+                    "var": var,
+                    "index": index_expr,
+                    "classification": classification,
+                    "guard_line": guard_line,
+                    "guard_kind": guard_kind,
+                })
+                if len(findings) >= limit:
+                    truncated = True
+                    break
+            if truncated:
+                break
+        if truncated:
+            break
+
+    order = {"risky": 0, "safe": 1}
+    findings.sort(key=lambda f: (order[f["classification"]],
+                                 f["file"], f["line"], f["function"]))
+    return {
+        "total_accesses": len(findings),
+        "risky": sum(1 for f in findings if f["classification"] == "risky"),
+        "safe": sum(1 for f in findings if f["classification"] == "safe"),
+        "truncated": truncated,
+        "findings": findings,
+    }
+
+
+def cmd_check_bounds(args):
+    """CLI handler for `code2database_builder.py check-bounds`."""
+    import json
+    result = check_bounds(
+        args.graph,
+        scope=getattr(args, "scope", None),
+        limit=getattr(args, "limit", 100),
+        window=getattr(args, "window", 20),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))

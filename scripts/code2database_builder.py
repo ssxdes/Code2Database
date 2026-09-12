@@ -1561,6 +1561,18 @@ def main():
     p_rec.add_argument("--limit", type=int, default=50,
                        help="Maximum cycles to report")
 
+    # Array bounds exposure (code quality)
+    p_cb = sub.add_parser("check-bounds",
+                          help="Scan array subscript accesses and infer guard "
+                               "coverage (risky when unguarded)")
+    p_cb.add_argument("--graph", required=True)
+    p_cb.add_argument("--scope", default=None,
+                      help="Substring filter over node id/name/file")
+    p_cb.add_argument("--limit", type=int, default=100,
+                      help="Maximum findings to report")
+    p_cb.add_argument("--window", type=int, default=20,
+                      help="Look-back window (lines) for guard inference")
+
     # Semantic search (neural embeddings)
     p_ss = sub.add_parser("semantic-search",
                           help="Neural semantic search: FTS5 BM25 + neural embedding + RRF fusion")
@@ -3008,6 +3020,7 @@ def main():
         "taint-analysis": cmd_taint_analysis,
         "check-cycles": _lazy("_builder.analysis.quality_checks", "cmd_check_cycles"),
         "check-recursion": _lazy("_builder.analysis.quality_checks", "cmd_check_recursion"),
+        "check-bounds": _lazy("_builder.analysis.quality_checks", "cmd_check_bounds"),
         "semantic-search": cmd_semantic_search,
         "code-slice": cmd_code_slice,
         "sarif-export": cmd_sarif_export,

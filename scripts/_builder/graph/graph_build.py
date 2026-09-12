@@ -535,6 +535,8 @@ def build_graph(extraction: dict, profile: dict = None,
     # (build_multi, scripted builds, tests) cannot leak across builds.
     from _builder.utils import reset_resolver_state
     reset_resolver_state()
+    from _builder.graph import state_access as _state_access
+    _state_access._ALLOCATION_SITES_MAP = {}
 
     # Callback field regex — used in both FN_PTR field_dispatch and
     # passthrough_bridged field_assignments fallback paths to skip
@@ -565,6 +567,20 @@ def build_graph(extraction: dict, profile: dict = None,
         pb = profile.get("project_boundaries")
         if isinstance(pb, dict):
             set_test_domain_segments(pb.get("test_domain_segments", []))
+        # Allocation sites let _trace_object_origin annotate field-write
+        # origins with object_type without threading the profile through
+        # every _extract_state_access call site. Must target the
+        # state_access module's map (the consumer), not a local.
+        alloc_sites = profile.get("allocation_sites", [])
+        if alloc_sites:
+            _state_access._ALLOCATION_SITES_MAP = {}
+            for entry in alloc_sites:
+                fn = entry.get("function", "")
+                ot = entry.get("object_type", "")
+                if fn and ot:
+                    _state_access._ALLOCATION_SITES_MAP[fn] = ot
+            print(f"Allocation sites loaded: {len(_state_access._ALLOCATION_SITES_MAP)} "
+                  f"(from allocation_sites)", file=sys.stderr)
 
     # Project-specific prefixes from profile (e.g., 'proj_', 'rpc_', 'api_').
     # Functions starting with these prefixes are kept even if they look like
@@ -3852,20 +3868,9 @@ def cmd_build(args):
         if isinstance(pb, dict):
             set_test_domain_segments(pb.get("test_domain_segments", []))
 
-        # Populate the module-level _ALLOCATION_SITES_MAP
-        # from the profile's `allocation_sites` list. This lets
-        # _trace_object_origin (called by _extract_state_access for each
-        # field write/read) annotate origins with object_type without
-        # threading the profile through every call site.
-        global _ALLOCATION_SITES_MAP
-        _ALLOCATION_SITES_MAP = {}
-        for entry in builder_profile.get("allocation_sites", []):
-            fn = entry.get("function", "")
-            ot = entry.get("object_type", "")
-            if fn and ot:
-                _ALLOCATION_SITES_MAP[fn] = ot
-        if _ALLOCATION_SITES_MAP:
-            print(f"Allocation sites loaded: {len(_ALLOCATION_SITES_MAP)} (from allocation_sites)")
+        # allocation_sites are wired by build_graph from the profile
+        # (state_access._ALLOCATION_SITES_MAP); no separate CLI wiring
+        # is needed here.
     tracker.end()
 
     # Load and run plugins

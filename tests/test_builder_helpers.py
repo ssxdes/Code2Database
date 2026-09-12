@@ -1084,6 +1084,26 @@ class TestResolverStateReset(unittest.TestCase):
                          _utils._DEFAULT_TEST_DOMAIN_SEGMENTS)
         self.assertEqual(_utils._EXTERNAL_LIB_PREFIXES, [])
 
+    def test_allocation_sites_wired_to_state_access_and_reset(self):
+        """allocation_sites from profile populate state_access and reset per build."""
+        from _builder.graph.graph_build import build_graph
+        from _builder.graph import state_access
+        extraction = {"functions": [], "edges": [], "domains": ["root"],
+                      "lang_stats": {}}
+        build_graph(extraction, profile={
+            "allocation_sites": [
+                {"function": "alloc_buffer_head", "object_type": "buffer_head"},
+                {"function": "kmalloc", "object_type": "slab"},
+            ],
+        })
+        self.assertEqual(
+            state_access._ALLOCATION_SITES_MAP.get("alloc_buffer_head"),
+            "buffer_head")
+        self.assertEqual(len(state_access._ALLOCATION_SITES_MAP), 2)
+        # Next build without profile resets the map
+        build_graph(extraction)
+        self.assertEqual(state_access._ALLOCATION_SITES_MAP, {})
+
 
 class TestTestDomainCandidatePreference(unittest.TestCase):
     """Callee resolution prefers production definitions over test mocks."""

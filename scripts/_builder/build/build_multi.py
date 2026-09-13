@@ -395,8 +395,19 @@ def _merge_project_data(joint_extraction: Dict[str, Any],
     """
     joint_extraction["functions"].extend(project_data.get("functions", []))
     joint_extraction["edges"].extend(project_data.get("edges", []))
+    # globals: the subkeys are fixed categories (enums, constants,
+    # typedefs, global_vars), not per-project namespaces. Prefixing them
+    # produced keys like "<project>.global_vars" that no downstream
+    # consumer reads (graph_build/state_access look up the bare names),
+    # silently losing all globals data in joint builds. Merge the
+    # category lists instead; only non-list values keep the prefixed
+    # escape hatch.
+    _joint_globals = joint_extraction["globals"]
     for k, v in (project_data.get("globals") or {}).items():
-        joint_extraction["globals"][f"{project_name}.{k}"] = v
+        if isinstance(v, list):
+            _joint_globals.setdefault(k, []).extend(v)
+        else:
+            _joint_globals[f"{project_name}.{k}"] = v
     if project_data.get("vtables"):
         joint_extraction["vtables"].extend(project_data["vtables"])
     if project_data.get("imports"):

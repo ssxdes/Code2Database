@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 from _builder.build.build_multi import (
     _parse_manifest, _topo_sort, _prefix_domain_with_project,
     _merge_compile_commands, _normalize_name, _resolve_profile_path,
+    _merge_project_data,
 )
 from _builder.scanner_bridge.c2d_foreign import (
     _connect, _ensure_foreign_tables, _get_db_signature,
@@ -244,6 +245,44 @@ class TestDomainPrefix(unittest.TestCase):
                          "_bdev_nvme_reset_ctrlr")
         self.assertEqual(_normalize_name("bdev_nvme_reset_ctrlr"),
                          "bdev_nvme_reset_ctrlr")
+
+
+class TestMergeProjectData(unittest.TestCase):
+    """_merge_project_data must keep keys the builder reads un-prefixed."""
+
+    @staticmethod
+    def _joint():
+        return {"functions": [], "edges": [], "globals": {},
+                "vtables": [], "imports": []}
+
+    def test_globals_categories_merge_unprefixed(self):
+        """global_vars/enums/... must merge into the bare category key.
+
+        graph_build and state_access read ``globals["global_vars"]`` —
+        a "<project>.global_vars" key is invisible to them, so every
+        multi-project build silently lost its globals data.
+        """
+        joint = self._joint()
+        _merge_project_data(joint, {
+            "globals": {"global_vars": ["g_a"], "enums": ["E_A"]}}, "projA")
+        _merge_project_data(joint, {
+            "globals": {"global_vars": ["g_b"], "constants": ["C_B"]}}, "projB")
+        self.assertEqual(joint["globals"]["global_vars"], ["g_a", "g_b"])
+        self.assertEqual(joint["globals"]["enums"], ["E_A"])
+        self.assertEqual(joint["globals"]["constants"], ["C_B"])
+        self.assertNotIn("projA.global_vars", joint["globals"])
+
+    def test_globals_non_list_value_keeps_prefixed_key(self):
+        joint = self._joint()
+        _merge_project_data(joint, {"globals": {"weird": "x"}}, "projA")
+        self.assertEqual(joint["globals"]["projA.weird"], "x")
+
+    def test_functions_edges_extend(self):
+        joint = self._joint()
+        _merge_project_data(joint, {
+            "functions": [{"id": "a"}], "edges": [{"source": "a"}]}, "projA")
+        self.assertEqual(len(joint["functions"]), 1)
+        self.assertEqual(len(joint["edges"]), 1)
 
 
 class TestJaccardSimilarity(unittest.TestCase):

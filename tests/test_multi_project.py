@@ -375,6 +375,26 @@ class TestImportFromExistingC2d(unittest.TestCase):
         self.assertEqual(self._joint_flags("A_init")[0], 1)
 
 
+    def test_domain_equal_to_project_name_not_double_prefixed(self):
+        """A source domain already equal to the project name stays as-is.
+
+        The scan-side prefixer treats ``domain == project_name`` as
+        already-prefixed; the import path only checked the ``.``-prefixed
+        form, so re-importing a joint db produced "A.A" style domains.
+        """
+        _make_test_db(self.src_db, functions=[
+            {"id": "A_init", "name": "init", "domain": "A", "line": 1},
+        ])
+        counts = _import_from_existing_c2d(self.joint_db, self.src_dir, "A")
+        self.assertNotIn("error", counts)
+        conn = sqlite3.connect(self.joint_db)
+        try:
+            dom = conn.execute("SELECT domain FROM functions").fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(dom, "A")
+
+
 class TestReuseImportPersistence(unittest.TestCase):
     """Reuse imports must actually persist (not roll back at close).
 

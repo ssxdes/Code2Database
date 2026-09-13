@@ -336,7 +336,7 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
             old_domain = r["domain"] or "root"
             if old_domain == "root" or not old_domain:
                 new_domain = project_name
-            elif old_domain.startswith(project_name + "."):
+            elif old_domain == project_name or old_domain.startswith(project_name + "."):
                 new_domain = old_domain
             else:
                 new_domain = project_name + "." + old_domain

@@ -611,6 +611,48 @@ class TestBuildMultiAllReuse(unittest.TestCase):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+    def test_scan_pool_honours_max_workers(self):
+        """--max-workers must cap the per-project scan thread pool.
+
+        The pool size was hard-wired to 4, silently ignoring the
+        parameter (and the CLI flag behind it).
+        """
+        import concurrent.futures as _cf
+        from _builder.build.build_multi import build_multi
+        tmpdir = tempfile.mkdtemp(prefix="c2d_workers_")
+        recorded = []
+        _real_pool = _cf.ThreadPoolExecutor
+
+        class _RecordingPool(_real_pool):
+            def __init__(self, max_workers=None, **kw):
+                recorded.append(max_workers)
+                super().__init__(max_workers=max_workers, **kw)
+
+        try:
+            for name in ("A", "B"):
+                src = os.path.join(tmpdir, name)
+                os.makedirs(src)
+                with open(os.path.join(src, "main.c"), "w") as f:
+                    f.write("int %s(void) { return 0; }\n" % name.lower())
+            manifest = {"version": 1, "projects": [
+                {"name": "A", "source": os.path.join(tmpdir, "A")},
+                {"name": "B", "source": os.path.join(tmpdir, "B")},
+            ]}
+            manifest_path = os.path.join(tmpdir, "manifest.json")
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f)
+            _cf.ThreadPoolExecutor = _RecordingPool
+            try:
+                build_multi(manifest_path, os.path.join(tmpdir, "out"),
+                            max_workers=2, no_clang=True, verbose=False)
+            finally:
+                _cf.ThreadPoolExecutor = _real_pool
+            self.assertIn(2, recorded,
+                          "pool size must follow max_workers, got %s" % recorded)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 class TestJaccardSimilarity(unittest.TestCase):
     def test_identical_sets(self):
         s = {"a", "b", "c"}

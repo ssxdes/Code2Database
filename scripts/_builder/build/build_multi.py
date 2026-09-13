@@ -749,7 +749,9 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
     # Run scans in parallel (or sequentially if only 1 project)
     if len(_scan_tasks) > 1:
         from concurrent.futures import ThreadPoolExecutor
-        _scan_workers = min(len(_scan_tasks), 4)
+        # Honour --max-workers when given; keep the conservative default
+        # of 4 (each scan also spawns its own worker pool internally).
+        _scan_workers = min(len(_scan_tasks), max(1, max_workers or 4))
         if verbose:
             print(f"[build-multi] scanning {len(_scan_tasks)} projects "
                   f"in parallel ({_scan_workers} workers)", file=sys.stderr)

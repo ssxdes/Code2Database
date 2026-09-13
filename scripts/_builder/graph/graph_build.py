@@ -3830,8 +3830,17 @@ def cmd_build(args):
                         logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
             if scan_result.returncode == 0:
-                data = json.loads(Path(re_scan).read_text(encoding="utf-8"))
-                print("Re-scanned with macro bindings")
+                try:
+                    data = json.loads(Path(re_scan).read_text(encoding="utf-8"))
+                    print("Re-scanned with macro bindings")
+                except (json.JSONDecodeError, OSError) as exc:
+                    # A zero exit code does not guarantee a complete
+                    # output file — fall back to the original extraction
+                    # instead of failing the whole build after both
+                    # scans already ran.
+                    print(f"Warning: re-scan with macros produced an "
+                          f"unreadable extraction ({exc}); using original",
+                          file=sys.stderr)
             else:
                 print(f"Warning: re-scan with macros failed, using original extraction: "
                       f"{scan_result.stderr.strip()}", file=sys.stderr)

@@ -360,7 +360,7 @@ def cmd_bridge_nodes(args):
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
 
 
-def cmd_graph_diff(args):
+def cmd_build_diff(args):
     """Compare two graph builds."""
     from _builder.graph.graph_diff import graph_diff
     result = graph_diff(args.before, args.after, detail=getattr(args, "detail", "summary"))
@@ -3174,7 +3174,7 @@ def main():
         "traverse-graph": cmd_traverse_graph,
         "hub-nodes": cmd_hub_nodes,
         "bridge-nodes": cmd_bridge_nodes,
-        "build-diff": cmd_graph_diff,
+        "build-diff": cmd_build_diff,
         "hybrid-search": cmd_hybrid_search,
         "co-change": cmd_co_change,
         "ast-search": cmd_ast_search,

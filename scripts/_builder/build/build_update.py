@@ -344,6 +344,7 @@ def build_update(source_root: str, graph_dir: str,
     hdr_changed = [p for p in changed
                    if os.path.splitext(p)[1].lower() in _C_CPP_HDR_EXTS]
     affected = set(changed) | set(added)
+    _include_closure_failed = ""
     if hdr_changed:
         try:
             from _builder.cgdb.cgdb_incremental import IncrementalSync
@@ -352,6 +353,7 @@ def build_update(source_root: str, graph_dir: str,
                 if os.path.exists(tu):
                     affected.add(tu)
         except Exception as exc:
+            _include_closure_failed = str(exc)
             print(f"[build-update] include-closure expansion failed "
                   f"({exc}); updating only the changed files",
                   file=sys.stderr)
@@ -362,6 +364,11 @@ def build_update(source_root: str, graph_dir: str,
               "updated_files": 0, "removed_functions": 0,
               "written_functions": 0, "written_edges": 0,
               "format_only_skipped": 0}
+    if _include_closure_failed:
+        # Surface the degraded scope in the report itself — callers
+        # (daemon, CLI) act on the report, not on stderr, so without
+        # this flag they cannot tell that dependent TUs were skipped.
+        report["include_closure_failed"] = _include_closure_failed
     if dry_run:
         report["dry_run"] = True
         report["updated_files"] = len(affected)

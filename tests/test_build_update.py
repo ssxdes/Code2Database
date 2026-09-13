@@ -316,5 +316,47 @@ class TestBuildUpdate(unittest.TestCase):
                          "surviving edges read as dead at the new version")
 
 
+    def test_include_closure_failure_surfaces_in_report(self):
+        """A failed include-closure expansion must be visible in the report.
+
+        Callers (daemon, CLI) act on the report dict, not stderr —
+        without the flag they cannot tell that dependent TUs were
+        skipped and the update silently under-covered the change.
+        """
+        import _builder.build.build_update as bu
+        from _builder.graph.sqlite_store import SQLiteStore
+        with tempfile.TemporaryDirectory() as tmp:
+            src = os.path.join(tmp, "src")
+            os.makedirs(src)
+            _write(src, "a.h", "int add(int a, int b);\n")
+            graph_dir = os.path.join(tmp, "out")
+            os.makedirs(graph_dir)
+            with SQLiteStore(os.path.join(graph_dir,
+                                          "code2database.db")):
+                pass
+            hdr = os.path.join(src, "a.h")
+
+            class _Boom:
+                def __init__(self, *a, **k):
+                    raise RuntimeError("sync unavailable")
+
+            _orig_sync = None
+            import _builder.cgdb.cgdb_incremental as ci
+            _orig_sync = ci.IncrementalSync
+            _orig_detect = bu.detect_db_changes
+            ci.IncrementalSync = _Boom
+            bu.detect_db_changes = lambda sr, db: {
+                "changed": [hdr], "added": [], "deleted": []}
+            try:
+                report = bu.build_update(source_root=src,
+                                         graph_dir=graph_dir, dry_run=True)
+            finally:
+                ci.IncrementalSync = _orig_sync
+                bu.detect_db_changes = _orig_detect
+            self.assertIn("include_closure_failed", report)
+            self.assertIn("sync unavailable",
+                          report["include_closure_failed"])
+
+
 if __name__ == "__main__":
     unittest.main()

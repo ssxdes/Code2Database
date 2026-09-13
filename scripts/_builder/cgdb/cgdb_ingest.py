@@ -684,13 +684,20 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
     }
     for inc in scan_result.get('cgdb_includes', []):
         try:
-            source_file_id = int(inc['source_file_id'])
             included_path = str(inc.get('included_path', '') or '')
         except (KeyError, ValueError, TypeError):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         if not included_path:
             continue
+        # The scanner stamps source_file_id from its own path basis
+        # (relative to the source root), while this batch's FileRecord
+        # id comes from scan_result['file'] — absolute in the
+        # build-update flow. The includes of a scan result belong to
+        # the file this batch writes, so anchor them to the batch's own
+        # file id; otherwise the source_file_id FK can point at a
+        # cgdb_files row the batch never writes.
+        source_file_id = fid
         included_file_id = inc.get('included_file_id')
         try:
             included_file_id = int(included_file_id) if included_file_id is not None else None

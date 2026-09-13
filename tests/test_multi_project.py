@@ -488,6 +488,14 @@ class TestReuseImportPersistence(unittest.TestCase):
         finally:
             conn.close()
         self.assertEqual(n, 1, "INSERT OR IGNORE must dedupe repeat imports")
+        conn = sqlite3.connect(self.joint_db)
+        try:
+            e = conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(e, 1,
+                         "edges have no unique key — re-imports must be "
+                         "filtered or every re-run duplicates all edges")
 
 
 class TestBuildMultiAllReuse(unittest.TestCase):

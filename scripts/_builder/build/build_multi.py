@@ -390,6 +390,26 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
                 r["evidence"], r["invoked_arg_json"], r["reg_args_json"],
                 r["vtable_type"], r["vtable_bound_module"]
             ))
+        # Edges have no natural unique key (the table's primary key is an
+        # autoincrement id), so INSERT OR IGNORE never conflicts and a
+        # re-run of a reuse manifest duplicated every edge. Filter the
+        # batch against existing rows (and within the batch itself) on
+        # the semantic identity first.
+        _edges_ignored = 0
+        if _edge_batch:
+            _existing_edges = {tuple(r) for r in conn.execute(
+                "SELECT invoker_id, invoked_id, relation, call_order, "
+                "call_condition FROM edges")}
+            _seen_keys = set()
+            _deduped_batch = []
+            for b in _edge_batch:
+                _key = (b[0], b[1], b[2], b[3], b[4])
+                if _key in _existing_edges or _key in _seen_keys:
+                    continue
+                _seen_keys.add(_key)
+                _deduped_batch.append(b)
+            _edges_ignored = len(_edge_batch) - len(_deduped_batch)
+            _edge_batch = _deduped_batch
         if _edge_batch:
             _cur = conn.executemany(
                 "INSERT OR IGNORE INTO edges (invoker_id, invoked_id, relation, "
@@ -402,7 +422,9 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
             counts["edges_imported"] = _cur.rowcount
             _ignored = len(_edge_batch) - max(_cur.rowcount, 0)
             if _ignored:
-                counts["edges_ignored"] = _ignored
+                counts["edges_ignored"] = _ignored + _edges_ignored
+        elif _edges_ignored:
+            counts["edges_ignored"] = _edges_ignored
         # Commit BEFORE detaching: the edges SELECT above ran inside the
         # implicit write transaction opened by the INSERTs, which keeps a
         # shared lock on the attached src db — DETACH inside that

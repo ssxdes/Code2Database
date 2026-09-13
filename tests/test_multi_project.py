@@ -582,6 +582,35 @@ class TestBuildMultiAllReuse(unittest.TestCase):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+    def test_missing_include_path_warns(self):
+        """A non-existent include path prints a warning, not silence."""
+        from _builder.build.build_multi import build_multi
+        import io
+        from contextlib import redirect_stderr
+        tmpdir = tempfile.mkdtemp(prefix="c2d_incpath_")
+        try:
+            src_dir = os.path.join(tmpdir, "srcA")
+            os.makedirs(src_dir)
+            _make_test_db(os.path.join(src_dir, "code2database.db"),
+                          functions=[
+                              {"id": "root_init", "name": "init",
+                               "domain": "root", "line": 1},
+                          ])
+            manifest = {"version": 1, "projects": [
+                {"name": "A", "existing_c2d": src_dir,
+                 "include_paths": [os.path.join(tmpdir, "no_such_dir")]}]}
+            manifest_path = os.path.join(tmpdir, "manifest.json")
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f)
+            buf = io.StringIO()
+            with redirect_stderr(buf):
+                build_multi(manifest_path, os.path.join(tmpdir, "out"),
+                            verbose=False)
+            self.assertIn("include path does not exist", buf.getvalue())
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 class TestJaccardSimilarity(unittest.TestCase):
     def test_identical_sets(self):
         s = {"a", "b", "c"}

@@ -621,6 +621,11 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
         for ip in (p.get("include_paths") or []):
             if ip not in all_include_paths:
                 all_include_paths.append(ip)
+                # A typo'd include path is silently accepted by clang;
+                # warn so the user can correct the manifest.
+                if not os.path.exists(ip):
+                    print(f"[build-multi] WARNING: include path does not "
+                          f"exist: {ip}", file=sys.stderr)
         # Decide: scan or reuse?
         existing_c2d = p.get("existing_c2d")
         if existing_c2d and p["name"] not in force_rescan:

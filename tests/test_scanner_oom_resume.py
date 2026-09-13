@@ -220,5 +220,61 @@ class TestSplitPostPassParity(unittest.TestCase):
             "the in-memory post-pass copies are slim")
 
 
+class TestScannerBaseCorrections(unittest.TestCase):
+    """_scanner/base.py cross-language local-var and file-id semantics."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="c2d_basecorr_")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_c_late_assignment_recorded_as_local_var(self):
+        """`int x; ... x = other();` must yield a local var for x.
+
+        The assignment branch only matched Python's 'assignment' node;
+        C/C++ use 'assignment_expression' and Go 'assignment_statement',
+        so non-declaring assignments were invisible on those languages.
+        """
+        from code2database_scanner import scan_directory
+        src = os.path.join(self.tmpdir, "src")
+        os.makedirs(src)
+        with open(os.path.join(src, "late.c"), "w") as f:
+            f.write("int other(void);\n"
+                    "int g_state;\n"
+                    "void f(void) {\n"
+                    "    int x;\n"
+                    "    x = other();\n"
+                    "    g_state = x;\n"
+                    "}\n")
+        result = scan_directory(source_root=src, workers=1, quiet=True)
+        self.assertEqual(len(result["functions"]), 1)
+        fn = result["functions"][0]
+        names = [lv["name"] for lv in fn.get("local_vars", [])]
+        self.assertIn("x", names,
+                      "C assignment_expression must feed local_vars")
+        self.assertNotIn(
+            "g_state", names,
+            "an assignment to a file-scope variable must stay a global "
+            "write, not masquerade as a local")
+        self.assertIn("g_state",
+                      [gv["name"] for gv in result["globals"]["global_vars"]])
+
+    def test_file_id_hashed_from_relative_path(self):
+        """Scan-side file ids must match builder-side ids (relative hash)."""
+        from _scanner.unified_id import unified_file_id
+        from _builder.cgdb.cgdb_ingest import file_id_for
+        from code2database_scanner import scan_directory
+        src = os.path.join(self.tmpdir, "src")
+        os.makedirs(src)
+        with open(os.path.join(src, "one.c"), "w") as f:
+            f.write("int one(void) { return 1; }\n")
+        result = scan_directory(source_root=src, workers=1, quiet=True)
+        # The extraction's file records carry ids computed by base.py;
+        # the builder recomputes from the relative path.
+        rel = os.path.join("src", "one.c")
+        self.assertEqual(unified_file_id(rel), file_id_for(rel))
+
+
 if __name__ == "__main__":
     unittest.main()

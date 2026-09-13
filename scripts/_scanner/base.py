@@ -473,6 +473,21 @@ class BaseScanner(ABC):
             # but record a warning so the aggregator can surface it.
             return {"file": filepath, "domain": domain, "functions": functions, "edges": edges, "globals": globals_data, "vtable_registrations": vtable_registrations, "import_edges": import_edges, "fn_ptr_calls": fn_ptr_calls, "macro_registrations": macro_registrations, "warning": f"GlobalsExtractError: {e}"}
 
+        # A plain assignment to a file-scope variable lands in local_vars
+        # (the assignment branch cannot see file scope). Drop those
+        # names so state-access classification treats them as globals,
+        # not locals.
+        _file_global_names = {
+            gv.get("name") for gv in (globals_data.get("global_vars") or [])
+            if gv.get("name")}
+        if _file_global_names:
+            for _fn in functions:
+                _lv = _fn.get("local_vars")
+                if _lv:
+                    _fn["local_vars"] = [
+                        lv for lv in _lv
+                        if lv.get("name") not in _file_global_names]
+
         # Cross-language config predicates (//go:build, #[cfg],
         # sys.platform, @Profile, #ifdef). Annotates each function with
         # config_predicate_id and emits a cgdb_predicates list on the result.
@@ -716,13 +731,17 @@ class BaseScanner(ABC):
         cgdb_types = []
         cgdb_ops_bindings = []
         seen_node_ids = set()
-        fid = unified_file_id(filepath)
         # Use relative path for file_path to match functions.source_file.
         # Reassign filepath so all downstream 'file_path': filepath assignments
         # and child method calls (_emit_sync_primitives, _emit_conditions)
         # propagate the relative path consistently.
         filepath = os.path.relpath(filepath, source_root) if source_root else filepath
         rel_filepath = filepath
+        # Hash the RELATIVE path: the builder recomputes file ids from
+        # the stored relative file_path (cgdb_ingest.file_id_for), so
+        # hashing the absolute path here produced ids that never matched
+        # the builder-side ids for the same file.
+        fid = unified_file_id(filepath)
 
         # Pre-compute line-start byte offsets so we can derive byte ranges
         # from line numbers for edges and invoke_sites.
@@ -2597,7 +2616,8 @@ class BaseScanner(ABC):
 
         return params
 
-    def _extract_local_vars(self, body_node, source_bytes: bytes, params_list=None) -> list:
+    def _extract_local_vars(self, body_node, source_bytes: bytes,
+                            params_list=None) -> list:
         """Extract local variable assignments from function body.
 
         Returns list of {"name", "type", "value_snippet", "line", "column",
@@ -2644,14 +2664,19 @@ class BaseScanner(ABC):
                                               "line": pos["line"], "column": pos["column"],
                                               "start_byte": pos["start_byte"], "end_byte": pos["end_byte"],
                                               "is_param": False})
-                if nd.type == 'assignment':
+                # Python uses 'assignment'; C/C++/Java/Rust use
+                # 'assignment_expression'; Go uses 'assignment_statement'.
+                if nd.type in ('assignment', 'assignment_expression',
+                               'assignment_statement'):
                     text = self._node_text(nd, source_bytes)
                     pos = self._node_position(nd)
                     m = re.match(r'(\w+)\s*=\s*(.{0,400})', text.strip(), re.DOTALL)
                     if m:
                         name = m.group(1)
                         val = m.group(2).strip()
-                        if name not in seen and name not in ('self', 'True', 'False', 'None') and name != '_':
+                        if (name not in seen
+                                and name not in ('self', 'True', 'False', 'None')
+                                and name != '_'):
                             seen.add(name)
                             inferred_type = self._infer_type_from_value(val)
                             vars_list.append({"name": name, "type": inferred_type, "value_snippet": val,

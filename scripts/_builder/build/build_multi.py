@@ -359,8 +359,14 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
                 _edge_batch
             )
             counts["edges_imported"] = _cur.rowcount
-        conn.execute("DETACH DATABASE src")
+        # Commit BEFORE detaching: the edges SELECT above ran inside the
+        # implicit write transaction opened by the INSERTs, which keeps a
+        # shared lock on the attached src db — DETACH inside that
+        # transaction always fails with "database src is locked", and the
+        # old error path (close() without commit) silently rolled back
+        # every reuse import.
         conn.commit()
+        conn.execute("DETACH DATABASE src")
     except sqlite3.Error as e:
         counts["error"] = str(e)
     finally:

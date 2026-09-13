@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 from _builder.build.build_multi import (
     _parse_manifest, _topo_sort, _prefix_domain_with_project,
     _merge_compile_commands, _normalize_name, _resolve_profile_path,
-    _merge_project_data,
+    _merge_project_data, _import_from_existing_c2d,
 )
 from _builder.scanner_bridge.c2d_foreign import (
     _connect, _ensure_foreign_tables, _get_db_signature,
@@ -283,6 +283,139 @@ class TestMergeProjectData(unittest.TestCase):
             "functions": [{"id": "a"}], "edges": [{"source": "a"}]}, "projA")
         self.assertEqual(len(joint["functions"]), 1)
         self.assertEqual(len(joint["edges"]), 1)
+
+
+class TestImportFromExistingC2d(unittest.TestCase):
+    """Reuse-mode import must carry the boolean label columns."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="c2d_reuse_")
+        self.joint_dir = os.path.join(self.tmpdir, "joint")
+        os.makedirs(self.joint_dir)
+        self.joint_db = os.path.join(self.joint_dir, "code2database.db")
+        _make_test_db(self.joint_db)
+        self.src_dir = os.path.join(self.tmpdir, "srcA")
+        os.makedirs(self.src_dir)
+        self.src_db = os.path.join(self.src_dir, "code2database.db")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _joint_flags(self, func_id):
+        conn = sqlite3.connect(self.joint_db)
+        try:
+            return conn.execute(
+                "SELECT is_api_entry, is_thread_processor, is_callback_func, "
+                "is_out_end, is_unknown_end FROM functions WHERE id = ?",
+                (func_id,)).fetchone()
+        finally:
+            conn.close()
+
+    def test_flags_from_boolean_source_columns(self):
+        """Source db with the boolean columns: flags imported verbatim."""
+        conn = sqlite3.connect(self.src_db)
+        conn.executescript("""
+            CREATE TABLE functions (
+                id TEXT PRIMARY KEY, name TEXT, domain TEXT,
+                source_file TEXT, line_number INTEGER, signature TEXT,
+                labels TEXT, body_text_compressed BLOB, extra_json TEXT,
+                is_api_entry INTEGER DEFAULT 0,
+                is_thread_processor INTEGER DEFAULT 0,
+                is_callback_func INTEGER DEFAULT 0,
+                is_out_end INTEGER DEFAULT 0,
+                is_unknown_end INTEGER DEFAULT 0);
+        """)
+        conn.execute(
+            "INSERT INTO functions (id, name, domain, labels, "
+            "is_api_entry, is_out_end) VALUES ('root_init', 'init', 'root', "
+            "'API_entry,out_end', 1, 1)")
+        conn.commit()
+        conn.close()
+        counts = _import_from_existing_c2d(self.joint_db, self.src_dir, "A")
+        self.assertNotIn("error", counts)
+        self.assertEqual(counts["functions_imported"], 1)
+        self.assertEqual(self._joint_flags("A_init"), (1, 0, 0, 1, 0))
+
+    def test_flags_computed_from_legacy_labels(self):
+        """Source db without the columns: flags derived from labels text."""
+        _make_test_db(self.src_db, functions=[
+            {"id": "root_cb", "name": "cb", "domain": "root",
+             "labels": "callback_func,unknown_end", "line": 3},
+        ])
+        counts = _import_from_existing_c2d(self.joint_db, self.src_dir, "A")
+        self.assertNotIn("error", counts)
+        self.assertEqual(counts["functions_imported"], 1)
+        self.assertEqual(self._joint_flags("A_cb"), (0, 0, 1, 0, 1))
+
+    def test_joint_db_without_flag_columns_gets_them_added(self):
+        """A legacy joint db (no boolean columns) is upgraded in place."""
+        _make_test_db(self.src_db, functions=[
+            {"id": "root_init", "name": "init", "domain": "root",
+             "labels": "API_entry", "line": 1},
+        ])
+        counts = _import_from_existing_c2d(self.joint_db, self.src_dir, "A")
+        self.assertNotIn("error", counts)
+        # _make_test_db's joint schema has no flag columns — the import
+        # must have ALTERed them in and populated them.
+        self.assertEqual(self._joint_flags("A_init")[0], 1)
+
+
+class TestReuseImportPersistence(unittest.TestCase):
+    """Reuse imports must actually persist (not roll back at close).
+
+    The edges SELECT reads the attached src db inside the implicit write
+    transaction opened by the functions INSERT — that shared lock made
+    the subsequent DETACH fail every time, and the error path closed
+    the connection without committing, so reuse-mode imports never
+    landed in the joint db.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="c2d_persist_")
+        self.joint_dir = os.path.join(self.tmpdir, "joint")
+        os.makedirs(self.joint_dir)
+        self.joint_db = os.path.join(self.joint_dir, "code2database.db")
+        _make_test_db(self.joint_db)
+        self.src_dir = os.path.join(self.tmpdir, "srcA")
+        os.makedirs(self.src_dir)
+        self.src_db = os.path.join(self.src_dir, "code2database.db")
+        _make_test_db(self.src_db, functions=[
+            {"id": "root_init", "name": "init", "domain": "root", "line": 1},
+        ], edges=[
+            {"invoker_id": "root_init", "invoked_id": "root_helper",
+             "relation": "CALL", "call_order": 1},
+        ])
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_import_persists_functions_and_edges(self):
+        counts = _import_from_existing_c2d(self.joint_db, self.src_dir, "A")
+        self.assertNotIn("error", counts)
+        self.assertEqual(counts["functions_imported"], 1)
+        self.assertEqual(counts["edges_imported"], 1)
+        conn = sqlite3.connect(self.joint_db)
+        try:
+            fn = conn.execute("SELECT id FROM functions").fetchall()
+            ed = conn.execute(
+                "SELECT invoker_id, invoked_id FROM edges").fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(fn, [("A_init",)])
+        # root_helper has no function row in src, so its id is not
+        # remapped — only known ids get the project prefix.
+        self.assertEqual(ed, [("A_init", "root_helper")])
+
+    def test_import_twice_is_idempotent(self):
+        _import_from_existing_c2d(self.joint_db, self.src_dir, "A")
+        counts = _import_from_existing_c2d(self.joint_db, self.src_dir, "A")
+        self.assertNotIn("error", counts)
+        conn = sqlite3.connect(self.joint_db)
+        try:
+            n = conn.execute("SELECT COUNT(*) FROM functions").fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(n, 1, "INSERT OR IGNORE must dedupe repeat imports")
 
 
 class TestJaccardSimilarity(unittest.TestCase):

@@ -140,5 +140,85 @@ class TestParallelCheckpointResume(unittest.TestCase):
                          "a completed resume must clean up the checkpoint")
 
 
+class TestSplitPostPassParity(unittest.TestCase):
+    """Split-mode scans must run the same post-scan passes as normal ones.
+
+    The split path returned early and skipped id disambiguation and
+    cross-file callback detection, so >2000-file (or --split-output)
+    scans emitted duplicate ids and no cross-file CALLBACK_ARG edges.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="c2d_splitpost_")
+        self.src = os.path.join(self.tmpdir, "src")
+        os.makedirs(self.src)
+        with open(os.path.join(self.src, "a.c"), "w") as f:
+            f.write("int common_main(void) { return 1; }\n"
+                    "void my_handler(void *arg) { (void)arg; }\n")
+        with open(os.path.join(self.src, "b.c"), "w") as f:
+            f.write("int common_main(void) { return 2; }\n"
+                    "void start_thread(void) {\n"
+                    "    register_ops(my_handler);\n"
+                    "}\n")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    @staticmethod
+    def _split_contents(split_dir):
+        fns, edges = [], []
+        fn_dir = os.path.join(split_dir, "functions")
+        for name in sorted(os.listdir(fn_dir)):
+            if name.endswith(".json"):
+                with open(os.path.join(fn_dir, name), encoding="utf-8") as f:
+                    fns.extend(json.load(f))
+        ed_dir = os.path.join(split_dir, "edges")
+        for name in sorted(os.listdir(ed_dir)):
+            if name.endswith(".json"):
+                with open(os.path.join(ed_dir, name), encoding="utf-8") as f:
+                    edges.extend(json.load(f))
+        return fns, edges
+
+    def test_split_output_has_unique_ids_and_callback_edges(self):
+        from code2database_scanner import scan_directory
+        result = scan_directory(source_root=self.src, workers=1,
+                                quiet=True, split_output=True)
+        split_dir = result["_split_dir"]
+        fns, edges = self._split_contents(split_dir)
+        self.assertEqual(len(fns), 4)
+        ids = [fn["id"] for fn in fns]
+        self.assertEqual(len(ids), len(set(ids)),
+                         "duplicate ids must be disambiguated in split mode")
+        # The fn-ptr assignment in b.c referencing a.c's my_handler must
+        # produce a cross-file callback edge (none existed before).
+        handlers = [e for e in edges
+                    if "my_handler" in str(e.get("target", e.get("callee", "")))]
+        self.assertGreaterEqual(
+            len(handlers), 1,
+            "cross-file callback detection must run in split mode")
+
+    def test_split_and_normal_outputs_agree(self):
+        from code2database_scanner import scan_directory
+        normal = scan_directory(source_root=self.src, workers=1, quiet=True)
+        split = scan_directory(source_root=self.src, workers=1, quiet=True,
+                               split_output=True)
+        fns, edges = self._split_contents(split["_split_dir"])
+        self.assertEqual(
+            {fn["id"] for fn in normal["functions"]},
+            {fn["id"] for fn in fns},
+            "split and normal scans must agree on function ids")
+
+    def test_rewrite_keeps_body_text(self):
+        from code2database_scanner import scan_directory
+        result = scan_directory(source_root=self.src, workers=1,
+                                quiet=True, split_output=True)
+        fns, _ = self._split_contents(result["_split_dir"])
+        with_text = [fn for fn in fns if fn.get("body_text")]
+        self.assertEqual(
+            len(with_text), len(fns),
+            "the duplicate-id rewrite must persist full records — only "
+            "the in-memory post-pass copies are slim")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1736,6 +1736,127 @@ def scan_directory(source_root: str, lang: str = "auto",
     # For streaming split output: do a final flush of any remaining data
     if _use_split and streaming_output:
         _flush_accumulated()
+        # Post-scan passes (id disambiguation + cross-file callback
+        # detection) used to run only on the non-split path — the early
+        # return here skipped them, so split scans (>2000 files or
+        # --split-output) emitted duplicate function ids and no
+        # cross-file CALLBACK_ARG edges. Replay both passes over the
+        # on-disk chunks. Function records are loaded slim (body_text
+        # stays on disk) unless duplicate ids force a full rewrite.
+        try:
+            from _vendor._regex_c_scanner import (
+                _disambiguate_func_ids as _post_disamb,
+                _detect_cross_file_callbacks as _post_xcb,
+                _CALLBACK_ARG_SKIP_CALLEES as _POST_SKIP)
+            from collections import Counter as _PostCounter
+            _fn_dir = os.path.join(_split_dir, "functions")
+            _ed_dir = os.path.join(_split_dir, "edges")
+
+            def _slim(fn):
+                return {"id": fn.get("id", ""), "name": fn.get("name", ""),
+                        "domain": fn.get("domain", ""),
+                        "signature": fn.get("signature", ""),
+                        "source_file": fn.get("source_file", ""),
+                        "is_empty": fn.get("is_empty", False)}
+
+            _post_fns = []
+            for _fn_file in sorted(os.listdir(_fn_dir)):
+                if not _fn_file.endswith(".json"):
+                    continue
+                with open(os.path.join(_fn_dir, _fn_file),
+                          encoding="utf-8") as _fh:
+                    _post_fns.extend(_slim(_fn) for _fn in json.load(_fh))
+            _post_edges = []
+            for _ed_file in sorted(os.listdir(_ed_dir)):
+                if not _ed_file.endswith(".json"):
+                    continue
+                with open(os.path.join(_ed_dir, _ed_file),
+                          encoding="utf-8") as _fh:
+                    _post_edges.extend(json.load(_fh))
+            _dup_ids = {fid for fid, _c in _PostCounter(
+                f["id"] for f in _post_fns).items() if _c > 1}
+            if _dup_ids:
+                # Rare path: renames require rewriting full records
+                # (slim copies lack body_text), so reload everything,
+                # disambiguate, and rewrite the chunk files.
+                _full_fns = []
+                for _fn_file in sorted(os.listdir(_fn_dir)):
+                    if not _fn_file.endswith(".json"):
+                        continue
+                    with open(os.path.join(_fn_dir, _fn_file),
+                              encoding="utf-8") as _fh:
+                        _full_fns.extend(json.load(_fh))
+                _full_fns, _post_edges = _post_disamb(_full_fns, _post_edges)
+
+                def _rewrite_fn_chunks(fn_dir, funcs):
+                    _by_domain = {}
+                    for _f in funcs:
+                        _by_domain.setdefault(
+                            _f.get("domain", "unknown"), []).append(_f)
+                    for _c, (_dom, _lst) in enumerate(_by_domain.items()):
+                        _safe = _dom.replace("/", "_").replace(".", "_")
+                        Path(os.path.join(
+                            fn_dir, f"{_safe}_{_c}.json")).write_text(
+                            json.dumps(_lst, ensure_ascii=False),
+                            encoding="utf-8")
+
+                def _rewrite_ed_chunks(ed_dir, edges):
+                    for _i in range(0, len(edges), 5000):
+                        Path(os.path.join(
+                            ed_dir, f"edges_{_i // 5000}.json")).write_text(
+                            json.dumps(edges[_i:_i + 5000],
+                                       ensure_ascii=False),
+                            encoding="utf-8")
+
+                for _fn_file in os.listdir(_fn_dir):
+                    if _fn_file.endswith(".json"):
+                        os.unlink(os.path.join(_fn_dir, _fn_file))
+                _rewrite_fn_chunks(_fn_dir, _full_fns)
+                for _ed_file in os.listdir(_ed_dir):
+                    if _ed_file.endswith(".json"):
+                        os.unlink(os.path.join(_ed_dir, _ed_file))
+                _rewrite_ed_chunks(_ed_dir, _post_edges)
+                print(f"[scan] Split post-pass: disambiguated "
+                      f"{len(_dup_ids)} duplicate id(s)", file=sys.stderr)
+                _post_fns = [_slim(f) for f in _full_fns]
+                del _full_fns
+                gc.collect()
+            # Cross-file callback detection needs the passthrough
+            # registration functions and field assignments the scan
+            # streamed to aux chunks.
+            _pt_funcs = {}
+            _fa_list = []
+            for _aux in sorted(os.listdir(_split_dir)):
+                if (_aux.startswith("passthrough_reg_funcs_")
+                        and _aux.endswith(".json")):
+                    with open(os.path.join(_split_dir, _aux),
+                              encoding="utf-8") as _fh:
+                        _pt_funcs.update(json.load(_fh))
+                elif (_aux.startswith("field_assignments_")
+                        and _aux.endswith(".json")):
+                    with open(os.path.join(_split_dir, _aux),
+                              encoding="utf-8") as _fh:
+                        _fa_list.extend(json.load(_fh))
+            _orig_edge_count = len(_post_edges)
+            _post_skip = _POST_SKIP | set(
+                (profile or {}).get("skip_callees", []))
+            _post_edges = _post_xcb(
+                _post_fns, _post_edges, source_root=source_root,
+                passthrough_reg_funcs=_pt_funcs,
+                field_assignments=_fa_list, skip_callees=_post_skip)
+            _new_cb_edges = _post_edges[_orig_edge_count:]
+            if _new_cb_edges:
+                Path(os.path.join(_ed_dir, "edges_post.json")).write_text(
+                    json.dumps(_new_cb_edges, ensure_ascii=False),
+                    encoding="utf-8")
+                print(f"[scan] Split post-pass: added "
+                      f"{len(_new_cb_edges)} cross-file callback edge(s)",
+                      file=sys.stderr)
+            del _post_fns, _post_edges
+            gc.collect()
+        except Exception as _post_exc:
+            print(f"[scan] WARNING: split post-pass failed ({_post_exc}); "
+                  f"chunks keep per-file results", file=sys.stderr)
         # Update metadata with final counts
         _total_func_count = sum(
             len(json.loads(Path(os.path.join(_split_dir, "functions", f)).read_text(encoding="utf-8")))
@@ -1810,52 +1931,9 @@ def scan_directory(source_root: str, lang: str = "auto",
 
     # Streaming output path: write each array incrementally and free memory
     if streaming_output:
-        # For large projects, use split output (per-domain files) to keep
-        # memory manageable during the build phase. The build phase can then
-        # use _load_split_extraction() which loads files incrementally.
-        # _use_split was already determined above for the scan loop.
-        # Helper functions (_merge_list_file, _merge_dict_file, _flush_accumulated)
-        # are also already defined above.
-        if _use_split:
-            # Flush any remaining edges from post-scan processing
-            # (e.g., _detect_cross_file_callbacks adds CALLBACK_ARG edges after
-            # the scan loop but before this return — they would be lost otherwise).
-            if all_edges:
-                _extra_chunk = _flush_chunk[0]
-                _flush_chunk[0] += 1
-                _extra_edge_count = len(all_edges)
-                Path(os.path.join(_split_dir, "edges", f"edges_{_extra_chunk}.json")).write_text(
-                    json.dumps(all_edges, ensure_ascii=False), encoding="utf-8")
-                all_edges.clear()
-                print(f"[scan] Flushed {_extra_edge_count} post-scan edges to chunk {_extra_chunk}",
-                      file=sys.stderr)
-            # Write metadata
-            _meta = {
-                "source_root": source_root,
-                "domains": sorted(domains),
-                "lang_stats": dict(lang_stats),
-                "scan_complete": not _scan_stopped_early,
-            }
-            Path(os.path.join(_split_dir, "_metadata.json")).write_text(
-                json.dumps(_meta, ensure_ascii=False, indent=2), encoding="utf-8")
-            gc.collect()
-            print(f"[scan] Split output written to {_split_dir}", file=sys.stderr)
-            _write_scan_errors_sidecar(streaming_output, all_scan_errors, all_scan_warnings,
-                                       len(file_list), dict(lang_stats))
-            return {
-                "source_root": source_root,
-                "domains": sorted(domains),
-                "lang_stats": dict(lang_stats),
-                "_function_count": 0,  # counted from files
-                "_edge_count": 0,
-                "_streamed_to": streaming_output,
-                "_split_dir": _split_dir,
-                "_stopped_early": _scan_stopped_early,
-                "_scan_error_count": len(all_scan_errors),
-                "_scan_warning_count": len(all_scan_warnings),
-            }
-
-        # Original monolithic streaming path for smaller projects
+        # NOTE: split-mode scans returned earlier (post-scan passes have
+        # already replayed over the chunk files); what remains here is
+        # the monolithic streaming path for smaller projects.
         from _builder.memory.memory_guard import StreamingJsonObjectWriter
         writer = StreamingJsonObjectWriter(streaming_output, chunk_size=500)
         writer.begin()

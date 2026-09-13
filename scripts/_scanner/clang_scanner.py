@@ -56,6 +56,7 @@ _LIBCLANG_PATHS = [
 
 def _configure_libclang():
     """Configure libclang library path. Idempotent."""
+    global _config_probe_result
     if not _LIBCLANG_AVAILABLE:
         return False
     # If a library file is already configured, don't override.
@@ -69,7 +70,25 @@ def _configure_libclang():
             except Exception:
                 logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
-    return True
+    # No known path matched. The bindings may still locate a system
+    # library on their own — probe once by actually creating an Index.
+    # Claiming availability without a loadable library sends the
+    # pipeline down the clang path where every file fails to parse.
+    if _config_probe_result is None:
+        try:
+            _probe_index = _ci.Index.create()
+            del _probe_index
+            _config_probe_result = True
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "libclang bindings import but no usable shared library "
+                "was found; clang backend disabled", exc_info=True)
+            _config_probe_result = False
+    return _config_probe_result
+
+
+# Cache for the one-time Index probe above (None = not probed yet).
+_config_probe_result = None
 
 
 # Node ID bit-range prefixes (per cgdb 5.6).
@@ -255,7 +274,6 @@ class ClangScanner(BaseScanner):
         # lookup via bisect. Built once when _compile_db_dir_cache is
         # populated by _load_compile_commands.
         self._compile_db_dir_prefixes: list = []
-        self._tu = None  # holds the TranslationUnit for the current scan
         self._file_id = 0  # set by caller via cgdb_ingest
         self._macro_bindings = {}
         self._callback_patterns = {}
@@ -1113,27 +1131,36 @@ class ClangScanner(BaseScanner):
         try:
             for child in func_cursor.walk_preorder():
                 k = child.kind.name if child.kind else ''
-                if k == 'CALL_EXPR' and child.spelling:
-                    # Resolve callee definition via referenced
+                if k == 'CALL_EXPR':
+                    # spelling is empty for calls produced by macro
+                    # expansion and for C++ operator-call expressions —
+                    # gate on "anything names the callee" instead, or
+                    # those INVOKES edges are silently dropped.
                     try:
-                        defn = child.referenced or child
+                        _referenced = child.referenced
                     except Exception:
-                        defn = child
-                    # Callee function node: enclosing is the calling function
-                    invoked_id = add_node(defn, 'function',
-                                         enclosing_func_id=func_id)
-                    loc = child.location
-                    cgdb_edges.append({
-                        'src_id': func_id, 'dst_id': invoked_id, 'kind': 'INVOKES',
-                        'file_path': loc.file.name if loc.file else '',
-                        'line': loc.line or 0, 'col': loc.column or 0,
-                        'enclosing_symbol_id': func_id,
-                        'attrs': {},
-                    })
-                    cgdb_invoke_sites.append({
-                        'invoker_id': func_id, 'invoked_id': invoked_id,
-                        'invoke_kind': 'direct', 'invoke_expr_id': 0,
-                    })
+                        _referenced = None
+                    if child.spelling or _referenced is not None:
+                        # Resolve callee definition via referenced
+                        try:
+                            defn = _referenced or child
+                        except Exception:
+                            defn = child
+                        # Callee function node: enclosing is the calling function
+                        invoked_id = add_node(defn, 'function',
+                                              enclosing_func_id=func_id)
+                        loc = child.location
+                        cgdb_edges.append({
+                            'src_id': func_id, 'dst_id': invoked_id, 'kind': 'INVOKES',
+                            'file_path': loc.file.name if loc.file else '',
+                            'line': loc.line or 0, 'col': loc.column or 0,
+                            'enclosing_symbol_id': func_id,
+                            'attrs': {},
+                        })
+                        cgdb_invoke_sites.append({
+                            'invoker_id': func_id, 'invoked_id': invoked_id,
+                            'invoke_kind': 'direct', 'invoke_expr_id': 0,
+                        })
                 elif k == 'VAR_DECL':
                     add_node(child, 'var', enclosing_func_id=func_id)
                 elif k == 'DECL_REF_EXPR':
@@ -1312,6 +1339,15 @@ class ClangScanner(BaseScanner):
             return self._empty_result(filepath, source_root,
                                        error=f"ExtractError: {e}",
                                        error_kind="extract")
+        finally:
+            # Release the TU's native memory deterministically instead
+            # of waiting for the garbage collector — cindex only frees
+            # it on collection, so peak memory otherwise tracks GC pace
+            # rather than the scan's.
+            try:
+                tu.dispose()
+            except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
         # Compose the final result dict — merge legacy + cgdb
         return {
             'file': filepath,

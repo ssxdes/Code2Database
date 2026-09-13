@@ -448,6 +448,12 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
 # Joint-extraction merge
 # ---------------------------------------------------------------------------
 
+# Above this many joint functions the build switches to the aggressive
+# memory-management path (same order of magnitude as the storage layer's
+# sqlite/auto cutover).
+_JOINT_LARGE_PROJECT_FUNCTIONS = 100000
+
+
 def _merge_project_data(joint_extraction: Dict[str, Any],
                         project_data: Dict[str, Any],
                         project_name: str) -> None:
@@ -572,7 +578,9 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                 force_rescan: Optional[List[str]] = None,
                 no_clang: bool = False, verbose: bool = True,
                 parallel_mode: Optional[str] = None,
-                split_output: bool = False) -> Dict[str, Any]:
+                split_output: bool = False,
+                storage: str = "auto",
+                auto_enhance: bool = True) -> Dict[str, Any]:
     """Build a unified C2D from a multi-project manifest.
 
     Args:
@@ -588,6 +596,10 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
         split_output: Ask the scanner to stream results to split chunk
                       files (bounded memory during each project's scan;
                       the chunks are reloaded for the joint merge).
+        storage: Joint graph storage ('auto', 'json' or 'sqlite') —
+                 defaults to the same 'auto' the standalone build uses.
+        auto_enhance: Run the post-build semantic enrichment on the
+                      joint graph (same default as the standalone build).
 
     Returns: summary dict with per-project counts.
     """
@@ -855,6 +867,11 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
         try:
             import argparse
             from _builder.graph.graph_build import cmd_build
+            # Mirror the standalone build's defaults instead of pinning
+            # them: storage='auto' lets small joint graphs stay JSON,
+            # auto_enhance runs the same semantic enrichment `make` gets,
+            # and large_project flips on automatically once the joint
+            # function count crosses the same threshold storage uses.
             build_args = argparse.Namespace(
                 extraction=joint_extraction_path,
                 outdir=outdir,
@@ -863,10 +880,13 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                 build_config="auto",
                 profile=_build_profile_path,
                 macros=None,
-                storage="sqlite",
-                auto_enhance=False,
-                large_project=False,
+                storage=storage,
+                auto_enhance=auto_enhance,
+                large_project=(
+                    len(joint_extraction["functions"])
+                    > _JOINT_LARGE_PROJECT_FUNCTIONS),
                 low_memory=False,
+                parallel_mode=parallel_mode,
                 skip_community=False,
                 plugin=None,
                 profile_timing=False,

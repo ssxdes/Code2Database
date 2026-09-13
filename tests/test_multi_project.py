@@ -715,6 +715,101 @@ class TestBuildMultiAllReuse(unittest.TestCase):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+    def test_build_args_mirror_standalone_defaults(self):
+        """The joint build must inherit the standalone build's defaults.
+
+        storage was pinned to 'sqlite' and auto_enhance to False, so
+        multi-project graphs never got JSON storage on small inputs nor
+        the semantic enrichment single-project builds get by default.
+        """
+        import _builder.graph.graph_build as _gb
+        import _builder.build.build_multi as _bm
+        from _builder.build.build_multi import build_multi
+        tmpdir = tempfile.mkdtemp(prefix="c2d_buildargs_")
+        captured = {}
+        _real_build = _gb.cmd_build
+
+        def _fake_build(args):
+            captured["storage"] = args.storage
+            captured["auto_enhance"] = args.auto_enhance
+            captured["large_project"] = args.large_project
+            captured["parallel_mode"] = getattr(args, "parallel_mode", "MISSING")
+
+        def _fake_scan(**kwargs):
+            return {"functions": [
+                {"id": "root_f%d" % i, "name": "f%d" % i, "domain": "root"}
+                for i in range(3)],
+                "edges": [], "globals": {}}
+
+        import code2database_scanner as _cs
+        _real_scan = _cs.scan_directory
+        try:
+            src = os.path.join(tmpdir, "A")
+            os.makedirs(src)
+            manifest = {"version": 1, "projects": [
+                {"name": "A", "source": src}]}
+            manifest_path = os.path.join(tmpdir, "manifest.json")
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f)
+            _cs.scan_directory = _fake_scan
+            _gb.cmd_build = _fake_build
+            _bm._JOINT_LARGE_PROJECT_FUNCTIONS = 2
+            try:
+                build_multi(manifest_path, os.path.join(tmpdir, "out"),
+                            verbose=False)
+            finally:
+                _gb.cmd_build = _real_build
+                _cs.scan_directory = _real_scan
+                _bm._JOINT_LARGE_PROJECT_FUNCTIONS = 100000
+            self.assertEqual(captured.get("storage"), "auto")
+            self.assertIs(captured.get("auto_enhance"), True)
+            self.assertIs(captured.get("large_project"), True,
+                          "3 functions against a threshold of 2 must trip "
+                          "the aggressive-memory path")
+            self.assertIsNone(captured.get("parallel_mode"))
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_storage_and_no_auto_enhance_override_reach_build(self):
+        import _builder.graph.graph_build as _gb
+        from _builder.build.build_multi import build_multi
+        tmpdir = tempfile.mkdtemp(prefix="c2d_buildargs2_")
+        captured = {}
+        _real_build = _gb.cmd_build
+
+        def _fake_build(args):
+            captured["storage"] = args.storage
+            captured["auto_enhance"] = args.auto_enhance
+
+        def _fake_scan(**kwargs):
+            return {"functions": [{"id": "root_f", "name": "f",
+                                   "domain": "root"}],
+                    "edges": [], "globals": {}}
+
+        import code2database_scanner as _cs
+        _real_scan = _cs.scan_directory
+        try:
+            src = os.path.join(tmpdir, "A")
+            os.makedirs(src)
+            manifest = {"version": 1, "projects": [
+                {"name": "A", "source": src}]}
+            manifest_path = os.path.join(tmpdir, "manifest.json")
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f)
+            _cs.scan_directory = _fake_scan
+            _gb.cmd_build = _fake_build
+            try:
+                build_multi(manifest_path, os.path.join(tmpdir, "out"),
+                            storage="json", auto_enhance=False, verbose=False)
+            finally:
+                _gb.cmd_build = _real_build
+                _cs.scan_directory = _real_scan
+            self.assertEqual(captured.get("storage"), "json")
+            self.assertIs(captured.get("auto_enhance"), False)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 class TestJaccardSimilarity(unittest.TestCase):
     def test_identical_sets(self):
         s = {"a", "b", "c"}

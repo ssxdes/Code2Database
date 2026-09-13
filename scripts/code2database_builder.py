@@ -324,6 +324,8 @@ def cmd_build_multi(args):
         verbose=True,
         parallel_mode=getattr(args, "parallel_mode", None),
         split_output=getattr(args, "split_output", False),
+        storage=getattr(args, "storage", "auto"),
+        auto_enhance=not getattr(args, "no_auto_enhance", False),
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
@@ -1772,6 +1774,13 @@ def main():
     p_bm.add_argument("--split-output", action="store_true",
                       help="Stream each project's scan to split chunk files "
                            "(bounded memory during the scan)")
+    p_bm.add_argument("--storage", choices=["auto", "json", "sqlite"],
+                      default="auto",
+                      help="Joint graph storage (default: auto — sqlite for "
+                           ">100K nodes, json below)")
+    p_bm.add_argument("--no-auto-enhance", action="store_true",
+                      help="Skip heuristic/LLM semantic enrichment of the "
+                           "joint graph")
 
     # c2d-add-foreign (register external C2D + resolve refs)
     p_caf = sub.add_parser("c2d-add-foreign",

@@ -510,7 +510,7 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
             if goto_labels:
                 details["goto_labels"] = goto_labels
             # LLM supplement fields (from update-node command) — persist
-            # any key with `_supplemented` suffix and the `_supplement_meta`
+            # any key with `_supplemented` suffix plus the `_supplement_meta`
             # provenance dict so LLM-driven DB updates survive serialization.
             for k, v in ndata.items():
                 if k.endswith("_supplemented") and v:
@@ -518,6 +518,19 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
             supp_meta = ndata.get("_supplement_meta")
             if supp_meta:
                 details["_supplement_meta"] = supp_meta
+            # Write-side lifecycle flags. Without these keys the JSON
+            # backend silently dropped them: doc-mark-stale reported
+            # ok:true but the marker never survived the split rewrite,
+            # and merge-changes' stale=True skeleton nodes lost their
+            # flag on persist.
+            if ndata.get("stale", False):
+                details["stale"] = True
+            if ndata.get("doc_stale", False):
+                details["doc_stale"] = True
+                if ndata.get("doc_stale_reason", ""):
+                    details["doc_stale_reason"] = ndata["doc_stale_reason"]
+                if ndata.get("doc_stale_at", ""):
+                    details["doc_stale_at"] = ndata["doc_stale_at"]
 
             func_details[nid] = details
 

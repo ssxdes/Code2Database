@@ -218,6 +218,16 @@ def _load_full_graph(graph_dir: str) -> nx.DiGraph:
                             G.nodes[nid][base_key] = v
                 if details.get("_supplement_meta"):
                     G.nodes[nid]["_supplement_meta"] = details["_supplement_meta"]
+                # Restore write-side lifecycle flags (mirrors the
+                # serialization in domain_split.split_by_domain).
+                if details.get("stale"):
+                    G.nodes[nid]["stale"] = True
+                if details.get("doc_stale"):
+                    G.nodes[nid]["doc_stale"] = True
+                    G.nodes[nid]["doc_stale_reason"] = details.get(
+                        "doc_stale_reason", "")
+                    G.nodes[nid]["doc_stale_at"] = details.get(
+                        "doc_stale_at", "")
 
             for row in domain_data.get("empty_nodes", []):
                 nid, cond, parent_id = row[0], row[1], row[2]

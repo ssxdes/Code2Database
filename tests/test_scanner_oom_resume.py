@@ -9,6 +9,7 @@ Covers:
 - parallel scans (thread and process pools) must record completed
   files so interrupted scans can resume instead of restarting
 """
+import json
 import os
 import shutil
 import sys
@@ -93,6 +94,50 @@ class TestPreOomCallbackScope(unittest.TestCase):
             any("degradation callback raised" in m for m in messages),
             "callback failure must be visible at warning level, got %s"
             % messages)
+
+
+class TestParallelCheckpointResume(unittest.TestCase):
+    """Parallel scans must record completed files for resume."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="c2d_parckpt_")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_interrupted_parallel_scan_saves_resume_point(self):
+        from code2database_scanner import scan_directory
+        src = _make_project(self.tmpdir, n_files=10)
+        out_json = os.path.join(self.tmpdir, "out", "extraction.json")
+        os.makedirs(os.path.dirname(out_json), exist_ok=True)
+        # A microscopic memory limit trips the parallel-loop stop check
+        # deterministically right after the first completed batch.
+        guard = MemoryGuard(warn_threshold=0.95, crit_threshold=0.99)
+        result = scan_directory(source_root=src, workers=2, quiet=True,
+                                parallel_mode="thread",
+                                memory_guard=guard, memory_limit_gb=0.001,
+                                streaming_output=out_json)
+        self.assertTrue(result.get("_stopped_early"),
+                        "the tiny memory limit must stop the scan early")
+        checkpoint = os.path.join(os.path.dirname(out_json),
+                                  "_scan_checkpoint.json")
+        self.assertTrue(os.path.exists(checkpoint),
+                        "an interrupted parallel scan must leave a "
+                        "checkpoint")
+        with open(checkpoint, encoding="utf-8") as f:
+            cp = json.load(f)
+        completed = cp.get("completed_files") or []
+        self.assertGreaterEqual(len(completed), 1,
+                                "the checkpoint must list the files already "
+                                "scanned, not be empty")
+        # A resumed run skips the recorded files and finishes cleanly,
+        # removing the checkpoint.
+        result2 = scan_directory(source_root=src, workers=2, quiet=True,
+                                 parallel_mode="thread",
+                                 streaming_output=out_json)
+        self.assertFalse(result2.get("_stopped_early"))
+        self.assertFalse(os.path.exists(checkpoint),
+                         "a completed resume must clean up the checkpoint")
 
 
 if __name__ == "__main__":

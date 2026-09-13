@@ -1426,6 +1426,19 @@ def scan_directory(source_root: str, lang: str = "auto",
                     except Exception:
                         logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         continue
+                    # Track completed files in parallel mode too: the
+                    # sequential branch recorded them but this loop never
+                    # did, so an interrupted parallel scan saved an EMPTY
+                    # checkpoint and resume re-scanned everything.
+                    if _checkpoint_path and item and item[0]:
+                        _completed_files.add(
+                            os.path.relpath(item[0], source_root))
+                        if _par_processed % 2000 == 0:
+                            _save_checkpoint(
+                                _checkpoint_path, source_root,
+                                _completed_files,
+                                {"functions": len(all_functions),
+                                 "edges": len(all_edges)})
                     if progress_callback and _par_processed % _report_interval == 0:
                         progress_callback(_par_processed, _total_files,
                                           os.path.relpath(item[0], source_root))

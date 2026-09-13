@@ -256,6 +256,11 @@ def auto_link_ffi_to_foreign(graph_dir: str, verbose: bool = True) -> Dict[str, 
                     summary["auto_linked"] += 1
                 else:
                     summary["unmatched"] += 1
+            # Commit before DETACH (same read-lock interaction as
+            # c2d_foreign.add_foreign): an open transaction that read the
+            # attached db blocks DETACH, and the stale alias then makes
+            # the NEXT watched c2d's ATTACH fail as 'already in use'.
+            conn.commit()
             try:
                 conn.execute("DETACH DATABASE ffi_foreign")
             except sqlite3.Error:

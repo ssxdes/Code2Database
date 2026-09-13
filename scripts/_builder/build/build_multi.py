@@ -365,6 +365,13 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
                 _func_batch
             )
             counts["functions_imported"] = _cur.rowcount
+            # INSERT OR IGNORE's rowcount excludes id-collisions, so a
+            # fully-duplicated import reported "imported 0" with no hint
+            # that rows were deliberately skipped. Surface the skipped
+            # count separately.
+            _ignored = len(_func_batch) - max(_cur.rowcount, 0)
+            if _ignored:
+                counts["functions_ignored"] = _ignored
         # Import edges with remapped IDs using executemany.
         edge_rows = conn.execute(
             "SELECT invoker_id, invoked_id, relation, call_order, "
@@ -393,6 +400,9 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
                 _edge_batch
             )
             counts["edges_imported"] = _cur.rowcount
+            _ignored = len(_edge_batch) - max(_cur.rowcount, 0)
+            if _ignored:
+                counts["edges_ignored"] = _ignored
         # Commit BEFORE detaching: the edges SELECT above ran inside the
         # implicit write transaction opened by the INSERTs, which keeps a
         # shared lock on the attached src db — DETACH inside that

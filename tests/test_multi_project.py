@@ -479,6 +479,9 @@ class TestReuseImportPersistence(unittest.TestCase):
         _import_from_existing_c2d(self.joint_db, self.src_dir, "A")
         counts = _import_from_existing_c2d(self.joint_db, self.src_dir, "A")
         self.assertNotIn("error", counts)
+        self.assertEqual(counts.get("functions_ignored"), 1,
+                         "skipped duplicates must be counted, not hidden")
+        self.assertEqual(counts.get("edges_ignored"), 1)
         conn = sqlite3.connect(self.joint_db)
         try:
             n = conn.execute("SELECT COUNT(*) FROM functions").fetchone()[0]

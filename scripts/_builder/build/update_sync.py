@@ -584,7 +584,16 @@ def cmd_update(args):
         print(f"Error detecting changes: {detect_result.stderr}", file=sys.stderr)
         sys.exit(1)
 
-    changes = json.loads(detect_result.stdout)
+    try:
+        changes = json.loads(detect_result.stdout)
+    except json.JSONDecodeError:
+        # Exit code 0 does not guarantee pure-JSON stdout (warnings can
+        # leak onto it) — a raw traceback here gives the user nothing
+        # actionable.
+        print(f"Error: scanner detect-changes output is not valid JSON "
+              f"(first 200 chars: {detect_result.stdout[:200]!r})",
+              file=sys.stderr)
+        sys.exit(1)
 
     if changes.get("needs_full_scan"):
         print("No manifest found — full scan required. Run 'build' first.")
@@ -770,7 +779,14 @@ def cmd_update(args):
 
     # Step 4: Re-mark endpoints and split
     ep_count = _mark_endpoint_nodes(merged, graph_dir)
-    master = json.loads(Path(os.path.join(graph_dir, "code2database_master.json")).read_text(encoding="utf-8"))
+    _master_path = os.path.join(graph_dir, "code2database_master.json")
+    try:
+        master = json.loads(Path(_master_path).read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"Error: cannot read {_master_path} ({exc}) — the graph "
+              f"directory may be from an older or interrupted build",
+              file=sys.stderr)
+        sys.exit(1)
     source_root = master.get("source_root", source)
     split_by_domain(merged, graph_dir, source_root)
 

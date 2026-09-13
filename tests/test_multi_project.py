@@ -291,6 +291,12 @@ class TestMergeProjectData(unittest.TestCase):
         _merge_project_data(joint, {"globals": {"weird": "x"}}, "projA")
         self.assertEqual(joint["globals"]["projA.weird"], "x")
 
+    def test_domains_dedup_on_merge(self):
+        joint = self._joint()
+        _merge_project_data(joint, {"domains": ["root", "lib"]}, "projA")
+        _merge_project_data(joint, {"domains": ["root", "app"]}, "projB")
+        self.assertEqual(joint["domains"], ["app", "lib", "root"])
+
     def test_functions_edges_extend(self):
         joint = self._joint()
         _merge_project_data(joint, {

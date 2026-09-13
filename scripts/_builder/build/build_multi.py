@@ -489,6 +489,13 @@ def _merge_project_data(joint_extraction: Dict[str, Any],
         v = project_data.get(k)
         if v is None:
             continue
+        if k == "domains" and isinstance(v, list):
+            # Domain names repeat across projects (every scan has a
+            # "root"); the scanner's own incremental merge dedupes, so
+            # the joint list must too.
+            joint_extraction.setdefault(k, [])
+            joint_extraction[k] = sorted(set(joint_extraction[k]) | set(v))
+            continue
         if isinstance(v, list):
             if v:
                 joint_extraction.setdefault(k, []).extend(v)

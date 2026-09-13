@@ -396,6 +396,34 @@ class ClangScanner(BaseScanner):
                     # `[-Wunknown-warning-option]` warnings on every TU.
                     if _is_gcc_only_warning_flag(tok):
                         continue
+                    # Include-path flags with RELATIVE values must be
+                    # resolved against the entry's 'directory' (Clang
+                    # Compilation Database spec) — libclang otherwise
+                    # resolves them against the scanner process's CWD,
+                    # which is usually a different tree entirely.
+                    if tok in ('-I', '-iquote', '-isystem', '-include',
+                               '--include-directory'):
+                        if (i + 1 < len(args_list) and directory
+                                and args_list[i + 1]
+                                and not os.path.isabs(args_list[i + 1])):
+                            args_list[i + 1] = os.path.normpath(
+                                os.path.join(directory, args_list[i + 1]))
+                        clang_args.append(tok)
+                        continue
+                    _inc_attached = None
+                    for _inc_flag in ('-I', '-iquote', '-isystem',
+                                      '-include-directory=',
+                                      '--include-directory='):
+                        if tok.startswith(_inc_flag) and len(tok) > len(_inc_flag):
+                            _inc_attached = (_inc_flag, tok[len(_inc_flag):])
+                            break
+                    if _inc_attached is not None:
+                        _inc_flag, _inc_val = _inc_attached
+                        if _inc_val and not os.path.isabs(_inc_val) and directory:
+                            tok = _inc_flag + os.path.normpath(
+                                os.path.join(directory, _inc_val))
+                        clang_args.append(tok)
+                        continue
                     clang_args.append(tok)
                 if clang_args:
                     self._compile_db_cache[file_path] = clang_args

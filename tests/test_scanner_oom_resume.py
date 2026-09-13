@@ -276,5 +276,50 @@ class TestScannerBaseCorrections(unittest.TestCase):
         self.assertEqual(unified_file_id(rel), file_id_for(rel))
 
 
+class TestCmdScanTraversalCount(unittest.TestCase):
+    """cmd_scan must traverse the tree once before scanning, not twice."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="c2d_walks_")
+        self.src = os.path.join(self.tmpdir, "src")
+        os.makedirs(self.src)
+        with open(os.path.join(self.src, "a.c"), "w") as f:
+            f.write("int a(void) { return 1; }\n")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_single_pre_scan_walk(self):
+        import argparse
+        import code2database_scanner as _cs
+        from code2database_scanner import cmd_scan
+        out_json = os.path.join(self.tmpdir, "out", "extraction.json")
+        args = argparse.Namespace(
+            source=self.src, output=out_json, lang="auto", workers=1,
+            macros="", macros_from="", api_prefixes="",
+            compile_commands="", clang_args="", files=[],
+        )
+        _real_walk = _cs.os.walk
+        walks = []
+
+        def _counting_walk(top, *a, **kw):
+            walks.append(top)
+            return _real_walk(top, *a, **kw)
+
+        _cs.os.walk = _counting_walk
+        try:
+            cmd_scan(args)
+        finally:
+            _cs.os.walk = _real_walk
+        # One pre-scan traversal (stats + C/C++ detection merged), the
+        # file-list collection inside scan_directory, and the manifest
+        # fingerprint walk at completion — the two pre-scan walks of the
+        # old code are now one.
+        self.assertEqual(
+            len(walks), 3,
+            "expected pre-scan + collection + manifest walks, got %r" % walks)
+        self.assertTrue(os.path.exists(out_json))
+
+
 if __name__ == "__main__":
     unittest.main()

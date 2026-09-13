@@ -1507,6 +1507,14 @@ def scan_directory(source_root: str, lang: str = "auto",
         _aggregator_done.set()
         _result_queue.put(None)  # sentinel
         _agg_thread.join(timeout=30)
+        if _agg_thread.is_alive():
+            # The queue can hold far more than 30s of backlog on huge
+            # process-mode scans; proceeding without draining it would
+            # silently drop those results. The sentinel guarantees the
+            # aggregator terminates, so block until it has.
+            print("[scan] WARNING: aggregation still draining after 30s — "
+                  "waiting for the remaining results", file=sys.stderr)
+            _agg_thread.join()
     else:
         # Sequential scanning
         _total_files = len(file_list)

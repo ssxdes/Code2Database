@@ -500,7 +500,15 @@ def _merge_project_data(joint_extraction: Dict[str, Any],
             if v:
                 joint_extraction.setdefault(k, []).extend(v)
         elif isinstance(v, dict):
-            joint_extraction.setdefault(k, {}).update(v)
+            _jd = joint_extraction.setdefault(k, {})
+            if k == "lang_stats":
+                # lang_stats maps language -> file count; the joint
+                # figure must be the sum over projects, not the last
+                # project's value.
+                for _lk, _ln in v.items():
+                    _jd[_lk] = _jd.get(_lk, 0) + _ln
+            else:
+                _jd.update(v)
         else:
             joint_extraction[k] = v
     # Warn about unknown keys so future scanner output is not silently lost

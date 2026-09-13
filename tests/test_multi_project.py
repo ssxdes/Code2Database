@@ -185,6 +185,20 @@ class TestTopoSort(unittest.TestCase):
         with self.assertRaises(ValueError):
             _topo_sort(projects)
 
+    def test_null_depends_on_is_tolerated(self):
+        """JSON null (vs missing key) must not crash the topo sort.
+
+        ``p.get("depends_on", [])`` returns None when the key exists
+        with a null value — the default only applies to missing keys —
+        and iterating None raised TypeError.
+        """
+        projects = [
+            {"name": "A", "source": "/a", "depends_on": None},
+            {"name": "B", "source": "/b", "depends_on": None},
+        ]
+        sorted_p = _topo_sort(projects)
+        self.assertEqual(len(sorted_p), 2)
+
 
 class TestDomainPrefix(unittest.TestCase):
     def test_root_domain_gets_project_name(self):

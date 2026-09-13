@@ -123,7 +123,7 @@ def _topo_sort(projects: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     name_to_proj = {p["name"]: p for p in projects}
     # Validate depends_on references
     for p in projects:
-        for dep in p.get("depends_on", []):
+        for dep in (p.get("depends_on") or []):
             if dep not in name_to_proj:
                 raise ValueError(
                     f"project '{p['name']}' depends on unknown project '{dep}'"
@@ -141,7 +141,7 @@ def _topo_sort(projects: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             raise ValueError(f"Circular dependency: {' -> '.join(cycle_path)}")
         visited[name] = 0
         p = name_to_proj[name]
-        for dep in p.get("depends_on", []):
+        for dep in (p.get("depends_on") or []):
             visit(dep, path + [name])
         visited[name] = 1
         order.append(p)
@@ -548,7 +548,7 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
     reuse_projects: List[Dict[str, Any]] = []
     for p in projects:
         # Add this project's include_paths to the global list
-        for ip in p.get("include_paths", []):
+        for ip in (p.get("include_paths") or []):
             if ip not in all_include_paths:
                 all_include_paths.append(ip)
         # Decide: scan or reuse?
@@ -627,7 +627,7 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                     print(f"[build-multi] {project_name}: loaded profile "
                           f"'{_profile_spec}'", file=sys.stderr)
         # Macros
-        macros = p.get("macros", [])
+        macros = p.get("macros") or []
         if macros:
             scan_kwargs["macro_bindings"] = {
                 m.split('=', 1)[0]: (m.split('=', 1)[1] if '=' in m else "")

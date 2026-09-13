@@ -544,6 +544,44 @@ class TestBuildMultiAllReuse(unittest.TestCase):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+    def test_manifest_relative_paths_anchor_to_manifest_dir(self):
+        """Relative manifest paths resolve against the manifest location.
+
+        Resolving them against the process CWD made ``build-multi`` fail
+        (or scan the wrong tree) whenever it was invoked from another
+        directory.
+        """
+        from _builder.build.build_multi import build_multi
+        tmpdir = tempfile.mkdtemp(prefix="c2d_relpath_")
+        elsewhere = os.path.join(tmpdir, "elsewhere")
+        try:
+            os.makedirs(elsewhere)
+            src_dir = os.path.join(tmpdir, "srcA")
+            os.makedirs(src_dir)
+            _make_test_db(os.path.join(src_dir, "code2database.db"),
+                          functions=[
+                              {"id": "root_init", "name": "init",
+                               "domain": "root", "line": 1},
+                          ])
+            manifest = {"version": 1, "projects": [
+                {"name": "A", "existing_c2d": "srcA"}]}
+            manifest_path = os.path.join(tmpdir, "manifest.json")
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f)
+            outdir = os.path.join(tmpdir, "out")
+            old_cwd = os.getcwd()
+            os.chdir(elsewhere)
+            try:
+                summary = build_multi(manifest_path, outdir, verbose=False)
+            finally:
+                os.chdir(old_cwd)
+            proj = summary["projects"][0]
+            self.assertNotIn("error", proj)
+            self.assertEqual(proj["functions_imported"], 1)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 class TestJaccardSimilarity(unittest.TestCase):
     def test_identical_sets(self):
         s = {"a", "b", "c"}

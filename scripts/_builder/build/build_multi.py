@@ -586,6 +586,22 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
     """
     force_rescan = force_rescan or []
     manifest = _parse_manifest(manifest_path)
+    # Manifest-internal relative paths resolve against the manifest's
+    # own directory, not the process CWD — running build-multi from a
+    # different directory silently misresolved every relative path.
+    _manifest_dir = os.path.dirname(os.path.abspath(manifest_path))
+    for _p in manifest["projects"]:
+        for _key in ("source", "existing_c2d", "compile_commands"):
+            _val = _p.get(_key)
+            if _val and not os.path.isabs(_val):
+                _p[_key] = os.path.normpath(
+                    os.path.join(_manifest_dir, _val))
+        _ips = _p.get("include_paths")
+        if isinstance(_ips, list):
+            _p["include_paths"] = [
+                os.path.normpath(os.path.join(_manifest_dir, ip))
+                if ip and not os.path.isabs(ip) else ip
+                for ip in _ips]
     projects = _topo_sort(manifest["projects"])
     os.makedirs(outdir, exist_ok=True)
     # Temp dir for merged compile_commands + per-project extractions

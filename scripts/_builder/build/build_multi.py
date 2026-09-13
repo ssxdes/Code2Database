@@ -785,6 +785,24 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                 traceback.print_exc()
     # Step 6: Import from existing C2Ds (reuse mode)
     joint_db_path = os.path.join(outdir, "code2database.db")
+    if reuse_projects and not os.path.exists(joint_db_path):
+        # All-reuse manifests never triggered cmd_build above (no scanned
+        # functions), so the joint db would not exist and every import
+        # below would fail with "joint db does not exist", leaving the
+        # whole joint build empty. Create the empty schema here so the
+        # reuse imports have tables to land in.
+        try:
+            from _builder.graph.sqlite_store import SQLiteStore
+            with SQLiteStore(joint_db_path):
+                pass
+            if verbose:
+                print("[build-multi] created empty joint db for reuse-only "
+                      "build", file=sys.stderr)
+        except Exception as e:
+            summary["build_error"] = f"joint db init failed: {e}"
+            if verbose:
+                import traceback
+                traceback.print_exc()
     for p in reuse_projects:
         project_name = p["name"]
         existing_c2d = p["existing_c2d"]

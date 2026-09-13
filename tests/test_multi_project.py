@@ -433,6 +433,52 @@ class TestReuseImportPersistence(unittest.TestCase):
         self.assertEqual(n, 1, "INSERT OR IGNORE must dedupe repeat imports")
 
 
+class TestBuildMultiAllReuse(unittest.TestCase):
+    """All-reuse manifests must still produce a joint db."""
+
+    def test_all_reuse_creates_joint_db_and_imports(self):
+        from _builder.build.build_multi import build_multi
+        tmpdir = tempfile.mkdtemp(prefix="c2d_allreuse_")
+        try:
+            src_dir = os.path.join(tmpdir, "srcA")
+            os.makedirs(src_dir)
+            _make_test_db(os.path.join(src_dir, "code2database.db"),
+                          functions=[
+                              {"id": "root_init", "name": "init",
+                               "domain": "root", "line": 1},
+                          ], edges=[
+                              {"invoker_id": "root_init",
+                               "invoked_id": "root_helper",
+                               "relation": "CALL", "call_order": 1},
+                          ])
+            manifest = {"version": 1, "projects": [
+                {"name": "A", "existing_c2d": src_dir}]}
+            manifest_path = os.path.join(tmpdir, "manifest.json")
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f)
+            outdir = os.path.join(tmpdir, "out")
+            summary = build_multi(manifest_path, outdir, verbose=False)
+            proj = summary["projects"][0]
+            self.assertEqual(proj["mode"], "reuse")
+            self.assertNotIn("error", proj)
+            self.assertEqual(proj["functions_imported"], 1)
+            self.assertEqual(proj["edges_imported"], 1)
+            joint_db = os.path.join(outdir, "code2database.db")
+            self.assertTrue(os.path.exists(joint_db))
+            conn = sqlite3.connect(joint_db)
+            try:
+                n = conn.execute("SELECT COUNT(*) FROM functions").fetchone()[0]
+                meta = conn.execute(
+                    "SELECT COUNT(*) FROM meta WHERE key = "
+                    "'multi_project_manifest'").fetchone()[0]
+            finally:
+                conn.close()
+            self.assertEqual(n, 1)
+            self.assertEqual(meta, 1)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 class TestJaccardSimilarity(unittest.TestCase):
     def test_identical_sets(self):
         s = {"a", "b", "c"}

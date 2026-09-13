@@ -16,6 +16,8 @@ Coverage:
 """
 import json
 import os
+import shutil
+import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
@@ -213,6 +215,82 @@ class TestDetectBackend(unittest.TestCase):
             with open(os.path.join(tmp, "code2database.db"), "w") as f:
                 f.write("")
             self.assertEqual(_detect_backend(tmp), "json")
+
+
+class TestSqliteEdgeArgsRoundTrip(unittest.TestCase):
+    """update-edge must persist into the schema's invoked_arg_json column.
+
+    The SQL used a column name that does not exist in the schema
+    (callee_arg_json), so the SQLite path crashed on read and never
+    wrote; the full-graph loader read the same wrong name and silently
+    dropped stored args.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="c2d_edgeargs_")
+        self.graph_dir = self.tmp
+        db = os.path.join(self.tmp, "code2database.db")
+        conn = sqlite3.connect(db)
+        conn.executescript("""
+            CREATE TABLE functions (
+                id TEXT PRIMARY KEY, name TEXT, domain TEXT,
+                source_file TEXT, line_number INTEGER, signature TEXT,
+                labels TEXT, body_text_compressed BLOB, extra_json TEXT);
+            CREATE TABLE edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoker_id TEXT NOT NULL, invoked_id TEXT NOT NULL,
+                relation TEXT, call_order INTEGER, call_condition TEXT,
+                concurrency TEXT, confidence TEXT, confidence_score REAL,
+                source TEXT, evidence TEXT, invoked_arg_json TEXT,
+                reg_args_json TEXT, vtable_type TEXT, vtable_bound_module TEXT);
+        """)
+        conn.execute("INSERT INTO functions (id, name) VALUES ('f_a', 'a')")
+        conn.execute("INSERT INTO functions (id, name) VALUES ('f_b', 'b')")
+        conn.execute("INSERT INTO edges (invoker_id, invoked_id, relation) "
+                     "VALUES ('f_a', 'f_b', 'CALL')")
+        conn.commit()
+        conn.close()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_update_edge_persists_and_previews(self):
+        from _builder.ops.update_cmd import (
+            _sqlite_update_edge, _sqlite_get_edge_attrs)
+        ok = _sqlite_update_edge(
+            self.graph_dir, "f_a", "f_b",
+            {"call_condition": "CONFIG_X", "note": "checked"},
+            source="llm", confidence="INFERRED")
+        self.assertTrue(ok, "the update must succeed against the real schema")
+        attrs = _sqlite_get_edge_attrs(self.graph_dir, "f_a", "f_b")
+        self.assertEqual(attrs.get("call_condition"), "CONFIG_X")
+        self.assertEqual(attrs.get("note"), "checked")
+        conn = sqlite3.connect(os.path.join(self.graph_dir,
+                                            "code2database.db"))
+        try:
+            raw = conn.execute(
+                "SELECT invoked_arg_json FROM edges "
+                "WHERE invoker_id='f_a' AND invoked_id='f_b'").fetchone()[0]
+        finally:
+            conn.close()
+        self.assertIn("checked", raw)
+
+    def test_full_graph_loader_returns_stored_args(self):
+        import networkx as nx
+        from _builder.ops.update_cmd import _sqlite_update_edge
+        from _builder.graph.graph_loader import _load_full_graph_from_sqlite
+        _sqlite_update_edge(
+            self.graph_dir, "f_a", "f_b", {"note": "keep-me"},
+            source="llm", confidence="INFERRED")
+        G = _load_full_graph_from_sqlite(
+            os.path.join(self.graph_dir, "code2database.db"))
+        self.assertIsInstance(G, nx.DiGraph)
+        data = G.get_edge_data("f_a", "f_b")
+        self.assertIsNotNone(data)
+        stored = data.get("callee_args") or data.get("invoked_args")
+        self.assertTrue(stored and stored.get("note") == "keep-me",
+                        "loader must surface args stored in "
+                        "invoked_arg_json, got %r" % (data,))
 
 
 if __name__ == "__main__":

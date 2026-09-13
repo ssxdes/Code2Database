@@ -366,9 +366,9 @@ def _sqlite_update_edge(graph_dir: str, invoker_id: str, invoked_id: str,
     """Update an edge in SQLite backend.
 
     Maps supplemented keys to edge columns where possible (call_condition,
-    concurrency, confidence), and stores the rest in callee_arg_json as a
+    concurrency, confidence), and stores the rest in invoked_arg_json as a
     JSON merge. Provenance goes into a `_supplement_meta` key in
-    callee_arg_json.
+    invoked_arg_json.
     """
     import sqlite3
     from datetime import datetime
@@ -379,7 +379,7 @@ def _sqlite_update_edge(graph_dir: str, invoker_id: str, invoked_id: str,
     try:
         # Verify edge exists
         row = conn.execute(
-            "SELECT id, call_condition, concurrency, confidence, callee_arg_json "
+            "SELECT id, call_condition, concurrency, confidence, invoked_arg_json "
             "FROM edges WHERE invoker_id=? AND invoked_id=? LIMIT 1",
             (invoker_id, invoked_id)).fetchone()
         if not row:
@@ -391,7 +391,7 @@ def _sqlite_update_edge(graph_dir: str, invoker_id: str, invoked_id: str,
         old_call_cond = row[1] or ""
         old_concurrency = row[2] or ""
         old_confidence = row[3] or ""
-        old_callee_arg_json = row[4] or ""
+        old_invoked_arg_json = row[4] or ""
 
         column_updates = {}
         if "call_condition" in attrs:
@@ -401,13 +401,13 @@ def _sqlite_update_edge(graph_dir: str, invoker_id: str, invoked_id: str,
         if "confidence" in attrs:
             column_updates["confidence"] = attrs["confidence"]
 
-        # Remaining attrs go into callee_arg_json as a JSON merge
+        # Remaining attrs go into invoked_arg_json as a JSON merge
         remaining = {k: v for k, v in attrs.items()
                      if k not in ("call_condition", "concurrency", "confidence")}
         invoked_arg = {}
-        if old_callee_arg_json:
+        if old_invoked_arg_json:
             try:
-                invoked_arg = json.loads(old_callee_arg_json)
+                invoked_arg = json.loads(old_invoked_arg_json)
             except json.JSONDecodeError:
                 invoked_arg = {}
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -429,7 +429,7 @@ def _sqlite_update_edge(graph_dir: str, invoker_id: str, invoked_id: str,
             conn.execute(f"UPDATE edges SET {set_clauses} WHERE id=?", params)
         if remaining:
             conn.execute(
-                "UPDATE edges SET callee_arg_json=? WHERE id=?",
+                "UPDATE edges SET invoked_arg_json=? WHERE id=?",
                 (json.dumps(invoked_arg, ensure_ascii=False), edge_id))
         conn.commit()
         return True
@@ -469,7 +469,7 @@ def _sqlite_get_edge_attrs(graph_dir: str, invoker_id: str, invoked_id: str) -> 
     conn.row_factory = sqlite3.Row
     try:
         row = conn.execute(
-            "SELECT call_condition, concurrency, confidence, callee_arg_json "
+            "SELECT call_condition, concurrency, confidence, invoked_arg_json "
             "FROM edges WHERE invoker_id=? AND invoked_id=? LIMIT 1",
             (invoker_id, invoked_id)).fetchone()
         if not row:
@@ -480,9 +480,9 @@ def _sqlite_get_edge_attrs(graph_dir: str, invoker_id: str, invoked_id: str) -> 
             "concurrency": d.get("concurrency") or "",
             "confidence": d.get("confidence") or "",
         }
-        if d.get("callee_arg_json"):
+        if d.get("invoked_arg_json"):
             try:
-                extra = json.loads(d["callee_arg_json"])
+                extra = json.loads(d["invoked_arg_json"])
                 # Don't include _supplement_meta in preview
                 out.update({k: v for k, v in extra.items()
                            if k != "_supplement_meta"})

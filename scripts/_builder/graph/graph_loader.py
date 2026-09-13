@@ -456,9 +456,9 @@ def _load_full_graph_from_sqlite(db_path: str) -> nx.DiGraph:
                 callee = row_dict.get("invoked_id")
                 if not caller or not callee:
                     continue
-                # Parse callee_arg_json and reg_args_json if present
+                # Parse invoked_arg_json and reg_args_json if present
                 callee_args = None
-                ca_raw = row_dict.get("callee_arg_json")
+                ca_raw = row_dict.get("invoked_arg_json")
                 if ca_raw:
                     try:
                         callee_args = json.loads(ca_raw)

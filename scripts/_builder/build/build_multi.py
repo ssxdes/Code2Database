@@ -570,7 +570,9 @@ def _merge_project_data(joint_extraction: Dict[str, Any],
 def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                 max_workers: int = 0,
                 force_rescan: Optional[List[str]] = None,
-                no_clang: bool = False, verbose: bool = True) -> Dict[str, Any]:
+                no_clang: bool = False, verbose: bool = True,
+                parallel_mode: Optional[str] = None,
+                split_output: bool = False) -> Dict[str, Any]:
     """Build a unified C2D from a multi-project manifest.
 
     Args:
@@ -581,6 +583,11 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
                       (ignore existing_c2d).
         no_clang: Force tree-sitter (no libclang).
         verbose: Print progress.
+        parallel_mode: Scanner parallelism ('thread' or 'process');
+                       None keeps the scanner default.
+        split_output: Ask the scanner to stream results to split chunk
+                      files (bounded memory during each project's scan;
+                      the chunks are reloaded for the joint merge).
 
     Returns: summary dict with per-project counts.
     """
@@ -684,7 +691,10 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
             "lang": "auto",
             "workers": jobs,
             "max_workers": max_workers or jobs,
+            "split_output": split_output,
         }
+        if parallel_mode:
+            scan_kwargs["parallel_mode"] = parallel_mode
         # Per-project profile: load the manifest's "profile" field
         # (built-in name like "spdk" or a JSON file path) and inject
         # the scanner-config dict so callback_patterns, struct_op_types,
@@ -729,6 +739,19 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
         from code2database_scanner import scan_directory
         try:
             project_data = scan_directory(**task["scan_kwargs"])
+            # Split-output scans return lightweight metadata with the
+            # real data streamed to chunk files on disk — reload the
+            # chunks so the joint merge below sees actual functions and
+            # edges instead of the metadata stub.
+            if isinstance(project_data, dict) and project_data.get("_split_dir"):
+                from _builder.graph.extraction_io import _load_split_extraction
+                _loaded = _load_split_extraction(project_data["_split_dir"])
+                if isinstance(_loaded, dict) and _loaded:
+                    for _mk in ("_stopped_early", "_body_text_dropped",
+                                "_scan_error_count", "_scan_warning_count"):
+                        if _mk in project_data and _mk not in _loaded:
+                            _loaded[_mk] = project_data[_mk]
+                    project_data = _loaded
             return {
                 "project_name": task["project_name"],
                 "data": project_data,

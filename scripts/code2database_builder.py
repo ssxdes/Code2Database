@@ -322,6 +322,8 @@ def cmd_build_multi(args):
                       if s.strip()] or None,
         no_clang=getattr(args, "no_clang", False),
         verbose=True,
+        parallel_mode=getattr(args, "parallel_mode", None),
+        split_output=getattr(args, "split_output", False),
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
@@ -1763,6 +1765,13 @@ def main():
                       help="Comma-separated project names to force re-scan")
     p_bm.add_argument("--no-clang", action="store_true",
                       help="Force tree-sitter (no libclang)")
+    p_bm.add_argument("--parallel-mode", choices=["thread", "process"],
+                      default=None,
+                      help="Scanner parallelism for each project's scan "
+                           "(default: thread)")
+    p_bm.add_argument("--split-output", action="store_true",
+                      help="Stream each project's scan to split chunk files "
+                           "(bounded memory during the scan)")
 
     # c2d-add-foreign (register external C2D + resolve refs)
     p_caf = sub.add_parser("c2d-add-foreign",

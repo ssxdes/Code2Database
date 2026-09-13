@@ -653,6 +653,68 @@ class TestBuildMultiAllReuse(unittest.TestCase):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+    def test_parallel_mode_and_split_output_reach_scanner(self):
+        """--parallel-mode/--split-output must be forwarded to the scan."""
+        import code2database_scanner as _cs
+        from _builder.build.build_multi import build_multi
+        tmpdir = tempfile.mkdtemp(prefix="c2d_kwargs_")
+        captured = {}
+        _real_scan = _cs.scan_directory
+
+        def _fake_scan(**kwargs):
+            captured.update(kwargs)
+            return {"functions": [], "edges": [], "globals": {},
+                    "domains": [], "lang_stats": {}}
+
+        try:
+            src = os.path.join(tmpdir, "A")
+            os.makedirs(src)
+            manifest = {"version": 1, "projects": [
+                {"name": "A", "source": src}]}
+            manifest_path = os.path.join(tmpdir, "manifest.json")
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f)
+            _cs.scan_directory = _fake_scan
+            try:
+                build_multi(manifest_path, os.path.join(tmpdir, "out"),
+                            parallel_mode="process", split_output=True,
+                            verbose=False)
+            finally:
+                _cs.scan_directory = _real_scan
+            self.assertEqual(captured.get("parallel_mode"), "process")
+            self.assertIs(captured.get("split_output"), True)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_split_output_chunks_are_reloaded_for_merge(self):
+        """Split-mode scans must contribute real functions to the joint build.
+
+        scan_directory returns only a metadata stub in split mode; without
+        reloading the chunk files the joint extraction stayed empty.
+        """
+        from _builder.build.build_multi import build_multi
+        tmpdir = tempfile.mkdtemp(prefix="c2d_split_")
+        try:
+            src = os.path.join(tmpdir, "A")
+            os.makedirs(src)
+            with open(os.path.join(src, "main.c"), "w") as f:
+                f.write("int a_func(void) { return 1; }\n")
+            manifest = {"version": 1, "projects": [
+                {"name": "A", "source": src}]}
+            manifest_path = os.path.join(tmpdir, "manifest.json")
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f)
+            summary = build_multi(manifest_path, os.path.join(tmpdir, "out"),
+                                  split_output=True, no_clang=True,
+                                  verbose=False)
+            proj = summary["projects"][0]
+            self.assertEqual(proj.get("functions"), 1,
+                             "split-mode scan data must be reloaded, not "
+                             "treated as the metadata stub")
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 class TestJaccardSimilarity(unittest.TestCase):
     def test_identical_sets(self):
         s = {"a", "b", "c"}

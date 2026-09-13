@@ -785,6 +785,15 @@ def cmd_update(args):
     print(f"Updated invocation graph: {merged.number_of_nodes()} nodes, {merged.number_of_edges()} edges")
     if ep_count > 0:
         print(f"Endpoints: {ep_count} external endpoint(s) — run classify-endpoints to finalize")
+    # Derived artifacts (context packs, value-flow/data-dep edges,
+    # lock-coverage, signal map, exports) were built from the OLD graph.
+    # Unlike `make` (which rebuilds them) and the daemon (whose
+    # auto-rebuild runs after sync), a bare `update` leaves them stale —
+    # say so instead of letting the user assume they are current.
+    print("NOTE: derived artifacts (context packs, value-flow, lock-coverage, "
+          "exports) were built from the previous graph — re-run make (or use "
+          "the daemon) to rebuild them.",
+          file=sys.stderr)
 
     # Validate memory after graph update (nodes may have been removed)
     mem_dir = os.path.join(graph_dir, "memory")

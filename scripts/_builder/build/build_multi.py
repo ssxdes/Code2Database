@@ -510,7 +510,14 @@ def _merge_project_data(joint_extraction: Dict[str, Any],
             else:
                 _jd.update(v)
         else:
-            joint_extraction[k] = v
+            if k in ("_stopped_early", "_body_text_dropped") and isinstance(v, bool):
+                # Scan-limit flags must OR across projects: one project
+                # hitting its limit is real signal that the joint build
+                # is partial, and last-writer-wins hid it whenever a
+                # later project completed cleanly.
+                joint_extraction[k] = bool(joint_extraction.get(k, False) or v)
+            else:
+                joint_extraction[k] = v
     # Warn about unknown keys so future scanner output is not silently lost
     import logging
     _logger = logging.getLogger(__name__)

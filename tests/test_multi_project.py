@@ -291,6 +291,14 @@ class TestMergeProjectData(unittest.TestCase):
         _merge_project_data(joint, {"globals": {"weird": "x"}}, "projA")
         self.assertEqual(joint["globals"]["projA.weird"], "x")
 
+    def test_early_stop_flags_or_across_projects(self):
+        joint = self._joint()
+        _merge_project_data(joint, {"_stopped_early": True}, "projA")
+        _merge_project_data(joint, {"_stopped_early": False,
+                                    "_body_text_dropped": True}, "projB")
+        self.assertIs(joint["_stopped_early"], True)
+        self.assertIs(joint["_body_text_dropped"], True)
+
     def test_lang_stats_accumulate(self):
         joint = self._joint()
         _merge_project_data(joint, {"lang_stats": {"c": 10, "go": 2}}, "projA")

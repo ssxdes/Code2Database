@@ -1755,8 +1755,11 @@ def main():
                           help="Build a unified C2D from a multi-project manifest")
     p_bm.add_argument("--manifest", required=True,
                       help="Path to manifest JSON (schema: docs/en/references/manifest_schema.md; "
-                           "top-level keys: version=1, projects=[{name, source|existing_c2d, depends_on?}], output)")
-    p_bm.add_argument("--outdir", required=True, help="Output directory for joint C2D")
+                           "top-level keys: version=1, projects=[{name, source|existing_c2d, depends_on?}], "
+                           "optional output=default outdir)")
+    p_bm.add_argument("--outdir", default="",
+                      help="Output directory for joint C2D (defaults to the "
+                           "manifest's 'output' field)")
     p_bm.add_argument("-j", "--jobs", type=int, default=0,
                       help="Parallel workers (0=auto)")
     p_bm.add_argument("--max-workers", type=int, default=0,

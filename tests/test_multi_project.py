@@ -810,6 +810,54 @@ class TestBuildMultiAllReuse(unittest.TestCase):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+    def test_manifest_output_field_is_default_outdir(self):
+        """The documented 'output' field must actually be honoured.
+
+        It was listed in the schema docs as the default output directory
+        but never read — the code required --outdir unconditionally.
+        """
+        from _builder.build.build_multi import build_multi
+        tmpdir = tempfile.mkdtemp(prefix="c2d_outfield_")
+        try:
+            src_dir = os.path.join(tmpdir, "srcA")
+            os.makedirs(src_dir)
+            _make_test_db(os.path.join(src_dir, "code2database.db"),
+                          functions=[
+                              {"id": "root_init", "name": "init",
+                               "domain": "root", "line": 1},
+                          ])
+            out_field = "joint_out"  # relative to the manifest dir
+            manifest = {"version": 1, "output": out_field, "projects": [
+                {"name": "A", "existing_c2d": "srcA"}]}
+            manifest_path = os.path.join(tmpdir, "manifest.json")
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f)
+            summary = build_multi(manifest_path, "", verbose=False)
+            self.assertEqual(
+                os.path.realpath(summary["outdir"]),
+                os.path.realpath(os.path.join(tmpdir, out_field)))
+            self.assertTrue(os.path.exists(
+                os.path.join(tmpdir, out_field, "code2database.db")))
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_no_outdir_and_no_output_field_raises(self):
+        from _builder.build.build_multi import build_multi
+        tmpdir = tempfile.mkdtemp(prefix="c2d_noout_")
+        try:
+            src_dir = os.path.join(tmpdir, "srcA")
+            os.makedirs(src_dir)
+            manifest = {"version": 1, "projects": [
+                {"name": "A", "existing_c2d": "srcA"}]}
+            manifest_path = os.path.join(tmpdir, "manifest.json")
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f)
+            with self.assertRaises(ValueError):
+                build_multi(manifest_path, "", verbose=False)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 class TestJaccardSimilarity(unittest.TestCase):
     def test_identical_sets(self):
         s = {"a", "b", "c"}

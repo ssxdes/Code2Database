@@ -47,9 +47,10 @@ import logging
 def _parse_manifest(manifest_path: str) -> Dict[str, Any]:
     """Parse and validate the build-multi manifest JSON.
 
-    Required top-level keys: version, projects, output
+    Required top-level keys: version, projects
     Each project: name (unique), source OR existing_c2d
-    Optional: include_paths, compile_commands, macros, depends_on
+    Optional: output (default outdir when --outdir is omitted),
+              include_paths, compile_commands, macros, depends_on
     """
     try:
         with open(manifest_path, "r", encoding="utf-8") as f:
@@ -609,6 +610,17 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
     # own directory, not the process CWD — running build-multi from a
     # different directory silently misresolved every relative path.
     _manifest_dir = os.path.dirname(os.path.abspath(manifest_path))
+    # The manifest's optional 'output' field is the documented default
+    # for --outdir; honour it when the CLI flag is omitted.
+    if not outdir:
+        _mo = manifest.get("output") or ""
+        if _mo:
+            outdir = _mo if os.path.isabs(_mo) else os.path.normpath(
+                os.path.join(_manifest_dir, _mo))
+    if not outdir:
+        raise ValueError(
+            "no output directory: pass --outdir or set the manifest's "
+            "'output' field")
     for _p in manifest["projects"]:
         for _key in ("source", "existing_c2d", "compile_commands"):
             _val = _p.get(_key)

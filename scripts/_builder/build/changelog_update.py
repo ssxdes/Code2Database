@@ -49,6 +49,13 @@ def _git_changed_files(source_root: str, commit_range: str = None) -> list:
         result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
 
     if result.returncode != 0 or not result.stdout:
+        if result.returncode != 0:
+            # An empty diff is a normal clean tree; a failing git is not
+            # (missing binary, not a repo, broken repo) — without this
+            # the caller sees "changed_files: 0" and assumes success.
+            print(f"Warning: git diff failed in {source_root}: "
+                  f"{(result.stderr or '').strip()[:200]}",
+                  file=sys.stderr)
         return []
 
     return [os.path.join(source_root, f.strip()) for f in result.stdout.strip().split("\n") if f.strip()]
@@ -508,7 +515,11 @@ def cmd_quick_update(args):
         try:
             threshold_val = float(auto_threshold)
         except (ValueError, TypeError):
+            # A typo'd --auto-threshold must not silently decide the
+            # trigger boundary — say what was ignored and what applies.
             threshold_val = 0.15
+            print(f"Warning: invalid --auto-threshold {auto_threshold!r}, "
+                  f"using the default {threshold_val}", file=sys.stderr)
         status = get_semantic_update_status(graph_dir)
         stale_ratio = status.get("stale_ratio", 0.0)
         if stale_ratio >= threshold_val:

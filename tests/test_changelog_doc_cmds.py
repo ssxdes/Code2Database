@@ -403,5 +403,53 @@ class TestDocSignatureDiff(unittest.TestCase):
         self.assertEqual(json.loads(out)["change_count"], 0)
 
 
+class TestSilentFallbackWarnings(unittest.TestCase):
+    """Degrade paths must be visible, not silent."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="c2d_fallbacks_")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def test_git_failure_warns(self):
+        """A failing git prints a warning instead of a bare empty list."""
+        import io
+        from contextlib import redirect_stderr
+        from _builder.build.changelog_update import _git_changed_files
+        not_a_repo = os.path.join(self.tmp, "not_a_repo")
+        os.makedirs(not_a_repo)
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            files = _git_changed_files(not_a_repo)
+        self.assertEqual(files, [])
+        self.assertIn("git diff failed", buf.getvalue())
+
+    def test_invalid_auto_threshold_warns_and_uses_default(self):
+        import argparse
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+        from _builder.build import changelog_update as cu
+        graph_dir = os.path.join(self.tmp, "graph")
+        os.makedirs(graph_dir)
+        args = argparse.Namespace(
+            source=self.tmp, graph=graph_dir, commit_range=None,
+            auto_threshold="not-a-number")
+        _orig_quick = cu.quick_update
+        _orig_status = cu.get_semantic_update_status
+        cu.quick_update = lambda sr, gd, cr=None: {"ok": True}
+        cu.get_semantic_update_status = lambda gd: {"stale_ratio": 0.9}
+        err_buf = io.StringIO()
+        out_buf = io.StringIO()
+        try:
+            with redirect_stderr(err_buf), redirect_stdout(out_buf):
+                cu.cmd_quick_update(args)
+        finally:
+            cu.quick_update = _orig_quick
+            cu.get_semantic_update_status = _orig_status
+        self.assertIn("invalid --auto-threshold", err_buf.getvalue())
+        summary = json.loads(out_buf.getvalue())
+        self.assertEqual(summary.get("auto_threshold"), 0.15)
+        self.assertTrue(summary.get("auto_semantic_update_triggered"))
+
+
 if __name__ == "__main__":
     unittest.main()

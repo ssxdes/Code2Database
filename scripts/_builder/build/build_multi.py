@@ -300,10 +300,36 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
             return counts
         # Import functions with re-prefixed domain + regenerated legacy id.
         # Batch with executemany instead of per-row INSERT.
+        # The 5 boolean label columns must survive the import: query
+        # layers filter on ``is_api_entry = 1`` etc. (not LIKE), and the
+        # joint db's one-time labels→boolean backfill has already run by
+        # the time reuse imports happen, so dropped columns meant
+        # imported functions were invisible to every indexed label
+        # lookup. Legacy source dbs without the columns fall back to
+        # computing the flags from the labels text (same substring
+        # semantics as sqlite_store's backfill).
+        _label_cols = ("is_api_entry", "is_thread_processor",
+                       "is_callback_func", "is_out_end", "is_unknown_end")
+        _label_tokens = ("API_entry", "thread_processor", "callback_func",
+                         "out_end", "unknown_end")
+        _src_cols = {row[1] for row in conn.execute(
+            "PRAGMA src.table_info(functions)").fetchall()}
+        _src_has_flags = all(c in _src_cols for c in _label_cols)
+        _select_expr = ("id, name, domain, source_file, line_number, "
+                        "signature, labels, body_text_compressed, extra_json")
+        if _src_has_flags:
+            _select_expr += ", " + ", ".join(_label_cols)
         rows = conn.execute(
-            "SELECT id, name, domain, source_file, line_number, signature, "
-            "labels, body_text_compressed, extra_json FROM src.functions"
+            f"SELECT {_select_expr} FROM src.functions"
         ).fetchall()
+        # The joint db itself may predate the boolean columns (reused
+        # outdir) — add them before the INSERT below.
+        _main_cols = {row[1] for row in conn.execute(
+            "PRAGMA table_info(functions)").fetchall()}
+        for _c in _label_cols:
+            if _c not in _main_cols:
+                conn.execute(
+                    f"ALTER TABLE functions ADD COLUMN {_c} INTEGER DEFAULT 0")
         _func_batch = []
         id_remap: Dict[str, str] = {}
         for r in rows:
@@ -317,17 +343,25 @@ def _import_from_existing_c2d(joint_db_path: str, existing_c2d_path: str,
             name = r["name"] or ""
             new_id = new_domain.replace(".", "_") + "_" + _normalize_name(name).lower()
             id_remap[r["id"]] = new_id
+            if _src_has_flags:
+                _flags = [int(r[c] or 0) for c in _label_cols]
+            else:
+                _labels_txt = r["labels"] or ""
+                _flags = [1 if tok in _labels_txt else 0
+                          for tok in _label_tokens]
             _func_batch.append((
                 new_id, name, new_domain, r["source_file"],
                 r["line_number"], r["signature"], r["labels"],
-                r["body_text_compressed"], r["extra_json"]
+                r["body_text_compressed"], r["extra_json"], *_flags
             ))
         if _func_batch:
             _cur = conn.executemany(
                 "INSERT OR IGNORE INTO functions "
                 "(id, name, domain, source_file, line_number, signature, "
-                "labels, body_text_compressed, extra_json) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "labels, body_text_compressed, extra_json, "
+                "is_api_entry, is_thread_processor, is_callback_func, "
+                "is_out_end, is_unknown_end) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 _func_batch
             )
             counts["functions_imported"] = _cur.rowcount

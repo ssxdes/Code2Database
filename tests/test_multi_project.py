@@ -324,6 +324,13 @@ class TestImportFromExistingC2d(unittest.TestCase):
                 is_callback_func INTEGER DEFAULT 0,
                 is_out_end INTEGER DEFAULT 0,
                 is_unknown_end INTEGER DEFAULT 0);
+            CREATE TABLE edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoker_id TEXT, invoked_id TEXT, relation TEXT,
+                call_order INTEGER, call_condition TEXT, concurrency TEXT,
+                confidence TEXT, confidence_score REAL, source TEXT,
+                evidence TEXT, invoked_arg_json TEXT, reg_args_json TEXT,
+                vtable_type TEXT, vtable_bound_module TEXT);
         """)
         conn.execute(
             "INSERT INTO functions (id, name, domain, labels, "
@@ -339,9 +346,13 @@ class TestImportFromExistingC2d(unittest.TestCase):
     def test_flags_computed_from_legacy_labels(self):
         """Source db without the columns: flags derived from labels text."""
         _make_test_db(self.src_db, functions=[
-            {"id": "root_cb", "name": "cb", "domain": "root",
-             "labels": "callback_func,unknown_end", "line": 3},
+            {"id": "root_cb", "name": "cb", "domain": "root", "line": 3},
         ])
+        conn = sqlite3.connect(self.src_db)
+        conn.execute("UPDATE functions SET labels = 'callback_func,unknown_end' "
+                     "WHERE id = 'root_cb'")
+        conn.commit()
+        conn.close()
         counts = _import_from_existing_c2d(self.joint_db, self.src_dir, "A")
         self.assertNotIn("error", counts)
         self.assertEqual(counts["functions_imported"], 1)
@@ -350,9 +361,13 @@ class TestImportFromExistingC2d(unittest.TestCase):
     def test_joint_db_without_flag_columns_gets_them_added(self):
         """A legacy joint db (no boolean columns) is upgraded in place."""
         _make_test_db(self.src_db, functions=[
-            {"id": "root_init", "name": "init", "domain": "root",
-             "labels": "API_entry", "line": 1},
+            {"id": "root_init", "name": "init", "domain": "root", "line": 1},
         ])
+        conn = sqlite3.connect(self.src_db)
+        conn.execute("UPDATE functions SET labels = 'API_entry' "
+                     "WHERE id = 'root_init'")
+        conn.commit()
+        conn.close()
         counts = _import_from_existing_c2d(self.joint_db, self.src_dir, "A")
         self.assertNotIn("error", counts)
         # _make_test_db's joint schema has no flag columns — the import

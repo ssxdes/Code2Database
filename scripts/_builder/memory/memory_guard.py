@@ -266,8 +266,12 @@ class MemoryGuard:
                         try:
                             callback(info)
                         except Exception:
-                            logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                            pass
+                            # A broken callback means the degradation it
+                            # was supposed to perform never happened —
+                            # that must be visible, not debug-only.
+                            logging.getLogger(__name__).warning(
+                                "memory_guard: degradation callback raised",
+                                exc_info=True)
             elif is_warn:
                 self._stats["warnings"] += 1
                 # Linear backoff between warn and crit.

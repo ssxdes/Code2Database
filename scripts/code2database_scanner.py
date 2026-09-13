@@ -631,6 +631,36 @@ def scan_directory(source_root: str, lang: str = "auto",
     domains = set()
     lang_stats = defaultdict(int)
 
+    # Register the OOM auto-save callback HERE, inside scan_directory,
+    # where the accumulator containers are in scope. The old placement
+    # in cmd_scan referenced these locals from a different function's
+    # closure — the callback raised NameError on every invocation and
+    # memory_guard swallowed it, so the emergency body_text drop never
+    # ran. When memory hits critical, extract state_access from
+    # body_text (so field_access / global_access tables can still be
+    # populated by the builder), then drop body_text to free memory.
+    if memory_guard is not None:
+        def _pre_oom_callback(mem_info):
+            """Callback invoked when memory reaches critical level."""
+            print(f"[MemoryGuard] Pre-OOM callback triggered at "
+                  f"{mem_info.get('usage_percent', 0)*100:.0f}% — "
+                  f"attempting emergency memory release", file=sys.stderr)
+            dropped = _extract_state_access_then_drop_body_text(
+                all_functions, all_globals, all_field_assignments)
+            if dropped:
+                print(f"[MemoryGuard] Pre-OOM: dropped body_text from {dropped} functions "
+                      f"(state_access preserved)", file=sys.stderr)
+            gc.collect()
+        _pre_oom_callback._c2d_pre_oom = True
+        # Replace any callback left by a previous in-process scan so
+        # repeated scans (daemon / incremental) don't accumulate stale
+        # closures over dead containers.
+        if hasattr(memory_guard, '_degradation_callbacks'):
+            memory_guard._degradation_callbacks = [
+                cb for cb in memory_guard._degradation_callbacks
+                if not getattr(cb, '_c2d_pre_oom', False)]
+        memory_guard.register_degradation_callback(_pre_oom_callback)
+
     # Memory stats tracking
     _scan_start_time = time.time()
     _last_report_time = _scan_start_time
@@ -2369,25 +2399,8 @@ def cmd_scan(args):
         print(f"[MemoryGuard] Started monitoring (warn={warn_thresh*100:.0f}%, crit={crit_thresh*100:.0f}%)",
               file=sys.stderr)
 
-        # Register OOM auto-save callback: when memory hits critical,
-        # extract state_access from body_text (so field_access / global_access
-        # tables can still be populated by the builder), then drop body_text
-        # to free memory. Without the pre-drop extraction, the builder's
-        # field_access/global_access tables end up empty for any scan that
-        # hits critical memory (kernel, SPDK, etc.) — which silently breaks
-        # field-access queries ("who writes bh->b_bdev?" returns []).
-        def _pre_oom_callback(mem_info):
-            """Callback invoked when memory reaches critical level."""
-            print(f"[MemoryGuard] Pre-OOM callback triggered at "
-                  f"{mem_info.get('usage_percent', 0)*100:.0f}% — "
-                  f"attempting emergency memory release", file=sys.stderr)
-            dropped = _extract_state_access_then_drop_body_text(
-                all_functions, all_globals, all_field_assignments)
-            if dropped:
-                print(f"[MemoryGuard] Pre-OOM: dropped body_text from {dropped} functions "
-                      f"(state_access preserved)", file=sys.stderr)
-            gc.collect()
-        memory_guard.register_degradation_callback(_pre_oom_callback)
+        # NOTE: the pre-OOM degradation callback is registered inside
+        # scan_directory, where it can reach the scan accumulators.
     except ImportError:
         print("Warning: memory_guard module not available, memory management disabled", file=sys.stderr)
     except Exception as e:

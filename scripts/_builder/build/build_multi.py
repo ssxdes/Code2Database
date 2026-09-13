@@ -965,16 +965,3 @@ def build_multi(manifest_path: str, outdir: str, jobs: int = 0,
         pass
     return summary
 
-
-def cmd_build_multi(args):
-    """CLI handler for build-multi command."""
-    summary = build_multi(
-        manifest_path=args.manifest,
-        outdir=args.outdir,
-        jobs=getattr(args, "jobs", 0),
-        force_rescan=[s.strip() for s in (args.force_rescan or "").split(",")
-                      if s.strip()] or None,
-        no_clang=getattr(args, "no_clang", False),
-        verbose=True,
-    )
-    print(json.dumps(summary, ensure_ascii=False, indent=2))

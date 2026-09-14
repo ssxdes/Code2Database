@@ -15,6 +15,11 @@ This is knowledge an LLM cannot regenerate: given only the artifact, the
 artifact must say when it was made, by which tool version and against
 which source commit. ``graph-provenance`` reads the stamp back; the
 stamp never participates in build control flow (best-effort by design).
+
+On top of the stamp, ``record_build_event`` appends one row per build
+or sync to ``graph_versions.db`` (timestamp, commit, content counts) —
+the accumulating time series that ``graph-history`` / ``graph-diff``
+read. Growth over time is precisely the knowledge no LLM can conjure.
 """
 
 from __future__ import annotations
@@ -109,6 +114,35 @@ def stamp_build_provenance(graph_dir, label: str = LABEL_BUILD,
     return True
 
 
+def record_build_event(graph_dir, label: str = LABEL_BUILD,
+                       node_count=None, edge_count=None) -> int:
+    """Record a completed build/sync: meta stamp + history row.
+
+    The two records are independent and each is best-effort: a history
+    failure must not prevent the stamp (and vice versa). Returns the
+    history row's version_id, or 0 when no history row landed.
+    """
+    stamp_build_provenance(graph_dir, label=label,
+                           node_count=node_count, edge_count=edge_count)
+    version_id = 0
+    try:
+        from _builder.graph.graph_history import record_version
+        commit = _manifest_commit(graph_dir)
+        version_id = record_version(
+            graph_dir,
+            description=label,
+            commit_hash=commit.get("head") or "",
+            commit_short=commit.get("head_short") or "",
+            node_count=node_count,
+            edge_count=edge_count,
+            operator="code2database",
+            meta={"tool_version": _tool_version()},
+        )
+    except Exception:
+        logger.debug("history row not recorded", exc_info=True)
+    return version_id
+
+
 def _tool_version() -> str:
     try:
         from _version import __version__
@@ -117,14 +151,20 @@ def _tool_version() -> str:
         return "unknown"
 
 
-def _source_commit(graph_dir) -> str:
+def _manifest_commit(graph_dir) -> dict:
     manifest = os.path.join(graph_dir, ".code2database_manifest.json")
     try:
         data = json.loads(Path(manifest).read_text(encoding="utf-8"))
         commit = data.get("source_commit") or {}
-        return str(commit.get("head_short") or commit.get("head") or "")
+        return {"head": str(commit.get("head") or ""),
+                "head_short": str(commit.get("head_short") or "")}
     except Exception:
-        return ""
+        return {"head": "", "head_short": ""}
+
+
+def _source_commit(graph_dir) -> str:
+    commit = _manifest_commit(graph_dir)
+    return commit.get("head_short") or commit.get("head") or ""
 
 
 def _count_content(db_path):

@@ -563,18 +563,19 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
         print(f"[build-update] manifest refresh skipped: {exc}",
               file=sys.stderr)
     # The DB now reflects the per-file sync (this path is shared by the
-    # manual command and the daemon's incremental sync) — stamp it so the
-    # artifact stays self-describing. Only content-changing runs count:
-    # a dry run or a no-op pass must not move the recorded timestamp.
+    # manual command and the daemon's incremental sync) — record it so the
+    # artifact stays self-describing and the history row accumulates. Only
+    # content-changing runs count: a dry run or a no-op pass must not move
+    # the recorded timestamp.
     _content_changed = (report.get("changed_files", 0)
                         + report.get("added_files", 0)
                         + report.get("deleted_files", 0)) > 0
     if _content_changed and not report.get("dry_run"):
         try:
-            from _builder.build.build_provenance import stamp_build_provenance
-            stamp_build_provenance(graph_dir, label="per-file-sync")
+            from _builder.build.build_provenance import record_build_event
+            record_build_event(graph_dir, label="per-file-sync")
         except Exception as exc:
-            print(f"[provenance] stamp skipped: {exc}", file=sys.stderr)
+            print(f"[provenance] record skipped: {exc}", file=sys.stderr)
     return report
 
 

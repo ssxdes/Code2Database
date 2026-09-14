@@ -25,7 +25,7 @@ if str(SCRIPTS) not in sys.path:
 
 import _version
 from _builder.build.build_provenance import (
-    read_build_provenance, stamp_build_provenance)
+    read_build_provenance, record_build_event, stamp_build_provenance)
 
 
 def _make_db(graph_dir, functions=2, edges=1):
@@ -134,6 +134,67 @@ class TestStampAndRead(unittest.TestCase):
             self.assertEqual(prov["build_source_commit"], "")
 
 
+class TestHistoryRows(unittest.TestCase):
+
+    def _history_rows(self, graph_dir):
+        import sqlite3 as _sq
+        db = os.path.join(graph_dir, "graph_versions.db")
+        conn = _sq.connect(db)
+        try:
+            conn.row_factory = _sq.Row
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM graph_versions ORDER BY version_id").fetchall()]
+        finally:
+            conn.close()
+
+    def test_record_build_event_writes_history_row(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _make_db(tmp, functions=7, edges=6)
+            _make_manifest(tmp)
+            vid = record_build_event(tmp, label="per-file-sync",
+                                     node_count=7, edge_count=6)
+            self.assertGreater(vid, 0)
+            rows = self._history_rows(tmp)
+            self.assertEqual(len(rows), 1)
+            row = rows[0]
+            self.assertEqual(row["description"], "per-file-sync")
+            self.assertEqual(row["commit_hash"], "deadbeef1234")
+            self.assertEqual(row["commit_short"], "deadbeef")
+            self.assertEqual(row["node_count"], 7)
+            self.assertEqual(row["edge_count"], 6)
+            self.assertEqual(row["operator"], "code2database")
+            self.assertIn(_version.__version__, row["meta"])
+            # The same event also lands the meta stamp.
+            prov = read_build_provenance(tmp)
+            self.assertEqual(prov["build_label"], "per-file-sync")
+
+    def test_history_rows_accumulate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _make_db(tmp, functions=2, edges=1)
+            record_build_event(tmp, label="build", node_count=2, edge_count=1)
+            record_build_event(tmp, label="per-file-sync",
+                               node_count=3, edge_count=2)
+            rows = self._history_rows(tmp)
+            self.assertEqual(len(rows), 2)
+            self.assertEqual([r["description"] for r in rows],
+                             ["build", "per-file-sync"])
+            self.assertEqual([r["node_count"] for r in rows], [2, 3])
+            self.assertEqual(rows[1]["version_id"],
+                             rows[0]["version_id"] + 1)
+
+    def test_history_failure_does_not_block_the_stamp(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            _make_db(tmp)
+            with patch("_builder.graph.graph_history.record_version",
+                       side_effect=RuntimeError("boom")):
+                vid = record_build_event(tmp, label="build")
+            self.assertEqual(vid, 0)
+            prov = read_build_provenance(tmp)
+            self.assertEqual(prov["build_label"], "build",
+                             "meta stamp must survive a history failure")
+
+
 class TestGraphProvenanceConsumption(unittest.TestCase):
 
     def test_cmd_graph_provenance_reads_the_stamp(self):
@@ -167,20 +228,20 @@ class TestGraphProvenanceConsumption(unittest.TestCase):
 
 
 class TestCallSiteWiring(unittest.TestCase):
-    """Every path that produces SQLite content must stamp it."""
+    """Every path that produces SQLite content must record the event."""
 
-    def test_full_build_references_stamp(self):
+    def test_full_build_references_record(self):
         from _builder.graph.graph_build import cmd_build
-        self.assertIn("stamp_build_provenance",
+        self.assertIn("record_build_event",
                       inspect.getsource(cmd_build))
 
-    def test_per_file_sync_references_stamp(self):
+    def test_per_file_sync_references_record(self):
         from _builder.build.build_update import _build_update_locked
         src = inspect.getsource(_build_update_locked)
-        self.assertIn("stamp_build_provenance", src)
+        self.assertIn("record_build_event", src)
         self.assertIn("per-file-sync", src)
 
-    def test_stamp_only_after_content_changes(self):
+    def test_record_only_after_content_changes(self):
         from _builder.build.build_update import _build_update_locked
         src = inspect.getsource(_build_update_locked)
         self.assertIn("_content_changed", src)

@@ -154,6 +154,22 @@ class TestBuildUpdate(unittest.TestCase):
         self.assertTrue(rows.get("build_timestamp", "").startswith("20"))
         self.assertGreater(int(rows.get("build_node_count", "0")), 0)
 
+    def test_build_records_history_rows(self):
+        hist = os.path.join(self.graph, "graph_versions.db")
+        self.assertTrue(os.path.exists(hist),
+                        "every build must append a history row")
+        conn = sqlite3.connect(hist)
+        try:
+            rows = conn.execute(
+                "SELECT description, node_count FROM graph_versions "
+                "ORDER BY version_id").fetchall()
+        finally:
+            conn.close()
+        self.assertGreaterEqual(len(rows), 1)
+        for description, node_count in rows:
+            self.assertIn(description, ("build", "per-file-sync"))
+            self.assertGreater(node_count, 0)
+
     def test_modify_file_adds_and_removes_functions(self):
         self.assertIn("mul", self._func_names())
         math_c = os.path.join(self.source, "src/util/math.c")
@@ -188,6 +204,15 @@ class TestBuildUpdate(unittest.TestCase):
         # The sync path must have re-stamped provenance with its label.
         meta = dict(self._query("SELECT key, value FROM meta"))
         self.assertEqual(meta.get("build_label"), "per-file-sync")
+        # ...and appended a history row for the sync.
+        conn = sqlite3.connect(os.path.join(self.graph, "graph_versions.db"))
+        try:
+            desc = conn.execute(
+                "SELECT description FROM graph_versions "
+                "ORDER BY version_id DESC LIMIT 1").fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(desc, "per-file-sync")
 
     def test_add_then_delete_file(self):
         _write(self.source, "src/util/extra.c", _EXTRA_C)

@@ -509,6 +509,11 @@ python3 scripts/code2database_builder.py doc-signature-diff \
 
 ## Graph Versioning
 
+Version history accumulates automatically: every full build and every
+per-file sync appends one row to `graph_versions.db` (timestamp, source
+commit, node/edge counts). The commands below read that history and add
+named checkpoints on top.
+
 ### `graph-record-version`
 
 Record a named graph version (snapshot for later diffing).
@@ -522,7 +527,8 @@ python3 scripts/code2database_builder.py graph-record-version \
 
 ### `graph-history`
 
-Show the version history of the graph.
+Show the version history of the graph (auto-recorded build/sync rows
+plus named checkpoints — node/edge counts over time).
 
 ```bash
 python3 scripts/code2database_builder.py graph-history \

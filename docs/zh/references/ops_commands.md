@@ -509,6 +509,10 @@ python3 scripts/code2database_builder.py doc-signature-diff \
 
 ## 图谱版本
 
+版本历史自动累积：每次完整构建与每次按文件同步都会向 `graph_versions.db`
+追加一行（时间戳、源码 commit、节点/边计数）。下列命令读取该历史，并可在
+其上追加命名检查点。
+
 ### `graph-record-version`
 
 记录命名图谱版本（供后续 diff 的快照）。
@@ -522,7 +526,8 @@ python3 scripts/code2database_builder.py graph-record-version \
 
 ### `graph-history`
 
-显示图谱的版本历史。
+显示图谱的版本历史（自动记录的构建/同步行 + 命名检查点——节点/边计数随
+时间的演化）。
 
 ```bash
 python3 scripts/code2database_builder.py graph-history \

@@ -5387,14 +5387,15 @@ def cmd_build(args):
         _node_count = G.number_of_nodes()
         _edge_count = G.number_of_edges()
         # The DB must be self-describing: stamp when/by-which-version/
-        # against-which-commit it was produced (read back by graph-provenance).
+        # against-which-commit it was produced, and append the per-build
+        # history row (read back by graph-provenance / graph-history).
         try:
-            from _builder.build.build_provenance import stamp_build_provenance
-            stamp_build_provenance(outdir, label="build",
-                                   node_count=_node_count,
-                                   edge_count=_edge_count)
+            from _builder.build.build_provenance import record_build_event
+            record_build_event(outdir, label="build",
+                               node_count=_node_count,
+                               edge_count=_edge_count)
         except Exception as _prov_exc:
-            print(f"[provenance] stamp skipped: {_prov_exc}", file=sys.stderr)
+            print(f"[provenance] record skipped: {_prov_exc}", file=sys.stderr)
         del G
         gc.collect()
         if memory_guard:

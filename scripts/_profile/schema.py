@@ -417,6 +417,21 @@ class ProfileSchema:
             if section not in d:
                 raise ValueError(f"Missing required section: {section}")
 
+        # project section: open word list (users can define custom
+        # types), but the values must at least be non-empty strings —
+        # anything else flows into generated reports and detectors as
+        # garbage.
+        proj = d.get("project")
+        if proj is not None:
+            if not isinstance(proj, dict):
+                raise ValueError("project must be an object")
+            _ptype = proj.get("project_type")
+            if _ptype is not None and (not isinstance(_ptype, str)
+                                       or not _ptype):
+                raise ValueError(
+                    f"project.project_type must be a non-empty string, "
+                    f"got {type(_ptype).__name__}")
+
         # skip_names.external_lib_prefixes must be dict of {prefix: {category, visible}}
         elp = d["skip_names"].get("external_lib_prefixes", {})
         for prefix, info in elp.items():
@@ -492,6 +507,24 @@ class ProfileSchema:
                     raise ValueError(
                         f"callback_detection.static_patterns[{i}] missing '{key}'"
                     )
+            # cb_arg_index is consumed as an int (argument position); a
+            # string or null slips through here and only blows up deep
+            # inside the scanner, far from the profile that caused it.
+            _cbi = pat.get("cb_arg_index")
+            if isinstance(_cbi, bool) or not isinstance(_cbi, int):
+                raise ValueError(
+                    f"callback_detection.static_patterns[{i}].cb_arg_index "
+                    f"must be an int, got {type(_cbi).__name__}"
+                )
+            # concurrency_type is compared against known kinds at scan
+            # time; anything but a non-empty string silently never
+            # matches.
+            _ctype = pat.get("concurrency_type")
+            if not isinstance(_ctype, str) or not _ctype:
+                raise ValueError(
+                    f"callback_detection.static_patterns[{i}].concurrency_type "
+                    f"must be a non-empty string, got {type(_ctype).__name__}"
+                )
 
         # callback_detection.skip_call_prefixes must be list of strings
         scp = d["callback_detection"].get("skip_call_prefixes", [])

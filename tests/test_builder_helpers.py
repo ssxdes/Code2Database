@@ -1431,13 +1431,74 @@ class TestProfileMigration(unittest.TestCase):
     def test_unsupported_version_raises(self):
         from _profile.schema import ProfileSchema
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
+                mode="w", suffix=".json", delete=False
         ) as f:
             json.dump({"version": 999, "project": {"name": "future"}}, f)
             path = f.name
         try:
             with self.assertRaises(ValueError):
                 ProfileSchema.load(path)
+        finally:
+            os.unlink(path)
+
+
+class TestProfileFieldTypeValidation(unittest.TestCase):
+    """Field-type guards that fail at load time, not deep in the scanner."""
+
+    @staticmethod
+    def _write(profile):
+        fd, path = tempfile.mkstemp(suffix=".json")
+        with os.fdopen(fd, "w") as f:
+            json.dump(profile, f)
+        return path
+
+    def _load_raises(self, profile):
+        from _profile.schema import ProfileSchema
+        path = self._write(profile)
+        try:
+            with self.assertRaises(ValueError):
+                ProfileSchema.load(path)
+        finally:
+            os.unlink(path)
+
+    def _base(self):
+        # Start from the built-in default so only the field under test
+        # deviates.
+        import copy
+        default_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "scripts", "config", "profiles", "_default.json")
+        with open(default_path, encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_cb_arg_index_must_be_int(self):
+        d = self._base()
+        d["callback_detection"]["static_patterns"][0]["cb_arg_index"] = "2"
+        self._load_raises(d)
+
+    def test_cb_arg_index_null_rejected(self):
+        d = self._base()
+        d["callback_detection"]["static_patterns"][0]["cb_arg_index"] = None
+        self._load_raises(d)
+
+    def test_concurrency_type_must_be_nonempty_string(self):
+        d = self._base()
+        d["callback_detection"]["static_patterns"][0]["concurrency_type"] = 7
+        self._load_raises(d)
+        d2 = self._base()
+        d2["callback_detection"]["static_patterns"][0]["concurrency_type"] = ""
+        self._load_raises(d2)
+
+    def test_project_type_must_be_nonempty_string(self):
+        d = self._base()
+        d["project"] = {"name": "p", "project_type": 42}
+        self._load_raises(d)
+
+    def test_valid_default_passes(self):
+        from _profile.schema import ProfileSchema
+        path = self._write(self._base())
+        try:
+            ProfileSchema.load(path)
         finally:
             os.unlink(path)
 

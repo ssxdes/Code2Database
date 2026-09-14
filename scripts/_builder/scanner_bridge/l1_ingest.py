@@ -119,6 +119,8 @@ def _l1_ingest_proc_worker(task):
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA cache_size=-32000")  # 32MB per worker
         conn.execute("PRAGMA temp_store=MEMORY")
+        # Enable FK enforcement so the graph stays consistent with the schema.
+        conn.execute("PRAGMA foreign_keys = ON")
         result = ingest_l1(
             conn=conn,
             file_path=fp,

@@ -3277,6 +3277,7 @@ def cmd_detect_changes(args):
 def main():
     check_python_version()
     from _version import __version__
+    from _builder.runtime_config import runtime_get
 
     parser = argparse.ArgumentParser(description="Multi-language code graph scanner")
     parser.add_argument("--version", action="version",
@@ -3301,7 +3302,8 @@ def main():
                              "Used when the macro set is too large for the command line "
                              "(Linux ARG_MAX ~128KB). Merged with --macros if both given; "
                              "--macros takes precedence on conflict.")
-    p_scan.add_argument("-j", "--workers", type=int, default=0,
+    p_scan.add_argument("-j", "--workers", type=int,
+                        default=runtime_get("scan", "workers", 0),
                          help="Parallel scan workers (0=auto, 1=sequential, "
                               "N=N threads). Tree-sitter (C) releases the GIL, "
                               "so multi-worker scans get real speedup. "
@@ -3313,7 +3315,8 @@ def main():
                               "env var). On high-core machines (64+ cores, 250GB+ "
                               "RAM), set this to your core count for maximum "
                               "throughput.")
-    p_scan.add_argument("--parallel-mode", choices=["thread", "process"], default="thread",
+    p_scan.add_argument("--parallel-mode", choices=["thread", "process"],
+                        default=runtime_get("scan", "parallel_mode", "thread"),
                          help="Parallelism model for multi-worker scans: 'thread' "
                               "(default, GIL-limited but zero overhead — tree-sitter "
                               "releases the GIL during parse, but per-node Python "

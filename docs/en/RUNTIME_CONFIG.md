@@ -8,6 +8,41 @@ This file provides default runtime parameters for the code graph pipeline. All v
 
 ---
 
+## Location and Precedence
+
+The loader resolves the file in this order:
+
+1. `$C2D_RUNTIME_CONFIG` — explicit path to a JSON file
+2. `<install dir>/config/runtime.json` — the shipped default
+
+A missing file or invalid JSON falls back to the built-in defaults with a warning log. Unknown sections/keys and values with the wrong JSON type are reported and ignored, so a typo can never silently disable a knob. The file is re-read when its mtime changes, so edits apply to the next pipeline run. CLI arguments always win over values in this file.
+
+---
+
+## Consumed Today vs Reserved
+
+Fields marked **wired** seed the corresponding CLI default and are overridden by an explicit flag. Fields marked **reserved** are accepted and validated by the loader but not yet read by the pipeline — they are documented so operators can prepare environments ahead of support. The status of every section:
+
+| Section | Status |
+|---|---|
+| `scan.workers`, `scan.parallel_mode` | **wired** — seed `--workers` / `--parallel-mode` |
+| `scan.max_file_size_kb`, `scan.skip_dirs` | reserved (directory skipping today uses the project profile's `scan_hints.skip_dirs`) |
+| `build.*` | **wired** — seed `--build-config` / `--max-domain-files` |
+| `query.*` | **wired** — seed `--detail`, `--max-tokens` (describe-node), `--max-nodes` / `--max-tokens` (explore-flow) |
+| `memory.*` | reserved |
+| `semantic.*` | reserved |
+| `invariants.*` | reserved |
+| `auto_enhance.*` | reserved |
+| `transactions.*` | reserved |
+| `ffi.*` | reserved |
+| `web_ui.*` | reserved (the Web UI port is set via `web-ui --port`; bind host via `C2D_WEB_UI_HOST`) |
+| `benchmark.*` | reserved |
+| `profile_health.*` | reserved |
+| `doc_code.*` | reserved |
+| `daemon.*` | reserved (daemon tuning lives in the project profile's `daemon` section and `CALLGRAPH_DAEMON_*` env vars) |
+
+---
+
 ## When to Edit
 
 Edit this file when you need to tune pipeline behavior without modifying source code — for example, adjusting parallelism for a constrained machine, changing memory management thresholds, or customizing query defaults.
@@ -37,9 +72,9 @@ Edit this file when you need to tune pipeline behavior without modifying source 
 | Field | Type | Default | CLI Override | Description |
 |-------|------|---------|--------------|-------------|
 | `default_detail` | string | `"brief"` | `--detail` | Default detail level for query responses. One of: `"brief"` (one-line summaries), `"standard"` (moderate detail), `"full"` (complete information). |
-| `default_max_tokens` | int | `500` | `--max-tokens` | Default maximum output tokens for query responses. `0` = unlimited. Lower values produce shorter responses; higher values give more detail. |
-| `explore_max_nodes` | int | `15` | — | Maximum number of nodes to return in `explore` queries. Controls the breadth of neighborhood exploration around a target node. |
-| `explore_max_tokens` | int | `2000` | — | Maximum output tokens for `explore` query responses. |
+| `default_max_tokens` | int | `500` | `--max-tokens` | Default maximum output tokens for describe-node responses. `0` = unlimited. Lower values produce shorter responses; higher values give more detail. |
+| `explore_max_nodes` | int | `15` | `--max-nodes` (explore-flow) | Maximum number of nodes to return in `explore` queries. Controls the breadth of neighborhood exploration around a target node. |
+| `explore_max_tokens` | int | `2000` | `--max-tokens` (explore-flow) | Maximum output tokens for `explore` query responses. |
 
 ### `memory` — Memory System Parameters
 
@@ -148,7 +183,7 @@ Edit this file when you need to tune pipeline behavior without modifying source 
 
 ## Relationship to CLI Arguments
 
-Most `runtime.json` fields provide defaults that can be overridden by command-line arguments:
+Most `runtime.json` fields provide defaults that can be overridden by command-line arguments. The CLI always takes precedence:
 
 | runtime.json path | CLI argument | Notes |
 |---|---|---|

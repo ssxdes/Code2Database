@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "_vendor"))
 
 # Import logging utilities first so other modules can use get_logger()
 from _builder.logging_utils import configure_logging, get_logger, parse_log_level
+from _builder.runtime_config import runtime_get
 
 # Core command handlers — these are lightweight to import and cover the
 # most common operations (build, search, describe, trace, query).
@@ -755,14 +756,16 @@ def main():
     p_build = sub.add_parser("build", help="Build invocation graph from extraction JSON")
     p_build.add_argument("--extraction", required=True, help="Extraction JSON from code2database_scanner.py")
     p_build.add_argument("--outdir", required=True, help="Output directory for domain-split JSON files")
-    p_build.add_argument("--max-domain-files", type=int, default=50,
-                          help="Max domain JSON files per subdirectory (default: 50, 0=flat)")
+    p_build.add_argument("--max-domain-files", type=int,
+                         default=runtime_get("build", "max_domain_files", 50),
+                         help="Max domain JSON files per subdirectory (default: 50, 0=flat)")
     p_build.add_argument("--plugin", action="append", default=[],
                           help="Python plugin file to load (can specify multiple). "
                                "Also auto-discovers .code2database_plugins/*.py")
-    p_build.add_argument("--build-config", default=None,
-                          help="Build config: 'auto' for auto-detection, path to config file, "
-                               "or build type name (e.g. 'Release', 'Debug')")
+    p_build.add_argument("--build-config",
+                         default=runtime_get("build", "default_config", None),
+                         help="Build config: 'auto' for auto-detection, path to config file, "
+                              "or build type name (e.g. 'Release', 'Debug')")
     p_build.add_argument("--macros", default=None,
                           help="Space-separated macro bindings for #ifdef resolution "
                                "(e.g., 'NDEBUG FEATURE_X=1 -DFOO'). Merged with build-config.")
@@ -854,13 +857,15 @@ def main():
                              help="Get info about a node. Use --detail brief|standard|full to control output size")
     p_desc.add_argument("--graph", required=True, help="Call graph output directory")
     p_desc.add_argument("--node", required=True, help="Node ID (or partial match)")
-    p_desc.add_argument("--detail", choices=["brief", "standard", "full"], default="full",
+    p_desc.add_argument("--detail", choices=["brief", "standard", "full"],
+                         default=runtime_get("query", "default_detail", "brief"),
                          help="Output detail level: brief(~200t), standard(~500t), full(~900t)")
     p_desc.add_argument("--context", action="store_true",
                          help="Include hub role, reachable APIs, and reached endpoints")
     p_desc.add_argument("--include-body", action="store_true",
                          help="Include function body text (full mode only; omitted by default to save tokens)")
-    p_desc.add_argument("--max-tokens", type=int, default=800,
+    p_desc.add_argument("--max-tokens", type=int,
+                        default=runtime_get("query", "default_max_tokens", 500),
                          help="Max output tokens (0=unlimited). Automatically drops low-priority fields.")
     p_desc.add_argument("--json", action="store_true", help="Output as JSON (default for describe-node)")
     p_desc.add_argument("--fields", default=None,
@@ -1930,10 +1935,12 @@ def main():
     p_explore.add_argument("--graph", required=True, help="Call graph output directory")
     p_explore.add_argument("--query", required=True,
                             help="Natural language query or symbol names (e.g. 'module initialization', 'api_connect')")
-    p_explore.add_argument("--max-nodes", type=int, default=15,
-                            help="Max nodes in result subgraph (default: 15)")
-    p_explore.add_argument("--max-tokens", type=int, default=2000,
-                            help="Max output tokens (default: 2000)")
+    p_explore.add_argument("--max-nodes", type=int,
+                           default=runtime_get("query", "explore_max_nodes", 15),
+                           help="Max nodes in result subgraph (default: 15)")
+    p_explore.add_argument("--max-tokens", type=int,
+                           default=runtime_get("query", "explore_max_tokens", 2000),
+                           help="Max output tokens (default: 2000)")
     p_explore.add_argument("--focus-domain", dest="focus_domain", default=None,
                             help="Restrict search to a specific architecture domain (e.g., 'lib.bdev')")
     p_explore.add_argument("--no-cache", dest="no_cache", action="store_true",

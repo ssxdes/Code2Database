@@ -8,6 +8,41 @@
 
 ---
 
+## 位置与优先级
+
+加载器按以下顺序解析文件：
+
+1. `$C2D_RUNTIME_CONFIG` — 显式指定的 JSON 文件路径
+2. `<安装目录>/config/runtime.json` — 随产品发布的默认文件
+
+文件缺失或 JSON 无效时回退到内置默认值并记录警告。未知的节/键以及 JSON 类型错误的值会被报告并忽略，因此拼写错误绝不会静默禁用某个旋钮。文件的 mtime 变化时会重新读取，因此编辑在下次流水线运行时生效。CLI 参数始终优先于本文件中的值。
+
+---
+
+## 当前已接线与保留字段
+
+标记为**已接线**的字段会作为对应 CLI 默认值，显式传参时被覆盖。标记为**保留**的字段会被加载器接受并校验，但流水线尚未读取——文档先行，便于运维提前准备环境。各节状态：
+
+| 节 | 状态 |
+|---|---|
+| `scan.workers`、`scan.parallel_mode` | **已接线** — 作为 `--workers` / `--parallel-mode` 默认值 |
+| `scan.max_file_size_kb`、`scan.skip_dirs` | 保留（目录跳过目前使用项目 profile 的 `scan_hints.skip_dirs`） |
+| `build.*` | **已接线** — 作为 `--build-config` / `--max-domain-files` 默认值 |
+| `query.*` | **已接线** — 作为 `--detail`、`--max-tokens`（describe-node）、`--max-nodes` / `--max-tokens`（explore-flow）默认值 |
+| `memory.*` | 保留 |
+| `semantic.*` | 保留 |
+| `invariants.*` | 保留 |
+| `auto_enhance.*` | 保留 |
+| `transactions.*` | 保留 |
+| `ffi.*` | 保留 |
+| `web_ui.*` | 保留（Web UI 端口通过 `web-ui --port` 设置；绑定主机通过 `C2D_WEB_UI_HOST`） |
+| `benchmark.*` | 保留 |
+| `profile_health.*` | 保留 |
+| `doc_code.*` | 保留 |
+| `daemon.*` | 保留（daemon 调优位于项目 profile 的 `daemon` 节和 `CALLGRAPH_DAEMON_*` 环境变量） |
+
+---
+
 ## 何时编辑
 
 当需要在不修改源代码的情况下调整流水线行为时编辑此文件——例如，为资源受限的机器调整并行度、更改内存管理阈值，或自定义查询默认值。
@@ -37,9 +72,9 @@
 | 字段 | 类型 | 默认值 | CLI 覆盖 | 说明 |
 |------|------|--------|----------|------|
 | `default_detail` | string | `"brief"` | `--detail` | 查询响应的默认详细程度。可选值：`"brief"`（一行摘要）、`"standard"`（中等详情）、`"full"`（完整信息）。 |
-| `default_max_tokens` | int | `500` | `--max-tokens` | 查询响应的默认最大输出 token 数。`0` = 无限制。较低的值产生较短的响应；较高的值提供更多详情。 |
-| `explore_max_nodes` | int | `15` | — | `explore` 查询返回的最大节点数。控制目标节点周围邻域探索的广度。 |
-| `explore_max_tokens` | int | `2000` | — | `explore` 查询响应的最大输出 token 数。 |
+| `default_max_tokens` | int | `500` | `--max-tokens` | describe-node 响应的默认最大输出 token 数。`0` = 无限制。较低的值产生较短的响应；较高的值提供更多详情。 |
+| `explore_max_nodes` | int | `15` | `--max-nodes`（explore-flow） | `explore` 查询返回的最大节点数。控制目标节点周围邻域探索的广度。 |
+| `explore_max_tokens` | int | `2000` | `--max-tokens`（explore-flow） | `explore` 查询响应的最大输出 token 数。 |
 
 ### `memory` — 记忆系统参数
 
@@ -148,7 +183,7 @@
 
 ## 与 CLI 参数的关系
 
-大多数 `runtime.json` 字段提供默认值，可通过命令行参数覆盖：
+大多数 `runtime.json` 字段提供默认值，可通过命令行参数覆盖。CLI 始终优先：
 
 | runtime.json 路径 | CLI 参数 | 说明 |
 |---|---|---|

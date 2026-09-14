@@ -33,6 +33,14 @@ def _make_graph_dir(tokens=("t1", "t2", "t3", "t4")):
     conn = sqlite3.connect(db)
     cgdb_schema.apply_cgdb_schema(conn)
     conn.commit()
+    # Ensure a default graph_versions row (version_id=1) exists for
+    # first_seen_version/last_seen_version FK references — matches what
+    # cgdb_store.create_schema() does in production.  Without this, INSERT
+    # into cgdb_nodes fails when _get_conn enables PRAGMA foreign_keys = ON.
+    conn.execute(
+        "INSERT OR IGNORE INTO graph_versions (version_id, commit_hash, compiled_at) "
+        "VALUES (1, 'initial', 0)")
+    conn.commit()
     conn.execute(
         "INSERT INTO cgdb_files (path, language, sha256) "
         "VALUES ('/a.c', 'c', ?)", ("x" * 64,))

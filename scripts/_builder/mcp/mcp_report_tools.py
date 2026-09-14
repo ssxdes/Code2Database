@@ -63,6 +63,12 @@ def _get_conn(graph_dir: str) -> sqlite3.Connection:
         raise FileNotFoundError(f"code2database.db not found in {graph_dir}")
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    # Enable FK enforcement so foreign_keys = ON is not just advisory —
+    # without this, deleting an edge whose target is a foreign key leaves an
+    # orphan row in the referenced table (no CASCADE), violating referential
+    # integrity.  This is the C2D DB's contract — foreign keys must be
+    # enforced so the graph stays consistent with the schema.
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 

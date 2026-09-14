@@ -25,6 +25,36 @@ import logging
 from _builder.utils import normalize_str_field as _normalize_str_field
 
 
+def decode_edge_evidence(ev_raw):
+    """Decode the edges.evidence column back to its in-memory form.
+
+    store_edges() writes plain strings verbatim and json.dumps()es
+    list/dict values, so the reader must invert exactly that contract:
+    a value that parses as a JSON array/object came from a list/dict
+    and returns as one; anything else (the common plain-text form like
+    "vtable_dispatch: Foo.bar") is a string and must be returned as the
+    original string. The previous readers initialized a ``[]`` and kept
+    it whenever json.loads failed, which silently destroyed every
+    plain-text evidence string read back from SQLite — split_by_domain
+    then serialized the empty list into the master JSON and downstream
+    consumers lost the evidence text entirely.
+    """
+    if ev_raw is None or ev_raw == "":
+        return []
+    if not isinstance(ev_raw, str):
+        return ev_raw
+    if ev_raw[:1] not in "[{":
+        return ev_raw
+    try:
+        import json as _json
+        parsed = _json.loads(ev_raw)
+    except Exception:
+        return ev_raw
+    if isinstance(parsed, (list, dict)):
+        return parsed
+    return ev_raw
+
+
 class _StreamingNodeView:
     """NetworkX-compatible NodeView for StreamingGraph.
 
@@ -1129,14 +1159,7 @@ class LazySQLiteGraph:
                 self._edge_cache[cache_key] = None
                 return {}
             row_dict = dict(row)
-            evidence = []
-            ev_raw = row_dict.get("evidence")
-            if ev_raw:
-                try:
-                    evidence = _json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
-                except (_json.JSONDecodeError, TypeError):
-                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                    pass
+            evidence = decode_edge_evidence(row_dict.get("evidence"))
             attrs = {
                 "call_order": row_dict.get("call_order"),
                 "call_condition": row_dict.get("call_condition", "") or "",
@@ -1145,7 +1168,6 @@ class LazySQLiteGraph:
                 "confidence_score": row_dict.get("confidence_score") if row_dict.get("confidence_score") is not None else 1.0,
                 "source": row_dict.get("source", "ast") or "ast",
                 "evidence": evidence,
-                "relation": row_dict.get("relation", "INVOKES") or "INVOKES",
                 "vtable_type": row_dict.get("vtable_type", "") or "",
                 "vtable_bound_module": row_dict.get("vtable_bound_module", "") or "",
             }
@@ -1266,14 +1288,7 @@ class LazySQLiteGraph:
             import json as _json
             for row in rows:
                 row_dict = dict(row)
-                evidence = []
-                ev_raw = row_dict.get("evidence")
-                if ev_raw:
-                    try:
-                        evidence = _json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
-                    except (_json.JSONDecodeError, TypeError):
-                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                        pass
+                evidence = decode_edge_evidence(row_dict.get("evidence"))
                 attrs = {
                     "call_order": row_dict.get("call_order"),
                     "call_condition": row_dict.get("call_condition", "") or "",
@@ -1304,14 +1319,7 @@ class LazySQLiteGraph:
             import json as _json
             for row in rows:
                 row_dict = dict(row)
-                evidence = []
-                ev_raw = row_dict.get("evidence")
-                if ev_raw:
-                    try:
-                        evidence = _json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
-                    except (_json.JSONDecodeError, TypeError):
-                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                        pass
+                evidence = decode_edge_evidence(row_dict.get("evidence"))
                 attrs = {
                     "call_order": row_dict.get("call_order"),
                     "call_condition": row_dict.get("call_condition", "") or "",
@@ -1352,17 +1360,9 @@ class LazySQLiteGraph:
             "SELECT invoker_id, invoked_id, call_order, call_condition, "
             "concurrency, confidence, confidence_score, source, evidence, "
             "relation FROM edges")
-        import json as _json
         for row in cur:
             row_dict = dict(row)
-            evidence = []
-            ev_raw = row_dict.get("evidence")
-            if ev_raw:
-                try:
-                    evidence = _json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
-                except (_json.JSONDecodeError, TypeError):
-                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                    pass
+            evidence = decode_edge_evidence(row_dict.get("evidence"))
             attrs = {
                 "call_order": row_dict.get("call_order"),
                 "call_condition": row_dict.get("call_condition", "") or "",

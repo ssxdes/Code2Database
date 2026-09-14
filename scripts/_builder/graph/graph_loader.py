@@ -10,6 +10,7 @@ from pathlib import Path
 from collections import defaultdict, Counter
 import networkx as nx
 from _builder.graph.streaming_graph import StreamingGraph
+from _builder.graph.streaming_graph import decode_edge_evidence
 from _builder.utils import _resolve_invoked_id
 import _builder.utils as _utils
 
@@ -473,13 +474,7 @@ def _load_full_graph_from_sqlite(db_path: str) -> nx.DiGraph:
                     except (json.JSONDecodeError, TypeError):
                         logging.getLogger(__name__).debug("silent exception", exc_info=True)
                         pass
-                evidence = []
-                ev_raw = row_dict.get("evidence")
-                if ev_raw:
-                    try:
-                        evidence = json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
-                    except (json.JSONDecodeError, TypeError):
-                        evidence = []
+                evidence = decode_edge_evidence(row_dict.get("evidence"))
 
                 attrs = dict(
                     call_order=row_dict.get("call_order"),
@@ -603,14 +598,7 @@ def _load_neighbors_from_sqlite(db_path: str, node_id: str):
             callee = row_dict.get("invoked_id")
             if not callee:
                 continue
-            evidence = []
-            ev_raw = row_dict.get("evidence")
-            if ev_raw:
-                try:
-                    evidence = json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
-                except (json.JSONDecodeError, TypeError):
-                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                    pass
+            evidence = decode_edge_evidence(row_dict.get("evidence"))
             attrs = dict(
                 call_order=row_dict.get("call_order"),
                 call_condition=row_dict.get("call_condition", "") or "",
@@ -629,14 +617,7 @@ def _load_neighbors_from_sqlite(db_path: str, node_id: str):
             caller = row_dict.get("invoker_id")
             if not caller:
                 continue
-            evidence = []
-            ev_raw = row_dict.get("evidence")
-            if ev_raw:
-                try:
-                    evidence = json.loads(ev_raw) if isinstance(ev_raw, str) else ev_raw
-                except (json.JSONDecodeError, TypeError):
-                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                    pass
+            evidence = decode_edge_evidence(row_dict.get("evidence"))
             attrs = dict(
                 call_order=row_dict.get("call_order"),
                 call_condition=row_dict.get("call_condition", "") or "",

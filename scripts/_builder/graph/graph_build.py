@@ -231,7 +231,7 @@ def _detect_commit_hash(source_root: str) -> str:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     import time
-    return f'build:{int(time.time())}'
+    return f'build:{time.time():.6f}'
 
 
 

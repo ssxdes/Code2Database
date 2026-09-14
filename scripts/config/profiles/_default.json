@@ -355,6 +355,10 @@
         "category": "external_posix",
         "visible": false
       },
+      "epoll_": {
+        "category": "external_posix",
+        "visible": false
+      },
       "uuid_": {
         "category": "external_lib",
         "visible": false

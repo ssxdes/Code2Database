@@ -1169,14 +1169,27 @@ def cmd_ffi_detect(args):
             sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
             from _builder.graph.graph_build import _load_full_graph, split_by_domain
         G = _load_full_graph(graph_dir)
-        added = attach_ffi_edges(G, edges)
-        # Write back
-        master_path = os.path.join(graph_dir, "code2database_master.json")
-        if os.path.exists(master_path):
-            with open(master_path) as _f:
-                master = json.load(_f)
-            split_by_domain(G, graph_dir, master.get("source_root", ""))
-        print(f"Applied {added} FFI edges to graph", file=sys.stderr)
+
+        _is_lazy = type(G).__name__ == "LazySQLiteGraph"
+
+        if _is_lazy:
+            # LazySQLiteGraph is read-only — skip graph mutation entirely.
+            # FFI edges are persisted directly to SQLite bridge tables below
+            # (persist_ffi_to_sqlite), which is the authoritative path for
+            # SQLite-backed large graphs.
+            added = 0
+            print(f"[ffi] LazySQLiteGraph detected ({G.number_of_nodes()} nodes) — "
+                  f"skipping in-memory graph mutation; writing FFI edges "
+                  f"directly to SQLite bridge tables", file=sys.stderr)
+        else:
+            added = attach_ffi_edges(G, edges)
+            # Write back via split_by_domain (only for writable graphs)
+            master_path = os.path.join(graph_dir, "code2database_master.json")
+            if os.path.exists(master_path):
+                with open(master_path) as _f:
+                    master = json.load(_f)
+                split_by_domain(G, graph_dir, master.get("source_root", ""))
+            print(f"Applied {added} FFI edges to graph", file=sys.stderr)
 
         # RPT-P1-17: Persist FFI edges to the 3 cross-language bridge tables
         # (cross_lang_bindings / type_mappings / ffi_call_sites) in SQLite.

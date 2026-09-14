@@ -218,7 +218,12 @@ def _delete_legacy_rows(conn, file_path, source_root):
     conn.execute(
         f"DELETE FROM edges WHERE invoker_id IN ({qmarks}) "
         f"OR invoked_id IN ({qmarks})", old_ids + old_ids)
-    for table in ("field_access", "global_access"):
+    # entry_scores.function_id also carries an FK to functions(id); with
+    # PRAGMA foreign_keys=ON the functions DELETE below raises
+    # IntegrityError when a changed file contained entry-scored nodes.
+    # field_access/global_access follow the same child-before-parent
+    # ordering (older graphs may lack the tables — tolerate that).
+    for table in ("field_access", "global_access", "entry_scores"):
         try:
             conn.execute(
                 f"DELETE FROM {table} WHERE function_id IN ({qmarks})",

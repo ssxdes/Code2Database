@@ -68,6 +68,7 @@
     "doc-alignment-report",
     "doc-code-check",
     "doc-mark-stale",
+    "doctor",
     "doc-signature-diff",
     "domain",
     "embeddings-build",
@@ -262,6 +263,9 @@
       "think-chain",
       "unbalanced-alloc-free",
       "why-ambiguous"
+    ],
+    "Health and integrity": [
+      "doctor"
     ]
   },
   "on_demand_commands": [

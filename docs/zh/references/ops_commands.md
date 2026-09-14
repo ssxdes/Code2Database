@@ -315,6 +315,20 @@ python3 scripts/code2database_builder.py daemon-reload \
 python3 scripts/code2database_builder.py daemon-list-projects
 ```
 
+## 健康报告
+
+### `doctor`
+
+一键组件健康报告：SQLite 完整性与外键、schema 版本与运行代码的比对、图谱内容计数、源码新鲜度、记忆库、知识简报、daemon 存活。`--json` 输出机器可读文档；退出码可脚本化（0 = 干净，1 = 有警告，2 = 有失败），适合作为 CI 或部署冒烟检查的探针。
+
+```bash
+python3 scripts/code2database_builder.py doctor \
+  --graph code2db-out/
+
+# 机器可读，用于 CI 门禁与告警
+python3 scripts/code2database_builder.py doctor --graph code2db-out/ --json
+```
+
 ## 保持图谱新鲜
 
 ### `watch`

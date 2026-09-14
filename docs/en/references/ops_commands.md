@@ -315,6 +315,20 @@ List all projects with daemon state files.
 python3 scripts/code2database_builder.py daemon-list-projects
 ```
 
+## Health Report
+
+### `doctor`
+
+One-shot component health report: SQLite integrity and foreign keys, schema versions vs the running code, graph content counts, source freshness, memory store, knowledge brief, daemon liveness. `--json` emits a machine-readable document; the exit code is scriptable (0 = clean, 1 = warnings, 2 = failures), which makes it a natural probe for CI or deployment smoke checks.
+
+```bash
+python3 scripts/code2database_builder.py doctor \
+  --graph code2db-out/
+
+# machine-readable, for CI gates and alerting
+python3 scripts/code2database_builder.py doctor --graph code2db-out/ --json
+```
+
 ## Keep Graph Up to Date
 
 ### `watch`

@@ -867,9 +867,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## 完整 CLI 命令参考（260 个命令）
+## 完整 CLI 命令参考（261 个命令）
 
-全部 260 个 CLI 子命令，涵盖 `code2database_builder.py`（252 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
+全部 261 个 CLI 子命令，涵盖 `code2database_builder.py`（253 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
 
 | 命令 | 说明 |
 |------|------|
@@ -968,6 +968,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `doc-alignment-report` | Generate full Markdown report of doc-code alignment issues |
 | `doc-code-check` | Check doc-code alignment: detect mismatches between semantic_desc (from docs) and body_text (from code) |
 | `doc-mark-stale` | Mark a node's doc as stale (e.g., after code change detected by daemon) |
+| `doctor` | 一键健康报告：数据库完整性、schema 版本、内容、新鲜度、记忆库、简报、daemon（--json，退出码 0/1/2） |
 | `doc-signature-diff` | Detect signature changes between two graph versions (old vs new) |
 | `domain` | List all nodes/edges in a domain |
 | `edit-token` | Edit a token's spelling by token_id |

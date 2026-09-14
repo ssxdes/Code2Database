@@ -87,6 +87,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 | **Keep graph up to date** | `daemon-start` → `daemon-status` → `daemon-pause` / `daemon-resume` / `daemon-force-refresh` / `daemon-wait-sync` / `daemon-logs` / `daemon-reload` / `daemon-list-projects` → `daemon-stop` ; or `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes` ; precise per-file update: `build-update --source SRC --graph DIR` or `quick-update --source SRC --graph DIR` |
 | **Profile and doc-code** | `profile-health` → `profile-evolve` → `profile-bind-version` ; `doc-code-check` → `doc-alignment-report` → `doc-signature-diff` → `doc-mark-stale` |
 | **Graph versioning** | `graph-record-version` → `graph-history` → `graph-diff` |
+| **Health and integrity** | `doctor --graph DIR` (one-shot: db integrity, schema versions, freshness, memory, brief, daemon; `--json` + exit 0/1/2 for CI) |
 | **Memory management** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory` ; knowledge brief: `brief-extract` → `brief-validate` → `brief-suggest` → `brief-migrate-legacy` ; cross-project: `kb-global-share-memory` → `kb-global-search-memory` → `kb-global-import-memory` |
 | **Export / plugin / benchmark** | `export-html` / `export-obsidian` / `web-ui` ; `plugins` / `validate-plugin` ; `bug-benchmark` |
 | **Embeddings (experimental)** | `embeddings-build` → `embeddings-search` |

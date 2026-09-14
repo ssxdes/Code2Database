@@ -6,7 +6,7 @@ This file provides guidance to Claude Code when working with Code2Database.
 
 ## What This Is
 
-Code2Database scans C/C++/Go/Python/Java/Rust/ASM codebases into a queryable directed invocation graph — conditional paths, concurrency analysis, data flow, FFI tracing, commit provenance, and a dual knowledge/memory store. The one-shot lifecycle is the `c2d` umbrella: `c2d setup --source DIR` (ingest) → `c2d session` (context) → `c2d ask --question "..."` (read-only recipe) → `c2d capture` (save memory), plus `c2d freshen` (freshness routing) and `c2d report` (artifacts). `c2d recipes` lists the question→command routing table. The full surface — 260 CLI commands (252 builder + 8 scanner) and 83 MCP tools (36 `code2database_*` + 19 `cgdb_*` + 28 design-report) — stays available for direct use.
+Code2Database scans C/C++/Go/Python/Java/Rust/ASM codebases into a queryable directed invocation graph — conditional paths, concurrency analysis, data flow, FFI tracing, commit provenance, and a dual knowledge/memory store. The one-shot lifecycle is the `c2d` umbrella: `c2d setup --source DIR` (ingest) → `c2d session` (context) → `c2d ask --question "..."` (read-only recipe) → `c2d capture` (save memory), plus `c2d freshen` (freshness routing) and `c2d report` (artifacts). `c2d recipes` lists the question→command routing table. The full surface — 261 CLI commands (253 builder + 8 scanner) and 83 MCP tools (36 `code2database_*` + 19 `cgdb_*` + 28 design-report) — stays available for direct use.
 
 ## Where to Look
 

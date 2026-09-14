@@ -87,6 +87,7 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 | **保持图谱新鲜** | `daemon-start` → `daemon-status` → `daemon-pause` / `daemon-resume` / `daemon-force-refresh` / `daemon-wait-sync` / `daemon-logs` / `daemon-reload` / `daemon-list-projects` → `daemon-stop`；或 `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes`；精确按文件更新：`build-update --source SRC --graph DIR` 或 `quick-update --source SRC --graph DIR` |
 | **profile 与文档-代码** | `profile-health` → `profile-evolve` → `profile-bind-version`；`doc-code-check` → `doc-alignment-report` → `doc-signature-diff` → `doc-mark-stale` |
 | **图谱版本** | `graph-record-version` → `graph-history` → `graph-diff` |
+| **健康与完整性** | `doctor --graph DIR`（一键：数据库完整性、schema 版本、新鲜度、记忆库、简报、daemon；`--json` + 退出码 0/1/2 用于 CI） |
 | **记忆管理** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory`；知识简报：`brief-extract` → `brief-validate` → `brief-suggest` → `brief-migrate-legacy`；跨项目：`kb-global-share-memory` → `kb-global-search-memory` → `kb-global-import-memory` |
 | **导出 / 插件 / 基准** | `export-html` / `export-obsidian` / `web-ui`；`plugins` / `validate-plugin`；`bug-benchmark` |
 | **Embeddings（实验性）** | `embeddings-build` → `embeddings-search` |

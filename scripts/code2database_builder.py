@@ -2727,6 +2727,14 @@ def main():
                            help="List all projects with daemon state/log files on this machine")
     p_dlp.add_argument("--graph", default=".", help="Current graph dir (for state lookup)")
 
+    # ---- doctor — one-shot component health report ----
+    p_doctor = sub.add_parser("doctor",
+                              help="One-shot health report: db integrity, schema versions, "
+                                   "content, freshness, memory, brief, daemon")
+    p_doctor.add_argument("--graph", required=True, help="Call graph output directory")
+    p_doctor.add_argument("--json", action="store_true",
+                          help="Machine-readable output (scriptable; exit 0/1/2)")
+
     # ---- cgdb commands — direct cgdb table queries via SQLite ----
     p_cgq = sub.add_parser("cgdb-query",
                             help="Generic cgdb query: FTS5 symbol search or get_node by id")
@@ -3379,6 +3387,7 @@ def main():
         "cgdb-coverage": _lazy("_builder.cgdb.cgdb_commands", "cmd_cgdb_coverage"),
         "cgdb-write-coverage": _lazy("_builder.cgdb.cgdb_commands", "cmd_cgdb_write_coverage"),
         "ffi-persist": _lazy("_builder.misc.ffi_bridge", "cmd_ffi_persist"),
+        "doctor": _lazy("_builder.misc.doctor", "cmd_doctor"),
     }
     handler = commands.get(args.command)
     if handler is None:

@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "将代码库转为可查询的代码数据库。扫描一次，永久查询——不再需要 grep/glob/Read。C/C++/Go/Python/Java/Rust/ASM 调用图：条件路径、并发分析、数据流、FFI 追踪、19 个 cgdb 语义表。通过 c2d 总入口一键生命周期（setup → session → ask → capture）。83 个 MCP 工具 + 260 个 CLI 命令。当代码提问涉及结构、调用链、影响分析、并发或数据流时使用 /Code2Database。"
+description: "将代码库转为可查询的代码数据库。扫描一次，永久查询——不再需要 grep/glob/Read。C/C++/Go/Python/Java/Rust/ASM 调用图：条件路径、并发分析、数据流、FFI 追踪、19 个 cgdb 语义表。通过 c2d 总入口一键生命周期（setup → session → ask → capture）。83 个 MCP 工具 + 261 个 CLI 命令。当代码提问涉及结构、调用链、影响分析、并发或数据流时使用 /Code2Database。"
 trigger: /Code2Database
 ---
 
@@ -10,7 +10,7 @@ trigger: /Code2Database
 
 ## 一键式生命周期 — `c2d` 总入口
 
-不需要记住 260 个命令。一个命令覆盖完整工作流 — 只需掌握 4 个动词：
+不需要记住 261 个命令。一个命令覆盖完整工作流 — 只需掌握 4 个动词：
 
 | 动词 | 用途 | 示例 |
 |------|------|------|
@@ -91,7 +91,7 @@ python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_s
 
 别名：`describe`/`context` → describe-node、`trace` → trace-chain、`find` → find-invariants、`flow` → value-flow、`concurrency` → concurrency-risks、`save` → save-memory、`recall` → search-memory、`brief` → knowledge-brief、`health` → profile-health、`daemon` → daemon-status、`export` → export-mermaid。
 
-全部 260 个 CLI 命令仍可访问。
+全部 261 个 CLI 命令仍可访问。
 
 ## 支持语言
 

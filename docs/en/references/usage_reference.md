@@ -868,9 +868,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (260 commands)
+## Complete CLI Command Reference (261 commands)
 
-All 260 CLI subparsers across `code2database_builder.py` (252) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
+All 261 CLI subparsers across `code2database_builder.py` (253) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
 
 | Command | Description |
 |---------|-------------|
@@ -969,6 +969,7 @@ All 260 CLI subparsers across `code2database_builder.py` (252) and `code2databas
 | `doc-alignment-report` | Generate full Markdown report of doc-code alignment issues |
 | `doc-code-check` | Check doc-code alignment: detect mismatches between semantic_desc (from docs) and body_text (from code) |
 | `doc-mark-stale` | Mark a node's doc as stale (e.g., after code change detected by daemon) |
+| `doctor` | One-shot health report: db integrity, schema versions, content, freshness, memory, brief, daemon (--json, exit 0/1/2) |
 | `doc-signature-diff` | Detect signature changes between two graph versions (old vs new) |
 | `domain` | List all nodes/edges in a domain |
 | `edit-token` | Edit a token's spelling by token_id |

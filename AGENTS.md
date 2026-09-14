@@ -27,7 +27,7 @@ Full capability catalog with per-command detail: `docs/en/references/usage_refer
 
 ## Skill Structure (3 sub-skills)
 
-The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 252 subcommands + 8 scanner subcommands) is shared — all commands are accessible regardless of sub-skill activation.
+The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 253 subcommands + 8 scanner subcommands) is shared — all commands are accessible regardless of sub-skill activation.
 
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|

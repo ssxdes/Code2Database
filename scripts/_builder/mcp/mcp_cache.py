@@ -9,12 +9,17 @@ import atexit
 import threading
 import logging
 import math
+from collections import OrderedDict
 
 
-_GRAPH_CACHE = {}
+# Bounded LRU caches: a long-lived server (stdio MCP / HTTP) serving many
+# graph directories otherwise held every loaded graph forever.
+_MAX_CACHED_GRAPHS = 8
+_GRAPH_CACHE: "OrderedDict[str, object]" = OrderedDict()
 _GRAPH_CACHE_LOCK = threading.RLock()
 
-_CGDB_STORE_CACHE: dict = {}
+_MAX_CACHED_CGDB_STORES = 16
+_CGDB_STORE_CACHE: "OrderedDict[str, object]" = OrderedDict()
 _CGDB_STORE_CACHE_LOCK = threading.RLock()
 
 # Set to True by run_mcp_server / the HTTP server when started with
@@ -37,9 +42,18 @@ def _get_graph(graph_dir: str):
     """Get a cached graph instance, or load and cache a new one."""
     with _GRAPH_CACHE_LOCK:
         if graph_dir in _GRAPH_CACHE:
+            _GRAPH_CACHE.move_to_end(graph_dir)
             return _GRAPH_CACHE[graph_dir]
         from _builder.graph.graph_build import _load_full_graph
         G = _load_full_graph(graph_dir)
+        while len(_GRAPH_CACHE) >= _MAX_CACHED_GRAPHS:
+            _evict_dir, _evicted = _GRAPH_CACHE.popitem(last=False)
+            try:
+                close = getattr(_evicted, "close", None)
+                if callable(close):
+                    close()
+            except Exception:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
         _GRAPH_CACHE[graph_dir] = G
         return G
 
@@ -93,6 +107,7 @@ def _cgdb_store(graph_dir: str):
         if cached is not None:
             try:
                 cached._ensure_conn().execute("SELECT 1").fetchone()
+                _CGDB_STORE_CACHE.move_to_end(graph_dir)
                 return cached
             except sqlite3.Error:
                 _drop_cgdb_store(graph_dir)
@@ -101,6 +116,12 @@ def _cgdb_store(graph_dir: str):
             store = SQLiteCGDBStore(db_path)
             conn = store._ensure_conn()
             conn.execute("SELECT 1 FROM cgdb_nodes LIMIT 1").fetchone()
+            while len(_CGDB_STORE_CACHE) >= _MAX_CACHED_CGDB_STORES:
+                _evict_dir, _evicted = _CGDB_STORE_CACHE.popitem(last=False)
+                try:
+                    _evicted.close()
+                except Exception:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
             _CGDB_STORE_CACHE[graph_dir] = store
             return store
         except sqlite3.Error:

@@ -43,7 +43,10 @@ import logging
 
 
 # Per-graph-dir cache store. Each graph_dir has its own LRU + node-version map.
-_CACHES: Dict[str, "_GraphCache"] = {}
+# Bounded LRU: a long-lived process (MCP / HTTP server) serving many graph
+# directories otherwise grew without limit.
+_CACHES: "OrderedDict[str, _GraphCache]" = OrderedDict()
+_MAX_GRAPH_CACHES = 16
 _LOCK = threading.Lock()
 
 # Serializes the global sys.stdout swap in capture_stdout mode: two
@@ -77,19 +80,27 @@ class _GraphCache:
         self._lock = threading.Lock()
 
     def _graph_mtime(self) -> float:
-        """Return mtime of the graph SQLite file, or 0 if not found.
+        """Return the newest mtime among the graph store files, or 0.
 
-        We check `<graph_dir>/code2database.db` first,
-        then fall back to `<graph_dir>/callgraph.db` (legacy name).
+        We check `<graph_dir>/code2database.db` first, then fall back to
+        `<graph_dir>/callgraph.db` (legacy name). The WAL and SHM
+        sidecars are included: in WAL mode the main db's mtime only
+        advances at checkpoint time while writes keep landing in
+        `code2database.db-wal`, so checking just the main file let a
+        daemon-written WAL look "unchanged" until the TTL expired.
         """
-        for fname in ("code2database.db", "callgraph.db"):
+        newest = 0.0
+        for fname in ("code2database.db", "code2database.db-wal",
+                      "code2database.db-shm", "callgraph.db",
+                      "callgraph.db-wal", "callgraph.db-shm"):
             p = os.path.join(self.graph_dir, fname)
-            if os.path.exists(p):
-                try:
-                    return os.path.getmtime(p)
-                except OSError:
-                    return 0
-        return 0
+            try:
+                m = os.path.getmtime(p)
+            except OSError:
+                continue
+            if m > newest:
+                newest = m
+        return newest
 
     def get(self, key: str) -> Optional[Any]:
         """Return cached result if still valid, else None.
@@ -127,8 +138,13 @@ class _GraphCache:
                 return None
             # LRU touch
             self._entries.move_to_end(key)
-            # Return a copy: callers mutating a returned dict/list would
-            # otherwise poison the cached object for every other reader.
+            # Immutable scalars are safe to return as-is (deepcopying a
+            # large structure on every hit dominates hit latency);
+            # structured results are copied so a mutating caller cannot
+            # poison the cache for other readers.
+            if result is None or isinstance(
+                    result, (str, int, float, bool, bytes)):
+                return result
             try:
                 return copy.deepcopy(result)
             except Exception:
@@ -176,10 +192,17 @@ class _GraphCache:
 
 
 def _get_cache(graph_dir: str) -> _GraphCache:
-    """Get or create the cache for a graph directory."""
+    """Get or create the cache for a graph directory (bounded LRU)."""
     with _LOCK:
         if graph_dir not in _CACHES:
+            if len(_CACHES) >= _MAX_GRAPH_CACHES:
+                # Evict the least-recently-used graph dir — entries are
+                # pure caches, so the next query on that graph rebuilds.
+                _oldest = next(iter(_CACHES))
+                _CACHES.pop(_oldest, None)
             _CACHES[graph_dir] = _GraphCache(graph_dir)
+        else:
+            _CACHES.move_to_end(graph_dir)
         return _CACHES[graph_dir]
 
 

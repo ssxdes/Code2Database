@@ -933,11 +933,28 @@ class LazySQLiteGraph:
     def has_node(self, node_id: str) -> bool:
         return node_id in self
 
+    def _iter_locked(self, sql: str, params: tuple = (), batch: int = 5000):
+        """Iterate query rows with every fetch under the connection lock.
+
+        The shared ``check_same_thread=False`` connection serves
+        concurrent MCP/HTTP request threads; executing or fetching
+        outside the lock raced ``close()`` and interleaved cursor state.
+        Batching keeps the lock hold time bounded so iteration and
+        other readers stay responsive.
+        """
+        with self._lock:
+            cur = self._conn.execute(sql, params)
+        while True:
+            with self._lock:
+                rows = cur.fetchmany(batch)
+            if not rows:
+                return
+            yield from rows
+
     def __iter__(self):
         # Yield all node IDs. Without this, `for nid in G` falls back to
         # sequence protocol with int indices, which __getitem__ rejects.
-        cur = self._conn.execute("SELECT id FROM functions")
-        for row in cur:
+        for row in self._iter_locked("SELECT id FROM functions"):
             yield row[0]
 
     def __getitem__(self, key):
@@ -1079,9 +1096,10 @@ class LazySQLiteGraph:
         to avoid zlib.decompress cost on every node fetch.
         """
         import zlib
-        row = self._conn.execute(
-            "SELECT body_text_compressed FROM functions WHERE id=?",
-            (nid,)).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT body_text_compressed FROM functions WHERE id=?",
+                (nid,)).fetchone()
         if not row:
             return ""
         blob = row[0]
@@ -1151,10 +1169,8 @@ class LazySQLiteGraph:
         Used by split_by_domain to avoid multiple full traversals.
         """
         result = {}
-        cur = self._conn.execute(
-            "SELECT id, domain, extra_json FROM functions"
-        )
-        for row in cur:
+        for row in self._iter_locked(
+                "SELECT id, domain, extra_json FROM functions"):
             nid = row[0]
             domain = row[1] or "root"
             extra_raw = row[2]
@@ -1180,12 +1196,10 @@ class LazySQLiteGraph:
         in the returned dicts (use get_body_text() for lazy decompression).
         Returns {nid: ndata_dict}.
         """
-        cur = self._conn.execute(
-            "SELECT id, name, source_file, line_number, domain, labels, "
-            "signature, extra_json FROM functions"
-        )
         result = {}
-        for row in cur:
+        for row in self._iter_locked(
+                "SELECT id, name, source_file, line_number, domain, labels, "
+                "signature, extra_json FROM functions"):
             row_dict = dict(row)
             nid = row_dict.get("id", "")
             if nid:
@@ -1193,10 +1207,14 @@ class LazySQLiteGraph:
         return result
 
     def number_of_nodes(self) -> int:
-        return self._conn.execute("SELECT COUNT(*) FROM functions").fetchone()[0]
+        with self._lock:
+            return self._conn.execute(
+                "SELECT COUNT(*) FROM functions").fetchone()[0]
 
     def number_of_edges(self) -> int:
-        return self._conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+        with self._lock:
+            return self._conn.execute(
+                "SELECT COUNT(*) FROM edges").fetchone()[0]
 
     def degree(self, node_id: str) -> int:
         in_d = len(list(self.predecessors(node_id)))
@@ -1239,12 +1257,14 @@ class LazySQLiteGraph:
 
     def in_edges(self, node_id: str, data: bool = False):
         if data:
-            cur = self._conn.execute(
-                "SELECT invoker_id, invoked_id, call_order, call_condition, "
-                "concurrency, confidence, confidence_score, source, evidence, "
-                "relation FROM edges WHERE invoked_id=?", (node_id,))
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT invoker_id, invoked_id, call_order, call_condition, "
+                    "concurrency, confidence, confidence_score, source, evidence, "
+                    "relation FROM edges WHERE invoked_id=?",
+                    (node_id,)).fetchall()
             import json as _json
-            for row in cur:
+            for row in rows:
                 row_dict = dict(row)
                 evidence = []
                 ev_raw = row_dict.get("evidence")
@@ -1266,20 +1286,23 @@ class LazySQLiteGraph:
                 }
                 yield (row_dict["invoker_id"], row_dict["invoked_id"], attrs)
         else:
-            cur = self._conn.execute(
-                "SELECT invoker_id, invoked_id FROM edges WHERE invoked_id=?",
-                (node_id,))
-            for row in cur:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT invoker_id, invoked_id FROM edges WHERE invoked_id=?",
+                    (node_id,)).fetchall()
+            for row in rows:
                 yield (row[0], row[1])
 
     def out_edges(self, node_id: str, data: bool = False):
         if data:
-            cur = self._conn.execute(
-                "SELECT invoker_id, invoked_id, call_order, call_condition, "
-                "concurrency, confidence, confidence_score, source, evidence, "
-                "relation FROM edges WHERE invoker_id=?", (node_id,))
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT invoker_id, invoked_id, call_order, call_condition, "
+                    "concurrency, confidence, confidence_score, source, evidence, "
+                    "relation FROM edges WHERE invoker_id=?",
+                    (node_id,)).fetchall()
             import json as _json
-            for row in cur:
+            for row in rows:
                 row_dict = dict(row)
                 evidence = []
                 ev_raw = row_dict.get("evidence")
@@ -1301,10 +1324,11 @@ class LazySQLiteGraph:
                 }
                 yield (row_dict["invoker_id"], row_dict["invoked_id"], attrs)
         else:
-            cur = self._conn.execute(
-                "SELECT invoker_id, invoked_id FROM edges WHERE invoker_id=?",
-                (node_id,))
-            for row in cur:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT invoker_id, invoked_id FROM edges WHERE invoker_id=?",
+                    (node_id,)).fetchall()
+            for row in rows:
                 yield (row[0], row[1])
 
     def edges(self, data: bool = False):
@@ -1409,31 +1433,29 @@ class _LazyNodeView:
 
     def __call__(self, data: bool = False):
         if data:
-            # Single SELECT * — avoids N+1 query pattern. For 1.5M nodes,
+            # Single SELECT — avoids N+1 query pattern. For 1.5M nodes,
             # this is the difference between ~30s and >180s timeout.
             # Pre-filter at SQL level: skip nodes where extra_json indicates
             # is_empty=true or node_type=file (saves ~30-50% of rows on
             # kernel-scale graphs where many nodes are empty conditions or
             # file containers).
-            cur = self._graph._conn.execute(
-                "SELECT id, name, source_file, line_number, domain, labels, "
-                "signature, extra_json FROM functions "
-                "WHERE is_empty = 0 AND "
-                "(node_type IS NULL OR node_type = '' OR node_type != 'file')")
-            for row in cur:
+            for row in self._graph._iter_locked(
+                    "SELECT id, name, source_file, line_number, domain, labels, "
+                    "signature, extra_json FROM functions "
+                    "WHERE is_empty = 0 AND "
+                    "(node_type IS NULL OR node_type = '' OR node_type != 'file')"):
                 row_dict = dict(row)
                 nid = row_dict.get("id", "")
                 if not nid:
                     continue
                 yield (nid, self._graph._build_attrs_from_row(row_dict))
         else:
-            cur = self._graph._conn.execute("SELECT id FROM functions")
-            for row in cur:
+            for row in self._graph._iter_locked(
+                    "SELECT id FROM functions"):
                 yield row[0]
 
     def __iter__(self):
-        cur = self._graph._conn.execute("SELECT id FROM functions")
-        for row in cur:
+        for row in self._graph._iter_locked("SELECT id FROM functions"):
             yield row[0]
 
     def __len__(self):

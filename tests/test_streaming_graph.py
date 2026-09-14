@@ -338,5 +338,84 @@ class TestStreamingGraphRemoveEdge(unittest.TestCase):
         sg.close()
 
 
+class TestLazySQLiteGraphLockDiscipline(unittest.TestCase):
+    """Every connection access must go through the instance lock.
+
+    The shared check_same_thread=False connection serves concurrent
+    threads (MCP HTTP server); execute/fetch outside the lock raced
+    close() and interleaved cursors.
+    """
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        db_path = os.path.join(self._tmpdir, "code2database.db")
+        sg = StreamingGraph(db_path)
+        sg.add_node("func_a", name="func_a", source_file="test.c",
+                    line=10, domain="root", body_text="int a;")
+        sg.add_node("func_b", name="func_b", source_file="test.c",
+                    line=20, domain="root")
+        sg.add_edge("func_a", "func_b", call_order=0,
+                    edge_confidence="EXTRACTED")
+        sg.close()
+        self._g = LazySQLiteGraph(db_path)
+        self._g.__enter__()
+
+    def tearDown(self):
+        self._g.__exit__(None, None, None)
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _with_counting_lock(self):
+        """Swap in a lock that counts acquisitions."""
+        import threading
+        counts = {"n": 0}
+        inner = self._g._lock
+        outer = threading.RLock()
+
+        class _CountingLock:
+            def __enter__(self):
+                outer.acquire()
+                counts["n"] += 1
+                return self
+
+            def __exit__(self, *a):
+                outer.release()
+
+            def __getattr__(self, name):
+                return getattr(outer, name)
+
+        self._g._lock = _CountingLock()
+        return counts
+
+    def test_read_paths_acquire_the_lock(self):
+        counts = self._with_counting_lock()
+        list(iter(self._g))
+        self._g.number_of_nodes()
+        self._g.number_of_edges()
+        self._g.get_body_text("func_a")
+        list(self._g.nodes(data=True))
+        list(self._g.nodes(data=False))
+        list(self._g.in_edges("func_b", data=True))
+        list(self._g.in_edges("func_b", data=False))
+        list(self._g.out_edges("func_a", data=True))
+        list(self._g.out_edges("func_a", data=False))
+        self._g._query_node_domains()
+        self._g._nodes_data_for_split()
+        self.assertGreater(
+            counts["n"], 10,
+            "each read API must hold the lock while touching the "
+            "shared connection (acquired %d times)" % counts["n"])
+
+    def test_reads_still_return_correct_data(self):
+        self.assertEqual(self._g.number_of_nodes(), 2)
+        self.assertEqual(self._g.number_of_edges(), 1)
+        self.assertEqual(self._g.get_body_text("func_a"), "int a;")
+        nodes = dict(self._g.nodes(data=True))
+        self.assertEqual(set(nodes), {"func_a", "func_b"})
+        self.assertEqual(list(self._g.out_edges("func_a")),
+                         [("func_a", "func_b")])
+        self.assertEqual(list(self._g.in_edges("func_b")),
+                         [("func_a", "func_b")])
+
+
 if __name__ == "__main__":
     unittest.main()

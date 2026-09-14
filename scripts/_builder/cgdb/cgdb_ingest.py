@@ -199,6 +199,12 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
                     attrs={},
                 ))
                 node_type_id = new_type_id
+        # Convert sentinel type_id=0 (from clang_scanner add_type fallback) to
+        # None. cgdb_nodes.type_id has FOREIGN KEY → cgdb_types(id), and type
+        # IDs are hash-based (≥1), so id=0 never exists → FK violation at COMMIT
+        # when defer_foreign_keys=ON is used in bulk load.
+        if not node_type_id:
+            node_type_id = None
         node = NodeRecord(
             id=nid,
             kind=kind,

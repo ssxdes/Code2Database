@@ -1617,9 +1617,13 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             # 'unknown' in the schema but the dataclass defaults to None,
             # so coerce it here to avoid silently dropping the row.
             commit_hash = n.commit_hash if n.commit_hash else "unknown"
+            # Defensive: coerce type_id=0 (clang_scanner sentinel) to None.
+            # cgdb_nodes.type_id FK→cgdb_types(id), and type IDs are hash-based
+            # (≥1), so id=0 causes FK violation at COMMIT with defer_foreign_keys.
+            type_id = n.type_id if n.type_id else None
             rows.append((
                 n.id, n.kind, n.name, n.fqn, n.file_id, n.line, n.col,
-                n.byte_start, n.byte_end, n.type_spelling, n.type_id,
+                n.byte_start, n.byte_end, n.type_spelling, type_id,
                 n.config_predicate_id, n.enclosing_symbol_id,
                 signature, body_text, n.source_snippet,
                 json.dumps(n.attrs, ensure_ascii=False, default=str),

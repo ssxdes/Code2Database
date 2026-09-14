@@ -155,6 +155,13 @@ def patch_from_diff(graph_dir: str, diff_text: str, source_root: str = ""):
 
     G = _load_full_graph(graph_dir)
 
+    # patch-from-diff removes and adds nodes; on SQLite-backed large
+    # graphs _load_full_graph returns a read-only LazySQLiteGraph whose
+    # remove_node/add_node raise. Detect it early with the actionable
+    # message instead of a cryptic NotImplementedError mid-patch.
+    from _builder.utils import _ensure_mutable_graph
+    _ensure_mutable_graph(G, "patch-from-diff")
+
     # Track changes
     added_nodes = 0
     stale_nodes = 0
@@ -363,6 +370,13 @@ def light_scan(source_root: str, graph_dir: str, changed_files: list = None):
 
     # Load current graph
     G = _load_full_graph(graph_dir)
+
+    # light-scan merges scanned nodes into the loaded graph; on
+    # SQLite-backed large graphs that graph is a read-only
+    # LazySQLiteGraph. Exit with the actionable message before any
+    # scanning work happens (changelog-update routes through here too).
+    from _builder.utils import _ensure_mutable_graph
+    _ensure_mutable_graph(G, "light-scan (merge into existing graph)")
 
     # Scan each changed file
     added = 0

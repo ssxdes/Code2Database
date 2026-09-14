@@ -491,6 +491,10 @@ def cmd_add_semantic_edges(args):
     """Walk the graph and add ALLOCATES/FREES/LOCKS/UNLOCKS edges to function nodes."""
     from _builder.graph.graph_build import _load_full_graph, split_by_domain
     G = _load_full_graph(args.graph)
+    # add_semantic_edges_to_graph calls G.add_edge; on SQLite-backed
+    # large graphs G is a read-only LazySQLiteGraph and add_edge raises.
+    from _builder.utils import _ensure_mutable_graph
+    _ensure_mutable_graph(G, "add-semantic-edges")
     profile = None
     profile_path = os.path.join(args.graph, ".code2database_profile.json")
     if os.path.exists(profile_path):

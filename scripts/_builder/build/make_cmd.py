@@ -183,11 +183,15 @@ def decide_backend(requested, lang_counts, libclang, grammars_missing):
 
 
 def run_env_check(source, graph, backend_requested="auto",
-                  compile_commands="", workers=0, lang_requested="auto") -> dict:
+                  compile_commands="", workers=0, lang_requested="auto",
+                  create_dirs=True) -> dict:
     """Phase 1: validate everything the full pipeline will need, up front.
 
     Pure checks only — no subprocess is started, nothing is written.
     Returns a report dict; rep['ok'] is False iff hard errors were found.
+    With ``create_dirs=False`` (the ``--check`` dry-run), the graph
+    directory is not created — writability is verified against the
+    closest existing ancestor instead.
     """
     rep = {
         "ok": False,
@@ -263,10 +267,23 @@ def run_env_check(source, graph, backend_requested="auto",
     # Graph dir creatable + writable (this is where extraction.json lands)
     rep["extraction_path"] = os.path.join(rep["graph"], "extraction.json")
     try:
-        os.makedirs(rep["graph"], exist_ok=True)
+        if create_dirs:
+            os.makedirs(rep["graph"], exist_ok=True)
         if not os.access(rep["graph"], os.W_OK):
-            rep["errors"].append("graph directory not writable: %s"
-                                 % rep["graph"])
+            if os.path.isdir(rep["graph"]):
+                rep["errors"].append("graph directory not writable: %s"
+                                     % rep["graph"])
+            else:
+                # Check-only mode: the dir is intentionally not created;
+                # verify the closest existing ancestor is writable so the
+                # creation would succeed.
+                _ancestor = os.path.dirname(
+                    os.path.abspath(rep["graph"]))
+                while _ancestor and not os.path.isdir(_ancestor):
+                    _ancestor = os.path.dirname(_ancestor)
+                if not _ancestor or not os.access(_ancestor, os.W_OK):
+                    rep["errors"].append("graph directory not writable: %s"
+                                         % rep["graph"])
     except OSError as e:
         rep["errors"].append("cannot create graph directory %s: %s"
                              % (rep["graph"], e))
@@ -737,6 +754,7 @@ def cmd_make(args):
         compile_commands=getattr(args, "compile_commands", ""),
         workers=getattr(args, "workers", 0),
         lang_requested=getattr(args, "lang", "auto"),
+        create_dirs=not getattr(args, "check", False),
     )
     print_env_check_report(rep)
     if not rep["ok"]:

@@ -298,6 +298,16 @@ class TestCmdMake(unittest.TestCase):
         idx = build_cmd.index("--profile")
         self.assertEqual(build_cmd[idx + 1], user_profile)
 
+    def test_check_creates_no_directories(self):
+        """--check is a dry-run: the graph directory must not appear."""
+        self._patch_env()
+        with mock.patch.object(
+                make_cmd.subprocess, "run",
+                side_effect=lambda c: SimpleNamespace(returncode=0)):
+            self._run({"check": True})
+        self.assertFalse(os.path.exists(self.graph),
+                         "env check must not create the graph directory")
+
     def test_check_runs_no_subprocess(self):
         self._patch_env()
         calls = []

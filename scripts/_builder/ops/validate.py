@@ -644,6 +644,8 @@ def validate_struct_embeddings(master: dict, result: ValidationResult,
         struct_types_in_graph = set()
         for e in cross:
             evidence = e.get("evidence", "")
+            if not isinstance(evidence, str):
+                evidence = json.dumps(evidence) if isinstance(evidence, (list, dict)) else str(evidence)
             # Extract struct_type from vtable_dispatch evidence
             m = re.match(r'vtable_dispatch:\s*(\w+)\.', evidence)
             if m:
@@ -652,6 +654,8 @@ def validate_struct_embeddings(master: dict, result: ValidationResult,
         # Also extract from field_dispatch evidence
         for e in cross:
             evidence = e.get("evidence", "")
+            if not isinstance(evidence, str):
+                evidence = json.dumps(evidence) if isinstance(evidence, (list, dict)) else str(evidence)
             m = re.match(r'field_dispatch:\s*(\w+)\.', evidence)
             if m:
                 struct_types_in_graph.add(m.group(1))

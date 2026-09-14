@@ -324,7 +324,8 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
         if not edata.get("preproc_alive", True):
             edge_record["preproc_alive"] = False
         if edata.get("evidence"):
-            edge_record["evidence"] = edata["evidence"]
+            _ev = edata["evidence"]
+            edge_record["evidence"] = _ev if isinstance(_ev, str) else json.dumps(_ev, ensure_ascii=False)
 
         # Track edge types for master summary (before classification)
         _concurrency = edata.get("concurrency", "") or ""

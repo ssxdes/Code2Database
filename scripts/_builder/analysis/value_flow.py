@@ -40,6 +40,8 @@ from collections import deque
 from typing import Optional, List, Dict, Any, Set, Tuple
 import logging
 
+from _builder.utils import _ensure_mutable_graph
+
 
 # ---------------------------------------------------------------------------
 # Return-value extraction (lightweight, regex-based)
@@ -276,6 +278,8 @@ def attach_data_flow_to_graph(G, edges: List[Dict]):
     corrupt the persisted file and crash every subsequent reverse/
     taint/interprocedural query with KeyError.
     """
+    # Guard against LazySQLiteGraph (large projects) — add_edge is not supported.
+    _ensure_mutable_graph(G, "value-flow --build")
     for e in edges:
         caller = e.get("caller", "")
         callee = e.get("callee", "")
@@ -710,13 +714,18 @@ def cmd_value_flow(args):
 
     if getattr(args, "build", False):
         edges = build_data_flow_edges(G)
-        attach_data_flow_to_graph(G, edges)
+        # Persist FIRST, then attach to graph — on LazySQLiteGraph (large
+        # projects), attach_data_flow_to_graph raises NotImplementedError
+        # because G.add_edge is not supported.  If we attach before dumping,
+        # the crash eats the already-computed edges and the artifact is lost.
         out_path = os.path.join(graph_dir, ".code2database_data_flow.json")
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump({"edges": edges, "count": len(edges)}, f,
                       ensure_ascii=False, indent=2)
         print(f"Built {len(edges)} DATA_FLOW/RETURN_FLOW edges → {out_path}",
               file=sys.stderr)
+        # Attach to in-memory graph (best-effort; skipped on LazySQLiteGraph)
+        attach_data_flow_to_graph(G, edges)
         return
 
     # For reverse/taint/interprocedural traces, ensure DATA_FLOW edges are

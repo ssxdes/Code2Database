@@ -146,7 +146,10 @@ def cmd_graph_provenance(args):
     """Show which commit the current graph corresponds to.
 
     Usage: graph-provenance
-    Returns: the source_commit from .code2database_manifest.json.
+    Returns: the source_commit from .code2database_manifest.json plus the
+    provenance stamped into the DB meta table (when the graph is
+    SQLite-backed): when it was produced, by which tool version, via
+    which path (build / per-file-sync) and with what content sizes.
 
     Engineer question: "Does this graph correspond to main HEAD or my
     feature branch?" This reads manifest.source_commit, not the database
@@ -170,13 +173,25 @@ def cmd_graph_provenance(args):
               file=sys.stderr)
         sys.exit(1)
 
+    try:
+        from _builder.build.build_provenance import read_build_provenance
+        prov = read_build_provenance(graph_dir)
+    except Exception:
+        prov = {}
+
     result = {
         "source_root": manifest.get("source_root"),
         "source_commit": source_commit,
         "file_count": len(manifest.get("files", {})),
-        "build_timestamp": manifest.get("build_timestamp"),
+        "build_timestamp": (prov.get("build_timestamp")
+                            or manifest.get("build_timestamp")),
         "schema_version": manifest.get("schema_version"),
     }
+    if prov:
+        result["build_tool_version"] = prov.get("build_tool_version")
+        result["build_label"] = prov.get("build_label")
+        result["build_node_count"] = prov.get("build_node_count")
+        result["build_edge_count"] = prov.get("build_edge_count")
     _output_result(result, getattr(args, 'json', False))
 
 

@@ -5386,6 +5386,15 @@ def cmd_build(args):
         # SQLite queries or the already-written JSON files instead of G.
         _node_count = G.number_of_nodes()
         _edge_count = G.number_of_edges()
+        # The DB must be self-describing: stamp when/by-which-version/
+        # against-which-commit it was produced (read back by graph-provenance).
+        try:
+            from _builder.build.build_provenance import stamp_build_provenance
+            stamp_build_provenance(outdir, label="build",
+                                   node_count=_node_count,
+                                   edge_count=_edge_count)
+        except Exception as _prov_exc:
+            print(f"[provenance] stamp skipped: {_prov_exc}", file=sys.stderr)
         del G
         gc.collect()
         if memory_guard:

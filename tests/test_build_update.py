@@ -142,6 +142,18 @@ class TestBuildUpdate(unittest.TestCase):
         out = proc.stdout
         return json.loads(out[out.index("{"):])
 
+    def test_build_stamps_db_provenance(self):
+        rows = dict(self._query("SELECT key, value FROM meta"))
+        # Earlier alphabetical tests may already have re-stamped via the
+        # per-file sync path, so the label is one of the producing paths.
+        self.assertIn(rows.get("build_label"), ("build", "per-file-sync"))
+        for key in ("build_timestamp", "build_tool_version",
+                    "build_source_commit", "build_node_count",
+                    "build_edge_count"):
+            self.assertIn(key, rows)
+        self.assertTrue(rows.get("build_timestamp", "").startswith("20"))
+        self.assertGreater(int(rows.get("build_node_count", "0")), 0)
+
     def test_modify_file_adds_and_removes_functions(self):
         self.assertIn("mul", self._func_names())
         math_c = os.path.join(self.source, "src/util/math.c")
@@ -173,6 +185,9 @@ class TestBuildUpdate(unittest.TestCase):
             "AND invoker_id LIKE 'file:%math.c'")[0][0]
         self.assertEqual(contains, 2,
                          "CONTAINS edges for add+sub must be re-created")
+        # The sync path must have re-stamped provenance with its label.
+        meta = dict(self._query("SELECT key, value FROM meta"))
+        self.assertEqual(meta.get("build_label"), "per-file-sync")
 
     def test_add_then_delete_file(self):
         _write(self.source, "src/util/extra.c", _EXTRA_C)

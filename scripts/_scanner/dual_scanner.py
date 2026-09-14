@@ -31,24 +31,45 @@ class DualBackendScanner(BaseScanner):
     cgdb_* lists. Both write into the same result dict on scan_file().
     """
 
+    # Configuration attributes that get_scanner() sets AFTER construction.
+    # These must propagate to the inner scanners so that scan_file() — which
+    # delegates to ts_scanner.scan_file() and clang_scanner.scan_file() —
+    # sees the configured values.  Without this, the DualBackendScanner
+    # wrapper holds the config but the inner scanners keep their defaults,
+    # silently dropping macro_dispatch, callback_patterns, struct_op_types,
+    # api_prefixes, and export_macros detection.
+    _SYNC_ATTRS = frozenset({
+        '_api_prefixes', '_export_macros', '_public_header_paths',
+        '_non_api_paths', '_callback_patterns', '_struct_op_types',
+        '_macro_dispatch_patterns', '_fn_ptr_call_require_evidence',
+        '_CALLBACK_SUFFIXES',
+    })
+
     def __init__(self, ts_scanner: BaseScanner, clang_scanner: BaseScanner):
-        self.ts_scanner = ts_scanner
-        self.clang_scanner = clang_scanner
-        # Inherit shared attributes from the tree-sitter scanner so the
-        # existing factory configuration (api_prefixes, callback_patterns,
-        # struct_op_types, macro_dispatch_patterns, etc.) flows through.
-        for attr in ('_api_prefixes', '_export_macros', '_public_header_paths',
-                     '_non_api_paths', '_callback_patterns', '_struct_op_types',
-                     '_macro_dispatch_patterns', '_fn_ptr_call_require_evidence',
-                     '_CALLBACK_SUFFIXES'):
+        # Set inner scanners first, then copy their current config values
+        # to self (so reads on the wrapper see the same defaults).  Later
+        # assignments via get_scanner() trigger __setattr__ which syncs
+        # back to the inner scanners.
+        self.__dict__['ts_scanner'] = ts_scanner
+        self.__dict__['clang_scanner'] = clang_scanner
+        for attr in self._SYNC_ATTRS:
             if hasattr(ts_scanner, attr):
-                setattr(self, attr, getattr(ts_scanner, attr))
+                self.__dict__[attr] = getattr(ts_scanner, attr)
         # Propagate configuration to the clang scanner too
         for attr in ('_api_prefixes', '_export_macros', '_callback_patterns',
                      '_struct_op_types', '_macro_dispatch_patterns',
                      '_non_api_paths', '_public_header_paths'):
             if hasattr(clang_scanner, attr) and hasattr(self, attr):
                 setattr(clang_scanner, attr, getattr(self, attr))
+
+    def __setattr__(self, name, value):
+        """Sync configuration attributes to inner scanners."""
+        super().__setattr__(name, value)
+        if name in self._SYNC_ATTRS:
+            if hasattr(self, 'ts_scanner') and hasattr(self.ts_scanner, name):
+                setattr(self.ts_scanner, name, value)
+            if hasattr(self, 'clang_scanner') and hasattr(self.clang_scanner, name):
+                setattr(self.clang_scanner, name, value)
 
     def _parse(self, source_bytes: bytes):
         """Delegate to tree-sitter scanner's _parse (used by BaseScanner.scan_file

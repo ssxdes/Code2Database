@@ -913,14 +913,27 @@ def _resolve_or_create_symbol(conn, symbol_id: str, default_kind: str = "functio
         # every placeholder insert fail the FK check and persist skipped
         # all edges. Ensure the initial version row exists (idempotent,
         # mirrors what SQLiteCGDBStore.connect does for cgdb builds).
-        conn.execute(
-            "INSERT OR IGNORE INTO graph_versions "
-            "(version_id, commit_hash, compiled_at) VALUES (1, 'initial', 0)")
+        # Query the current version_id instead of hardcoding 1, so the
+        # placeholder references the right version when the DB already has
+        # version rows > 1.
+        row = conn.execute(
+            "SELECT version_id FROM graph_versions ORDER BY version_id DESC LIMIT 1"
+        ).fetchone()
+        if row:
+            version_id = row[0]
+        else:
+            conn.execute(
+                "INSERT INTO graph_versions "
+                "(version_id, commit_hash, compiled_at) VALUES (1, 'initial', 0)"
+            )
+            conn.commit()
+            version_id = 1
         cur = conn.execute(
             "INSERT INTO cgdb_nodes (kind, name, fqn, line, source_layer, confidence, "
             "first_seen_version, last_seen_version, commit_hash, attrs) "
-            "VALUES (?, ?, ?, ?, 'analysis', 0.5, 1, 1, 'ffi-detector', ?)",
+            "VALUES (?, ?, ?, ?, 'analysis', 0.5, ?, ?, 'ffi-detector', ?)",
             (default_kind, func_name or symbol_id, symbol_id, default_line,
+             version_id, version_id,
              json.dumps({"ffi_placeholder": True, "source_symbol_id": symbol_id}))
         )
         return cur.lastrowid

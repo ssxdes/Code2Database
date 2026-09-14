@@ -1392,6 +1392,10 @@ class MemoryStore:
            their variants re-point at the canonical. merge-on-add only
            catches NEW entries; roots created via no_merge, threshold
            misses, or by different authors otherwise duplicate forever.
+           NOTE: candidates are compared against the canonical entry
+           ONLY (star clustering). Two members of the same group are
+           each similar to the canonical but not necessarily to each
+           other — that is the intended grouping semantics.
         2. Orphan variants: active variants whose root is no longer
            active follow the merged_into chain to a live root (or
            become their own root).

@@ -445,7 +445,9 @@ class BaseScanner(ABC):
                 import_edges = []
         elif len(extract_result) == 4:
             functions, edges, extra, fn_ptr_calls_dict = extract_result
-            # fn_ptr_calls_dict is a dict keyed by invoker_id with lists of fn_ptr_call entries
+            # fn_ptr_calls_dict is a dict keyed by the CALLER FUNCTION
+            # NAME (the builder resolves names via its _name_to_nid index)
+            # with lists of fn_ptr_call entries
             fn_ptr_calls = fn_ptr_calls_dict if isinstance(fn_ptr_calls_dict, dict) else {}
             if extra and isinstance(extra, list) and extra and extra[0].get("relation") == "IMPORTS":
                 import_edges = extra

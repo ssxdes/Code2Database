@@ -1,5 +1,6 @@
 """Tests for make — one-click env-check + build orchestration."""
 import argparse
+import json
 import os
 import sys
 import tempfile
@@ -255,6 +256,47 @@ class TestCmdMake(unittest.TestCase):
         patcher_mod.start()
         self.addCleanup(patcher_lib.stop)
         self.addCleanup(patcher_mod.stop)
+
+    def test_auto_profile_forwarded_to_build(self):
+        """make without --profile must hand the scan's auto-profile to build.
+
+        The scan ran --auto-profile and wrote .code2database_profile.json
+        next to the source, but the build step never saw it — every
+        profile-driven build feature silently missed the run.
+        """
+        self._patch_env()
+        profile = os.path.join(self.source, ".code2database_profile.json")
+        with open(profile, "w") as f:
+            json.dump({"version": 1}, f)
+        calls = []
+        with mock.patch.object(
+                make_cmd.subprocess, "run",
+                side_effect=lambda c: calls.append(c) or SimpleNamespace(returncode=0)):
+            self._run({"serial_derived": True})
+        self.assertGreaterEqual(len(calls), 2)
+        build_cmd = calls[1]
+        self.assertIn("--profile", build_cmd)
+        idx = build_cmd.index("--profile")
+        self.assertEqual(build_cmd[idx + 1], profile)
+
+    def test_explicit_profile_not_duplicated(self):
+        """A user-provided --profile is forwarded as-is (no auto-append)."""
+        self._patch_env()
+        profile = os.path.join(self.source, ".code2database_profile.json")
+        with open(profile, "w") as f:
+            json.dump({"version": 1}, f)
+        user_profile = os.path.join(self._tmp, "user.json")
+        with open(user_profile, "w") as f:
+            json.dump({"version": 1}, f)
+        calls = []
+        with mock.patch.object(
+                make_cmd.subprocess, "run",
+                side_effect=lambda c: calls.append(c) or SimpleNamespace(returncode=0)):
+            self._run({"serial_derived": True, "profile": user_profile})
+        build_cmd = calls[1]
+        self.assertEqual(build_cmd.count("--profile"), 1)
+        idx = build_cmd.index("--profile")
+        self.assertEqual(build_cmd[idx + 1], user_profile)
 
     def test_check_runs_no_subprocess(self):
         self._patch_env()

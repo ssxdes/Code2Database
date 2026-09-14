@@ -3854,6 +3854,18 @@ def cmd_build(args):
     tracker.begin("load_profile")
     builder_profile = None
     profile_path = getattr(args, 'profile', None)
+    if not profile_path:
+        # Auto-discover the profile the scanner's --auto-profile stage
+        # writes next to the source, so the build inherits the detected
+        # callback patterns / prefixes even when no --profile was
+        # forwarded (direct `build` runs after a scan; make hands the
+        # path over explicitly after the scan step).
+        _src_root = data.get("source_root") if isinstance(data, dict) else None
+        if _src_root:
+            _auto_profile = os.path.join(
+                _src_root, ".code2database_profile.json")
+            if os.path.isfile(_auto_profile):
+                profile_path = _auto_profile
     if profile_path:
         from _profile import ProfileSchema
         p = ProfileSchema.load(profile_path)

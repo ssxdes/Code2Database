@@ -145,5 +145,74 @@ class TestJsonUpdateEdgeDelegatesToSqlite(unittest.TestCase):
                 conn.close()
 
 
+class TestApplyInvariantsOnLazyGraph(unittest.TestCase):
+    def test_invariants_persisted_to_extra_json_and_domain_files(self):
+        import sqlite3
+        from _builder.analysis.invariants import cmd_apply_invariants
+        with tempfile.TemporaryDirectory() as d:
+            db = _make_lazy_graph_dir(d, funcs=2)
+            inv_path = os.path.join(d, ".code2database_invariants.json")
+            with open(inv_path, "w", encoding="utf-8") as f:
+                json.dump({"invariants": {
+                    "n0": {"preconditions": [
+                        {"condition": "ctx != NULL", "confidence": "EXTRACTED"}
+                    ]}
+                }}, f)
+            cmd_apply_invariants(SimpleNamespace(graph=d, input=""))
+            conn = sqlite3.connect(db)
+            try:
+                extra = json.loads(conn.execute(
+                    "SELECT extra_json FROM functions WHERE id='n0'")
+                    .fetchone()[0])
+                self.assertEqual(
+                    extra["preconditions"][0]["condition"], "ctx != NULL")
+                self.assertIn("_invariant_meta", extra)
+            finally:
+                conn.close()
+            # The split wrote the invariants into the domain JSON too
+            # (fetched back from SQLite, not from the lost cache).
+            found = False
+            for root, _dirs, files in os.walk(d):
+                for fn in files:
+                    if fn.startswith("code2database_domain_"):
+                        data = json.load(
+                            open(os.path.join(root, fn), encoding="utf-8"))
+                        details = data.get("function_details", {})
+                        if "n0" in details and \
+                                "preconditions" in details["n0"]:
+                            found = True
+            self.assertTrue(found)
+
+
+class TestInvariantsJsonRoundTrip(unittest.TestCase):
+    """extract-invariants --apply / apply-invariants on a normal JSON
+    graph: attach writes onto nodes, split_by_domain serializes them,
+    and a reload restores them (previously the split dropped them)."""
+
+    def test_apply_then_reload_keeps_invariants(self):
+        import networkx as nx
+        from _builder.graph.domain_split import split_by_domain
+        from _builder.analysis.invariants import attach_invariants_to_graph
+        from _builder.graph.graph_build import _load_full_graph
+        with tempfile.TemporaryDirectory() as d:
+            G = nx.DiGraph()
+            G.add_node("n0", name="fn0", domain="root", source_file="a.c",
+                       line=1, labels=[])
+            G.add_node("n1", name="fn1", domain="root", source_file="a.c",
+                       line=2, labels=[])
+            attach_invariants_to_graph(G, {
+                "n0": {"preconditions": [
+                    {"condition": "ctx != NULL", "confidence": "EXTRACTED"}
+                ]}
+            })
+            split_by_domain(G, d, "")
+            G2 = _load_full_graph(d)
+            self.assertEqual(
+                G2.nodes["n0"]["preconditions"][0]["condition"],
+                "ctx != NULL")
+            self.assertIn("_invariant_meta", G2.nodes["n0"])
+            self.assertNotIn("preconditions", G2.nodes["n1"])
+
+
 if __name__ == "__main__":
     unittest.main()

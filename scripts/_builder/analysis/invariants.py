@@ -649,6 +649,11 @@ def cmd_extract_invariants(args):
 
     if getattr(args, "apply", False):
         attach_invariants_to_graph(G, invariants)
+        # SQLite-backed large graphs: persist to functions.extra_json
+        # (the split re-reads from SQLite and would drop cache-only
+        # writes). Same helper cmd_apply_invariants uses.
+        if type(G).__name__ == "LazySQLiteGraph":
+            _persist_invariants_to_sqlite(G, graph_dir, invariants)
         # Write back via split_by_domain
         try:
             from _builder.graph.graph_build import split_by_domain
@@ -736,6 +741,16 @@ def cmd_apply_invariants(args):
 
     attach_invariants_to_graph(G, invariants)
     master_path = os.path.join(graph_dir, "code2database_master.json")
+
+    # SQLite-backed large graphs load as a read-only LazySQLiteGraph:
+    # attach_invariants_to_graph wrote into LRU cache dicts that
+    # split_by_domain never reads back (it re-fetches from SQLite), so
+    # the invariants would be silently lost. Persist them to
+    # functions.extra_json — the authoritative backend — and let the
+    # JSON domain files pick them up from there during the split.
+    if type(G).__name__ == "LazySQLiteGraph":
+        _persist_invariants_to_sqlite(G, graph_dir, invariants)
+
     if os.path.exists(master_path):
         with open(master_path) as _f:
             master = json.load(_f)
@@ -743,6 +758,40 @@ def cmd_apply_invariants(args):
         split_by_domain(G, graph_dir, source_root)
 
     print(f"Applied invariants to {len(invariants)} nodes")
+
+
+_INVARIANT_DETAIL_KEYS = ("preconditions", "postconditions",
+                          "loop_invariants", "state_machine",
+                          "_invariant_meta")
+
+
+def _persist_invariants_to_sqlite(G, graph_dir: str, invariants: dict):
+    """Write attached invariants for the touched nodes into
+    functions.extra_json (merging with what is already stored)."""
+    conn = G._conn
+    for nid in invariants:
+        if nid not in G:
+            continue
+        row = conn.execute(
+            "SELECT extra_json FROM functions WHERE id=?", (nid,)).fetchone()
+        if not row:
+            continue
+        extra = {}
+        if row[0]:
+            try:
+                extra = json.loads(row[0])
+            except (json.JSONDecodeError, TypeError):
+                extra = {}
+        # attach_invariants_to_graph already merged into the node's
+        # cached attrs dict; read the merged values back from it.
+        nd = G.nodes[nid]
+        for key in _INVARIANT_DETAIL_KEYS:
+            if key in nd:
+                extra[key] = nd[key]
+        conn.execute(
+            "UPDATE functions SET extra_json=? WHERE id=?",
+            (json.dumps(extra, ensure_ascii=False), nid))
+    conn.commit()
 
 
 def _load_full_graph_local(graph_dir):

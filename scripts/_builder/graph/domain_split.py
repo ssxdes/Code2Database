@@ -519,6 +519,18 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
             supp_meta = ndata.get("_supplement_meta")
             if supp_meta:
                 details["_supplement_meta"] = supp_meta
+            # Invariants (extract-invariants --apply / apply-invariants
+            # write them onto the nodes). Without these keys the JSON
+            # backend silently dropped them: the split rewrite lost
+            # everything attach had written.
+            for inv_key in ("preconditions", "postconditions",
+                            "loop_invariants"):
+                if ndata.get(inv_key):
+                    details[inv_key] = ndata[inv_key]
+            if ndata.get("state_machine"):
+                details["state_machine"] = ndata["state_machine"]
+            if ndata.get("_invariant_meta"):
+                details["_invariant_meta"] = ndata["_invariant_meta"]
             # Write-side lifecycle flags. Without these keys the JSON
             # backend silently dropped them: doc-mark-stale reported
             # ok:true but the marker never survived the split rewrite,

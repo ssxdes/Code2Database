@@ -219,6 +219,13 @@ def _load_full_graph(graph_dir: str) -> nx.DiGraph:
                             G.nodes[nid][base_key] = v
                 if details.get("_supplement_meta"):
                     G.nodes[nid]["_supplement_meta"] = details["_supplement_meta"]
+                # Restore invariants (mirrors the serialization in
+                # domain_split.split_by_domain).
+                for inv_key in ("preconditions", "postconditions",
+                                "loop_invariants", "state_machine",
+                                "_invariant_meta"):
+                    if details.get(inv_key):
+                        G.nodes[nid][inv_key] = details[inv_key]
                 # Restore write-side lifecycle flags (mirrors the
                 # serialization in domain_split.split_by_domain).
                 if details.get("stale"):

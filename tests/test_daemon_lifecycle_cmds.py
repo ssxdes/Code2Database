@@ -456,6 +456,7 @@ class TestForeignSyncWriteLock(unittest.TestCase):
         import _builder.ops.transactions as tx
         calls = []
         _orig_sync = cf.sync_foreign
+        _orig_wl = tx.write_lock
 
         def _sync(graph_dir, verbose=False):
             calls.append(graph_dir)
@@ -470,6 +471,7 @@ class TestForeignSyncWriteLock(unittest.TestCase):
             self._run()
         finally:
             cf.sync_foreign = _orig_sync
+            tx.write_lock = _orig_wl
         self.assertEqual(calls, [], "a busy lock must skip the sync")
         self.assertTrue(any("write lock busy" in m for m in self.fake.logs),
                         "the skip must be logged, got %s" % self.fake.logs)

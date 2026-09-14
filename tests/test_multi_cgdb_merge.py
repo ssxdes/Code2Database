@@ -80,7 +80,10 @@ class TestMergeProjectData(unittest.TestCase):
         _merge_project_data(joint, data, "projA")
         self.assertEqual(len(joint["functions"]), 2)
         self.assertEqual(len(joint["edges"]), 1)
-        self.assertEqual(joint["globals"], {"projA.global_vars": ["g_projA"]})
+        # Bare category key — graph_build/state_access read
+        # globals["global_vars"]; the prefixed form was invisible to
+        # them (every joint build silently lost its globals).
+        self.assertEqual(joint["globals"], {"global_vars": ["g_projA"]})
         self.assertEqual(joint["vtables"], [{"struct": "ops_projA"}])
         self.assertEqual(joint["imports"], ["import_projA"])
         # cgdb_* keys must all be merged, not just the big three
@@ -101,9 +104,9 @@ class TestMergeProjectData(unittest.TestCase):
         self.assertEqual(len(joint["functions"]), 5)
         self.assertEqual(len(joint["cgdb_nodes"]), 5)
         self.assertEqual(len(joint["cgdb_edges"]), 3)
-        # globals keys are namespaced per project — no clobbering
-        self.assertIn("projA.global_vars", joint["globals"])
-        self.assertIn("projB.global_vars", joint["globals"])
+        # globals category lists append per project — no clobbering
+        self.assertEqual(joint["globals"]["global_vars"],
+                         ["g_projA", "g_projB"])
 
     def test_project_without_cgdb_keys_is_fine(self):
         from _builder.build.build_multi import _merge_project_data
@@ -171,9 +174,8 @@ class TestBuildMultiCgdbMerge(unittest.TestCase):
         self.assertEqual(capture.get("cgdb_conditions"),
                          [{"text": "defined(CONFIG_projA)"},
                           {"text": "defined(CONFIG_projB)"}])
-        self.assertIn("projA.global_vars",
-                      capture.get("globals", {}))
-        self.assertIn("projB.global_vars", capture.get("globals", {}))
+        self.assertEqual(capture.get("globals", {}).get("global_vars"),
+                         ["g_projA", "g_projB"])
 
 
 if __name__ == "__main__":

@@ -96,6 +96,29 @@ class TestBriefIO(unittest.TestCase):
         self.assertEqual(loaded["schema_version"], 1)
         self.assertTrue(loaded["updated_at"])
 
+    def test_save_brief_warns_when_oversized(self):
+        """An over-budget brief must warn at write time, not only at
+        validate time."""
+        brief = {"project": "Big", "one_liner": "x",
+                 "description": "d" * 9000, "hard_rules": [],
+                 "modes": [], "key_abstractions": [], "conventions": [],
+                 "pitfalls": [], "query_paths": [], "must_know": "",
+                 "graph_stats": {}}
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            save_brief(self.graph_dir, brief)
+        self.assertIn("brief.json is", buf.getvalue())
+        self.assertIn("knowledge must stay lean", buf.getvalue())
+        # A lean brief writes silently.
+        lean = {"project": "Lean", "one_liner": "x",
+                "description": "d", "hard_rules": [], "modes": [],
+                "key_abstractions": [], "conventions": [], "pitfalls": [],
+                "query_paths": [], "must_know": "", "graph_stats": {}}
+        buf2 = io.StringIO()
+        with redirect_stderr(buf2):
+            save_brief(self.graph_dir, lean)
+        self.assertEqual(buf2.getvalue(), "")
+
     def test_save_brief_syncs_kb_paragraphs(self):
         """save_brief must sync the brief content
         to kb_paragraphs so kb-query / describe-node see the new knowledge

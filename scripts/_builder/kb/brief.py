@@ -104,11 +104,19 @@ def save_brief(graph_dir: str, brief: dict) -> str:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     brief["schema_version"] = BRIEF_SCHEMA_VERSION
     brief["updated_at"] = datetime.now().isoformat()
+    _text = json.dumps(brief, ensure_ascii=False, indent=2) + "\n"
     tmp = path + ".tmp." + str(os.getpid())
-    Path(tmp).write_text(
-        json.dumps(brief, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8")
+    Path(tmp).write_text(_text, encoding="utf-8")
     os.replace(tmp, path)
+    # The size budget is a render-time check in validate_brief; surface
+    # an early warning here so an oversized write is visible immediately
+    # instead of only when someone happens to run validate-brief.
+    _n_chars = len(_text)
+    if _n_chars > SIZE_ERROR_CHARS:
+        print(f"[brief] WARNING: brief.json is {_n_chars} chars "
+              f"(> {SIZE_ERROR_CHARS}) — knowledge must stay lean; run "
+              f"validate-brief and move overflow into memory",
+              file=sys.stderr)
     # Best-effort kb_index sync — failure here is logged but doesn't
     # fail the brief write (the file IS the source of truth; a later
     # kb-rebuild-index would catch up).

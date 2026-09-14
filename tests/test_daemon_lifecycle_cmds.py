@@ -373,5 +373,91 @@ class TestDaemonStopSubprocess(unittest.TestCase):
         self.assertFalse(json.loads(out)["running"])
 
 
+class TestForeignSyncWriteLock(unittest.TestCase):
+    """The daemon's foreign-ref sync must hold the graph write lock."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="c2d_fsync_lock_")
+        self.graph_dir = os.path.join(self.tmpdir, "graph")
+        os.makedirs(self.graph_dir)
+        import threading
+        self.lock = threading.Lock()
+
+        class _FakeDaemon:
+            def __init__(self, graph_dir, lock):
+                self.graph_dir = graph_dir
+                self._foreign_sync_lock = lock
+                self._last_foreign_sync_ts = 0
+                self.logs = []
+
+            def _log(self, msg):
+                self.logs.append(msg)
+
+        self.fake = _FakeDaemon(self.graph_dir, self.lock)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _run(self):
+        from _builder.daemon.daemon import Daemon
+        Daemon._sync_foreign_refs_after_local_update(self.fake)
+        return self.fake
+
+    def test_sync_runs_under_the_write_lock(self):
+        import _builder.scanner_bridge.c2d_foreign as cf
+        import _builder.ops.transactions as tx
+        calls = []
+        lock_held = {"v": False}
+        _orig_sync = cf.sync_foreign
+        _orig_tx_wl = tx.write_lock
+
+        class _RecordingLock:
+            def __enter__(self):
+                lock_held["v"] = True
+                return self
+
+            def __exit__(self, *a):
+                lock_held["v"] = False
+
+        def _sync(graph_dir, verbose=False):
+            calls.append((graph_dir, lock_held["v"]))
+            return {"synced_c2ds": [{"status": "synced"}],
+                    "newly_resolved": 1, "deleted_marked": 0}
+
+        tx.write_lock = lambda gd, timeout=30.0: _RecordingLock()
+        cf.sync_foreign = _sync
+        try:
+            self._run()
+        finally:
+            cf.sync_foreign = _orig_sync
+            tx.write_lock = _orig_tx_wl
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(calls[0][1],
+                        "sync_foreign must run while the write lock is held")
+
+    def test_busy_lock_skips_and_logs(self):
+        import _builder.scanner_bridge.c2d_foreign as cf
+        import _builder.ops.transactions as tx
+        calls = []
+        _orig_sync = cf.sync_foreign
+
+        def _sync(graph_dir, verbose=False):
+            calls.append(graph_dir)
+            return {}
+
+        def _busy_lock(gd, timeout=30.0):
+            raise TimeoutError("busy")
+
+        tx.write_lock = _busy_lock
+        cf.sync_foreign = _sync
+        try:
+            self._run()
+        finally:
+            cf.sync_foreign = _orig_sync
+        self.assertEqual(calls, [], "a busy lock must skip the sync")
+        self.assertTrue(any("write lock busy" in m for m in self.fake.logs),
+                        "the skip must be logged, got %s" % self.fake.logs)
+
+
 if __name__ == "__main__":
     unittest.main()

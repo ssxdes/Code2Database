@@ -1651,8 +1651,19 @@ class Daemon:
                 return  # throttled
             self._last_foreign_sync_ts = now
         try:
+            from _builder.ops.transactions import write_lock
             from _builder.scanner_bridge.c2d_foreign import sync_foreign
-            summary = sync_foreign(self.graph_dir, verbose=False)
+            # sync_foreign writes foreign_refs/watched_c2ds from its own
+            # connection; take the same graph write lock the direct sync
+            # path uses so it cannot race a concurrent build_update.
+            # On timeout: best-effort semantics — log and let the next
+            # 60s cycle retry.
+            try:
+                with write_lock(self.graph_dir, timeout=30.0):
+                    summary = sync_foreign(self.graph_dir, verbose=False)
+            except TimeoutError:
+                self._log("foreign refs sync skipped: write lock busy")
+                return
             if summary.get("synced_c2ds"):
                 synced = [s for s in summary["synced_c2ds"]
                            if s.get("status") == "synced"]

@@ -3276,8 +3276,11 @@ def cmd_detect_changes(args):
 
 def main():
     check_python_version()
+    from _version import __version__
 
     parser = argparse.ArgumentParser(description="Multi-language code graph scanner")
+    parser.add_argument("--version", action="version",
+                        version=f"code2database_scanner {__version__}")
     sub = parser.add_subparsers(dest="command")
 
     p_scan = sub.add_parser("scan", help="Scan source files for invocation graph extraction")

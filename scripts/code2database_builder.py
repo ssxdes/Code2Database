@@ -11,7 +11,7 @@ import logging
 import os
 import sys
 
-__version__ = "1.3.0"
+from _version import __version__  # single version source (scripts/_version.py)
 
 # Ensure _vendor/networkx shim is found before the real networkx
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "_vendor"))

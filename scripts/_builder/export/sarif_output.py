@@ -12,9 +12,11 @@ import json
 import os
 from typing import Dict, List
 
+from _version import __version__ as _TOOL_VERSION
+
 
 def results_to_sarif(results: List[Dict], tool_name: str = "Code2Database",
-                    tool_version: str = "1.3.0") -> Dict:
+                    tool_version: str = _TOOL_VERSION) -> Dict:
     """Convert a list of finding dicts to SARIF 2.1.0 format.
 
     Each finding should have:

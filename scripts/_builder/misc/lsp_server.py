@@ -30,6 +30,8 @@ import os
 import sys
 from typing import Dict, List, Optional
 
+from _version import __version__ as _SERVER_VERSION
+
 
 class LSPServer:
     """LSP server backed by Code2Database graph.
@@ -64,7 +66,7 @@ class LSPServer:
             },
             "serverInfo": {
                 "name": "code2database-lsp",
-                "version": "1.3.0",
+                "version": _SERVER_VERSION,
             },
         }
 

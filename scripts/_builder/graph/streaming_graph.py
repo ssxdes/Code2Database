@@ -483,6 +483,20 @@ class StreamingGraph:
                 self._store._conn.execute(
                     "DELETE FROM edges WHERE invoker_id = ? OR invoked_id = ?",
                     (node_id, node_id))
+                # Child rows referencing functions(id) must go before the
+                # functions row itself — PRAGMA foreign_keys=ON checks
+                # immediately, so a flushed node with field_access /
+                # global_access / entry_scores rows would raise
+                # IntegrityError on the functions DELETE below. Older
+                # graphs may lack the tables — tolerate that.
+                for _child_tbl in ("field_access", "global_access",
+                                   "entry_scores"):
+                    try:
+                        self._store._conn.execute(
+                            f"DELETE FROM {_child_tbl} WHERE function_id = ?",
+                            (node_id,))
+                    except sqlite3.OperationalError:
+                        pass
                 self._store._conn.execute(
                     "DELETE FROM functions WHERE id = ?", (node_id,))
             except Exception:

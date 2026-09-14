@@ -38,6 +38,8 @@ def _open_tuned_conn(db_path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA cache_size=-16384")  # 16MB
     conn.execute("PRAGMA temp_store=MEMORY")
+    # Enable FK enforcement so the graph stays consistent with the schema.
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 

@@ -686,6 +686,16 @@ def _do_make(rep, args):
         from concurrent.futures import ThreadPoolExecutor, as_completed
         n_par = len(parallel_steps)
         print("\n[make] derived steps (parallel, %d)" % n_par)
+
+        def _run_derived_step(step_name, step_cmd):
+            # Capture this step's output and replay it on completion with
+            # a step-name prefix — several concurrent subprocesses
+            # inheriting the terminal interleaved their logs into an
+            # unreadable mix.
+            proc = subprocess.run(step_cmd, capture_output=True,
+                                  text=True, errors="replace")
+            return step_name, proc
+
         with ThreadPoolExecutor(max_workers=min(4, n_par)) as pool:
             futures = {}
             for name, cmd, _fatal, note, requires, skip_reason in parallel_steps:
@@ -696,10 +706,18 @@ def _do_make(rep, args):
                     skipped.append(name)
                     continue
                 print("  step %d/%d: %s — %s" % (step_num, total, name, note))
-                futures[pool.submit(subprocess.run, cmd)] = name
+                futures[pool.submit(_run_derived_step, name, cmd)] = name
             for future in as_completed(futures):
                 name = futures[future]
-                rc = future.result().returncode
+                _sname, proc = future.result()
+                _step_stdout = getattr(proc, "stdout", None)
+                _step_stderr = getattr(proc, "stderr", None)
+                if _step_stdout:
+                    print("[%s] %s" % (name, _step_stdout.rstrip()))
+                if _step_stderr:
+                    print("[%s:stderr] %s" % (name, _step_stderr.rstrip()),
+                          file=sys.stderr)
+                rc = proc.returncode
                 if rc != 0:
                     print("[make] WARN: step %s failed (exit %d) — continuing"
                           % (name, rc), file=sys.stderr)

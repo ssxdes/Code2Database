@@ -1,5 +1,6 @@
 """Tests for make — one-click env-check + build orchestration."""
 import argparse
+import io
 import json
 import os
 import sys
@@ -271,7 +272,7 @@ class TestCmdMake(unittest.TestCase):
         calls = []
         with mock.patch.object(
                 make_cmd.subprocess, "run",
-                side_effect=lambda c: calls.append(c) or SimpleNamespace(returncode=0)):
+                side_effect=lambda c, **kw: calls.append(c) or SimpleNamespace(returncode=0)):
             self._run({"serial_derived": True})
         self.assertGreaterEqual(len(calls), 2)
         build_cmd = calls[1]
@@ -291,12 +292,42 @@ class TestCmdMake(unittest.TestCase):
         calls = []
         with mock.patch.object(
                 make_cmd.subprocess, "run",
-                side_effect=lambda c: calls.append(c) or SimpleNamespace(returncode=0)):
+                side_effect=lambda c, **kw: calls.append(c) or SimpleNamespace(returncode=0)):
             self._run({"serial_derived": True, "profile": user_profile})
         build_cmd = calls[1]
         self.assertEqual(build_cmd.count("--profile"), 1)
         idx = build_cmd.index("--profile")
         self.assertEqual(build_cmd[idx + 1], user_profile)
+
+    def test_parallel_step_output_is_prefixed(self):
+        """Parallel derived steps replay captured output with a step tag.
+
+        With several subprocesses inheriting the terminal, their logs
+        interleaved into an unreadable mix.
+        """
+        self._patch_env()
+
+        def _fake_run(cmd, **kw):
+            # Only the parallel, JSON-only steps capture output.
+            if kw.get("capture_output"):
+                name = cmd[2]
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout="output from %s" % name,
+                    stderr="")
+            return SimpleNamespace(returncode=0)
+
+        calls = []
+        with mock.patch.object(
+                make_cmd.subprocess, "run",
+                side_effect=lambda c, **kw: calls.append(c)
+                or _fake_run(c, **kw)):
+            with mock.patch("sys.stdout", new_callable=lambda: io.StringIO()) as out:
+                self._run({"serial_derived": False})
+        text = out.getvalue()
+        for step in ("value-flow", "data-dep", "embeddings-build"):
+            self.assertIn("[%s] output from %s" % (step, step), text,
+                          "captured step output must carry a step prefix")
 
     def test_check_creates_no_directories(self):
         """--check is a dry-run: the graph directory must not appear."""
@@ -312,7 +343,7 @@ class TestCmdMake(unittest.TestCase):
         self._patch_env()
         calls = []
         with mock.patch.object(make_cmd.subprocess, "run",
-                               side_effect=lambda c: calls.append(c)):
+                               side_effect=lambda c, **kw: calls.append(c)):
             self._run({"check": True})
         self.assertEqual(calls, [])
 
@@ -323,7 +354,7 @@ class TestCmdMake(unittest.TestCase):
                 make_cmd, "check_libclang",
                 return_value=TestDecideBackend._CLANG_NO), \
              mock.patch.object(make_cmd.subprocess, "run",
-                               side_effect=lambda c: calls.append(c)):
+                               side_effect=lambda c, **kw: calls.append(c)):
             with self.assertRaises(SystemExit) as cm:
                 self._run({"extraction_backend": "clang"})
             self.assertEqual(cm.exception.code, 1)
@@ -342,7 +373,7 @@ class TestCmdMake(unittest.TestCase):
         calls = []
         with mock.patch.object(
                 make_cmd.subprocess, "run",
-                side_effect=lambda c: calls.append(c) or SimpleNamespace(returncode=0)):
+                side_effect=lambda c, **kw: calls.append(c) or SimpleNamespace(returncode=0)):
             self._run({"serial_derived": True})
         names = [c[2] for c in calls]
         self.assertEqual(names, [
@@ -386,7 +417,7 @@ class TestCmdMake(unittest.TestCase):
         calls = []
         with mock.patch.object(
                 make_cmd.subprocess, "run",
-                side_effect=lambda c: calls.append(c) or SimpleNamespace(returncode=0)):
+                side_effect=lambda c, **kw: calls.append(c) or SimpleNamespace(returncode=0)):
             self._run({"serial_derived": True})
         names = [c[2] for c in calls]
         self.assertEqual(names, [
@@ -407,7 +438,7 @@ class TestCmdMake(unittest.TestCase):
         calls = []
         with mock.patch.object(
                 make_cmd.subprocess, "run",
-                side_effect=lambda c: calls.append(c) or SimpleNamespace(returncode=0)):
+                side_effect=lambda c, **kw: calls.append(c) or SimpleNamespace(returncode=0)):
             self._run()
         self.assertNotIn("extract-signals", [c[2] for c in calls])
 
@@ -441,7 +472,7 @@ class TestCmdMake(unittest.TestCase):
         calls = []
         with mock.patch.object(
                 make_cmd.subprocess, "run",
-                side_effect=lambda c: calls.append(c) or SimpleNamespace(returncode=0)):
+                side_effect=lambda c, **kw: calls.append(c) or SimpleNamespace(returncode=0)):
             self._run({"profile": "p.json"})
         self.assertNotIn("--auto-profile", calls[0])
         self.assertIn("--profile", calls[0])
@@ -453,7 +484,7 @@ class TestCmdMake(unittest.TestCase):
         calls = []
         with mock.patch.object(
                 make_cmd.subprocess, "run",
-                side_effect=lambda c: calls.append(c) or SimpleNamespace(returncode=0)):
+                side_effect=lambda c, **kw: calls.append(c) or SimpleNamespace(returncode=0)):
             self._run()
         self.assertIn("--compile-commands", calls[0])
         i = calls[0].index("--compile-commands")
@@ -467,7 +498,7 @@ class TestCmdMake(unittest.TestCase):
         calls = []
         with mock.patch.object(
                 make_cmd.subprocess, "run",
-                side_effect=lambda c: calls.append(c)
+                side_effect=lambda c, **kw: calls.append(c)
                 or SimpleNamespace(returncode=0)):
             self._run({"memory_limit": 9999})
         self.assertIn("--memory-limit", calls[0])
@@ -508,7 +539,7 @@ class TestCmdMake(unittest.TestCase):
         calls = []
         with mock.patch.object(
                 make_cmd.subprocess, "run",
-                side_effect=lambda c: calls.append(c)
+                side_effect=lambda c, **kw: calls.append(c)
                 or SimpleNamespace(returncode=0)):
             with self.assertRaises(SystemExit) as cm:
                 self._run()
@@ -539,7 +570,7 @@ class TestPassThrough(unittest.TestCase):
                                return_value=True), \
              mock.patch.object(
                  make_cmd.subprocess, "run",
-                 side_effect=lambda c: calls.append(c)
+                 side_effect=lambda c, **kw: calls.append(c)
                  or SimpleNamespace(returncode=0)):
             calls = []
             make_cmd.cmd_make(args)
@@ -816,7 +847,7 @@ class TestDaemonConflictDetection(unittest.TestCase):
                         return_value=True), \
              mock.patch.object(
                  make_cmd.subprocess, "run",
-                 side_effect=lambda c: calls.append(c) or SimpleNamespace(returncode=0)):
+                 side_effect=lambda c, **kw: calls.append(c) or SimpleNamespace(returncode=0)):
             args = _ns(source=self.source, graph=self.graph,
                        force=True, serial_derived=True)
             make_cmd.cmd_make(args)
@@ -831,7 +862,7 @@ class TestDaemonConflictDetection(unittest.TestCase):
                         return_value=False), \
              mock.patch.object(
                  make_cmd.subprocess, "run",
-                 side_effect=lambda c: calls.append(c) or SimpleNamespace(returncode=0)):
+                 side_effect=lambda c, **kw: calls.append(c) or SimpleNamespace(returncode=0)):
             args = _ns(source=self.source, graph=self.graph,
                        serial_derived=True)
             make_cmd.cmd_make(args)

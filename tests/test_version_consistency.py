@@ -83,6 +83,19 @@ class TestVersionSingleSource(unittest.TestCase):
             info = server.initialize({})
         self.assertEqual(info["serverInfo"]["version"], _version.__version__)
 
+    def test_pyproject_reads_version_from_single_source(self):
+        import tomllib
+        data = tomllib.loads((REPO / "pyproject.toml").read_text())
+        self.assertIn("version", data["project"]["dynamic"])
+        attr = data["tool"]["setuptools"]["dynamic"]["version"]["attr"]
+        self.assertEqual(attr, "_version.__version__")
+        scripts = data["project"]["scripts"]
+        self.assertEqual(scripts["c2d"], "code2database_builder:main")
+        self.assertEqual(scripts["code2database-builder"],
+                         "code2database_builder:main")
+        self.assertEqual(scripts["code2database-scanner"],
+                         "code2database_scanner:main")
+
 
 if __name__ == "__main__":
     unittest.main()

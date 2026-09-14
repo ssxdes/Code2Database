@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "code2database"
+description = "Multi-language code graph generator for C/C++/Go/Python/Java/Rust/ASM — invocation graphs, conditional paths, concurrency analysis, data flow, FFI tracing, dual memory/brief knowledge stores, and an 83-tool MCP server."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+keywords = ["code-graph", "call-graph", "static-analysis", "knowledge-base", "mcp"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Static Analysis",
+]
+dependencies = [
+    "networkx>=3.0",
+    "tree-sitter>=0.22",
+    "tree-sitter-c>=0.21",
+    "tree-sitter-cpp>=0.22",
+    "tree-sitter-go>=0.21",
+    "tree-sitter-python>=0.21",
+    "tree-sitter-java>=0.21",
+    "tree-sitter-rust>=0.21",
+]
+dynamic = ["version"]
+
+[project.urls]
+Repository = "https://github.com/ssxdes/Code2Database"
+
+[project.scripts]
+c2d = "code2database_builder:main"
+code2database-builder = "code2database_builder:main"
+code2database-scanner = "code2database_scanner:main"
+
+[tool.setuptools]
+package-dir = {"" = "scripts"}
+py-modules = ["code2database_builder", "code2database_scanner", "_version"]
+
+[tool.setuptools.dynamic]
+version = {attr = "_version.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["scripts"]
+include = ["_builder*", "_scanner*", "_detector*", "_profile*", "_vendor*", "config*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.js"]

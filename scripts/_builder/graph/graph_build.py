@@ -4702,6 +4702,14 @@ def cmd_build(args):
                 if not nd.get("is_empty", False) and nd.get("node_type") != "file":
                     _access_batch.append(node_dict)
                     if len(_access_batch) >= _BATCH_SIZE:
+                        # Flush pending functions first — field_access FK references
+                        # functions(id), and PRAGMA foreign_keys=ON checks
+                        # immediately. Without this, function_ids in _access_batch
+                        # may still be in _func_batch (uncommitted),
+                        # causing IntegrityError.
+                        if _func_batch:
+                            store.store_functions(_func_batch)
+                            _func_batch.clear()
                         store.store_field_access_batch(_access_batch, autocommit=False)
                         store.store_global_access_batch(_access_batch, autocommit=False)
                         _access_batch.clear()

@@ -180,6 +180,20 @@ def _json_update_node(graph_dir: str, node_id: str, attrs: Dict,
         print(f"Error: node {node_id!r} not found in graph", file=sys.stderr)
         return False
 
+    # SQLite-backed large graphs load as a read-only LazySQLiteGraph:
+    # G.nodes[nid] returns a cache dict whose writes no reader sees and
+    # split_by_domain re-reads from SQLite, so the supplement would be
+    # silently lost. The db is the authoritative backend here — delegate
+    # to the direct SQLite writer (it also propagates to cgdb_nodes).
+    if type(G).__name__ == "LazySQLiteGraph":
+        print("[update] SQLite-backed large graph: writing supplement to "
+              "code2database.db (JSON domain files refresh on next build)",
+              file=sys.stderr)
+        G.close()
+        return _sqlite_update_node(graph_dir, node_id, attrs,
+                                   source=source, confidence=confidence,
+                                   delete_keys=delete_keys)
+
     ndata = G.nodes[node_id]
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     meta_key = "_supplement_meta"
@@ -247,6 +261,19 @@ def _json_update_edge(graph_dir: str, invoker_id: str, invoked_id: str,
     if not G.has_edge(invoker_id, invoked_id):
         print(f"Error: no edge from {invoker_id!r} to {invoked_id!r}", file=sys.stderr)
         return False
+
+    # SQLite-backed large graphs load as a read-only LazySQLiteGraph:
+    # G[u][v][key] = val mutates a cache dict that split_by_domain never
+    # reads back (it re-reads edges from SQLite), so the supplement would
+    # be silently lost. Delegate to the direct SQLite writer instead.
+    if type(G).__name__ == "LazySQLiteGraph":
+        print("[update] SQLite-backed large graph: writing supplement to "
+              "code2database.db (JSON domain files refresh on next build)",
+              file=sys.stderr)
+        G.close()
+        return _sqlite_update_edge(graph_dir, invoker_id, invoked_id,
+                                   attrs, source=source,
+                                   confidence=confidence)
 
     edata = G.get_edge_data(invoker_id, invoked_id) or {}
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")

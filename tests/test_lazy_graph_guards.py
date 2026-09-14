@@ -214,5 +214,39 @@ class TestInvariantsJsonRoundTrip(unittest.TestCase):
             self.assertNotIn("preconditions", G2.nodes["n1"])
 
 
+class TestFfiDetectOnLazyGraph(unittest.TestCase):
+    """ffi-detect --apply on a read-only large graph: mutation is skipped
+    (attach_ffi_edges would raise NotImplementedError on add_node) and
+    the bridge tables are still persisted via persist_ffi_to_sqlite."""
+
+    def test_apply_skips_mutation_and_persists_bridge_rows(self):
+        import sqlite3
+        from _builder.misc.ffi_bridge import cmd_ffi_detect
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "proj")
+            os.makedirs(src)
+            # A ctypes binding: caller py_wrap -> C function c_add.
+            with open(os.path.join(src, "wrap.py"), "w") as f:
+                f.write(
+                    "import ctypes\n"
+                    "lib = ctypes.CDLL('libadd.so')\n"
+                    "lib.c_add.argtypes = [ctypes.c_int]\n"
+                    "def py_wrap(x):\n"
+                    "    return lib.c_add(x)\n")
+            graph = os.path.join(d, "out")
+            os.makedirs(graph)
+            _make_lazy_graph_dir(graph, funcs=2)
+            args = SimpleNamespace(source=src, graph=graph, apply=True)
+            cmd_ffi_detect(args)  # must not raise
+            db = os.path.join(graph, "code2database.db")
+            conn = sqlite3.connect(db)
+            try:
+                bindings = conn.execute(
+                    "SELECT COUNT(*) FROM cross_lang_bindings").fetchone()[0]
+                self.assertGreater(bindings, 0)
+            finally:
+                conn.close()
+
+
 if __name__ == "__main__":
     unittest.main()

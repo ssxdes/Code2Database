@@ -907,6 +907,15 @@ def _resolve_or_create_symbol(conn, symbol_id: str, default_kind: str = "functio
     # Case 4: create a placeholder cgdb_nodes row so the FK is satisfiable.
     # Use the full symbol_id as the fqn for traceability.
     try:
+        # cgdb_nodes.first_seen_version/last_seen_version carry FKs to
+        # graph_versions(version_id). Databases built through the legacy
+        # streaming path have no graph_versions rows at all, which made
+        # every placeholder insert fail the FK check and persist skipped
+        # all edges. Ensure the initial version row exists (idempotent,
+        # mirrors what SQLiteCGDBStore.connect does for cgdb builds).
+        conn.execute(
+            "INSERT OR IGNORE INTO graph_versions "
+            "(version_id, commit_hash, compiled_at) VALUES (1, 'initial', 0)")
         cur = conn.execute(
             "INSERT INTO cgdb_nodes (kind, name, fqn, line, source_layer, confidence, "
             "first_seen_version, last_seen_version, commit_hash, attrs) "

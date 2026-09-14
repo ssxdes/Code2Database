@@ -2,7 +2,8 @@
 
 The version lives in one place — scripts/_version.py — and the CLI
 entry points, the three skill manifests, the MCP registry manifest,
-the SARIF tool driver and the LSP serverInfo all reference it. A
+the SARIF tool driver, the LSP serverInfo and both MCP server surfaces
+(stdio handshake + HTTP health endpoint) all reference it. A
 drift between any two of these means an upgrade path a customer
 cannot reason about, so this suite pins them together.
 """
@@ -82,6 +83,21 @@ class TestVersionSingleSource(unittest.TestCase):
             server._ensure_cache = lambda: None
             info = server.initialize({})
         self.assertEqual(info["serverInfo"]["version"], _version.__version__)
+
+    def test_mcp_server_info_shares_the_version(self):
+        from _builder.mcp.mcp_server import _handle_initialize
+        resp = _handle_initialize(41)
+        info = resp["result"]["serverInfo"]
+        self.assertEqual(info["name"], "Code2Database")
+        self.assertEqual(info["version"], _version.__version__)
+
+    def test_mcp_http_health_shares_the_version(self):
+        import inspect
+        from _builder.mcp import mcp_http_server
+        self.assertEqual(mcp_http_server._SERVER_VERSION, _version.__version__)
+        src = inspect.getsource(
+            mcp_http_server._McpHTTPHandler._handle_health)
+        self.assertIn("_SERVER_VERSION", src)
 
     def test_pyproject_reads_version_from_single_source(self):
         import tomllib

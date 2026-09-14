@@ -33,6 +33,7 @@ import os
 import atexit
 from pathlib import Path
 
+from _version import __version__ as _SERVER_VERSION
 from _builder.token_budget import estimate_tokens
 import logging
 
@@ -876,7 +877,7 @@ def _handle_initialize(msg_id) -> dict:
     return {"jsonrpc": "2.0", "id": msg_id, "result": {
         "protocolVersion": "2024-11-05",
         "capabilities": {"tools": {"listChanged": False}},
-        "serverInfo": {"name": "Code2Database", "version": "2.1.0"},
+        "serverInfo": {"name": "Code2Database", "version": _SERVER_VERSION},
     }}
 
 

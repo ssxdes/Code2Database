@@ -6,7 +6,8 @@ drift apart:
 - ``code2database_builder --version`` and ``code2database_scanner --version``
 - the three skill manifests (skill.json / skill_analysis.json / skill_ops.json)
 - the MCP registry manifest (server.json, including its package entries)
-- the SARIF tool driver version and the LSP serverInfo version
+- the SARIF tool driver version, the LSP serverInfo version and both MCP
+  surfaces (the stdio serverInfo handshake and the HTTP health endpoint)
 
 tests/test_version_consistency.py pins all of them to this module.
 """

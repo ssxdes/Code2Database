@@ -45,6 +45,8 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
 
+from _version import __version__ as _SERVER_VERSION
+
 logger = logging.getLogger(__name__)
 
 # Session store: session_id -> {"created": float, "graph_dir": str}
@@ -338,7 +340,7 @@ class _McpHTTPHandler(BaseHTTPRequestHandler):
         self._send_json(200, {
             "status": "ok",
             "server": "Code2Database",
-            "version": "2.1.0",
+            "version": _SERVER_VERSION,
             "transport": "http",
             "tools_total": available,
             "tools_visible": visible,

@@ -2098,21 +2098,52 @@ def cmd_daemon_stop(args):
     if not _pid_is_our_daemon(state.pid):
         # Stale state file pointing at a recycled/foreign PID: clean up
         # the state instead of killing an unrelated process.
+        _clear_error = ""
         try:
             DaemonState(status=STATUS_STOPPED, pid=0).write(graph_dir)
-        except Exception:
-            pass
-        print(json.dumps({"ok": False,
-                          "error": "daemon PID not running or belongs to "
-                                   "another process; state cleared"}))
+        except Exception as exc:
+            # Report the failure — claiming "state cleared" while the
+            # stale PID is still on disk sends the next stop into the
+            # same dead end.
+            _clear_error = str(exc)
+        if _clear_error:
+            print(json.dumps({"ok": False,
+                              "error": "daemon PID not running or belongs "
+                                       "to another process; failed to "
+                                       "clear state: %s" % _clear_error}))
+        else:
+            print(json.dumps({"ok": False,
+                              "error": "daemon PID not running or belongs "
+                                       "to another process; state cleared"}))
         sys.exit(1)
     try:
         os.kill(state.pid, signal.SIGTERM)
-        print(json.dumps({"ok": True, "pid": state.pid, "message": "sent SIGTERM"},
-                         indent=2))
     except OSError as exc:
         print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
         sys.exit(1)
+    # Wait for the daemon to actually exit: it finishes in-flight syncs,
+    # closes its socket and rewrites its state file on the way down, and
+    # anything that copies graph files right after daemon-stop must not
+    # catch that teardown mid-flight (the WAL can still be changing).
+    _exited = False
+    for _ in range(100):  # up to ~10s
+        time.sleep(0.1)
+        try:
+            os.kill(state.pid, 0)
+        except OSError:
+            _exited = True
+            break
+        try:
+            with open(f"/proc/{state.pid}/stat", encoding="utf-8") as f:
+                _pstate = f.read().rsplit(")", 1)[-1].split()[0]
+            if _pstate == "Z":
+                _exited = True
+                break
+        except (OSError, IndexError, ValueError):
+            pass
+    print(json.dumps({"ok": True, "pid": state.pid,
+                      "message": "sent SIGTERM",
+                      "exited": _exited}, indent=2))
 
 
 def cmd_daemon_status(args):

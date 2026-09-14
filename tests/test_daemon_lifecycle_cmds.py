@@ -134,6 +134,19 @@ class TestQueriesWithoutDaemon(unittest.TestCase):
         self.assertEqual(state.pid, 0)
         self.assertEqual(state.status, STATUS_STOPPED)
 
+    def test_stop_recycled_pid_reports_clear_failure(self):
+        """A failing state rewrite must not be reported as a success."""
+        DaemonState(pid=os.getpid(), status=STATUS_RUNNING).write(
+            self.graph_dir)
+        _orig_write = DaemonState.write
+        with patch.object(DaemonState, "write",
+                          side_effect=OSError("disk full")):
+            ret, out, err, code = _capture_call(
+                cmd_daemon_stop, _ns(graph=self.graph_dir))
+        self.assertEqual(code, 1)
+        self.assertIn("failed to clear state", out)
+        self.assertIn("disk full", out)
+
     def test_socket_commands_report_not_running(self):
         for fn, ns in (
             (cmd_daemon_pause, _ns(graph=self.graph_dir, reason="manual")),
@@ -362,6 +375,9 @@ class TestDaemonStopSubprocess(unittest.TestCase):
         result = json.loads(out)
         self.assertTrue(result["ok"])
         self.assertEqual(result["pid"], self.proc.pid)
+        self.assertIs(result["exited"], True,
+                      "stop must wait for the daemon to leave before "
+                      "returning (state file / WAL teardown completes)")
         deadline = time.time() + 15.0
         while time.time() < deadline and self.proc.poll() is None:
             time.sleep(0.1)

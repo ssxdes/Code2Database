@@ -7,6 +7,7 @@ from pathlib import Path
 from collections import defaultdict
 import networkx as nx
 from _builder.graph.graph_build import _load_full_graph
+from _builder.utils import _ensure_mutable_graph
 import logging
 
 # Filesystem- and URL-safe name for a domain: domain names derive from
@@ -710,6 +711,11 @@ def cmd_export_html(args):
     if os.path.exists(comm_path):
         try:
             comm_data = json.loads(Path(comm_path).read_text(encoding="utf-8"))
+            # Guard against LazySQLiteGraph — G.nodes[nid][...] = ... is a
+            # per-node write that LazySQLiteGraph rejects.  Without this,
+            # the exception is caught silently below and community_id
+            # is never set, producing a graph without community labels.
+            _ensure_mutable_graph(G, "export-html")
             for comm in comm_data.get("communities", []):
                 cid = comm.get("id", "")
                 for nid in comm.get("node_ids", []):

@@ -12,8 +12,8 @@
 [![Sub-skills](https://img.shields.io/badge/sub_skills-3-9cf)](#skill-activation)
 [![Backend](https://img.shields.io/badge/backend-dual%20clang%20%2B%20tree--sitter-blue)](#extraction-backend)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](#installation)
-[![tree-sitter](https://img.shields.io/badge/tree--itter-AST-green?logo=tree-sitter&logoColor=white)](#how-it-works)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](#installation)
+[![tree-sitter](https://img.shields.io/badge/tree--sitter-AST-green?logo=tree-sitter&logoColor=white)](#how-it-works)
 
 [![Claude Code](https://img.shields.io/badge/Claude_Code-supported-blueviolet.svg)](#installation)
 [![Codex CLI](https://img.shields.io/badge/Codex_CLI-supported-blueviolet.svg)](#installation)

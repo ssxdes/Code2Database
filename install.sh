@@ -335,7 +335,7 @@ fi
 
 # --- Check Python ---
 if ! command -v python3 &>/dev/null; then
-    die "python3 not found. Please install Python 3.8+ first."
+    die "python3 not found. Please install Python 3.10+ first."
 fi
 
 PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")

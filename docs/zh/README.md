@@ -10,8 +10,8 @@
 [![MCP工具](https://img.shields.io/badge/MCP工具-83-blueviolet)](#mcp-服务器)
 [![查询命令](https://img.shields.io/badge/查询命令-261-success)](#命令参考)
 [![许可证: MIT](https://img.shields.io/badge/许可证-MIT-yellow.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](#安装)
-[![tree-sitter](https://img.shields.io/badge/tree--itter-AST-green?logo=tree-sitter&logoColor=white)](#工作原理)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](#安装)
+[![tree-sitter](https://img.shields.io/badge/tree--sitter-AST-green?logo=tree-sitter&logoColor=white)](#工作原理)
 
 [![Claude Code](https://img.shields.io/badge/Claude_Code-支持-blueviolet.svg)](#安装)
 [![Codex CLI](https://img.shields.io/badge/Codex_CLI-支持-blueviolet.svg)](#安装)

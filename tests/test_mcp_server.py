@@ -688,3 +688,42 @@ class TestDaemonStatusToolEnvelope(unittest.TestCase):
         self.assertFalse(result["running"])
         self.assertEqual(result["state"], {})
         self.assertIn("error", result)
+
+
+class TestDomainToolMatching(unittest.TestCase):
+    """code2database_domain resolves separator slips and hints instead
+    of returning a silently empty node list."""
+
+    def setUp(self):
+        import tempfile
+        import shutil
+        import sys
+        self.tmp = tempfile.mkdtemp(prefix="c2d_mcp_dom_")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__),
+                                        '..', 'scripts'))
+        from tests.test_quality_checks import _make_quality_graph
+        self.graph_dir = _make_quality_graph(
+            [{"id": "a", "name": "fn_a", "domain": "libstorage_uio"},
+             {"id": "b", "name": "fn_b", "domain": "ublock.cli"},
+             {"id": "c", "name": "fn_c", "domain": "ublock.io"}],
+            [])
+
+    def test_exact_domain(self):
+        from _builder.mcp.mcp_c2d_tools import _tool_domain
+        result = _tool_domain({"name": "ublock.cli"}, self.graph_dir)
+        self.assertEqual(result["matched_domains"], ["ublock.cli"])
+        self.assertEqual([n["id"] for n in result["nodes"]], ["b"])
+        self.assertNotIn("hint", result)
+
+    def test_separator_slip_resolves(self):
+        from _builder.mcp.mcp_c2d_tools import _tool_domain
+        result = _tool_domain({"name": "libstorage-uio"}, self.graph_dir)
+        self.assertEqual(result["matched_domains"], ["libstorage_uio"])
+        self.assertEqual(len(result["nodes"]), 1)
+
+    def test_unknown_domain_hints(self):
+        from _builder.mcp.mcp_c2d_tools import _tool_domain
+        result = _tool_domain({"name": "ublok"}, self.graph_dir)
+        self.assertEqual(result["nodes"], [])
+        self.assertIn("did you mean", result["hint"])

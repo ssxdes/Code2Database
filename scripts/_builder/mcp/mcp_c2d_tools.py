@@ -439,18 +439,37 @@ def _tool_data_lifecycle(args: dict, graph_dir: str) -> dict:
 
 
 def _tool_domain(args: dict, graph_dir: str) -> dict:
-    """List nodes/edges in a domain."""
+    """List nodes/edges in a domain.
+
+    Exact domain match first; a separator slip (hyphen for underscore
+    or dot) resolves when it names exactly one real domain. When
+    nothing matches, the result carries a hint with close candidates
+    instead of a silently empty node list.
+    """
     from _builder.graph.graph_build import _load_full_graph
+    from _builder.export.domain_match import (exact_domain_nodes,
+                                              domain_suggestions)
     G = _get_graph(graph_dir)
     if not G:
         return {"error": "Graph not loaded"}
     domain_name = args.get("name", "")
     if not domain_name:
         return {"error": "Missing required parameter: name"}
+    matched_ids = set(exact_domain_nodes(G, domain_name))
+    matched_domains = sorted({(G.nodes[n].get("domain") or "")
+                              for n in matched_ids})
     nodes = [{"id": nid, "name": nd.get("name", ""), "labels": nd.get("labels", [])}
              for nid, nd in G.nodes(data=True)
-             if nd.get("domain", "") == domain_name and not nd.get("is_empty", False)]
-    return {"domain": domain_name, "nodes": nodes}
+             if nid in matched_ids and not nd.get("is_empty", False)]
+    result = {"domain": domain_name,
+              "matched_domains": matched_domains,
+              "nodes": nodes}
+    if not nodes:
+        hints = domain_suggestions(G, domain_name)
+        if hints:
+            result["hint"] = ("no exact match; did you mean: "
+                              + ", ".join(hints))
+    return result
 
 
 

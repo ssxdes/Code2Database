@@ -174,6 +174,58 @@ class TestStructureMode(unittest.TestCase):
             export_plantuml(_graph(), mode="structure")
 
 
+class TestSingleLineLabels(unittest.TestCase):
+    """PlantUML string labels must stay on one source line: bare line
+    breaks inside a quoted label split the statement into two lines and
+    the diagram stops rendering. C signatures frequently span lines."""
+
+    def test_quote_escapes_line_breaks(self):
+        from _builder.export.export_plantuml import _quote
+        self.assertEqual(_quote("a\nb"), '"a\\nb"')
+        self.assertEqual(_quote("a\r\nb"), '"a\\nb"')
+        self.assertEqual(_quote("a\rb"), '"ab"')
+        self.assertEqual(_quote('say "hi"\\ok'), '"say \\"hi\\"\\\\ok"')
+
+    def test_truncate_flattens_line_breaks_and_tabs(self):
+        from _builder.export.export_plantuml import _truncate
+        self.assertEqual(_truncate("static int\nfoo(int a,\n\tint b)"),
+                         "static int foo(int a, int b)")
+        self.assertEqual(_truncate("a\r\nb"), "a b")
+
+    def test_multiline_signature_stays_on_one_line(self):
+        from _builder.export.export_plantuml import export_plantuml
+        g = _make_quality_graph(
+            [{"id": "f", "name": "cmp_int", "source_file": "/bdev/bdev.c",
+              "domain": "lib.bdev",
+              "signature": "static int\ncmp_int(int a,\n         int b)"},
+             {"id": "g", "name": "cmp_long", "source_file": "/bdev/bdev.c",
+              "domain": "lib.bdev",
+              "signature": "static int\r\ncmp_long(int a, int b)"}],
+            [])
+        text = export_plantuml(g, mode="structure", file="/bdev/bdev.c")
+        for line in text.splitlines():
+            if "cmp_int" in line or "cmp_long" in line:
+                self.assertTrue(line.lstrip().startswith("rectangle"), line)
+                self.assertIn('"', line)
+                self.assertIn('" as fn_', line)
+        self.assertIn('rectangle "static int cmp_int(int a, int b)" as fn_',
+                      text)
+        self.assertIn('rectangle "static int cmp_long(int a, int b)" as fn_',
+                      text)
+
+    def test_multiline_condition_label_flattened(self):
+        from _builder.export.export_plantuml import export_plantuml
+        g = _make_quality_graph(
+            [{"id": "a", "name": "f1"}, {"id": "b", "name": "f2"}],
+            [{"source": "a", "target": "b",
+              "call_condition": "if (a &&\n    b)"}],
+        )
+        text = export_plantuml(g, mode="call", node="f1")
+        arrow = [ln for ln in text.splitlines() if "-->" in ln][0]
+        self.assertIn("if (a && b)", arrow)
+        self.assertEqual(len([ln for ln in text.splitlines() if "if (a" in ln]), 1)
+
+
 class TestOutputAndCLI(unittest.TestCase):
 
     def test_output_file_written(self):

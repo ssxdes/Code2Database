@@ -35,7 +35,12 @@ def _sanitize_alias(name: str, prefix: str, taken: Set[str]) -> str:
 
 
 def _quote(name: str) -> str:
-    return '"' + name.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    # PlantUML string labels must stay on one line: escape backslashes,
+    # double quotes and line breaks (\n renders as a soft break, bare
+    # CR is dropped). Scanner signatures frequently span source lines.
+    name = name.replace("\\", "\\\\").replace('"', '\\"')
+    name = name.replace("\n", "\\n").replace("\r", "")
+    return '"' + name + '"'
 
 
 def _resolve_node(G, node: str) -> Optional[str]:
@@ -62,6 +67,10 @@ def _call_edges(G) -> List[Tuple[str, str]]:
 
 
 def _truncate(text: str, limit: int = 60) -> str:
+    # Defense in depth for labels used outside _quote(): collapse all
+    # whitespace runs so a multi-line signature or condition cannot
+    # split one diagram statement into several lines.
+    text = " ".join(text.split())
     return text if len(text) <= limit else text[:limit - 1] + "…"
 
 

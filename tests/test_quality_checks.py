@@ -54,11 +54,17 @@ def _make_quality_graph(nodes_spec, edges_spec) -> str:
                 node[k] = v
         nodes.append(node)
     edges = []
+    _known_edge = {"source", "target", "relation", "confidence",
+                   "concurrency"}
     for spec in edges_spec:
-        edges.append({"source": spec["source"], "target": spec["target"],
-                      "relation": spec.get("relation", ""),
-                      "confidence": spec.get("confidence", "EXTRACTED"),
-                      "concurrency": spec.get("concurrency", "")})
+        edge = {"source": spec["source"], "target": spec["target"],
+                "relation": spec.get("relation", ""),
+                "confidence": spec.get("confidence", "EXTRACTED"),
+                "concurrency": spec.get("concurrency", "")}
+        for k, v in spec.items():
+            if k not in _known_edge:
+                edge[k] = v
+        edges.append(edge)
     domain_data = {"nodes": nodes, "edges": edges}
     domain_filename = "domain_test.json"
     with open(os.path.join(tmp, domain_filename), "w") as f:

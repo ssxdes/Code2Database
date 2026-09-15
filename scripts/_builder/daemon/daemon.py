@@ -1038,7 +1038,6 @@ class Daemon:
             # Snapshot pending paths and dispatch a sync job to the worker
             with self._pending_lock:
                 paths_to_sync = sorted(self._pending)
-                self._pending.clear()
                 self.state.pending_events = 0
             # D32: filter out format-only changes (whitespace/comments only)
             if self.config.get("format_only_filter", True):
@@ -1059,6 +1058,11 @@ class Daemon:
             else:
                 job_kind = "incremental"
             self._enqueue_sync_job(job_kind, paths_to_sync)
+            # Clear pending AFTER enqueuing so wait-sync doesn't see a
+            # transient state where _pending is empty but no job is queued
+            # yet (race condition: wait-sync returns ok without a sync).
+            with self._pending_lock:
+                self._pending.clear()
             last_activity = time.time()
         # Cleanup
         self._cleanup()

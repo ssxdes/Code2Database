@@ -1150,6 +1150,41 @@ static int caller(int ready, void *ctx) {
         self.assertEqual(cb[0]["target"], "cb_now")
         self.assertEqual(cb[0]["call_condition"], "if(ready)")
 
+    def test_separate_branches_combine_assignment_and_registration(self):
+        """Assignment in one branch, registration in a different branch:
+        the callback only fires when BOTH branches ran, so the edge must
+        carry the conjunction anchored at the registration site's node —
+        not just the assignment branch's condition (which would drop a
+        conjunct and make paths look more feasible than they are)."""
+        code = """
+typedef void (*spdk_msg_fn)(void *ctx);
+void spdk_thread_send_msg(void *t, spdk_msg_fn fn, void *ctx);
+static void cb_x(void *ctx) { }
+static int caller(int x, int y, void *ctx) {
+    spdk_msg_fn msg_fn;
+    if (x) { msg_fn = cb_x; }
+    if (y) { spdk_thread_send_msg(ctx, msg_fn, ctx); }
+    return 0;
+}
+"""
+        result = self._scan_with_callback_pattern(code)
+        cb = self._cb_edges(result)
+        self.assertEqual(len(cb), 1)
+        edge = cb[0]
+        self.assertEqual(edge["target"], "cb_x")
+        # __cond_0 = if(x) (assignment), __cond_1 = if(y) (registration)
+        self.assertTrue(edge["source"].endswith("__cond_1"),
+                        "edge must anchor at the registration branch's "
+                        "node, got %s" % edge["source"])
+        self.assertEqual(edge["call_condition"], "if(x) & if(y)")
+        self.assertIn("if(x) & if(y)", edge["evidence"])
+        # The registration branch owns its parent edge; the assignment
+        # branch had no direct calls, so no parent edge for __cond_0.
+        parents = [e for e in result["edges"]
+                   if e["source"] == "root_caller"
+                   and "__cond_" in e["target"]]
+        self.assertEqual([e["call_condition"] for e in parents], ["if(y)"])
+
 
 class TestConditionalScopeNodes(unittest.TestCase):
     """Every pushed conditional scope gets its own __cond_N node.

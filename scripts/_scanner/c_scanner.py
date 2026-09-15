@@ -2126,30 +2126,55 @@ class CTreeSitterScanner(BaseScanner):
                                         _alias_note = f" (alias: {_cb_target} -> {_rt})"
                                     if _rt_cond and _rt_empty:
                                         # Assignment happened inside a
-                                        # conditional branch: anchor the edge
-                                        # at that branch's condition node and
-                                        # make sure the invoker→condition
-                                        # parent edge exists (the branch may
-                                        # have closed without any direct
-                                        # calls, so no parent edge was
-                                        # created at scope exit). The helper
-                                        # also keeps the scope-exit emission
-                                        # from appending the same edge again
-                                        # when assignment and registration
-                                        # share one branch.
-                                        _emit_parent_edge(_rt_empty, _rt_cond)
+                                        # conditional branch. When the
+                                        # registration call sits in a
+                                        # DIFFERENT branch, the callback
+                                        # only fires when both branches
+                                        # ran — anchor at the
+                                        # registration site's node (where
+                                        # the call physically happens)
+                                        # and record the conjunction, so
+                                        # path feasibility sees both
+                                        # dimensions instead of an
+                                        # optimistic single condition.
+                                        if (target_empty and current_condition
+                                                and target_empty != _rt_empty):
+                                            _edge_source = target_empty
+                                            _edge_cond = (f"{_rt_cond} & "
+                                                          f"{current_condition}")
+                                        else:
+                                            # Same branch (or
+                                            # unconditional registration):
+                                            # anchor at the assignment
+                                            # branch's condition node and
+                                            # make sure the
+                                            # invoker→condition parent
+                                            # edge exists (the branch may
+                                            # have closed without any
+                                            # direct calls, so no parent
+                                            # edge was created at scope
+                                            # exit). The helper also
+                                            # keeps the scope-exit
+                                            # emission from appending the
+                                            # same edge again when
+                                            # assignment and registration
+                                            # share one branch.
+                                            _emit_parent_edge(_rt_empty,
+                                                              _rt_cond)
+                                            _edge_source = _rt_empty
+                                            _edge_cond = _rt_cond
                                         edges.append({
-                                            "source": _rt_empty,
+                                            "source": _edge_source,
                                             "target": _rt,
                                             "call_order": call_order[0],
-                                            "call_condition": _rt_cond,
+                                            "call_condition": _edge_cond,
                                             "confidence": "CALLBACK_ARG",
                                             "concurrency": _cb_concurrency,
                                             "source_tag": "callback_arg",
                                             "preproc_condition": "",
                                             "preproc_alive": True,
                                             "is_cond_child": True,
-                                            "evidence": f"callback_arg: {callee_name}() arg#{_cb_arg_idx}={_rt}{_alias_note} under {_rt_cond}",
+                                            "evidence": f"callback_arg: {callee_name}() arg#{_cb_arg_idx}={_rt}{_alias_note} under {_edge_cond}",
                                         })
                                     elif target_empty and current_condition:
                                         # Registration call itself sits in a

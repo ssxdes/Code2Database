@@ -115,10 +115,8 @@
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `wal_enabled` | bool | `true` | 启用写前日志（WAL）。设置为 `false` 适用于非关键工作区（更快但无崩溃恢复）。 |
 | `snapshot_keep_count` | int | `10` | 保留的命名快照数量。更旧的快照会被裁剪。 |
 | `lock_timeout_seconds` | int | `30` | fcntl 锁获取超时时间。对于慢磁盘或繁忙 CI 可增大此值。 |
-| `auto_replay_on_start` | bool | `true` | 下次进程启动时自动重放未完成的 WAL。 |
 
 ### `ffi` — 跨语言 FFI 参数
 

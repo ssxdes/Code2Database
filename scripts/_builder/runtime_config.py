@@ -83,10 +83,8 @@ _SPEC: Dict[str, Dict[str, type]] = {
         "batch_confirm_size": int,
     },
     "transactions": {
-        "wal_enabled": bool,
         "snapshot_keep_count": int,
         "lock_timeout_seconds": int,
-        "auto_replay_on_start": bool,
     },
     "ffi": {
         "detect_python_ctypes": bool,

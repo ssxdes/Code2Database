@@ -115,10 +115,8 @@ Edit this file when you need to tune pipeline behavior without modifying source 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `wal_enabled` | bool | `true` | Write-ahead log enabled. Set to `false` for non-critical workspaces (faster but no crash recovery). |
 | `snapshot_keep_count` | int | `10` | Number of named snapshots to retain. Older snapshots are pruned. |
 | `lock_timeout_seconds` | int | `30` | fcntl lock acquisition timeout. Increase for slow disks or busy CI. |
-| `auto_replay_on_start` | bool | `true` | Automatically replay unfinished WAL on next process start. |
 
 ### `ffi` — Cross-Language FFI Parameters
 

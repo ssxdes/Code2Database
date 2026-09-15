@@ -11,6 +11,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -192,6 +193,118 @@ class TestArgparseWiring(unittest.TestCase):
         self.assertEqual(desc.get("max_tokens"), 500)
         self.assertEqual(explore.get("max_nodes"), 15)
         self.assertEqual(explore.get("max_tokens"), 2000)
+
+
+# Documented-but-unwired knobs: declared in _SPEC and described in
+# RUNTIME_CONFIG.md, but no runtime_get() consumer reads them yet.
+# They are kept as reserved tuning knobs; a NEW key must either be
+# wired to a runtime_get() call or be consciously added here.
+_PENDING_KEYS = {
+    "scan": ("max_file_size_kb", "skip_dirs"),
+    "memory": ("decay_factor", "consolidate_threshold", "scratch_ttl_hours"),
+    "semantic": ("stale_ratio_threshold", "stale_api_threshold"),
+    "invariants": ("state_machine_threshold", "extract_preconditions",
+                   "extract_postconditions", "extract_loop_invariants",
+                   "reject_ambiguous"),
+    "auto_enhance": ("auto_apply_extracted", "require_confirm_inferred",
+                     "reject_ambiguous", "rollback_window",
+                     "batch_confirm_size"),
+    "transactions": ("snapshot_keep_count", "lock_timeout_seconds"),
+    "ffi": ("detect_python_ctypes", "detect_go_cgo", "detect_rust_extern",
+            "flag_lossy_conversions"),
+    "web_ui": ("port", "host", "open_browser", "max_nodes_render"),
+    "benchmark": ("recall_target", "max_tool_calls", "max_tokens"),
+    "profile_health": ("min_score", "auto_apply_extracted",
+                       "require_confirm_inferred", "bind_to_head"),
+    "doc_code": ("check_on_describe", "signature_diff_strict"),
+    "daemon": ("enabled", "watch_paths", "exclude_patterns", "debounce_ms",
+               "batch_window_ms", "auto_rebuild_outputs",
+               "idle_sleep_minutes", "max_events_per_minute", "backend",
+               "startup_grace_sec"),
+}
+
+
+class TestSpecDriftGuards(unittest.TestCase):
+    """_SPEC keys must be wired, registered as pending, and documented.
+
+    Two retired keys (wal_enabled, auto_replay_on_start) once claimed
+    crash-recovery behavior that no code provided — they are gone from
+    the spec and the docs, and these guards keep them (and any future
+    undocumented-or-unwired key) from drifting back in.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.scripts_text = {
+            str(p): p.read_text(encoding="utf-8")
+            for p in SCRIPTS.rglob("*.py")
+        }
+
+    def _consumed_keys(self):
+        """(section, key) pairs referenced by a runtime_get() call."""
+        consumed = set()
+        pattern = "runtime_get("
+        for text in self.scripts_text.values():
+            if pattern not in text:
+                continue
+            for m in re.finditer(
+                    r'runtime_get\(\s*["\']([a-z_]+)["\']\s*,\s*'
+                    r'["\']([a-z_]+)["\']', text):
+                consumed.add((m.group(1), m.group(2)))
+        return consumed
+
+    def test_retired_wal_keys_stay_gone(self):
+        spec_keys = {k for keys in runtime_config._SPEC.values()
+                     for k in keys}
+        self.assertNotIn("wal_enabled", spec_keys)
+        self.assertNotIn("auto_replay_on_start", spec_keys)
+        for name in ("wal_enabled", "auto_replay_on_start"):
+            for text in self.scripts_text.values():
+                self.assertNotIn(f'"{name}"', text,
+                                 f"retired key {name} resurfaced")
+            for doc in ("docs/en/RUNTIME_CONFIG.md",
+                        "docs/zh/RUNTIME_CONFIG.md"):
+                self.assertNotIn(
+                    f"`{name}`",
+                    (REPO / doc).read_text(encoding="utf-8"),
+                    f"retired key {name} still documented in {doc}")
+
+    def test_spec_keys_are_consumed_or_registered(self):
+        consumed = self._consumed_keys()
+        undeclared_consumers = {
+            pair for pair in consumed
+            if pair[0] not in runtime_config._SPEC
+            or pair[1] not in runtime_config._SPEC[pair[0]]}
+        self.assertEqual(
+            undeclared_consumers, set(),
+            "runtime_get() calls reference keys missing from _SPEC")
+        not_consumed = []
+        for section, keys in runtime_config._SPEC.items():
+            for key in keys:
+                if (section, key) in consumed:
+                    continue
+                if key in _PENDING_KEYS.get(section, ()):
+                    continue
+                not_consumed.append(f"{section}.{key}")
+        self.assertEqual(
+            not_consumed, [],
+            "keys declared in _SPEC are neither wired to runtime_get() "
+            "nor registered in _PENDING_KEYS: %s" % not_consumed)
+
+    def test_spec_keys_match_the_field_reference(self):
+        """RUNTIME_CONFIG.md rows and _SPEC keys must mirror each other."""
+        rows = set()
+        for line in (REPO / "docs/en/RUNTIME_CONFIG.md").read_text(
+                encoding="utf-8").splitlines():
+            m = re.match(r"\|\s*`([a-z_]+)`\s*\|", line)
+            if m:
+                rows.add(m.group(1))
+        spec_keys = {k for keys in runtime_config._SPEC.values()
+                     for k in keys}
+        self.assertEqual(rows - spec_keys, set(),
+                         "documented keys missing from _SPEC")
+        self.assertEqual(spec_keys - rows, set(),
+                         "spec keys missing from the field reference")
 
 
 if __name__ == "__main__":

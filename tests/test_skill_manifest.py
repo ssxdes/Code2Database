@@ -106,6 +106,33 @@ class TestSkillManifest(unittest.TestCase):
         self.assertEqual(self.skill["total_commands"],
                          len(self.skill["commands"]))
 
+    def test_skill_json_derived_counts_match_sources(self):
+        """Numeric manifest fields must match what they count.
+
+        core_commands had drifted to 26 while tier_1_commands held 27,
+        and cgdb_schema_version stayed at 4 after the code moved to 5 —
+        silent drifts because nothing compared them to their sources.
+        Every count field that mirrors code or a sibling list is pinned
+        here against that source, so future drift fails CI.
+        """
+        self.assertEqual(self.skill["core_commands"],
+                         len(self.skill["tier_1_commands"]),
+                         "core_commands must equal len(tier_1_commands)")
+        from _builder.mcp.mcp_server import TOOLS
+        self.assertEqual(self.skill["mcp_tools_count"], len(TOOLS),
+                         "mcp_tools_count must equal the merged MCP "
+                         "TOOLS registry size")
+        from _builder.cgdb.cgdb_schema import CGDB_SCHEMA_VERSION
+        self.assertEqual(self.skill["cgdb_schema_version"],
+                         CGDB_SCHEMA_VERSION,
+                         "cgdb_schema_version must equal the code "
+                         "constant")
+        from _builder.graph.sqlite_store import SQLiteStore
+        self.assertEqual(self.skill["sqlite_schema_version"],
+                         SQLiteStore.SCHEMA_VERSION,
+                         "sqlite_schema_version must equal the store "
+                         "constant")
+
     def test_analysis_manifest_commands_runnable(self):
         ghosts = set(self.analysis["commands"]) - self.runnable
         self.assertEqual(ghosts, set(), f"analysis ghosts: {sorted(ghosts)}")

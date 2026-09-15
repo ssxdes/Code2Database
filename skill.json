@@ -393,10 +393,10 @@
     "Report-multi-db db_routing/precompute_tasks (v4)",
     "Report-cross-lang cross_lang_bindings/type_mappings/ffi_call_sites/language_adapters/runtime_observations/dependencies (v4)"
   ],
-  "cgdb_schema_version": 4,
+  "cgdb_schema_version": 5,
   "query_priority_chain": "Memory (recall) -> Knowledge (know) -> Graph (query/describe/trace) -> Source (describe --code)",
   "total_commands": 253,
-  "core_commands": 26,
+  "core_commands": 27,
   "sqlite_schema_version": 13,
   "scanner_commands": [
     "auto-profile",

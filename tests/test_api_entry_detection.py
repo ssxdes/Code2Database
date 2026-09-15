@@ -1070,6 +1070,27 @@ static int caller(int mode, void *ctx) {
         # Three distinct condition nodes — no blended path.
         self.assertEqual(len({e["source"] for e in cb}), 3)
 
+    def test_declaration_initializer_alias(self):
+        """type fn = callback; register(fn); - declaration-with-init
+        form must resolve and stay unconditional when assigned at
+        function scope."""
+        code = """
+typedef void (*spdk_msg_fn)(void *ctx);
+void spdk_thread_send_msg(void *t, spdk_msg_fn fn, void *ctx);
+static void init_cb(void *ctx) { }
+static int caller(void *ctx) {
+    spdk_msg_fn msg_fn = init_cb;
+    spdk_thread_send_msg(ctx, msg_fn, ctx);
+    return 0;
+}
+"""
+        result = self._scan_with_callback_pattern(code)
+        cb = self._cb_edges(result)
+        self.assertEqual(len(cb), 1)
+        self.assertEqual(cb[0]["target"], "init_cb")
+        self.assertEqual(cb[0]["call_condition"], "")
+        self.assertFalse(cb[0]["source"].endswith("__cond_0"))
+
     def test_reassignment_in_branch_after_outer_assignment(self):
         """Assigned unconditionally (separate assignment), then
         reassigned inside a branch: both targets appear - the
@@ -1081,8 +1102,7 @@ void spdk_thread_send_msg(void *t, spdk_msg_fn fn, void *ctx);
 static void cb_default(void *ctx) { }
 static void cb_retry(void *ctx) { }
 static int caller(int retry, void *ctx) {
-    spdk_msg_fn msg_fn;
-    msg_fn = cb_default;
+    spdk_msg_fn msg_fn = cb_default;
     if (retry) {
         msg_fn = cb_retry;
     }

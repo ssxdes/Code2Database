@@ -1870,16 +1870,26 @@ class CTreeSitterScanner(BaseScanner):
                 # with-initializer form of the fn-ptr alias pattern.
                 for child in node.children:
                     if child.type == 'init_declarator':
-                        _decl_name = ""
-                        _init_val = ""
-                        for dc in child.children:
-                            if dc.type == 'identifier' and not _decl_name:
-                                _decl_name = self._node_text(dc, source_bytes)
-                            elif dc.type == 'initializer':
-                                _init_val = self._node_text(dc, source_bytes).strip().rstrip(';').strip()
+                        # Field-based extraction: a simple initializer is a
+                        # bare identifier child of init_declarator, so the
+                        # old identifier/initializer child scan never saw
+                        # 'type var = func;' — the value field covers both
+                        # 'func' and '&func'.
+                        _decl_node = child.child_by_field_name('declarator')
+                        _val_node = child.child_by_field_name('value')
+                        _decl_name = (self._node_text(_decl_node, source_bytes).strip()
+                                      if _decl_node else "")
+                        _fp = re.match(r'^\(\s*\*\s*(\w+)', _decl_name)
+                        if _fp:
+                            # Function-pointer declarator: 'void (*cb)(int) = impl;'
+                            _decl_name = _fp.group(1)
+                        _init_val = (self._node_text(_val_node, source_bytes)
+                                     .strip().rstrip(';').strip()
+                                     if _val_node else "")
                         if _decl_name and _init_val:
                             _init_val = _init_val.lstrip('&').strip()
                             if (re.match(r'^[a-zA-Z_]\w*$', _init_val)
+                                    and re.match(r'^[a-zA-Z_]\w*$', _decl_name)
                                     and _init_val in _file_funcs
                                     and _decl_name not in _file_funcs
                                     and len(_decl_name) > 2):

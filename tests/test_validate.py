@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 from _builder.ops.validate import (
     ValidationResult, validate_edge_logic, validate_call_chain_accuracy,
     validate_data_consistency, validate_all, cmd_validate,
+    validate_dispatch_quality, validate_profile_sync,
 )
 
 
@@ -81,7 +82,10 @@ class TestValidateEdgeLogic(unittest.TestCase):
         self.assertTrue(r.ok)
         self.assertEqual(r.warnings, [])
 
-    def test_missing_concurrency_aggregates_to_warn(self):
+    def test_missing_concurrency_aggregates_to_info(self):
+        # Cross-arch macro calls legitimately lack static concurrency
+        # semantics — the validation comment says as much, so this is
+        # informational, not a warning.
         master = {
             "cross_domain_edges": [
                 {"source": f"a{i}", "target": f"b{i}"} for i in range(7)
@@ -90,9 +94,10 @@ class TestValidateEdgeLogic(unittest.TestCase):
         }
         r = ValidationResult()
         validate_edge_logic(master, r)
-        self.assertTrue(r.ok)  # warn, not error
-        self.assertEqual(len(r.warnings), 1)
-        self.assertIn("missing 'concurrency'", r.warnings[0]["message"])
+        self.assertTrue(r.ok)
+        self.assertEqual(r.warnings, [])
+        self.assertTrue(any("missing 'concurrency'" in i["message"]
+                            for i in r.infos))
 
     def test_cross_domain_structural_relation_is_error(self):
         master = {
@@ -432,3 +437,85 @@ class TestValidateSemanticMatching(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDispatchQualitySeverity(unittest.TestCase):
+    """INFERRED dispatch edges carry uncertainty by construction — a
+    weak confidence_score there is a filterable warning; EXTRACTED
+    edges claiming ground truth below the bar stay errors."""
+
+    def _master(self, edges):
+        return {"cross_domain_edges": edges, "structural_edges": [],
+                "edge_type_counts": {}}
+
+    def test_weak_extracted_dispatch_edge_is_error(self):
+        master = self._master([
+            {"source": "a", "target": "b", "concurrency": "spawn_target",
+             "confidence": "EXTRACTED", "confidence_score": 0.2},
+        ])
+        r = ValidationResult()
+        validate_dispatch_quality(master, r)
+        self.assertFalse(r.ok)
+        self.assertIn("EXTRACTED edges with confidence < 0.5",
+                      r.errors[0]["message"])
+
+    def test_weak_inferred_dispatch_edge_is_warning(self):
+        master = self._master([
+            {"source": "a", "target": "b", "concurrency": "spawn_target",
+             "confidence": "INFERRED", "confidence_score": 0.2},
+        ])
+        r = ValidationResult()
+        validate_dispatch_quality(master, r)
+        self.assertTrue(r.ok)
+        self.assertTrue(any("INFERRED edges with confidence < 0.5"
+                            in w["message"] for w in r.warnings))
+
+    def test_spawn_call_condition_coverage_counts_as_info(self):
+        # spawn_target edges without call_condition previously warned;
+        # with the build-stage "spawn" default the coverage gap closes
+        # for EXTRACTED edges — pin that the check reads as before.
+        master = self._master([
+            {"source": "a", "target": "b", "concurrency": "spawn_target",
+             "confidence": "EXTRACTED", "confidence_score": 0.9,
+             "call_condition": "spawn"},
+        ])
+        r = ValidationResult()
+        validate_dispatch_quality(master, r)
+        self.assertTrue(r.ok)
+        self.assertFalse(any("call_condition coverage" in w["message"]
+                             for w in r.warnings))
+
+
+class TestProfileSyncVtableCoverage(unittest.TestCase):
+    """When registration macros are captured via vtable_dispatch edges,
+    a macro_dispatch entry without macro_dispatch edges is expected —
+    informational, not a warning."""
+
+    def _master(self, vtable_count):
+        return {
+            "cross_domain_edges": [
+                {"source": "a", "target": "b",
+                 "concurrency": "vtable_dispatch"},
+            ] * 0,
+            "structural_edges": [],
+            "edge_type_counts": {"concurrency:vtable_dispatch": vtable_count},
+        }
+
+    def test_vtable_coverage_downgrades_to_info(self):
+        profile = {"macro_dispatch": {"registration_macros": [
+            {"macro_name": "SPDK_SUBSYSTEM_REGISTER"}]}}
+        master = self._master(vtable_count=133)
+        r = ValidationResult()
+        validate_profile_sync(master, r, profile)
+        self.assertEqual(r.warnings, [])
+        self.assertTrue(any("SPDK_SUBSYSTEM_REGISTER" in i["message"]
+                            for i in r.infos))
+
+    def test_no_dispatch_edges_at_all_still_warns(self):
+        profile = {"macro_dispatch": {"registration_macros": [
+            {"macro_name": "SPDK_SUBSYSTEM_REGISTER"}]}}
+        master = self._master(vtable_count=0)
+        r = ValidationResult()
+        validate_profile_sync(master, r, profile)
+        self.assertEqual(len(r.warnings), 1)
+        self.assertIn("no corresponding edges", r.warnings[0]["message"])

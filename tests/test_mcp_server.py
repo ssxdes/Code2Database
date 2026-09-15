@@ -632,3 +632,59 @@ class TestDispatchRobustness(unittest.TestCase):
         import json as _json
         payload = _json.loads(body)
         self.assertIn("timeout", payload["error"].lower())
+
+
+class TestDaemonStatusToolEnvelope(unittest.TestCase):
+    """code2database_daemon_status must return the same
+    {"running": <bool>, "state": {...}} envelope on every path and
+    derive liveness from the PID, not from the state file's own
+    status field (which can be stale after a crash)."""
+
+    def setUp(self):
+        import tempfile
+        import shutil
+        self.tmp = tempfile.mkdtemp(prefix="c2d_mcp_dmn_")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def _write_state(self, payload):
+        import json
+        with open(os.path.join(self.tmp, ".daemon_status.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump(payload, f)
+
+    def test_no_state_file(self):
+        from _builder.mcp.mcp_c2d_tools import _tool_daemon_status
+        result = _tool_daemon_status({}, self.tmp)
+        self.assertFalse(result["running"])
+        self.assertEqual(result["state"], {})
+        self.assertIn("error", result)
+
+    def test_stale_state_reports_not_running(self):
+        from _builder.mcp.mcp_c2d_tools import _tool_daemon_status
+        # Claiming a PID that is dead: liveness must come from the
+        # signal check, not from this field.
+        self._write_state({"pid": 999999, "status": "running",
+                           "pending_events": 3})
+        result = _tool_daemon_status({}, self.tmp)
+        self.assertFalse(result["running"])
+        self.assertEqual(result["state"]["pid"], 999999)
+        self.assertEqual(result["state"]["pending_events"], 3)
+        self.assertNotIn("error", result)
+
+    def test_live_pid_reports_running(self):
+        from _builder.mcp.mcp_c2d_tools import _tool_daemon_status
+        # This test process is alive; the PID check must accept it.
+        self._write_state({"pid": os.getpid(), "status": "running"})
+        result = _tool_daemon_status({}, self.tmp)
+        self.assertTrue(result["running"])
+        self.assertEqual(result["state"]["pid"], os.getpid())
+
+    def test_unreadable_state_file(self):
+        from _builder.mcp.mcp_c2d_tools import _tool_daemon_status
+        with open(os.path.join(self.tmp, ".daemon_status.json"), "w",
+                  encoding="utf-8") as f:
+            f.write("{not json")
+        result = _tool_daemon_status({}, self.tmp)
+        self.assertFalse(result["running"])
+        self.assertEqual(result["state"], {})
+        self.assertIn("error", result)

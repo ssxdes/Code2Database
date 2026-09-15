@@ -929,16 +929,26 @@ def _tool_doc_code_check(args: dict, graph_dir: str) -> dict:
 
 
 def _tool_daemon_status(args: dict, graph_dir: str) -> dict:
-    """Check daemon status."""
+    """Check daemon status.
+
+    Same envelope as the daemon-status CLI command:
+    {"running": <bool>, "state": {...}}. Liveness is a PID signal
+    check, so a stale state file left by a crashed daemon cannot
+    report as alive; an error key appears only when there is no
+    state file or it cannot be read.
+    """
     import json as _json
+    from _builder.daemon.daemon import is_daemon_running
     status_path = os.path.join(graph_dir, ".daemon_status.json")
     if not os.path.exists(status_path):
-        return {"running": False, "error": "daemon not started"}
+        return {"running": False, "state": {},
+                "error": "daemon not started"}
     try:
         with open(status_path) as f:
-            return _json.load(f)
+            state = _json.load(f)
     except (OSError, _json.JSONDecodeError) as exc:
-        return {"running": False, "error": str(exc)}
+        return {"running": False, "state": {}, "error": str(exc)}
+    return {"running": bool(is_daemon_running(graph_dir)), "state": state}
 
 
 

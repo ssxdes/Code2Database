@@ -26,7 +26,7 @@ This module provides:
    - pause / resume: coordinate with manual updates
    - wait-sync: block until current sync completes
 
-4. **CLI**: daemon start/stop/status/logs/reload/add-project/remove-project/list-projects
+4. **CLI**: daemon start/stop/status/force-refresh/pause/resume/wait-sync/logs/reload/list-projects
 
 5. **Circuit breaker**: if events/minute > threshold, switch to
    "wait + bulk rebuild" mode instead of per-file incremental.

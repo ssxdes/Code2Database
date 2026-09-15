@@ -61,6 +61,34 @@ class TestBuilderModuleImport(unittest.TestCase):
         # Usage error: exit 2 (the contract both CLIs share), help on stdout
         self.assertEqual(proc.returncode, 2)
 
+    def test_daemon_docstring_verbs_are_registered(self):
+        """The daemon docstring's CLI list must match the real parsers.
+
+        A promised-but-missing verb is a silent contract break: readers
+        of the module docstring would run a command that does not exist.
+        """
+        import re
+        doc = open(os.path.join(
+            SCRIPTS_DIR, '_builder', 'daemon', 'daemon.py'),
+            encoding='utf-8').read()
+        m = re.search(r"\*\*CLI\*\*: daemon ([a-z/\-]+)", doc)
+        self.assertIsNotNone(m, "daemon docstring must list its CLI verbs")
+        verbs = m.group(1).split('/')
+        proc = subprocess.run(
+            [sys.executable, os.path.join(SCRIPTS_DIR, 'code2database_builder.py'),
+             '--help'],
+            capture_output=True, text=True, timeout=60)
+        registered = set()
+        for line in proc.stdout.splitlines():
+            for tok in line.split():
+                if tok.startswith('daemon-'):
+                    registered.add(tok.strip(','))
+        for verb in verbs:
+            self.assertIn(
+                f"daemon-{verb}", registered,
+                f"daemon docstring promises '{verb}' but the CLI has no "
+                f"daemon-{verb} command")
+
 
 class TestCLICommandRegistration(unittest.TestCase):
     """Verify 26+ representative commands are registered in --help output."""

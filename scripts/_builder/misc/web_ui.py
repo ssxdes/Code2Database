@@ -1024,6 +1024,64 @@ function runLayout() {
   cy.layout(getLayoutOptions()).run();
 }
 
+// Node ids the user has drag-positioned. A later sync must never
+// discard these positions: clicking a node to read its full name and
+// details (or expanding one hop) must not reflow an arrangement the
+// user just made. Cleared only when the whole view resets.
+let userPositioned = new Set();
+
+// Place newly added nodes in a ring around their first on-canvas
+// neighbor (or the centroid when they have none) instead of running a
+// full layout that reflows every node.
+function placeNewNodesAround(newIds) {
+  const R = 70;
+  const onCanvas = new Set(cy.nodes().map(n => n.id()));
+  const groups = new Map();
+  const unanchored = [];
+  for (const id of newIds) {
+    let anchor = null;
+    for (const key in allEdges) {
+      const e = allEdges[key];
+      if (e.source === id && onCanvas.has(e.target) && e.target !== id) { anchor = e.target; break; }
+      if (e.target === id && onCanvas.has(e.source) && e.source !== id) { anchor = e.source; break; }
+    }
+    if (anchor === null) unanchored.push(id);
+    else groups.set(anchor, (groups.get(anchor) || []).concat(id));
+  }
+  const place = (anchorId, members, seed) => {
+    const base = cy.getElementById(anchorId).position();
+    members.forEach((id, i) => {
+      const a = (2 * Math.PI * i) / members.length + seed;
+      cy.getElementById(id).position(
+        { x: base.x + R * Math.cos(a), y: base.y + R * Math.sin(a) });
+    });
+  };
+  let seed = 0;
+  for (const [anchorId, members] of groups) {
+    place(anchorId, members, seed);
+    seed += 0.7;
+  }
+  if (unanchored.length) {
+    // Centroid of the current canvas as the fallback anchor.
+    let cx = 0, cy0 = 0, count = 0;
+    cy.nodes().forEach(n => {
+      if (newIds.includes(n.id())) return;
+      const p = n.position();
+      cx += p.x; cy0 += p.y; count++;
+    });
+    if (count > 0) {
+      cx /= count; cy0 /= count;
+      unanchored.forEach((id, i) => {
+        const a = (2 * Math.PI * i) / unanchored.length + 0.3;
+        cy.getElementById(id).position(
+          { x: cx + R * Math.cos(a), y: cy0 + R * Math.sin(a) });
+      });
+    } else {
+      runLayout();  // nothing to anchor on — fresh canvas
+    }
+  }
+}
+
 function initCy() {
   const gc = graphColors();
   cy = cytoscape({
@@ -1069,6 +1127,11 @@ function initCy() {
   cy.on('tap', 'node', function(evt) {
     activeNodeId = evt.target.id();
     focusNode(evt.target.id(), parseInt(document.getElementById('depth-slider').value));
+  });
+  // Remember drag-released positions so later syncs (click for
+  // details, one-hop expand) never reflow the user's arrangement.
+  cy.on('dragfree', 'node', function(evt) {
+    userPositioned.add(evt.target.id());
   });
   cy.on('tap', function(evt) {
     if (evt.target === cy) { cy.elements().removeClass('faded'); }
@@ -1241,12 +1304,14 @@ function syncCyFromModel() {
   if (!cy) { initCy(); return; }
   const currentIds = new Set(cy.nodes().map(n => n.id()));
   const modelIds = new Set(Object.keys(allNodes));
+  const addedNodeIds = [];
   for (const id of modelIds) {
     if (!currentIds.has(id)) {
       const node = allNodes[id];
       cy.add({ data: { id: id, name: node.name || id, labels: node.labels || [],
         degree: node.degree || 0, community: node.community || node.domain || '' },
         classes: nodeClasses(node) });
+      addedNodeIds.push(id);
     }
   }
   for (const id of currentIds) {
@@ -1270,7 +1335,16 @@ function syncCyFromModel() {
       cy.getElementById(key).classes(edgeClasses(edge));
     }
   }
-  runLayout();
+  // Placement: a full layout reflows EVERY node, discarding whatever
+  // the user dragged. Only auto-flow when nobody arranged the canvas;
+  // once a drag-positioned node is present, keep all positions and
+  // place new arrivals around their anchors instead.
+  if (addedNodeIds.length > 0) {
+    let arranged = false;
+    cy.nodes().forEach(n => { if (userPositioned.has(n.id())) arranged = true; });
+    if (arranged) placeNewNodesAround(addedNodeIds);
+    else runLayout();
+  }
   applyCommunityColors();
   drawMinimap();
   // Show the edge-type legend once the graph has edges.
@@ -1307,6 +1381,7 @@ async function focusNodeOnly(nodeId) {
     allEdges = {};
     expandChildren = {};
     cycleEdges.clear();
+    userPositioned.clear();
     const btn = document.getElementById('cycle-btn');
     if (btn) btn.setAttribute('aria-pressed', 'false');
     // Fetch the node's own metadata so the sidebar + code panel work.
@@ -1325,6 +1400,8 @@ async function focusNodeOnly(nodeId) {
     cache = { nodes: [], edges: [], focus: nodeId };
     activeNodeId = nodeId;
     syncCyFromModel();
+    // Single-node view: center it (sync never reflows on its own).
+    if (cy) cy.fit(undefined, 42);
     loadNodeDetails(nodeId);
     pushNavHistory(nodeId);
     renderBreadcrumb();

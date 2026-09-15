@@ -86,7 +86,10 @@ let highlightPath = [];
 let expandChildren = {};
 let activeNodeId = null;
 let syncCyCalls = 0;
-function runLayout() {}
+let layoutCalls = 0;
+let userPositioned = new Set();
+function runLayout() { layoutCalls++; }
+function placeNewNodesAround() {}  // replaced by the real one when extracted
 function applyCommunityColors() {}
 function syncCyFromModel() { syncCyCalls++; }
 function drawMinimap() {}
@@ -115,13 +118,16 @@ const document = {
 };
 
 function _mkEle(id, data) {
-  return {
+  const el = {
     _d: data || {},
+    _pos: { x: 0, y: 0 },
     id: () => id,
     data: (k) => (data || {})[k],
     _cls: '',
     classes: function (c) { if (c === undefined) return this._cls; this._cls = c; },
+    position: (p) => { if (p === undefined) return el._pos; Object.assign(el._pos, p); },
   };
+  return el;
 }
 
 function _mkCy(initialNodeIds, initialEdgeSpecs) {
@@ -443,3 +449,66 @@ class TestCodePanelJs(unittest.TestCase):
                       'second toggle restores the gutter');
             assert.strictEqual(store['c2d-lineno'], 'on');
         """, ["toggleLineNumbers"])
+
+
+class TestLayoutPreservationJs(unittest.TestCase):
+    """Clicking a node (to read its full name in the details panel)
+    and expanding one hop must never reflow an arrangement the user
+    dragged into place. Auto-layout runs only while nobody has
+    arranged the canvas."""
+
+    def _run_harness(self, tests: str, function_names):
+        js = _ui_js()
+        functions = "\n\n".join(_extract_function(js, n) for n in function_names)
+        proc = _run_node(_HARNESS % {"functions": functions, "tests": tests})
+        self.assertEqual(
+            proc.returncode, 0,
+            "node harness failed:\nSTDOUT: %s\nSTDERR: %s" % (proc.stdout, proc.stderr))
+        self.assertIn("ALL_OK", proc.stdout)
+
+    def test_click_without_additions_never_relayouts(self):
+        self._run_harness("""
+            cy = _mkCy(['a', 'b'], [['a->b', 'a', 'b']]);
+            userPositioned.add('a');
+            allNodes = { a: { id: 'a', name: 'A', labels: [] },
+                         b: { id: 'b', name: 'B', labels: [] } };
+            layoutCalls = 0;
+            syncCyFromModel();
+            assert.strictEqual(layoutCalls, 0,
+                'a details click that adds nothing must not reflow');
+        """, ["syncCyFromModel", "nodeClasses"])
+
+    def test_arranged_canvas_places_new_nodes_not_reflow(self):
+        self._run_harness("""
+            cy = _mkCy(['a', 'b'], [['a->b', 'a', 'b']]);
+            cy.getElementById('a').position({ x: 100, y: 100 });
+            cy.getElementById('b').position({ x: 200, y: 120 });
+            userPositioned.add('a');
+            allNodes = { a: { id: 'a', name: 'A', labels: [] },
+                         b: { id: 'b', name: 'B', labels: [] },
+                         c: { id: 'c', name: 'C', labels: [] } };
+            allEdges = { 'a->b': { source: 'a', target: 'b' },
+                         'a->c': { source: 'a', target: 'c' } };
+            layoutCalls = 0;
+            syncCyFromModel();
+            assert.strictEqual(layoutCalls, 0,
+                'an arranged canvas must keep its layout');
+            const pa = cy.getElementById('a').position();
+            assert.strictEqual(pa.x, 100, 'anchor position preserved');
+            const pc = cy.getElementById('c').position();
+            const dx = pc.x - pa.x, dy = pc.y - pa.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            assert.ok(Math.abs(dist - 70) < 1e-6,
+                'new node placed on a ring around its anchor, dist=' + dist);
+        """, ["syncCyFromModel", "placeNewNodesAround", "nodeClasses", "edgeClasses"])
+
+    def test_untouched_canvas_still_auto_layouts(self):
+        self._run_harness("""
+            cy = _mkCy([], []);
+            allNodes = { a: { id: 'a', name: 'A', labels: [] } };
+            allEdges = {};
+            layoutCalls = 0;
+            syncCyFromModel();
+            assert.strictEqual(layoutCalls, 1,
+                'fresh canvas keeps the auto-layout behavior');
+        """, ["syncCyFromModel", "nodeClasses"])

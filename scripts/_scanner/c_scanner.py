@@ -1872,6 +1872,28 @@ class CTreeSitterScanner(BaseScanner):
             _cond_seq[0] += 1
             return self._make_empty_id(invoker_id, idx)
 
+        # Parent edges (invoker → condition node) already emitted in
+        # this function scan. The callback alias path can emit one
+        # before its branch scope closes; the scope-exit paths used to
+        # append an identical edge again, and checking meant a linear
+        # scan of the whole edge list per callback edge. One set gives
+        # O(1) dedup for both paths.
+        _emitted_parents = set()
+
+        def _emit_parent_edge(empty_id, condition):
+            if empty_id in _emitted_parents:
+                return
+            _emitted_parents.add(empty_id)
+            edges.append({
+                "source": invoker_id,
+                "target": empty_id,
+                "call_order": None,
+                "call_condition": condition,
+                "confidence": self._confidence_tag(),
+                "source_tag": self._source_tag(),
+                "confidence_score": 1.0,
+            })
+
         def _process_node(node):
             if node.type == 'declaration':
                 # Collect function-pointer declarators: 'void (*cb)(int)',
@@ -2110,20 +2132,12 @@ class CTreeSitterScanner(BaseScanner):
                                         # parent edge exists (the branch may
                                         # have closed without any direct
                                         # calls, so no parent edge was
-                                        # created at scope exit).
-                                        if not any(
-                                                e.get("source") == invoker_id
-                                                and e.get("target") == _rt_empty
-                                                for e in edges):
-                                            edges.append({
-                                                "source": invoker_id,
-                                                "target": _rt_empty,
-                                                "call_order": None,
-                                                "call_condition": _rt_cond,
-                                                "confidence": self._confidence_tag(),
-                                                "source_tag": self._source_tag(),
-                                                "confidence_score": 1.0,
-                                            })
+                                        # created at scope exit). The helper
+                                        # also keeps the scope-exit emission
+                                        # from appending the same edge again
+                                        # when assignment and registration
+                                        # share one branch.
+                                        _emit_parent_edge(_rt_empty, _rt_cond)
                                         edges.append({
                                             "source": _rt_empty,
                                             "target": _rt,
@@ -2417,15 +2431,7 @@ class CTreeSitterScanner(BaseScanner):
                     _process_node(condition_node)
                     cond_scope = cond_stack.pop()
                     if cond_scope["has_calls"]:
-                        edges.append({
-                            "source": invoker_id,
-                            "target": cond_scope["empty_id"],
-                            "call_order": None,
-                            "call_condition": cond_scope["condition"],
-                            "confidence": self._confidence_tag(),
-                            "source_tag": self._source_tag(),
-                            "confidence_score": 1.0,
-                        })
+                        _emit_parent_edge(cond_scope["empty_id"], cond_scope["condition"])
 
                 # Process consequence
                 consequence = node.child_by_field_name('consequence')
@@ -2438,15 +2444,7 @@ class CTreeSitterScanner(BaseScanner):
                     # Close the if-scope
                     scope = cond_stack[-1]
                     if scope["has_calls"]:
-                        edges.append({
-                            "source": invoker_id,
-                            "target": scope["empty_id"],
-                            "call_order": None,
-                            "call_condition": scope["condition"],
-                            "confidence": self._confidence_tag(),
-                            "source_tag": self._source_tag(),
-                            "confidence_score": 1.0,
-                        })
+                        _emit_parent_edge(scope["empty_id"], scope["condition"])
                     # else scope
                     else_cond = f"!({cond_expr})" if cond_expr else "else"
                     cond_stack[-1] = {"condition": else_cond,
@@ -2457,15 +2455,7 @@ class CTreeSitterScanner(BaseScanner):
                 # Pop condition scope
                 scope = cond_stack.pop()
                 if scope["has_calls"]:
-                    edges.append({
-                        "source": invoker_id,
-                        "target": scope["empty_id"],
-                        "call_order": None,
-                        "call_condition": scope["condition"],
-                        "confidence": self._confidence_tag(),
-                        "source_tag": self._source_tag(),
-                        "confidence_score": 1.0,
-                    })
+                    _emit_parent_edge(scope["empty_id"], scope["condition"])
                 return
 
             if node.type == 'switch_statement':
@@ -2479,15 +2469,7 @@ class CTreeSitterScanner(BaseScanner):
                     _process_node(cond_node)
                     scope = cond_stack.pop()
                     if scope["has_calls"]:
-                        edges.append({
-                            "source": invoker_id,
-                            "target": scope["empty_id"],
-                            "call_order": None,
-                            "call_condition": scope["condition"],
-                            "confidence": self._confidence_tag(),
-                            "source_tag": self._source_tag(),
-                            "confidence_score": 1.0,
-                        })
+                        _emit_parent_edge(scope["empty_id"], scope["condition"])
                 # Process body which contains case statements
                 body = node.child_by_field_name('body')
                 if body:
@@ -2522,15 +2504,7 @@ class CTreeSitterScanner(BaseScanner):
                                     _process_node(stmt)
                             scope = cond_stack.pop()
                             if scope["has_calls"]:
-                                edges.append({
-                                    "source": invoker_id,
-                                    "target": scope["empty_id"],
-                                    "call_order": None,
-                                    "call_condition": scope["condition"],
-                                    "confidence": self._confidence_tag(),
-                                    "source_tag": self._source_tag(),
-                                    "confidence_score": 1.0,
-                                })
+                                _emit_parent_edge(scope["empty_id"], scope["condition"])
                         else:
                             # Statement directly in the switch body, outside
                             # any case/default label (Duff's-device style or
@@ -2555,15 +2529,7 @@ class CTreeSitterScanner(BaseScanner):
                 # Pop the ifdef/if scope
                 scope = cond_stack.pop()
                 if scope["has_calls"]:
-                    edges.append({
-                        "source": invoker_id,
-                        "target": scope["empty_id"],
-                        "call_order": None,
-                        "call_condition": scope["condition"],
-                        "confidence": self._confidence_tag(),
-                        "source_tag": self._source_tag(),
-                        "confidence_score": 1.0,
-                    })
+                    _emit_parent_edge(scope["empty_id"], scope["condition"])
                 return
 
             if node.type == 'preproc_elif':
@@ -2572,15 +2538,7 @@ class CTreeSitterScanner(BaseScanner):
                     prev_scope = cond_stack[-1]
                     # Close previous branch scope if it had calls
                     if prev_scope["has_calls"]:
-                        edges.append({
-                            "source": invoker_id,
-                            "target": prev_scope["empty_id"],
-                            "call_order": None,
-                            "call_condition": prev_scope["condition"],
-                            "confidence": self._confidence_tag(),
-                            "source_tag": self._source_tag(),
-                            "confidence_score": 1.0,
-                        })
+                        _emit_parent_edge(prev_scope["empty_id"], prev_scope["condition"])
                     elif_cond = self._extract_pp_condition_from_node(node, source_bytes)
                     # The elif condition: parent condition negated AND elif condition true
                     parent_cond = prev_scope["condition"]
@@ -2598,15 +2556,7 @@ class CTreeSitterScanner(BaseScanner):
                     prev_scope = cond_stack[-1]
                     # Close previous branch scope if it had calls
                     if prev_scope["has_calls"]:
-                        edges.append({
-                            "source": invoker_id,
-                            "target": prev_scope["empty_id"],
-                            "call_order": None,
-                            "call_condition": prev_scope["condition"],
-                            "confidence": self._confidence_tag(),
-                            "source_tag": self._source_tag(),
-                            "confidence_score": 1.0,
-                        })
+                        _emit_parent_edge(prev_scope["empty_id"], prev_scope["condition"])
                     parent_cond = prev_scope["condition"]
                     else_label = f"!({parent_cond})"
                     cond_stack[-1] = {"condition": else_label,
@@ -2641,15 +2591,7 @@ class CTreeSitterScanner(BaseScanner):
                         _process_node(cond_node)
                         cond_scope = cond_stack.pop()
                         if cond_scope["has_calls"]:
-                            edges.append({
-                                "source": invoker_id,
-                                "target": cond_scope["empty_id"],
-                                "call_order": None,
-                                "call_condition": cond_scope["condition"],
-                                "confidence": self._confidence_tag(),
-                                "source_tag": self._source_tag(),
-                                "confidence_score": 1.0,
-                            })
+                            _emit_parent_edge(cond_scope["empty_id"], cond_scope["condition"])
 
                 def _process_loop_body():
                     body = node.child_by_field_name('body')
@@ -2665,15 +2607,7 @@ class CTreeSitterScanner(BaseScanner):
 
                 scope = cond_stack.pop()
                 if scope["has_calls"]:
-                    edges.append({
-                        "source": invoker_id,
-                        "target": scope["empty_id"],
-                        "call_order": None,
-                        "call_condition": scope["condition"],
-                        "confidence": self._confidence_tag(),
-                        "source_tag": self._source_tag(),
-                        "confidence_score": 1.0,
-                    })
+                    _emit_parent_edge(scope["empty_id"], scope["condition"])
                 return
 
             if node.type == 'for_statement':
@@ -2704,15 +2638,7 @@ class CTreeSitterScanner(BaseScanner):
                     _process_node(cond_node)
                     cond_scope = cond_stack.pop()
                     if cond_scope["has_calls"]:
-                        edges.append({
-                            "source": invoker_id,
-                            "target": cond_scope["empty_id"],
-                            "call_order": None,
-                            "call_condition": cond_scope["condition"],
-                            "confidence": self._confidence_tag(),
-                            "source_tag": self._source_tag(),
-                            "confidence_score": 1.0,
-                        })
+                        _emit_parent_edge(cond_scope["empty_id"], cond_scope["condition"])
 
                 # body, then update (execution order)
                 body_node = node.child_by_field_name('body')
@@ -2723,15 +2649,7 @@ class CTreeSitterScanner(BaseScanner):
 
                 scope = cond_stack.pop()
                 if scope["has_calls"]:
-                    edges.append({
-                        "source": invoker_id,
-                        "target": scope["empty_id"],
-                        "call_order": None,
-                        "call_condition": scope["condition"],
-                        "confidence": self._confidence_tag(),
-                        "source_tag": self._source_tag(),
-                        "confidence_score": 1.0,
-                    })
+                    _emit_parent_edge(scope["empty_id"], scope["condition"])
                 return
 
             if node.type == 'conditional_expression':
@@ -2749,15 +2667,7 @@ class CTreeSitterScanner(BaseScanner):
                     _process_node(cond_node)
                     cond_scope = cond_stack.pop()
                     if cond_scope["has_calls"]:
-                        edges.append({
-                            "source": invoker_id,
-                            "target": cond_scope["empty_id"],
-                            "call_order": None,
-                            "call_condition": cond_scope["condition"],
-                            "confidence": self._confidence_tag(),
-                            "source_tag": self._source_tag(),
-                            "confidence_score": 1.0,
-                        })
+                        _emit_parent_edge(cond_scope["empty_id"], cond_scope["condition"])
 
                 # Process consequence (true branch)
                 consequence = node.child_by_field_name('consequence')
@@ -2768,15 +2678,7 @@ class CTreeSitterScanner(BaseScanner):
                     _process_node(consequence)
                     scope = cond_stack.pop()
                     if scope["has_calls"]:
-                        edges.append({
-                            "source": invoker_id,
-                            "target": scope["empty_id"],
-                            "call_order": None,
-                            "call_condition": scope["condition"],
-                            "confidence": self._confidence_tag(),
-                            "source_tag": self._source_tag(),
-                            "confidence_score": 1.0,
-                        })
+                        _emit_parent_edge(scope["empty_id"], scope["condition"])
 
                 # Process alternative (false branch)
                 alternative = node.child_by_field_name('alternative')
@@ -2787,15 +2689,7 @@ class CTreeSitterScanner(BaseScanner):
                     _process_node(alternative)
                     scope = cond_stack.pop()
                     if scope["has_calls"]:
-                        edges.append({
-                            "source": invoker_id,
-                            "target": scope["empty_id"],
-                            "call_order": None,
-                            "call_condition": scope["condition"],
-                            "confidence": self._confidence_tag(),
-                            "source_tag": self._source_tag(),
-                            "confidence_score": 1.0,
-                        })
+                        _emit_parent_edge(scope["empty_id"], scope["condition"])
                 return
 
             # === goto_statement: extract goto target label ===

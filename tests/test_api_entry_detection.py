@@ -1119,6 +1119,37 @@ static int caller(int retry, void *ctx) {
         self.assertEqual(by_target["cb_retry"]["call_condition"], "if(retry)")
         self.assertTrue(by_target["cb_retry"]["source"].endswith("__cond_0"))
 
+    def test_same_branch_assignment_and_registration_one_parent_edge(self):
+        """Assignment AND registration inside the same branch: the raw
+        edge list must carry the invoker→condition parent edge exactly
+        once. The alias path used to emit it before the branch closed,
+        and the scope exit appended an identical copy afterwards."""
+        code = """
+typedef void (*spdk_msg_fn)(void *ctx);
+void spdk_thread_send_msg(void *t, spdk_msg_fn fn, void *ctx);
+static void cb_now(void *ctx) { }
+static int caller(int ready, void *ctx) {
+    if (ready) {
+        spdk_msg_fn msg_fn = cb_now;
+        spdk_thread_send_msg(ctx, msg_fn, ctx);
+    }
+    return 0;
+}
+"""
+        result = self._scan_with_callback_pattern(code)
+        parents = [e for e in result["edges"]
+                   if e["source"] == "root_caller"
+                   and e["target"].endswith("__cond_0")]
+        self.assertEqual(len(parents), 1,
+                         "parent edge must appear exactly once in raw "
+                         "edges, got: %s" % parents)
+        self.assertEqual(parents[0]["call_condition"], "if(ready)")
+        cb = self._cb_edges(result)
+        self.assertEqual(len(cb), 1)
+        self.assertTrue(cb[0]["source"].endswith("__cond_0"))
+        self.assertEqual(cb[0]["target"], "cb_now")
+        self.assertEqual(cb[0]["call_condition"], "if(ready)")
+
 
 class TestConditionalScopeNodes(unittest.TestCase):
     """Every pushed conditional scope gets its own __cond_N node.

@@ -242,7 +242,7 @@ python3 scripts/code2database_builder.py daemon-stop \
 
 ### `daemon-status`
 
-Get daemon status: pid, last_sync, pending events, stale nodes, circuit breaker state, and startup-grace state (`sync.startup_grace_active`, `sync.startup_grace_remaining_sec` — events seen during the grace window are held, not synced).
+Get daemon status: pid, last_sync, pending events, stale nodes, circuit breaker state, and startup-grace state (`sync.startup_grace_active`, `sync.startup_grace_remaining_sec` — events seen during the grace window are held, not synced). The JSON envelope is identical whether the daemon is alive or stopped: `{"running": <bool>, "state": {...}}` (the live payload adds the sync-worker report under `state.sync`).
 
 ```bash
 python3 scripts/code2database_builder.py daemon-status \

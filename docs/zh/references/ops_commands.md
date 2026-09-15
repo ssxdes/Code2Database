@@ -242,7 +242,7 @@ python3 scripts/code2database_builder.py daemon-stop \
 
 ### `daemon-status`
 
-获取守护进程状态：pid、last_sync、待处理事件、陈旧节点、断路器状态，以及启动宽限期状态（`sync.startup_grace_active`、`sync.startup_grace_remaining_sec`——宽限期内观察到的事件会被持有、不触发同步）。
+获取守护进程状态：pid、last_sync、待处理事件、陈旧节点、断路器状态，以及启动宽限期状态（`sync.startup_grace_active`、`sync.startup_grace_remaining_sec`——宽限期内观察到的事件会被持有、不触发同步）。JSON 外层结构在存活与停止两种状态下完全一致：`{"running": <bool>, "state": {...}}`（存活时的负载额外在 `state.sync` 下携带同步工作线程报告）。
 
 ```bash
 python3 scripts/code2database_builder.py daemon-status \

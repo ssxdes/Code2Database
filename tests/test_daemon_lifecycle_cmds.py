@@ -275,11 +275,13 @@ class TestLiveDaemonLifecycle(unittest.TestCase):
         ret, out, err, code = _capture_call(
             cmd_daemon_status, _ns(graph=self.graph_dir))
         self.assertIsNone(code)
-        # Live status is the daemon's state dict at top level (not the
-        # {"running": False, "state": ...} shape of the dead-daemon path).
+        # Same envelope on both paths: {"running": <bool>, "state": {...}}.
+        # The live payload is the daemon's state dict (plus the sync
+        # report) nested under "state".
         result = json.loads(out)
-        self.assertEqual(result["pid"], os.getpid())
-        self.assertIn("sync", result)
+        self.assertTrue(result["running"])
+        self.assertEqual(result["state"]["pid"], os.getpid())
+        self.assertIn("sync", result["state"])
 
     def test_pause_resume_roundtrip(self):
         self._start_daemon()
@@ -289,15 +291,16 @@ class TestLiveDaemonLifecycle(unittest.TestCase):
         self.assertTrue(json.loads(out)["ok"])
         ret, out, err, code = _capture_call(
             cmd_daemon_status, _ns(graph=self.graph_dir))
-        self.assertTrue(json.loads(out)["paused"])
-        self.assertEqual(json.loads(out)["paused_reason"], "manual edit")
+        self.assertTrue(json.loads(out)["state"]["paused"])
+        self.assertEqual(json.loads(out)["state"]["paused_reason"],
+                         "manual edit")
         ret, out, err, code = _capture_call(
             cmd_daemon_resume, _ns(graph=self.graph_dir))
         self.assertIsNone(code)
         self.assertTrue(json.loads(out)["ok"])
         ret, out, err, code = _capture_call(
             cmd_daemon_status, _ns(graph=self.graph_dir))
-        self.assertFalse(json.loads(out)["paused"])
+        self.assertFalse(json.loads(out)["state"]["paused"])
 
     def test_force_refresh_then_wait_sync(self):
         self._start_daemon()
@@ -368,7 +371,8 @@ class TestDaemonStopSubprocess(unittest.TestCase):
                         "subprocess daemon never came up")
         ret, out, err, code = _capture_call(
             cmd_daemon_status, _ns(graph=self.graph_dir))
-        self.assertEqual(json.loads(out)["pid"], self.proc.pid)
+        self.assertTrue(json.loads(out)["running"])
+        self.assertEqual(json.loads(out)["state"]["pid"], self.proc.pid)
         ret, out, err, code = _capture_call(
             cmd_daemon_stop, _ns(graph=self.graph_dir))
         self.assertIsNone(code)

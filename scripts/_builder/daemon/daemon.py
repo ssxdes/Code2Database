@@ -2155,17 +2155,28 @@ def cmd_daemon_stop(args):
 
 
 def cmd_daemon_status(args):
-    """Get daemon status (via socket if running, else from state file)."""
+    """Get daemon status (via socket if running, else from state file).
+
+    The output envelope is identical on both paths:
+    ``{"running": <bool>, "state": {...}}``. The live payload carries
+    the persisted-state fields plus the sync-worker report under
+    ``state.sync``. An ``error`` key appears only when the daemon
+    vanished between the liveness check and the socket reply.
+    """
     graph_dir = args.graph
     if is_daemon_running(graph_dir):
         result = daemon_query(graph_dir, "status")
-        print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+        if "error" not in result:
+            print(json.dumps({"running": True, "state": result},
+                             ensure_ascii=False, indent=2, default=str))
+            return
+        envelope = {"running": False,
+                    "state": DaemonState.read(graph_dir).to_dict(),
+                    "error": result["error"]}
     else:
-        state = DaemonState.read(graph_dir)
-        print(json.dumps({
-            "running": False,
-            "state": state.to_dict(),
-        }, ensure_ascii=False, indent=2, default=str))
+        envelope = {"running": False,
+                    "state": DaemonState.read(graph_dir).to_dict()}
+    print(json.dumps(envelope, ensure_ascii=False, indent=2, default=str))
 
 
 def cmd_daemon_force_refresh(args):

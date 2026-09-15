@@ -1120,5 +1120,103 @@ static int caller(int retry, void *ctx) {
         self.assertTrue(by_target["cb_retry"]["source"].endswith("__cond_0"))
 
 
+class TestConditionalScopeNodes(unittest.TestCase):
+    """Every pushed conditional scope gets its own __cond_N node.
+
+    Numbering by cond_stack depth merged unrelated scopes that sit at
+    the same depth: all cases of one switch, two sequential ifs, and
+    sibling ifs in different branches shared one node, and the merged
+    node's parent edge kept only the last branch's condition (edge
+    attributes overwrite per (source, target) at build time).
+    """
+
+    def _scan_c(self, code):
+        from _scanner.c_scanner import CTreeSitterScanner
+        scanner = CTreeSitterScanner(is_cpp=False)
+        with tempfile.NamedTemporaryFile(suffix='.c', mode='w',
+                                         delete=False) as f:
+            f.write(code)
+            f.flush()
+            result = scanner.scan_file(f.name,
+                                       source_root=os.path.dirname(f.name))
+        os.unlink(f.name)
+        return result
+
+    def _parent_edges(self, result):
+        return [e for e in result["edges"]
+                if not e.get("is_cond_child")]
+
+    def test_switch_cases_get_separate_condition_nodes(self):
+        code = """
+void a(void); void b(void); void c(void);
+void f(int x) {
+    switch (x) {
+    case 1: a(); break;
+    case 2: b(); break;
+    default: c(); break;
+    }
+}
+"""
+        result = self._scan_c(code)
+        parents = self._parent_edges(result)
+        self.assertEqual(len(parents), 3)
+        conds = {e["target"]: e["call_condition"] for e in parents}
+        self.assertEqual(len(set(conds)), 3,
+                         "each case must own a distinct condition node")
+        self.assertEqual(conds["root_f__cond_1"], "switch(x) case 1:")
+        self.assertEqual(conds["root_f__cond_2"], "switch(x) case 2:")
+        self.assertEqual(conds["root_f__cond_3"], "switch(x) default:")
+        children = {(e["source"], e["target"]) for e in result["edges"]
+                    if e.get("is_cond_child")}
+        self.assertEqual(children, {
+            ("root_f__cond_1", "a"),
+            ("root_f__cond_2", "b"),
+            ("root_f__cond_3", "c"),
+        })
+
+    def test_sequential_ifs_get_separate_condition_nodes(self):
+        code = """
+void a(void); void b(void); void c(void); void d(void);
+void f(int x, int y) {
+    if (x) { a(); b(); }
+    if (y) { c(); d(); }
+}
+"""
+        result = self._scan_c(code)
+        parents = self._parent_edges(result)
+        self.assertEqual(len(parents), 2)
+        conds = {e["target"]: e["call_condition"] for e in parents}
+        self.assertEqual(conds["root_f__cond_0"], "if(x)")
+        self.assertEqual(conds["root_f__cond_1"], "if(y)")
+        children = {(e["source"], e["target"]) for e in result["edges"]
+                    if e.get("is_cond_child")}
+        self.assertEqual(children, {
+            ("root_f__cond_0", "a"),
+            ("root_f__cond_0", "b"),
+            ("root_f__cond_1", "c"),
+            ("root_f__cond_1", "d"),
+        })
+
+    def test_sibling_ifs_in_different_branches_get_separate_nodes(self):
+        code = """
+void f(void); void g(void);
+void h(int a, int b) {
+    if (a) { if (b) f(); } else { if (!b) g(); }
+}
+"""
+        result = self._scan_c(code)
+        parents = self._parent_edges(result)
+        conds = {e["target"]: e["call_condition"] for e in parents}
+        self.assertEqual(len(parents), 2)
+        self.assertEqual(conds["root_h__cond_1"], "if(b)")
+        self.assertEqual(conds["root_h__cond_2"], "if(!b)")
+        children = {(e["source"], e["target"]) for e in result["edges"]
+                    if e.get("is_cond_child")}
+        self.assertEqual(children, {
+            ("root_h__cond_1", "f"),
+            ("root_h__cond_2", "g"),
+        })
+
+
 if __name__ == "__main__":
     unittest.main()

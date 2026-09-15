@@ -75,5 +75,52 @@ def test_condition_extractor_no_libclang(monkeypatch):
     assert result == []
 
 
+def _clang_available():
+    try:
+        from _scanner.clang_scanner import is_clang_available
+        return is_clang_available()
+    except Exception:
+        return False
+
+
+@pytest.mark.skipif(not _clang_available(), reason="libclang not available")
+def test_condition_extractor_covers_switch():
+    """The docstring promises SwitchStmt coverage — pin it for real.
+
+    A function with if/while/switch/ternary branches must yield one
+    ConditionRecord per distinct branch condition; the switch condition
+    is emitted with kind='atom'.
+    """
+    import tempfile
+    import os
+    from clang.cindex import Index, CursorKind
+    code = """
+int pick(int x) {
+    int r = 0;
+    if (x < 0) { r = -1; }
+    while (x > 100) { x -= 100; }
+    switch (x) {
+    case 0: r = 1; break;
+    default: r = 2; break;
+    }
+    return x > 0 ? r : -r;
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "t.c")
+        with open(path, "w") as fh:
+            fh.write(code)
+        tu = Index.create().parse(path)
+        fn = next(c for c in tu.cursor.get_children()
+                  if c.kind == CursorKind.FUNCTION_DECL and c.spelling == "pick")
+        records = ConditionExtractor().extract_from_ast(fn, 42)
+    texts = {r.text_form: r for r in records}
+    assert "x < 0" in texts
+    assert "x > 100" in texts
+    assert "x" in texts, "switch condition must be extracted"
+    assert texts["x"].kind == "atom"
+    assert "x > 0" in texts, "ternary condition must be extracted"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -1857,6 +1857,21 @@ class CTreeSitterScanner(BaseScanner):
         _local_fn_aliases = {}
         _file_funcs = getattr(self, '_file_defined_funcs', set())
 
+        # One index per pushed conditional scope, monotonically
+        # increasing across the whole function body. Numbering by
+        # cond_stack depth instead merged unrelated scopes that happen
+        # to sit at the same depth: every case of one switch, two
+        # sequential ifs, or sibling ifs in different branches all got
+        # the same __cond_N — their parent edges then overwrote each
+        # other's condition (last write wins), so only the last
+        # branch's condition survived on the merged node.
+        _cond_seq = [0]
+
+        def _next_cond_id():
+            idx = _cond_seq[0]
+            _cond_seq[0] += 1
+            return self._make_empty_id(invoker_id, idx)
+
         def _process_node(node):
             if node.type == 'declaration':
                 # Collect function-pointer declarators: 'void (*cb)(int)',
@@ -2382,7 +2397,7 @@ class CTreeSitterScanner(BaseScanner):
             if node.type == 'if_statement':
                 cond_expr = self._extract_if_condition(node, source_bytes)
                 cond_label = f"if({cond_expr})" if cond_expr else "if"
-                empty_id = self._make_empty_id(invoker_id, len(cond_stack))
+                empty_id = _next_cond_id()
 
                 # Capture condition variables
                 cvars = self._extract_condition_vars(cond_expr)
@@ -2459,7 +2474,7 @@ class CTreeSitterScanner(BaseScanner):
                 if cond_node:
                     cond_text = self._node_text(cond_node, source_bytes).strip()
                     cond_stack.append({"condition": f"switch({cond_text})",
-                                       "empty_id": self._make_empty_id(invoker_id, len(cond_stack)),
+                                       "empty_id": _next_cond_id(),
                                        "has_calls": False})
                     _process_node(cond_node)
                     scope = cond_stack.pop()
@@ -2476,10 +2491,31 @@ class CTreeSitterScanner(BaseScanner):
                 # Process body which contains case statements
                 body = node.child_by_field_name('body')
                 if body:
+                    switch_expr = ""
+                    if cond_node:
+                        switch_expr = self._node_text(cond_node, source_bytes).strip().strip('() ').strip()
                     for child in body.children:
                         if child.type in ('case_statement',):
-                            case_cond = self._node_text(child, source_bytes).strip()
-                            empty_id = self._make_empty_id(invoker_id, len(cond_stack))
+                            # Case label = text up to the ':' (just "case 2"
+                            # / "default"), not the whole statement with its
+                            # body. Prefixed with the switch expression so
+                            # two switches in one function stay tellable
+                            # apart on the parent edge's condition.
+                            label_parts = []
+                            for part in child.children:
+                                if part.type == ':':
+                                    break
+                                _pt = self._node_text(part, source_bytes).strip()
+                                if _pt:
+                                    label_parts.append(_pt)
+                            case_label = " ".join(label_parts)
+                            if not case_label:
+                                case_label = "case"
+                            if switch_expr:
+                                case_cond = f"switch({switch_expr}) {case_label}:"
+                            else:
+                                case_cond = f"{case_label}:"
+                            empty_id = _next_cond_id()
                             cond_stack.append({"condition": case_cond, "empty_id": empty_id, "has_calls": False})
                             for stmt in child.children:
                                 if stmt.type not in ('case', 'default', ':'):
@@ -2508,7 +2544,7 @@ class CTreeSitterScanner(BaseScanner):
                 # Preprocessor conditional inside the function body
                 condition = self._extract_pp_condition_from_node(node, source_bytes)
                 cond_label = condition if condition else f"#{node.type}"
-                empty_id = self._make_empty_id(invoker_id, len(cond_stack))
+                empty_id = _next_cond_id()
 
                 cond_stack.append({"condition": cond_label, "empty_id": empty_id, "has_calls": False})
 
@@ -2587,7 +2623,7 @@ class CTreeSitterScanner(BaseScanner):
                 if cond_node:
                     loop_cond = self._node_text(cond_node, source_bytes).strip('() ')
                 cond_label = f"while({loop_cond})" if loop_cond else "while"
-                empty_id = self._make_empty_id(invoker_id, len(cond_stack))
+                empty_id = _next_cond_id()
                 cond_stack.append({"condition": cond_label, "empty_id": empty_id, "has_calls": False})
 
                 # do-while executes the BODY before the condition; while
@@ -2652,7 +2688,7 @@ class CTreeSitterScanner(BaseScanner):
                     loop_cond = self._node_text(cond_node, source_bytes).strip('() ')
 
                 cond_label = f"for({loop_cond})" if loop_cond else "for"
-                empty_id = self._make_empty_id(invoker_id, len(cond_stack))
+                empty_id = _next_cond_id()
                 cond_stack.append({"condition": cond_label, "empty_id": empty_id, "has_calls": False})
 
                 # Process in EXECUTION order: init -> cond -> body -> update.
@@ -2708,7 +2744,7 @@ class CTreeSitterScanner(BaseScanner):
                 # Process condition subtree (may contain calls)
                 if cond_node:
                     cond_cond_label = f"ternary_cond({cond_text})" if cond_text else "ternary_cond"
-                    cond_cond_entry = {"condition": cond_cond_label, "empty_id": self._make_empty_id(invoker_id, len(cond_stack)) + "_cond", "has_calls": False}
+                    cond_cond_entry = {"condition": cond_cond_label, "empty_id": _next_cond_id() + "_cond", "has_calls": False}
                     cond_stack.append(cond_cond_entry)
                     _process_node(cond_node)
                     cond_scope = cond_stack.pop()
@@ -2727,7 +2763,7 @@ class CTreeSitterScanner(BaseScanner):
                 consequence = node.child_by_field_name('consequence')
                 if consequence:
                     cond_label = f"ternary_true({cond_text})" if cond_text else "ternary_true"
-                    empty_id = self._make_empty_id(invoker_id, len(cond_stack))
+                    empty_id = _next_cond_id()
                     cond_stack.append({"condition": cond_label, "empty_id": empty_id, "has_calls": False})
                     _process_node(consequence)
                     scope = cond_stack.pop()
@@ -2746,7 +2782,7 @@ class CTreeSitterScanner(BaseScanner):
                 alternative = node.child_by_field_name('alternative')
                 if alternative:
                     alt_cond = f"!ternary({cond_text})" if cond_text else "ternary_false"
-                    empty_id = self._make_empty_id(invoker_id, len(cond_stack))
+                    empty_id = _next_cond_id()
                     cond_stack.append({"condition": alt_cond, "empty_id": empty_id, "has_calls": False})
                     _process_node(alternative)
                     scope = cond_stack.pop()

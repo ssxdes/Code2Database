@@ -388,6 +388,7 @@
     "cgdb layer 10 doc_comments+graph_versions",
     "cgdb layer 11 node_metadata/edge_metadata",
     "report layer 1 tokens/macros/pp_branches/pragmas/attributes/literals/string_literals/comments_freeform+comments_fts (v4)",
+    "report layer 2 symbols/ast_nodes/references/call_edges/includes/globals/types/modules/git_meta (v4)",
     "report layer 3 ir_functions/ssa_values/mem_accesses/points_to/indirect_calls/data_deps/path_states (v4)",
     "report layer 4 call_graph_reachability/module_deps/function_embeddings/precise_write_sets/arch_metrics/history_snapshots/alignment_errors (v4)",
     "Report-multi-db db_routing/precompute_tasks (v4)",

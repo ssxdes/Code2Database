@@ -11,6 +11,7 @@ CGDB-Layers (legacy cgdb naming — distinct from design-report L1~L4; see OVERV
   cgdb layer 3.5 config_predicates                       — #ifdef predicate tree (BDD + Z3 form)
   cgdb layer 4   basic_blocks / cfg_edges                — control flow graph
   cgdb layer 5   data_flow / alias_sets                  — def-use chain + pointer alias
+  cgdb layer 6   alias (reserved)                        — reserved for full alias analysis (SVF); currently served by layer 5 alias_sets
   cgdb layer 7   invoke_sites / ops_bindings             — invocation graph refinement + typed vtable dispatch
   cgdb layer 8   sync_primitives / happens_before        — concurrency + memory model
   cgdb layer 9   cgdb_includes                          — #include dependency graph

@@ -133,6 +133,30 @@ class TestSkillManifest(unittest.TestCase):
                          "sqlite_schema_version must equal the store "
                          "constant")
 
+    def test_cgdb_layer_lists_agree(self):
+        """cgdb layer enumerations must agree everywhere they appear.
+
+        The cgdb_schema docstring and skill.json cgdb_layers are two
+        hand-maintained copies of the same layer list; one had lost
+        layer 6, the other report layer 2. Parse the layer identifiers
+        out of both and require identical sets, so a layer added or
+        dropped on either side fails CI.
+        """
+        import re as _re
+        doc = importlib.import_module(
+            "_builder.cgdb.cgdb_schema").__doc__
+        from_doc = set(_re.findall(r"(cgdb|report) layer (\d+(?:\.\d+)?)",
+                                   doc))
+        from_json = set(_re.findall(
+            r"^(cgdb|report) layer (\d+(?:\.\d+)?)",
+            "\n".join(self.skill["cgdb_layers"]), _re.MULTILINE))
+        self.assertEqual(from_doc, from_json,
+                         "layer identifiers differ between the schema "
+                         "docstring and skill.json cgdb_layers: "
+                         "docstring-only: %s, json-only: %s"
+                         % (sorted(from_doc - from_json),
+                            sorted(from_json - from_doc)))
+
     def test_analysis_manifest_commands_runnable(self):
         ghosts = set(self.analysis["commands"]) - self.runnable
         self.assertEqual(ghosts, set(), f"analysis ghosts: {sorted(ghosts)}")

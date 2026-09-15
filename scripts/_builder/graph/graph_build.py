@@ -4643,7 +4643,7 @@ def cmd_build(args):
             val_result = validate_all(outdir, profile=builder_profile)
             print(val_result.summary())
             if not val_result.ok:
-                print("WARNING: Post-build validation found errors — see above", file=sys.stderr)
+                print("WARNING: Post-build validation found errors — see around", file=sys.stderr)
         except Exception as e:
             print(f"Warning: post-build validation failed ({e})", file=sys.stderr)
         tracker.end()

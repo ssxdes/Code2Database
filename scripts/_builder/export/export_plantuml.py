@@ -91,7 +91,8 @@ def export_plantuml(
         mode: One of 'call', 'module', 'impact', 'structure'.
         node: Function name or ID (for 'call' and 'impact' modes).
         file: Source file path substring (for 'structure' mode).
-        domain: Domain name (for 'structure' mode).
+        domain: Domain name; its sub-domains are included (for
+            'structure' mode).
         depth: Traversal depth for 'call' and 'impact'.
         max_nodes: Rendering cap on nodes.
         output: Output file path. If None, returns the text only.
@@ -296,11 +297,24 @@ def _structure_diagram(G, file: Optional[str], domain: Optional[str],
                                or G.nodes[n].get("file_path", ""))]
         title = f"Structure: {file}"
     else:
-        members = [n for n in sorted(G.nodes)
-                   if G.nodes[n].get("domain", "") == domain]
-        title = f"Structure: domain {domain}"
+        # The domain argument names a subtree root: the domain's own
+        # functions plus every child domain's (matched after -/_
+        # normalization).
+        from _builder.export.domain_match import (
+            subtree_domain_nodes, domain_suggestions)
+        members = subtree_domain_nodes(G, domain)
+        if not members:
+            hints = domain_suggestions(G, domain)
+            hint = (f" Did you mean: {', '.join(hints)}?"
+                    if hints else "")
+            raise ValueError(
+                f"no functions matched domain '{domain}'.{hint}")
+        doms = sorted({(G.nodes[n].get("domain") or "") for n in members})
+        scope = (domain if len(doms) == 1
+                 else f"{domain} subtree ({len(doms)} domains)")
+        title = f"Structure: domain {scope}"
     if not members:
-        raise ValueError("no functions matched the given file/domain")
+        raise ValueError(f"no functions matched the given file '{file}'")
 
     lines = ["@startuml", "skinparam shadowing false", f"title {title}",
              "skinparam rectangleBorderColor #455A64"]

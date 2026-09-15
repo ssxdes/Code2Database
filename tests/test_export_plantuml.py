@@ -174,6 +174,66 @@ class TestStructureMode(unittest.TestCase):
             export_plantuml(_graph(), mode="structure")
 
 
+class TestStructureDomainMatching(unittest.TestCase):
+    """Domain arguments resolve exact-first, then the subtree, then a
+    concrete hint — a parent domain whose functions all live in child
+    domains is a structure request for the whole subtree."""
+
+    def _tree_graph(self):
+        return _make_quality_graph(
+            [{"id": "c1", "name": "cli_main", "source_file": "/u/cli.c",
+              "domain": "ublock.cli"},
+             {"id": "c2", "name": "cli_err", "source_file": "/u/cli.c",
+              "domain": "ublock.cli.error_inject"},
+             {"id": "o1", "name": "io_start", "source_file": "/u/io.c",
+              "domain": "ublock.io"},
+             {"id": "x1", "name": "other_fn", "source_file": "/o/x.c",
+              "domain": "other"}],
+            [])
+
+    def test_parent_domain_expands_to_subtree(self):
+        from _builder.export.export_plantuml import export_plantuml
+        text = export_plantuml(self._tree_graph(), mode="structure",
+                               domain="ublock")
+        self.assertIn("cli_main", text)
+        self.assertIn("cli_err", text)
+        self.assertIn("io_start", text)
+        self.assertNotIn("other_fn", text)
+        self.assertIn("subtree (3 domains)", text)
+
+    def test_exact_domain_with_children_includes_subtree(self):
+        from _builder.export.export_plantuml import export_plantuml
+        g = self._tree_graph()
+        # --domain ublock.cli renders ublock.cli's own function and the
+        # child domain's, but not the sibling ublock.io branch.
+        text = export_plantuml(g, mode="structure", domain="ublock.cli")
+        self.assertIn("cli_main", text)
+        self.assertIn("cli_err", text)
+        self.assertNotIn("io_start", text)
+        self.assertIn("subtree (2 domains)", text)  # ublock.cli + child
+
+    def test_hyphen_variant_resolves(self):
+        from _builder.export.export_plantuml import export_plantuml
+        g = _make_quality_graph(
+            [{"id": "u1", "name": "uio_open", "source_file": "/u/uio.c",
+              "domain": "libstorage_uio"},
+             {"id": "x1", "name": "other_fn", "source_file": "/o/x.c",
+              "domain": "other"}],
+            [])
+        text = export_plantuml(g, mode="structure", domain="libstorage-uio")
+        self.assertIn("uio_open", text)
+        self.assertNotIn("other_fn", text)
+
+    def test_unknown_domain_error_lists_hints(self):
+        from _builder.export.export_plantuml import export_plantuml
+        with self.assertRaises(ValueError) as cm:
+            export_plantuml(self._tree_graph(), mode="structure",
+                            domain="ublok")
+        self.assertIn("no functions matched domain 'ublok'", str(cm.exception))
+        self.assertIn("Did you mean:", str(cm.exception))
+        self.assertIn("ublock.cli", str(cm.exception))
+
+
 class TestSingleLineLabels(unittest.TestCase):
     """PlantUML string labels must stay on one source line: bare line
     breaks inside a quoted label split the statement into two lines and

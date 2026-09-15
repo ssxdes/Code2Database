@@ -18,7 +18,7 @@ inputs:
   repository:
     description: 'Code2Database git repository to clone (use your fork or the public mirror). Required because the action ships no vendored install.'
     required: false
-    default: 'https://github.com/anomalyco/Code2Database.git'
+    default: 'https://github.com/ssxdes/Code2Database.git'
   ref:
     description: 'Branch / tag / commit SHA to checkout (default: main)'
     required: false

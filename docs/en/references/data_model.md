@@ -293,9 +293,9 @@ CREATE INDEX idx_vtable_struct ON vtable_dispatch(struct_type);
 CREATE INDEX idx_field_struct ON field_access(struct_name);
 ```
 
-## cgdb (Code Graph Database) Layer — 54 Typed Semantic Tables (Schema v4)
+## cgdb (Code Graph Database) Layer — Typed Semantic Tables (53 tables + 2 FTS5 indexes, Schema v5)
 
-When the clang extraction backend is enabled (`--extraction-backend clang` or `auto` with libclang installed), Code2Database populates an additional typed semantic schema in the same `code2database.db`. These tables are queried by the 19 `cgdb_*` MCP tools and power features like typed vtable dispatch, CFG path finding, def-use chains, and Z3-reasonable config predicates. Schema version: `CGDB_SCHEMA_VERSION = 4`.
+When the clang extraction backend is enabled (`--extraction-backend clang` or `auto` with libclang installed), Code2Database populates an additional typed semantic schema in the same `code2database.db`. These tables are queried by the 19 `cgdb_*` MCP tools and power features like typed vtable dispatch, CFG path finding, def-use chains, and Z3-reasonable config predicates. Schema version: `CGDB_SCHEMA_VERSION = 5`.
 
 | Layer | Table(s) | Purpose | Key Columns |
 |-------|----------|---------|-------------|

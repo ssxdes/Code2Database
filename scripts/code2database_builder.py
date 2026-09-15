@@ -2888,7 +2888,7 @@ def main():
                           help="Include N bytes of surrounding context")
 
     p_cgls = sub.add_parser("cgdb-layer-summary",
-                            help="Generate cgdb_layer_summary.md report for all 13 cgdb tables")
+                            help="Generate cgdb_layer_summary.md report for all 13 cgdb layers")
     p_cgls.add_argument("--graph", required=True)
 
     # --- Cross-graph merge / suggest / tour ---

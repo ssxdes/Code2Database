@@ -1848,7 +1848,13 @@ class CTreeSitterScanner(BaseScanner):
         #   spdk_thread_send_msg(t, msg_fn, ctx);
         # Without this map, the CALLBACK_ARG edge targets the variable name
         # "msg_fn" (a non-existent node) instead of the actual function.
-        _local_fn_aliases = {}  # var_name → set of func_name(s)
+        # var_name → list of (func_name, condition, empty_id): each
+        # assignment records the conditional branch it happened in, so
+        # alias resolution can route every target through its own
+        # branch's condition node (msg_fn = A under if(x), B under
+        # else) instead of blending all targets into one unconditional
+        # edge.
+        _local_fn_aliases = {}
         _file_funcs = getattr(self, '_file_defined_funcs', set())
 
         def _process_node(node):
@@ -1877,7 +1883,12 @@ class CTreeSitterScanner(BaseScanner):
                                     and _init_val in _file_funcs
                                     and _decl_name not in _file_funcs
                                     and len(_decl_name) > 2):
-                                _local_fn_aliases.setdefault(_decl_name, set()).add(_init_val)
+                                _a_cond = cond_stack[-1]["condition"] if cond_stack else ""
+                                _a_empty = cond_stack[-1]["empty_id"] if cond_stack else ""
+                                _entry = (_init_val, _a_cond, _a_empty)
+                                _lst = _local_fn_aliases.setdefault(_decl_name, [])
+                                if _entry not in _lst:
+                                    _lst.append(_entry)
             if node.type == 'assignment_expression':
                 # Track local variable reassignments of known function names:
                 #   msg_fn = _bdev_nvme_reset_ctrlr;
@@ -1895,7 +1906,12 @@ class CTreeSitterScanner(BaseScanner):
                     if (_rhs_name in _file_funcs
                             and _lhs_name not in _file_funcs
                             and len(_lhs_name) > 2):
-                        _local_fn_aliases.setdefault(_lhs_name, set()).add(_rhs_name)
+                        _a_cond = cond_stack[-1]["condition"] if cond_stack else ""
+                        _a_empty = cond_stack[-1]["empty_id"] if cond_stack else ""
+                        _entry = (_rhs_name, _a_cond, _a_empty)
+                        _lst = _local_fn_aliases.setdefault(_lhs_name, [])
+                        if _entry not in _lst:
+                            _lst.append(_entry)
             if node.type == 'call_expression':
                 callee_name = self._extract_callee_name(node, source_bytes)
                 # Detect indirect calls through function pointers (field_expression or pointer_expression)
@@ -2002,6 +2018,19 @@ class CTreeSitterScanner(BaseScanner):
                                 "line": node.start_point[0] + 1,
                             })
 
+                    # Condition context for BOTH the callback-argument
+                    # edges below and the regular call edges further
+                    # down: a registration call inside a conditional
+                    # branch must route through the branch's condition
+                    # node exactly like a direct call does.
+                    current_condition = ""
+                    target_empty = None
+                    if cond_stack:
+                        scope = cond_stack[-1]
+                        scope["has_calls"] = True
+                        current_condition = scope["condition"]
+                        target_empty = scope["empty_id"]
+
                     # Detect callback arguments passed to registration functions.
                     # Profile callback_patterns maps register_func -> (cb_arg_index, concurrency_type).
                     # When a call to a known registration function is found, extract the
@@ -2030,38 +2059,89 @@ class CTreeSitterScanner(BaseScanner):
                                 # (e.g. msg_fn = _bdev_nvme_reset_ctrlr;
                                 # spdk_thread_send_msg(t, msg_fn, ctx)),
                                 # create the edge to the resolved function
-                                # instead of the variable name. A variable
-                                # reassigned in if/else branches may map to
-                                # multiple targets — create one edge per
-                                # target so the graph captures all paths.
-                                _resolved_targets = {_cb_target}
+                                # instead of the variable name. Entries carry
+                                # their assignment-site condition: a target
+                                # assigned inside a branch routes through that
+                                # branch's condition node, so if/else branches
+                                # with different callbacks stay
+                                # path-distinguishable; a target assigned
+                                # unconditionally follows the call site's
+                                # condition (if any).
                                 if _cb_target in _local_fn_aliases:
-                                    _resolved_targets = _local_fn_aliases[_cb_target]
-                                for _rt in _resolved_targets:
+                                    _alias_entries = [
+                                        (fn, c, e) for (fn, c, e)
+                                        in _local_fn_aliases[_cb_target]]
+                                else:
+                                    _alias_entries = [(_cb_target, "", "")]
+                                for _rt, _rt_cond, _rt_empty in _alias_entries:
                                     _alias_note = ""
                                     if _rt != _cb_target:
                                         _alias_note = f" (alias: {_cb_target} -> {_rt})"
-                                    edges.append({
-                                        "source": invoker_id,
-                                        "target": _rt,
-                                        "call_order": call_order[0],
-                                        "call_condition": "",
-                                        "confidence": "CALLBACK_ARG",
-                                        "concurrency": _cb_concurrency,
-                                        "source_tag": "callback_arg",
-                                        "preproc_condition": "",
-                                        "preproc_alive": True,
-                                        "evidence": f"callback_arg: {callee_name}() arg#{_cb_arg_idx}={_rt}{_alias_note}",
-                                    })
-
-                    current_condition = ""
-                    target_empty = None
-
-                    if cond_stack:
-                        scope = cond_stack[-1]
-                        scope["has_calls"] = True
-                        current_condition = scope["condition"]
-                        target_empty = scope["empty_id"]
+                                    if _rt_cond and _rt_empty:
+                                        # Assignment happened inside a
+                                        # conditional branch: anchor the edge
+                                        # at that branch's condition node and
+                                        # make sure the invoker→condition
+                                        # parent edge exists (the branch may
+                                        # have closed without any direct
+                                        # calls, so no parent edge was
+                                        # created at scope exit).
+                                        if not any(
+                                                e.get("source") == invoker_id
+                                                and e.get("target") == _rt_empty
+                                                for e in edges):
+                                            edges.append({
+                                                "source": invoker_id,
+                                                "target": _rt_empty,
+                                                "call_order": None,
+                                                "call_condition": _rt_cond,
+                                                "confidence": self._confidence_tag(),
+                                                "source_tag": self._source_tag(),
+                                                "confidence_score": 1.0,
+                                            })
+                                        edges.append({
+                                            "source": _rt_empty,
+                                            "target": _rt,
+                                            "call_order": call_order[0],
+                                            "call_condition": _rt_cond,
+                                            "confidence": "CALLBACK_ARG",
+                                            "concurrency": _cb_concurrency,
+                                            "source_tag": "callback_arg",
+                                            "preproc_condition": "",
+                                            "preproc_alive": True,
+                                            "is_cond_child": True,
+                                            "evidence": f"callback_arg: {callee_name}() arg#{_cb_arg_idx}={_rt}{_alias_note} under {_rt_cond}",
+                                        })
+                                    elif target_empty and current_condition:
+                                        # Registration call itself sits in a
+                                        # branch — same routing as a direct
+                                        # call.
+                                        edges.append({
+                                            "source": target_empty,
+                                            "target": _rt,
+                                            "call_order": call_order[0],
+                                            "call_condition": current_condition,
+                                            "confidence": "CALLBACK_ARG",
+                                            "concurrency": _cb_concurrency,
+                                            "source_tag": "callback_arg",
+                                            "preproc_condition": "",
+                                            "preproc_alive": True,
+                                            "is_cond_child": True,
+                                            "evidence": f"callback_arg: {callee_name}() arg#{_cb_arg_idx}={_rt}{_alias_note} under {current_condition}",
+                                        })
+                                    else:
+                                        edges.append({
+                                            "source": invoker_id,
+                                            "target": _rt,
+                                            "call_order": call_order[0],
+                                            "call_condition": "",
+                                            "confidence": "CALLBACK_ARG",
+                                            "concurrency": _cb_concurrency,
+                                            "source_tag": "callback_arg",
+                                            "preproc_condition": "",
+                                            "preproc_alive": True,
+                                            "evidence": f"callback_arg: {callee_name}() arg#{_cb_arg_idx}={_rt}{_alias_note}",
+                                        })
 
                     # Check preprocessor condition from regex as fallback.
                     # The cond_stack already includes AST-level preproc conditions

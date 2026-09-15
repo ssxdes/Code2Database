@@ -910,3 +910,195 @@ static int caller(int cond, void *ctx) {
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestConditionalCallbackEdges(unittest.TestCase):
+    """CALLBACK_ARG edges must ride the conditional-path mechanism:
+
+        caller -> <conditional:if(arg)> -> reconnect_now
+        caller -> <conditional:!(arg)> -> reset_ctrlr
+
+    Both halves are needed: the registration call must honor its own
+    branch (call-site condition), and alias targets assigned in
+    different branches must stay path-distinguishable through their
+    assignment-site condition nodes.
+    """
+
+    def _scan_with_callback_pattern(self, code):
+        from _scanner.c_scanner import CTreeSitterScanner
+        scanner = CTreeSitterScanner(is_cpp=False)
+        scanner._callback_patterns = {
+            "spdk_thread_send_msg": (1, "callback"),
+        }
+        with tempfile.NamedTemporaryFile(suffix='.c', mode='w',
+                                         delete=False) as f:
+            f.write(code)
+            f.flush()
+            result = scanner.scan_file(f.name, source_root=os.path.dirname(f.name))
+        os.unlink(f.name)
+        return result
+
+    def _cb_edges(self, result):
+        return [e for e in result["edges"]
+                if e.get("confidence") == "CALLBACK_ARG"]
+
+    def test_branch_assignments_route_through_condition_nodes(self):
+        """The downstream report's exact scenario: if/else assigns two
+        different callbacks, registration happens after the branches.
+        Each target must be reached through its branch's condition
+        node, not through a direct caller edge."""
+        code = """
+typedef void (*spdk_msg_fn)(void *ctx);
+void spdk_thread_send_msg(void *t, spdk_msg_fn fn, void *ctx);
+
+static void bdev_nvme_reconnect_ctrlr_now(void *ctx) { }
+static void _bdev_nvme_reset_ctrlr(void *ctx) { }
+
+static int bdev_nvme_reset_ctrlr(void *ctx, int arg) {
+    spdk_msg_fn msg_fn;
+    if (arg) {
+        msg_fn = bdev_nvme_reconnect_ctrlr_now;
+    } else {
+        msg_fn = _bdev_nvme_reset_ctrlr;
+    }
+    spdk_thread_send_msg(ctx, msg_fn, ctx);
+    return 0;
+}
+"""
+        result = self._scan_with_callback_pattern(code)
+        cb = self._cb_edges(result)
+        self.assertEqual(len(cb), 2, "one edge per branch target")
+        by_target = {e["target"]: e for e in cb}
+        for target, cond in (
+                ("bdev_nvme_reconnect_ctrlr_now", "if(arg)"),
+                ("_bdev_nvme_reset_ctrlr", "!(arg)")):
+            self.assertIn(target, by_target, by_target.keys())
+            e = by_target[target]
+            self.assertEqual(e["source"].split("__cond_")[0],
+                             by_target[target]["source"].split("__cond_")[0])
+            self.assertTrue(e["source"].endswith("__cond_0")
+                            or e["source"].endswith("__cond_0_else"),
+                            "edge must start at a condition node: %r" % e["source"])
+            self.assertEqual(e["call_condition"], cond)
+            self.assertTrue(e.get("is_cond_child"))
+        # The two targets must arrive through DIFFERENT condition nodes.
+        self.assertNotEqual(by_target["bdev_nvme_reconnect_ctrlr_now"]["source"],
+                            by_target["_bdev_nvme_reset_ctrlr"]["source"])
+        # The invoker must reach both condition nodes (parent edges).
+        sources = {e["target"]: e for e in result["edges"]
+                   if e.get("target", "").endswith("__cond_0")}
+        parent_edges = [e for e in result["edges"]
+                        if e.get("target", "").endswith(("__cond_0", "__cond_0_else"))
+                        and not e.get("is_cond_child")]
+        self.assertEqual(len(parent_edges), 2,
+                         "both condition nodes need an invoker parent edge, got %r"
+                         % [ (e.get('source'), e.get('target')) for e in parent_edges ])
+
+    def test_unconditional_registration_direct_function(self):
+        """Passing the function name directly: no branch involved, the
+        edge stays a direct caller->target edge (no regression)."""
+        code = """
+typedef void (*spdk_msg_fn)(void *ctx);
+void spdk_thread_send_msg(void *t, spdk_msg_fn fn, void *ctx);
+static void the_callback(void *ctx) { }
+static int caller(void *ctx) {
+    spdk_thread_send_msg(ctx, the_callback, ctx);
+    return 0;
+}
+"""
+        result = self._scan_with_callback_pattern(code)
+        cb = self._cb_edges(result)
+        self.assertEqual(len(cb), 1)
+        e = cb[0]
+        self.assertEqual(e["target"], "the_callback")
+        self.assertFalse(e["source"].endswith("__cond_0"),
+                         "no branch involved: source must be the caller")
+        self.assertEqual(e["call_condition"], "")
+
+    def test_registration_inside_branch_routes_through_it(self):
+        """The registration call itself inside a conditional branch —
+        the callback edge must use that branch's condition node."""
+        code = """
+typedef void (*spdk_msg_fn)(void *ctx);
+void spdk_thread_send_msg(void *t, spdk_msg_fn fn, void *ctx);
+static void the_callback(void *ctx) { }
+static int caller(int ready, void *ctx) {
+    if (ready) {
+        spdk_thread_send_msg(ctx, the_callback, ctx);
+    }
+    return 0;
+}
+"""
+        result = self._scan_with_callback_pattern(code)
+        cb = self._cb_edges(result)
+        self.assertEqual(len(cb), 1)
+        e = cb[0]
+        self.assertTrue(e["source"].endswith("__cond_0"),
+                        "in-branch registration must route through the "
+                        "condition node, got %r" % e["source"])
+        self.assertEqual(e["call_condition"], "if(ready)")
+        self.assertTrue(e.get("is_cond_child"))
+
+    def test_nested_branch_assignments(self):
+        """if / else-if / else: three targets, each anchored at its own
+        condition node."""
+        code = """
+typedef void (*spdk_msg_fn)(void *ctx);
+void spdk_thread_send_msg(void *t, spdk_msg_fn fn, void *ctx);
+static void cb_fast(void *ctx) { }
+static void cb_safe(void *ctx) { }
+static void cb_off(void *ctx) { }
+static int caller(int mode, void *ctx) {
+    spdk_msg_fn msg_fn;
+    if (mode == 1) {
+        msg_fn = cb_fast;
+    } else if (mode == 2) {
+        msg_fn = cb_safe;
+    } else {
+        msg_fn = cb_off;
+    }
+    spdk_thread_send_msg(ctx, msg_fn, ctx);
+    return 0;
+}
+"""
+        result = self._scan_with_callback_pattern(code)
+        cb = self._cb_edges(result)
+        by_target = {e["target"]: e for e in cb}
+        self.assertEqual(set(by_target), {"cb_fast", "cb_safe", "cb_off"})
+        self.assertTrue(all(e.get("is_cond_child") for e in cb))
+        self.assertEqual(by_target["cb_fast"]["call_condition"], "if(mode == 1)")
+        # Three distinct condition nodes — no blended path.
+        self.assertEqual(len({e["source"] for e in cb}), 3)
+
+    def test_reassignment_in_branch_after_outer_assignment(self):
+        """Assigned unconditionally (separate assignment), then
+        reassigned inside a branch: both targets appear - the
+        unconditional one direct, the in-branch one through its
+        condition node."""
+        code = """
+typedef void (*spdk_msg_fn)(void *ctx);
+void spdk_thread_send_msg(void *t, spdk_msg_fn fn, void *ctx);
+static void cb_default(void *ctx) { }
+static void cb_retry(void *ctx) { }
+static int caller(int retry, void *ctx) {
+    spdk_msg_fn msg_fn;
+    msg_fn = cb_default;
+    if (retry) {
+        msg_fn = cb_retry;
+    }
+    spdk_thread_send_msg(ctx, msg_fn, ctx);
+    return 0;
+}
+"""
+        result = self._scan_with_callback_pattern(code)
+        cb = self._cb_edges(result)
+        by_target = {e["target"]: e for e in cb}
+        self.assertEqual(set(by_target), {"cb_default", "cb_retry"})
+        self.assertEqual(by_target["cb_default"]["call_condition"], "")
+        self.assertFalse(by_target["cb_default"]["source"].endswith("__cond_0"))
+        self.assertEqual(by_target["cb_retry"]["call_condition"], "if(retry)")
+        self.assertTrue(by_target["cb_retry"]["source"].endswith("__cond_0"))
+
+
+if __name__ == "__main__":
+    unittest.main()

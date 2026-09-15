@@ -6,12 +6,16 @@ English and Chinese documentation and reports discrepancies. This is a
 structural check — it does NOT verify translation correctness, only that
 both versions cover the same sections and CLI commands.
 
+Additionally checks the English tree for untranslated CJK prose: CJK
+text outside fenced code blocks and inline code spans, and outside the
+explicit allowlist of deliberate bilingual terms, is reported.
+
 Usage:
     python3 scripts/check_docs_sync.py [--docs-dir docs]
 
 Exit codes:
     0 = docs are in sync (or only cosmetic differences)
-    1 = structural differences found
+    1 = structural or language differences found
     2 = usage error
 """
 
@@ -19,6 +23,72 @@ import argparse
 import re
 import sys
 from pathlib import Path
+
+# CJK scripts (Hiragana, Katakana, CJK ideograph blocks). Used to spot
+# untranslated prose leaked into the English tree.
+_CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff"
+                     r"\uf900-\ufaff\ufeff]+")
+
+# Deliberate bilingual content in the English tree: official layer names
+# quoted from the Chinese design document, and table cells that show
+# Chinese example payloads (memory Q&A is user-facing i18n content).
+# Anything CJK outside code spans NOT covered here is a finding.
+_EN_CJK_ALLOWLIST = {
+    "OVERVIEW.md": (
+        "无损重建层",
+        "AST 层",
+        "IR 层",
+        "派生层",
+        "Report-多库",
+        "Report-跨语言",
+    ),
+    "references/memory_knowledge.md": (
+        "强制开启 SPDK_CONFIG_PCI 宏",
+    ),
+}
+
+
+def strip_code_spans(line: str) -> str:
+    """Remove inline `code` spans from a prose line."""
+    return re.sub(r"`[^`]*`", "", line)
+
+
+def find_cjk_in_prose(text: str):
+    """Yield (line_number, cjk_text) for CJK outside fenced/inline code.
+
+    Fenced code blocks are skipped wholesale (they are example data);
+    inline code spans are removed from prose lines before scanning.
+    """
+    in_code = False
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_code = not in_code
+            continue
+        if in_code:
+            continue
+        prose = strip_code_spans(line)
+        m = _CJK_RE.search(prose)
+        if m:
+            yield lineno, m.group(0)
+
+
+def check_english_language(en_dir: Path) -> list:
+    """Report untranslated CJK prose in the English docs tree."""
+    findings = []
+    for en_path in sorted(en_dir.rglob("*.md")):
+        rel = str(en_path.relative_to(en_dir))
+        allowed = _EN_CJK_ALLOWLIST.get(rel, ())
+        lines = en_path.read_text(encoding="utf-8").splitlines()
+        for lineno, cjk in find_cjk_in_prose("\n".join(lines)):
+            line = lines[lineno - 1]
+            if any(term in line for term in allowed):
+                continue
+            findings.append(
+                f"  untranslated CJK at {rel}:{lineno}: ...{line.strip()}..."
+            )
+    return findings
+
 
 
 def extract_structure(text: str) -> dict:
@@ -155,6 +225,13 @@ def main():
                 all_diffs.append((str(rel), diffs))
         else:
             all_diffs.append((str(rel), [f"  EN missing: {en_dir / rel}"]))
+
+    # Language check: the English tree must not carry untranslated
+    # CJK prose (fenced blocks, inline code, and the explicit
+    # allowlist of deliberate bilingual terms are exempt).
+    language_findings = check_english_language(en_dir)
+    if language_findings:
+        all_diffs.append(("english-tree language check", language_findings))
 
     if not all_diffs:
         print(f"OK: docs/en/ and docs/zh/ are in sync ({len(en_files) + len(zh_only_files)} files checked)")

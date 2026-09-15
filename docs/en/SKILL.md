@@ -34,7 +34,7 @@ python3 scripts/code2database_builder.py session-init   # --graph auto-discovers
 # umbrella form: c2d session
 ```
 
-This loads the complete project knowledge (brief — architecture rules, hard_rules, pitfalls, query_paths) + veteran memory digest + graph state + known-unknowns. **Without this step, the project's knowledge底蕴 is invisible** — every subsequent query operates blind to mandatory rules and prior experience. Session-init is the only command that surfaces the full brief; `query` and `describe` only show FTS5-matched fragments.
+This loads the complete project knowledge (brief — architecture rules, hard_rules, pitfalls, query_paths) + veteran memory digest + graph state + known-unknowns. **Without this step, the project's accumulated knowledge is invisible** — every subsequent query operates blind to mandatory rules and prior experience. Session-init is the only command that surfaces the full brief; `query` and `describe` only show FTS5-matched fragments.
 
 ## Query Priority Chain
 

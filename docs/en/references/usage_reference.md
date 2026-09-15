@@ -483,7 +483,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" reverse-trace \
 
 JSON output includes a `field_write_suspects` array and `field_write_suspects_summary` block (suspect_count, unguarded_count, field, value_filter, struct_filter). Text output appends a "Field write suspects:" section after "Concurrency entry points:".
 
-This closes the gap that `reverse-trace` could see callers of the crash point but not the field-write suspects that may have caused the crash (see 续篇 report ). For full field-flow analysis (readers + writers + race windows), use `field-flow` directly.
+This closes the gap that `reverse-trace` could see callers of the crash point but not the field-write suspects that may have caused the crash (see the follow-up review report). For full field-flow analysis (readers + writers + race windows), use `field-flow` directly.
 
 ### 4k — Data Lifecycle Tracking
 

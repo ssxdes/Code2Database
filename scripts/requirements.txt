@@ -33,3 +33,10 @@ tree-sitter-rust>=0.21
 # leidenalg>=0.10            # cross-domain Leiden community detection
 # libclang>=17.0             # cgdb clang backend (typed vtable dispatch, CFG, data flow, sync primitives, config predicates)
 # z3-solver>=4.12            # sound path feasibility (heuristic fallback without it)
+# watchdog>=4.0              # daemon file watching on macOS/Windows (Linux uses built-in inotify)
+# psutil>=5.9                # cross-platform memory telemetry for the memory guard
+# ijson>=3.2                 # streaming parse of very large globals.json
+# sentence-transformers>=2.7 # optional neural embedding provider
+#
+# The same optional capabilities ship as wheel extras in pyproject.toml:
+#   clang / solver / community / daemon / resources / streaming / neural

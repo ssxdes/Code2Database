@@ -28,6 +28,18 @@ dependencies = [
 ]
 dynamic = ["version"]
 
+[project.optional-dependencies]
+# Feature-scoped extras: the core wheel keeps a minimal dependency tree;
+# each optional capability declares its own extra so deployments install
+# only what they use (e.g. pip install code2database[daemon,resources]).
+clang = ["libclang>=17.0"]              # cgdb typed backend (vtable dispatch, CFG, data flow)
+solver = ["z3-solver>=4.12"]            # sound path feasibility (heuristic fallback without it)
+community = ["python-igraph>=0.11", "leidenalg>=0.10"]  # cross-domain Leiden communities
+daemon = ["watchdog>=4.0"]              # file watching on macOS/Windows (Linux uses built-in inotify)
+resources = ["psutil>=5.9"]             # cross-platform memory telemetry for the memory guard
+streaming = ["ijson>=3.2"]              # streaming parse of very large globals.json
+neural = ["sentence-transformers>=2.7"] # optional neural embedding provider
+
 [project.urls]
 Repository = "https://github.com/ssxdes/Code2Database"
 

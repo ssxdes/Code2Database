@@ -23,6 +23,9 @@ jobs:
       - name: Install dependencies
         run: python3 -m pip install -r scripts/requirements.txt
 
+      - name: Install optional advanced features
+        run: python3 -m pip install python-igraph leidenalg libclang z3-solver
+
       - name: Install test dependencies
         run: python3 -m pip install pytest
 
@@ -35,4 +38,4 @@ jobs:
         run: python3 scripts/check_docs_sync.py
 
       - name: Build wheel
-        run: python3 -m pip wheel --no-deps --no-build-isolation -w dist .
+        run: python3 -m pip install setuptools && python3 -m pip wheel --no-deps --no-build-isolation -w dist .

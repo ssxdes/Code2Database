@@ -195,7 +195,7 @@ bash scripts/setup.sh --languages c,go
 | **跨函数数据依赖** | DATA_DEP 边扫描所有节点的读写者，而非仅调用可达后继——`data-dep` |
 | **不变量提取** | 每个函数的前置/后置/循环不变量/状态机——`extract-invariants`、`find-invariants`、`apply-invariants` |
 | **LLM 自动语义增强** | 置信度阈值自动写入（EXTRACTED+证据自动应用；INFERRED 需确认；AMBIGUOUS 拒绝）+ 批量确认和回滚——`auto-enhance`、`batch-confirm`、`rollback`、`fill-request` |
-| **事务性更新** | WAL + 快照 + fcntl 文件锁的原子多步更新——`tx-begin`/`commit`/`rollback`/`status`/`snapshot`/`restore`/`list-snapshots`/`replay-wal` |
+| **事务性更新** | 快照 + fcntl 文件锁的原子多步更新——`tx-begin`/`commit`/`rollback`/`status`/`snapshot`/`restore`/`list-snapshots`/`replay-wal` |
 | **跨语言 FFI** | Python ctypes / Go cgo / Rust `extern "C"` 边界追踪 + 类型 marshalling——`ffi-detect`、`ffi-list`、`ffi-trace`、`ffi-types` |
 | **交互式 Web UI** | 单文件 HTML/cytoscape.js/JS，平移/缩放、点击聚焦、聚焦+上下文淡出、路径高亮、3 种布局算法 (flow/rings/force)、社区复合分组、LOD 标签隐藏、边 `call_condition` 标签、边类型过滤、右键上下文菜单、小地图、FTS5 搜索——`web-ui` |
 | **BUG 基准测试** | GraphInvestigator vs GrepInvestigator——衡量召回、精度、工具调用、token、时间——`bug-benchmark` |
@@ -233,7 +233,7 @@ bash scripts/setup.sh --languages c,go
 | **数据依赖** | `data-dep` — 跨函数 DATA_DEP 边；扫描所有节点的读写者 |
 | **不变量** | `extract-invariants`/`find-invariants`/`apply-invariants` — 前置/后置/循环不变量/状态机 |
 | **自动增强** | `auto-enhance`/`batch-confirm`/`rollback` — 置信度阈值自动写入 |
-| **事务** | `tx-begin`/`commit`/`rollback` — WAL + 快照 + fcntl 锁 |
+| **事务** | `tx-begin`/`commit`/`rollback` — 快照 + fcntl 锁 |
 | **FFI 追踪** | `ffi-detect`/`list`/`trace`/`types` — Python ctypes / Go cgo / Rust extern "C" |
 | **Web UI** | `web-ui` — 单文件 HTML/cytoscape.js/JS 交互式浏览器 |
 | **BUG 基准** | `bug-benchmark` — GraphInvestigator vs GrepInvestigator 召回/精度 |
@@ -327,7 +327,7 @@ bash scripts/setup.sh --languages c,go
 | **数据依赖** | 跨函数 DATA_DEP 边 — `data-dep` |
 | **不变量提取** | 前置/后置/循环不变量/状态机 — `extract-invariants` |
 | **LLM 自动增强** | 置信度阈值自动写入 + 批量确认 + 回滚 — `auto-enhance` |
-| **事务性更新** | WAL + 快照 + fcntl 锁的原子写入 — `tx-begin`/`commit`/`rollback` |
+| **事务性更新** | 快照 + fcntl 锁的原子写入 — `tx-begin`/`commit`/`rollback` |
 | **FFI 追踪** | Python ctypes / Go cgo / Rust extern "C" — `ffi-detect`/`list`/`trace`/`types` |
 | **交互式 Web UI** | 单文件 HTML/cytoscape.js/JS 浏览器 — `web-ui` |
 | **BUG 基准测试** | GraphInvestigator vs GrepInvestigator 召回/精度 — `bug-benchmark` |
@@ -437,14 +437,14 @@ bash scripts/setup.sh --languages c,go
 
 | 命令 | 说明 |
 |------|------|
-| `tx-begin` | 开启事务（快照 + WAL） |
+| `tx-begin` | 开启事务（快照 + 写锁） |
 | `tx-commit` | 提交当前事务 |
 | `tx-rollback` | 回滚当前事务（恢复快照） |
 | `tx-status` | 查看事务状态 |
 | `tx-snapshot` | 创建命名快照 |
 | `tx-restore` | 从命名快照恢复 |
 | `tx-list-snapshots` | 列出所有快照 |
-| `tx-replay-wal` | 重放 WAL 条目（崩溃恢复） |
+| `tx-replay-wal` | 基于快照的崩溃恢复（中断事务） |
 
 ### 跨语言 FFI
 

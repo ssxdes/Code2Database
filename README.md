@@ -197,7 +197,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **Cross-function data dependencies** | DATA_DEP edges scan ALL nodes for readers/writers, not just call-reachable successors — `data-dep`. |
 | **Invariant extraction** | Preconditions, postconditions, loop_invariants, state_machine per function — `extract-invariants`, `find-invariants`, `apply-invariants`. |
 | **LLM auto-semantic enhancement** | Confidence-threshold auto-write (EXTRACTED+evidence auto-applies; INFERRED requires confirm; AMBIGUOUS rejected) with batch-confirm and rollback — `auto-enhance`, `batch-confirm`, `rollback`, `fill-request`. |
-| **Transactional updates** | WAL + snapshots + fcntl file locks for atomic multi-step updates — `tx-begin`/`commit`/`rollback`/`status`/`snapshot`/`restore`/`list-snapshots`/`replay-wal`. |
+| **Transactional updates** | Snapshots + fcntl file locks for atomic multi-step updates — `tx-begin`/`commit`/`rollback`/`status`/`snapshot`/`restore`/`list-snapshots`/`replay-wal`. |
 | **Cross-language FFI** | Python ctypes / Go cgo / Rust `extern "C"` boundary tracing with type marshalling — `ffi-detect`, `ffi-list`, `ffi-trace`, `ffi-types`. |
 | **Interactive Web UI** | Single-file HTML/cytoscape.js/JS with pan/zoom, click-to-focus, focus+context fading, real Leiden communities, search disambiguation (file:line), 5 layout algorithms (flow/force/rings/circle/grid), cycle highlight, node-label filter, staleness badge, dark/light mode, PNG export, right-click context menu — `web-ui`. |
 | **BUG benchmark** | GraphInvestigator vs GrepInvestigator — measures recall, precision, tool calls, tokens, time — `bug-benchmark`. |
@@ -234,7 +234,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **Data dependencies** | `data-dep` — cross-function DATA_DEP edges; scans ALL nodes for readers/writers |
 | **Invariants** | `extract-invariants` / `find-invariants` / `apply-invariants` — preconditions/postconditions/loop_invariants/state_machine |
 | **Auto-enhancement** | `auto-enhance` / `batch-confirm` / `rollback` — confidence-threshold auto-write |
-| **Transactions** | `tx-begin`/`commit`/`rollback` — WAL + snapshots + fcntl locks |
+| **Transactions** | `tx-begin`/`commit`/`rollback` — snapshots + fcntl locks |
 | **FFI tracing** | `ffi-detect`/`list`/`trace`/`types` — Python ctypes / Go cgo / Rust extern "C" |
 | **Web UI** | `web-ui` — single-file HTML/cytoscape.js/JS interactive browser |
 | **BUG benchmark** | `bug-benchmark` — GraphInvestigator vs GrepInvestigator recall/precision |
@@ -328,7 +328,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **Data dependencies** | Cross-function DATA_DEP edges — `data-dep` |
 | **Invariant extraction** | Preconditions/postconditions/loop_invariants/state_machine — `extract-invariants` |
 | **LLM auto-enhancement** | Confidence-threshold auto-write + batch-confirm + rollback — `auto-enhance` |
-| **Transactional updates** | WAL + snapshots + fcntl locks for atomic writes — `tx-begin`/`commit`/`rollback` |
+| **Transactional updates** | Snapshots + fcntl locks for atomic writes — `tx-begin`/`commit`/`rollback` |
 | **FFI tracing** | Python ctypes / Go cgo / Rust extern "C" — `ffi-detect`/`list`/`trace`/`types` |
 | **Interactive Web UI** | Single-file HTML/cytoscape.js/JS browser — `web-ui` |
 | **BUG benchmark** | GraphInvestigator vs GrepInvestigator recall/precision — `bug-benchmark` |
@@ -435,14 +435,14 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 
 | Command | Description |
 |---------|-------------|
-| `tx-begin` | Begin a transaction (snapshot + WAL) |
+| `tx-begin` | Begin a transaction (snapshot + write lock) |
 | `tx-commit` | Commit current transaction |
 | `tx-rollback` | Rollback current transaction (restores snapshot) |
 | `tx-status` | Show transaction status |
 | `tx-snapshot` | Create a named snapshot |
 | `tx-restore` | Restore from a named snapshot |
 | `tx-list-snapshots` | List all snapshots |
-| `tx-replay-wal` | Replay WAL entries (crash recovery) |
+| `tx-replay-wal` | Snapshot-based crash recovery for an interrupted transaction |
 
 ### Cross-Language FFI
 

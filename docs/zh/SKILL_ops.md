@@ -1,6 +1,6 @@
 ---
 name: Code2Database-ops
-description: "Code2Database 运维子技能。当用户询问安全图谱编辑（事务、快照、WAL 重放）、保持图谱新鲜（守护进程、git hook、patch-from-diff/git）、profile 健康度与演化、文档-代码对齐、图谱版本、持久记忆、导出、插件、embeddings 或 BUG 基准测试时激活。修改数据库的命令需用户确认。当 /Code2Database 移交运维提问，或用户输入 /Code2Database-ops 时使用。不适用于：图谱查询（父技能）；深度分析（/Code2Database-analysis）。"
+description: "Code2Database 运维子技能。当用户询问安全图谱编辑（事务、快照、崩溃恢复）、保持图谱新鲜（守护进程、git hook、patch-from-diff/git）、profile 健康度与演化、文档-代码对齐、图谱版本、持久记忆、导出、插件、embeddings 或 BUG 基准测试时激活。修改数据库的命令需用户确认。当 /Code2Database 移交运维提问，或用户输入 /Code2Database-ops 时使用。不适用于：图谱查询（父技能）；深度分析（/Code2Database-analysis）。"
 trigger: /Code2Database-ops
 parent_skill: Code2Database
 ---
@@ -37,7 +37,7 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 - 图编辑：`update-node`、`update-edge`、`patch-profile`、`classify-endpoints`、`apply-semantics`、`merge-changes`
 - 记忆/知识写入：`save-memory`、`manage-memory --action add/correct/reshape/promote/refine/split/merge/move`、`kb-rebuild-index`、`kb-cluster`、`kb-migrate`、`kb-forget`、`kb-rollback`
 - 增强/不变量/profile：`apply-invariants`（**AMBIGUOUS 永不应用**；INFERRED 需确认；EXTRACTED 自动应用）、`auto-enhance`（EXTRACTED+证据自动写入；**INFERRED 需确认**）、`batch-confirm`、`profile-evolve --apply`（**INFERRED 需确认**）、`doc-mark-stale`、`ffi-types`
-- 事务：`tx-commit`（写事务：将快照 + WAL 条目提交到活动数据库）
+- 事务：`tx-commit`（写事务：持久化已提交状态，快照保留至修剪）
 
 **LLM 行为准则**：
 
@@ -52,7 +52,7 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 
 | 命令 | 用途 |
 |------|------|
-| `tx-begin` | 开启事务（快照 + WAL） |
+| `tx-begin` | 开启事务（快照 + 写锁） |
 | `tx-commit` | 提交当前事务（写入**需用户确认**） |
 | `tx-rollback` | 回滚当前事务（恢复快照） |
 | `tx-status` | 查看事务状态 |

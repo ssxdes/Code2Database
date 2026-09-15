@@ -8,7 +8,7 @@
 
 ### `tx-begin`
 
-开启事务。创建当前图状态的快照并启动 Write-Ahead Log（WAL）。
+开启事务。创建当前图状态的快照并获取写锁。
 
 ```bash
 python3 scripts/code2database_builder.py tx-begin \
@@ -18,7 +18,7 @@ python3 scripts/code2database_builder.py tx-begin \
 
 ### `tx-commit`  [write]
 
-提交当前事务。快照 + WAL 条目应用到活动数据库。写入**需用户确认**。
+提交当前事务。持久化已提交状态；事务内的编辑变为持久，快照保留至修剪。写入**需用户确认**。
 
 ```bash
 python3 scripts/code2database_builder.py tx-commit \
@@ -76,7 +76,7 @@ python3 scripts/code2database_builder.py tx-list-snapshots \
 
 ### `tx-replay-wal`
 
-重放 WAL 条目（崩溃恢复）。当之前的事务被中断时使用。
+基于快照的崩溃恢复：把中断（仍处于活动状态）的事务从其快照回滚，并清理残留恢复边车条目。当之前的事务被中断时使用。
 
 ```bash
 python3 scripts/code2database_builder.py tx-replay-wal \

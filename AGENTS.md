@@ -102,7 +102,7 @@ Documentation is available in English (`docs/en/`) and Chinese (`docs/zh/`); `sc
 | `scripts/_scanner/` | Language-specific AST scanners |
 | `scripts/_builder/` | Graph building, query, export, memory, knowledge modules |
 | `scripts/_builder/analysis/` | Invariants, value flow, lock coverage, path feasibility, data deps |
-| `scripts/_builder/ops/` | Transactional updates (WAL + snapshots + fcntl locks) |
+| `scripts/_builder/ops/` | Transactional updates (snapshots + fcntl locks) |
 | `scripts/_builder/daemon/` | Background daemon (inotify + polling + Unix socket API) |
 | `scripts/_builder/mcp/` | MCP server (83 tools, stdio + Streamable HTTP) |
 | `scripts/_builder/flow/` | `c2d` umbrella engine + ask recipes |

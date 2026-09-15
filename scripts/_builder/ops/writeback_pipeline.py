@@ -19,9 +19,9 @@ Implements the transactional write-back loop:
     git commit (optional, requires --git-commit flag)
         ↓
     ON ANY FAILURE: rollback the entire transaction
-        (DB edits undone via snapshot/WAL; disk file untouched)
+        (DB edits undone via snapshot restore; disk file untouched)
 
-This module orchestrates the existing `transactions.py` (WAL + snapshot +
+This module orchestrates the existing `transactions.py` (snapshot +
 fcntl locks) and the new `source_renderer.py` (L1 token render + sha256)
 into a single end-to-end pipeline. It also exposes the
 `commit_db_transaction` / `rollback_db_transaction` MCP tools expected by
@@ -149,7 +149,8 @@ class WritebackPipeline:
         """Begin a write-back transaction for `file_id`.
 
         - Takes a snapshot of the current DB state (so we can roll back).
-        - Starts a WAL entry tracking the in-progress write-back.
+        - Registers the pending write-back in the meta table (tracked
+          for commit/rollback).
         - Returns a transaction_id (UUID-style string).
         """
         import uuid

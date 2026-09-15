@@ -99,7 +99,7 @@ curl http://localhost:8765/health   # deployment smoke probe
 ## Daemon Service Deployment
 
 The daemon watches source files and syncs the graph inside
-transactions (snapshot + WAL + rollback on failure). Run it under
+transactions (snapshot + rollback on failure). Run it under
 systemd with `deploy/c2d-daemon.service`:
 
 ```bash

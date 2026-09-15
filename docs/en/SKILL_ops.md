@@ -1,6 +1,6 @@
 ---
 name: Code2Database-ops
-description: "Operations sub-skill for Code2Database. Activated when the user asks about safe graph editing (transactions, snapshots, WAL replay), keeping the graph up to date (daemon, git hooks, patch-from-diff/git), profile health/evolution, doc-code alignment, graph versioning, persistent memory, exports, plugins, embeddings, or the BUG benchmark. DB-modifying commands require user confirmation. Use when /Code2Database hands off an ops question, or when the user types /Code2Database-ops. Not for: graph queries (parent); deep analysis (/Code2Database-analysis)."
+description: "Operations sub-skill for Code2Database. Activated when the user asks about safe graph editing (transactions, snapshots, crash recovery), keeping the graph up to date (daemon, git hooks, patch-from-diff/git), profile health/evolution, doc-code alignment, graph versioning, persistent memory, exports, plugins, embeddings, or the BUG benchmark. DB-modifying commands require user confirmation. Use when /Code2Database hands off an ops question, or when the user types /Code2Database-ops. Not for: graph queries (parent); deep analysis (/Code2Database-analysis)."
 trigger: /Code2Database-ops
 parent_skill: Code2Database
 ---
@@ -37,7 +37,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 - Graph edits: `update-node`, `update-edge`, `patch-profile`, `classify-endpoints`, `apply-semantics`, `merge-changes`
 - Memory / knowledge writes: `save-memory`, `manage-memory --action add/correct/reshape/promote/refine/split/merge/move`, `kb-rebuild-index`, `kb-cluster`, `kb-migrate`, `kb-forget`, `kb-rollback`
 - Enhancement / invariants / profile: `apply-invariants` (**AMBIGUOUS never applied**; INFERRED require confirmation; EXTRACTED auto-applied), `auto-enhance` (EXTRACTED+evidence auto-writes; **INFERRED require confirmation**), `batch-confirm`, `profile-evolve --apply` (**INFERRED require confirmation**), `doc-mark-stale`, `ffi-types`
-- Transactions: `tx-commit` (write transactions: commits snapshot + WAL entries to the live DB)
+- Transactions: `tx-commit` (write transactions: persists the committed state, keeps the snapshot until pruned)
 
 **LLM behavior rules**:
 
@@ -52,7 +52,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 
 | Command | Purpose |
 |---------|---------|
-| `tx-begin` | Begin a transaction (snapshot + WAL) |
+| `tx-begin` | Begin a transaction (snapshot + write lock) |
 | `tx-commit` | Commit current transaction (**requires user confirmation** for writes) |
 | `tx-rollback` | Roll back current transaction (restores snapshot) |
 | `tx-status` | Show transaction status |

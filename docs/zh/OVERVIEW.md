@@ -21,7 +21,7 @@ Code2Database 旨在回答传统调用图工具无法回答的疑问：**"工程
 
 多数工具止步于第一个疑问。Code2Database 回答了全部疑问，把答案持久化在图谱里，让 LLM 代理可以用一次工具调用查询，而不是跨 N 个文件 grep/glob/Read。这就是从*阅读*代码到*查询*代码的转变。
 
-下面的架构服务于这个目标：三阶段流水线把不可变 AST 事实与可迭代推理分离；分层上下文包系统最小化 token 开销；双 tree-sitter + clang 提取后端；强类型 cgdb（代码图数据库）层提供语义表；带 WAL + 快照的事务性更新；以及保持图谱新鲜度的实时守护进程。
+下面的架构服务于这个目标：三阶段流水线把不可变 AST 事实与可迭代推理分离；分层上下文包系统最小化 token 开销；双 tree-sitter + clang 提取后端；强类型 cgdb（代码图数据库）层提供语义表；带快照 + 文件锁的事务性更新；以及保持图谱新鲜度的实时守护进程。
 
 ## 设计思路
 
@@ -116,10 +116,9 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 
 图修改（LLM auto-enhance、patch-from-diff、守护进程同步）需要 ACID 类保证：
 
-- **快照**：在任何写之前，把 `code2database.db` + 关键 JSON 文件复制到 `.code2database_tx/snapshots/<id>/`。
-- **WAL（写前日志）**：每次写在应用*之前*先追加到 `.code2database_tx/wal.jsonl`。写时崩溃 = 重放或回滚。
-- **两阶段提交**：先 WAL（阶段 1），再应用到活 DB（阶段 2），再 checkpoint（阶段 3）。
-- **文件锁**：Linux 用 `fcntl`，Windows 用 `msvcrt`——多进程协调。
+- **快照**：在任何写之前，把 `code2database.db` + 关键 JSON 文件复制到 `.code2database_tx/snapshots/<id>/`；更新失败或被中断时，通过恢复该快照撤销。
+- **文件锁**：Linux 用 `fcntl`，Windows 用 `msvcrt`——多进程协调（多读者、单写者）。
+- **WAL 边车（预留、未接线）**：`.code2database_tx/wal.jsonl` 是逐操作重做日志的基础设施，但目前没有任何写路径写入它。原子性来自快照 + 锁；`tx-replay-wal` 执行的是快照策略崩溃恢复，不是写重放。
 
 `transaction()` 是上下文管理器：`with transaction(graph_dir):` 成功则提交，异常则回滚。`tx-replay-wal` 从崩溃中恢复。
 
@@ -515,7 +514,7 @@ scripts/
 │   ├── query_router.py           ← 查询路由（按提问类型选命令）
 │   ├── query_lang.py             ← Cypher 子集解析器（MATCH/WHERE/RETURN，1304 行）
 │   ├── query_cache.py            ← 查询结果缓存
-│   ├── transactions.py           ← WAL + 快照 + fcntl 文件锁；transaction() 上下文
+│   ├── transactions.py           ← 快照 + fcntl 文件锁；transaction() 上下文
 │   ├── daemon.py                 ← inotify + 轮询；熔断器；事务性同步；
 │   │                                socket API（1400 行）
 │   ├── watcher.py                ← 文件变更监视器，用于自动同步
@@ -574,7 +573,7 @@ scripts/
 
 - **`unified_node_id(language, fqn, signature, byte_offset)`**——每种语言的每个节点 ID 都是 SHA-256 截断到 60 位 + 语言前缀，防止跨语言冲突，同时适配 SQLite 有符号 INTEGER。见 `_scanner/unified_id.py`。
 - **`BaseScanner`**——每种语言的扫描器都继承自这个 ABC，共享 `_walk(node)` 递归模式（带 `cond_stack` 用于条件调用注解）、`_emit_cgdb_records`（cgdb 层填充）、`_annotate_config_predicates`（跨语言 `#ifdef`/`//go:build`/`#[cfg]`/`sys.platform`/`@Profile` 归一化）。
-- **`transaction(graph_dir)`**——每个改 DB 的操作都应包裹在这个上下文管理器里（快照 + WAL + 文件锁）。`patch-from-diff`/`patch-from-git` 默认已包裹。
+- **`transaction(graph_dir)`**——每个改 DB 的操作都应包裹在这个上下文管理器里（快照 + 文件锁）。`patch-from-diff`/`patch-from-git` 默认已包裹。
 - **`StreamingGraph`**——NetworkX 兼容 API，把节点/边流式写入 SQLite 而非内存。在 `--storage sqlite --low-memory` 模式下是 `nx.DiGraph` 的即插即用替代（1.4M 节点 ~1.9GB RAM）。
 - **`SQLiteStore` + `CGDBStore`**——共存于同一个 `code2database.db`。遗留 `functions`/`edges` 表向后兼容；cgdb 强类型语义表用于查询。Schema 迁移幂等。
 
@@ -745,10 +744,10 @@ clang 后端额外构建 Z3 SMT-LIB 形式（L3 `conditions` 表）用于可靠�
 ### 事务性更新
 
 `transaction()` 是上下文管理器：
-1. 进入：在 `.code2database_tx/tx.lock` 上获取 fcntl 排他锁，把活 DB 快照到 `.code2database_tx/snapshots/<txid>/`，打开 `.code2database_tx/wal.jsonl` 追加。
-2. 退出（成功）：刷 WAL、fsync、原子重命名快照为活、释放锁。
-3. 退出（失败）：反向重放 WAL 撤销、恢复快照、释放锁。
-4. 崩溃恢复（`tx-replay-wal`）：下次进程启动时检测未完成的 WAL 条目并重放。
+1. 进入：在 `.code2database_tx/tx.lock` 上获取排他锁，把活 DB 快照到 `.code2database_tx/snapshots/<txid>/`。块内的写直接落到活 DB；快照保存事务前状态。
+2. 退出（成功）：把已提交状态持久化到 `tx_state.json`（持久化点），清理 WAL 边车，释放锁。提交后钩子（脏文件一致性检查、快照修剪）在提交持久之后运行。
+3. 退出（失败）：从快照恢复 DB 并释放锁。若恢复本身失败，事务保持 ACTIVE 且可重试，而不是谎报已回滚。
+4. 崩溃恢复（`tx-replay-wal`）：由 `tx_state.json` 驱动的策略恢复——ACTIVE 事务从其快照回滚；已回滚的事务清理残留边车条目；已提交但存在未应用 WAL 条目的事务告警并丢弃它们。不重放单个写。
 
 ### Profile 健康评分
 
@@ -839,7 +838,7 @@ Code2Database 当前能力，按类别组织：
 - Happens-before 关系计算
 
 ### 运维与可靠性
-- 事务性更新（WAL + 快照 + fcntl 锁）
+- 事务性更新（快照 + fcntl 锁）
 - 后台守护进程（inotify + 熔断器 + Unix socket API）
 - Profile 健康（7 类 0-100）+ 自动演进 + HEAD 绑定
 - 文档-代码对齐（返回/参数/签名/陈旧文档不匹配）

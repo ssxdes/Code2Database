@@ -21,7 +21,7 @@ Code2Database was built to answer a question that traditional call-graph tools c
 
 Most tools stop at the first question. Code2Database answers all of them, persisting the answers in a graph that an LLM agent can query with a single tool call instead of grep/glob/Read across N files. That's the shift from *reading* code to *querying* code.
 
-The architecture below is in service of that goal: a three-stage pipeline that separates immutable AST facts from iterable inferences, a tiered context-pack system that minimizes token cost, a dual tree-sitter + clang extraction backend, a typed cgdb (code graph database) layer for semantic tables, transactional updates with WAL + snapshots, and a real-time daemon for keeping the graph fresh.
+The architecture below is in service of that goal: a three-stage pipeline that separates immutable AST facts from iterable inferences, a tiered context-pack system that minimizes token cost, a dual tree-sitter + clang extraction backend, a typed cgdb (code graph database) layer for semantic tables, transactional updates with snapshots + file locks, and a real-time daemon for keeping the graph fresh.
 
 ## Design Rationale
 
@@ -116,10 +116,9 @@ These tables are populated by the clang backend (for legacy cgdb layers) and the
 
 Graph modifications (LLM auto-enhance, patch-from-diff, daemon sync) need ACID-like guarantees:
 
-- **Snapshot**: copy `code2database.db` + key JSON files to `.code2database_tx/snapshots/<id>/` before any write.
-- **WAL (Write-Ahead Log)**: every write is appended to `.code2database_tx/wal.jsonl` *before* it's applied. Crash mid-write = replay or rollback.
-- **Staged commit**: WAL first (stage 1), apply to live DB (stage 2), checkpoint (stage 3).
-- **File lock**: `fcntl` on Linux, `msvcrt` on Windows — multi-process coordination.
+- **Snapshot**: copy `code2database.db` + key JSON files to `.code2database_tx/snapshots/<id>/` before any write; a failed or interrupted write is undone by restoring that snapshot.
+- **File lock**: `fcntl` on Linux, `msvcrt` on Windows — multi-process coordination (multiple readers, single writer).
+- **WAL sidecar (reserved, not wired)**: `.code2database_tx/wal.jsonl` is infrastructure for per-operation redo logging, but no write path logs to it today. Atomicity comes from snapshots + locks; `tx-replay-wal` performs snapshot-policy crash recovery, not write replay.
 
 `transaction()` is a context manager: `with transaction(graph_dir):` commits on success, rolls back on exception. `tx-replay-wal` recovers from crashes.
 
@@ -520,7 +519,7 @@ scripts/
 │   ├── query_router.py           ← Query routing (command selection by question type)
 │   ├── query_lang.py             ← Cypher-subset parser (MATCH/WHERE/RETURN, 1304 lines)
 │   ├── query_cache.py            ← Query result caching
-│   ├── transactions.py           ← WAL + snapshots + fcntl file locks; transaction() context
+│   ├── transactions.py           ← snapshots + fcntl file locks; transaction() context
 │   ├── daemon.py                 ← inotify + polling; circuit breaker; transactional sync;
 │   │                                socket API (1400 lines)
 │   ├── watcher.py                ← File change watcher for auto-sync
@@ -579,7 +578,7 @@ The packages are loosely coupled:
 
 - **`unified_node_id(language, fqn, signature, byte_offset)`** — every node ID across every language is a SHA-256 truncated to 60 bits with a language prefix, preventing cross-language collisions while fitting in SQLite's signed INTEGER. See `_scanner/unified_id.py`.
 - **`BaseScanner`** — every language scanner inherits from this ABC, sharing the `_walk(node)` recursive pattern with `cond_stack` for conditional call annotation, `_emit_cgdb_records` for cgdb layer population, `_annotate_config_predicates` for cross-language `#ifdef`/`//go:build`/`#[cfg]`/`sys.platform`/`@Profile` normalization.
-- **`transaction(graph_dir)`** — every DB-modifying operation should be wrapped in this context manager (snapshot + WAL + file lock). `patch-from-diff`/`patch-from-git` already do this by default.
+- **`transaction(graph_dir)`** — every DB-modifying operation should be wrapped in this context manager (snapshot + file lock). `patch-from-diff`/`patch-from-git` already do this by default.
 - **`StreamingGraph`** — NetworkX-compatible API that streams nodes/edges to SQLite instead of holding them in RAM. Drop-in replacement for `nx.DiGraph` in `--storage sqlite --low-memory` mode (1.4M nodes in ~1.9GB RAM).
 - **`SQLiteStore` + `CGDBStore`** — coexist in the same `code2database.db`. Legacy `functions`/`edges` tables for backward compat; cgdb typed semantic tables for queries. Schema migrations are idempotent.
 
@@ -750,10 +749,10 @@ Confidence is `EXTRACTED` for directly parsed patterns, `INFERRED` for indirect 
 ### Transactional Updates
 
 `transaction()` is a context manager that:
-1. On enter: acquires an fcntl exclusive lock on `.code2database_tx/tx.lock`, snapshots the live DB to `.code2database_tx/snapshots/<txid>/`, opens `.code2database_tx/wal.jsonl` for append.
-2. On exit (success): flushes WAL, fsyncs, atomically renames snapshot to live, releases lock.
-3. On exit (failure): replays WAL backward to undo, restores snapshot, releases lock.
-4. Crash recovery (`tx-replay-wal`): on next process start, detects unfinished WAL entries and replays them.
+1. On enter: acquires an exclusive lock on `.code2database_tx/tx.lock` and snapshots the live DB to `.code2database_tx/snapshots/<txid>/`. Writes inside the block go to the live DB; the snapshot holds the pre-transaction state.
+2. On exit (success): persists the committed status to `tx_state.json` (the durability point), clears the WAL sidecar, releases the lock. Post-commit hooks (consistency check on dirty files, snapshot pruning) run after the commit is durable.
+3. On exit (failure): restores the DB from the snapshot and releases the lock. If the restore itself fails, the transaction stays ACTIVE and retryable instead of claiming a rollback.
+4. Crash recovery (`tx-replay-wal`): policy recovery driven by `tx_state.json` — an ACTIVE transaction is rolled back from its snapshot; already-rolled-back transactions get stray sidecar entries cleared; a committed transaction with never-applied WAL entries warns and drops them. Individual writes are not replayed.
 
 ### Profile Health Scoring
 
@@ -844,7 +843,7 @@ Code2Database's current capabilities, organized by category:
 - Happens-before relationship computation
 
 ### Operations & Reliability
-- Transactional updates (WAL + snapshots + fcntl locks)
+- Transactional updates (snapshots + fcntl locks)
 - Background daemon (inotify + circuit breaker + Unix socket API)
 - Profile health (0-100 across 7 categories) + auto-evolution + HEAD binding
 - Doc-code alignment (return/param/signature/stale-doc mismatches)

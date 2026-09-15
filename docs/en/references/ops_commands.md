@@ -8,7 +8,7 @@ This document covers the full syntax for all ops commands exposed by the `/Code2
 
 ### `tx-begin`
 
-Begin a transaction. Creates a snapshot of the current graph state and starts a Write-Ahead Log (WAL).
+Begin a transaction. Creates a snapshot of the current graph state and takes the write lock.
 
 ```bash
 python3 scripts/code2database_builder.py tx-begin \
@@ -18,7 +18,7 @@ python3 scripts/code2database_builder.py tx-begin \
 
 ### `tx-commit`  [write]
 
-Commit the current transaction. Snapshot + WAL entries are applied to the live DB. **Requires user confirmation** for write transactions.
+Commit the current transaction. Persists the committed state; the edits made inside the transaction become durable and the snapshot is kept until pruned. **Requires user confirmation** for write transactions.
 
 ```bash
 python3 scripts/code2database_builder.py tx-commit \
@@ -76,7 +76,7 @@ python3 scripts/code2database_builder.py tx-list-snapshots \
 
 ### `tx-replay-wal`
 
-Replay WAL entries (crash recovery). Use if a previous transaction was interrupted.
+Snapshot-based crash recovery: rolls back an interrupted (still-active) transaction from its snapshot and clears stray recovery sidecar entries. Use if a previous transaction was interrupted.
 
 ```bash
 python3 scripts/code2database_builder.py tx-replay-wal \

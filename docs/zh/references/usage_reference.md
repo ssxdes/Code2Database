@@ -1090,14 +1090,14 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `think-chain` | Generate complete call chains for structured analysis |
 | `trace-chain` | One-shot trace from --from to --to with full annotation |
 | `traverse-graph` | Free-form BFS/DFS traversal with depth and token budget |
-| `tx-begin` | Begin a graph transaction (snapshot + WAL + write lock) |
-| `tx-commit` | Commit the current transaction (clears WAL) |
+| `tx-begin` | Begin a graph transaction (snapshot + write lock) |
+| `tx-commit` | Commit the current transaction (persists the commit, clears the recovery sidecar) |
 | `tx-list-snapshots` | List all available snapshots |
-| `tx-replay-wal` | Replay or rollback an unfinished WAL (crash recovery) |
+| `tx-replay-wal` | Snapshot-based crash recovery for an interrupted transaction |
 | `tx-restore` | Restore graph state from a specific snapshot |
 | `tx-rollback` | Rollback the current transaction (restores snapshot) |
 | `tx-snapshot` | Take a manual snapshot (without starting a transaction) |
-| `tx-status` | Show current transaction state and WAL status |
+| `tx-status` | Show current transaction state, sidecar entries, and snapshots |
 | `unbalanced-alloc-free` | Find functions that alloc without free (or vice versa) |
 | `update` | Incremental re-scan: changed files merged into the graph |
 | `update-edge` | LLM-driven incremental supplement of edge attributes (non-destructive, requires user confirmation) |

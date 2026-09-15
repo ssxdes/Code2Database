@@ -95,7 +95,7 @@ curl http://localhost:8765/health   # 部署冒烟探针
 
 ## 守护进程服务部署
 
-守护进程监听源码文件并在事务中同步图谱（快照 + WAL + 失败回滚）。
+守护进程监听源码文件并在事务中同步图谱（快照 + 失败回滚）。
 用 systemd 运行 `deploy/c2d-daemon.service`：
 
 ```bash

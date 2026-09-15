@@ -356,7 +356,8 @@ def add_foreign(graph_dir: str, foreign_c2d_path: str,
         conn.commit()
         # Step 2: ATTACH foreign db read-only
         conn.execute(
-            f"ATTACH DATABASE 'file:{_escape_sql_path(foreign_db)}?mode=ro' AS foreign_db"
+            "ATTACH DATABASE '"
+            + _escape_sql_path(foreign_db) + "' AS foreign_db"
         )
         # Step 3: Find B's unresolved calls
         # An unresolved call is an edge in B.edges where invoked_id is empty
@@ -828,7 +829,10 @@ def resolve_foreign_by_name(graph_dir: str, foreign_c2d_path: str = "",
             if not os.path.exists(fdb):
                 continue
             try:
-                conn.execute(f"ATTACH DATABASE 'file:{_escape_sql_path(fdb)}?mode=ro' AS resolve_db")
+                conn.execute(
+                    "ATTACH DATABASE '"
+                    + _escape_sql_path(fdb) + "' AS resolve_db"
+                )
             except sqlite3.Error:
                 logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 continue
@@ -987,7 +991,8 @@ def with_foreign_attached(conn: sqlite3.Connection, foreign_db_path: str,
             rows = c.execute("SELECT * FROM a_db.functions").fetchall()
     """
     conn.execute(
-        f"ATTACH DATABASE 'file:{_escape_sql_path(foreign_db_path)}?mode=ro' AS {alias}"
+        "ATTACH DATABASE '"
+        + _escape_sql_path(foreign_db_path) + "' AS " + alias
     )
     try:
         yield conn

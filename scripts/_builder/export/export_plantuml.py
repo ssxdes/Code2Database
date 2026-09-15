@@ -206,16 +206,33 @@ def _call_diagram(G, node: str, depth: int, max_nodes: int) -> str:
 # ---------------------------------------------------------------------------
 
 def _module_diagram(G, max_nodes: int) -> str:
+    from _builder.export.domain_match import is_test_domain
     weights: Dict[Tuple[str, str], int] = {}
+    root_skipped = 0
     for u, v in _call_edges(G):
         du = G.nodes[u].get("domain", "") or "?"
         dv = G.nodes[v].get("domain", "") or "?"
         if du == dv:
             continue
+        # The root domain only holds functions no rule could classify,
+        # so its edges carry no module-architecture signal; test
+        # domains (often one per test source file) merge into a single
+        # node that keeps the test-to-production overview without the
+        # file-level noise.
+        if du == "root" or dv == "root":
+            root_skipped += 1
+            continue
+        du = "test" if is_test_domain(du) else du
+        dv = "test" if is_test_domain(dv) else dv
+        if du == dv:
+            continue
         weights[(du, dv)] = weights.get((du, dv), 0) + 1
 
+    title = "Module dependencies (call-edge aggregation)"
+    if root_skipped:
+        title += f" — {root_skipped} unclassified-root edges omitted"
     lines = ["@startuml", "skinparam shadowing false",
-             "title Module dependencies (call-edge aggregation)",
+             f"title {title}",
              "skinparam rectangleBorderColor #455A64"]
     taken: Set[str] = set()
     domains = sorted({d for pair in weights for d in pair},

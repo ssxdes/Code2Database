@@ -121,6 +121,49 @@ class TestModuleMode(unittest.TestCase):
         self.assertIn("mod_d1 --> mod_d2 : 2", text)
 
 
+class TestModuleModeDomainNoise(unittest.TestCase):
+    """The module diagram aggregates architecture: the root domain only
+    holds functions no rule could classify, and per-file test domains
+    collapse into a single test node."""
+
+    def _graph(self):
+        return _make_quality_graph(
+            [{"id": "r1", "name": "unclear_fn", "domain": "root"},
+             {"id": "b1", "name": "blob_fn", "domain": "spdk.lib.blob"},
+             {"id": "n1", "name": "nvme_fn", "domain": "spdk.lib.nvme"},
+             {"id": "t1", "name": "t_blob", "domain": "spdk.test.unit.lib.blob.c"},
+             {"id": "t2", "name": "t_nvme", "domain": "spdk.test.unit.lib.nvme.c"},
+             {"id": "u1", "name": "uio_fn", "domain": "libstorage_uio.cli"}],
+            [{"source": "r1", "target": "n1"},        # root noise
+             {"source": "b1", "target": "r1"},        # root noise
+             {"source": "t1", "target": "b1"},        # test → production
+             {"source": "t2", "target": "n1"},        # test → production
+             {"source": "t1", "target": "t2"},        # test → test
+             {"source": "u1", "target": "b1"}],       # production → production
+        )
+
+    def test_root_domain_omitted(self):
+        from _builder.export.export_plantuml import export_plantuml
+        text = export_plantuml(self._graph(), mode="module")
+        self.assertNotIn("mod_root", text)
+        self.assertNotIn('"root"', text)
+        self.assertIn("unclassified-root edges omitted", text)
+        self.assertEqual(text.count("omitted"), 1)  # title only
+
+    def test_test_domains_merge_into_one_node(self):
+        from _builder.export.export_plantuml import export_plantuml
+        text = export_plantuml(self._graph(), mode="module")
+        self.assertIn('rectangle "test" as mod_test', text)
+        self.assertNotIn("spdk.test.unit.lib.blob.c", text)
+        # Both test→production edges land on the merged node.
+        self.assertIn("mod_test --> mod_spdk_lib_blob : 1", text)
+        self.assertIn("mod_test --> mod_spdk_lib_nvme : 1", text)
+        # test→test disappears entirely.
+        self.assertNotIn("mod_test --> mod_test", text)
+        # Production edges survive.
+        self.assertIn("mod_libstorage_uio_cli --> mod_spdk_lib_blob : 1", text)
+
+
 class TestImpactMode(unittest.TestCase):
 
     def test_ring_colors(self):

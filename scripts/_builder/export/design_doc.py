@@ -23,7 +23,6 @@ import re
 from typing import Dict, List, Optional, Set, Tuple
 
 _TEST_PATH_RE = re.compile(r"/(test|tests|unit|ut|unittest|fuzz)/", re.IGNORECASE)
-_TEST_DOMAIN_RE = re.compile(r"(^|\.)(ut|ut_mock|unit|test|fuzz)(\.|$)")
 _MEMORY_SINK_RE = re.compile(
     r"\b(?:memcpy|memmove|strcpy|strncpy|strcat|strncat|sprintf|vsprintf)\b")
 _MAX_CHAIN_LEN = 10
@@ -46,8 +45,8 @@ def _is_test_node(nd: dict) -> bool:
     src = nd.get("source_file", "") or ""
     if _TEST_PATH_RE.search(src.replace("\\", "/")):
         return True
-    dom = nd.get("domain", "") or ""
-    return bool(_TEST_DOMAIN_RE.search(dom))
+    from _builder.export.domain_match import is_test_domain
+    return is_test_domain(nd.get("domain", "") or "")
 
 
 def _name(G, nid: str) -> str:

@@ -105,3 +105,18 @@ class TestDomainSuggestions(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestIsTestDomain(unittest.TestCase):
+
+    def test_test_components(self):
+        from _builder.export.domain_match import is_test_domain
+        for d in ("test", "spdk.test.unit.lib.blob.c", "app.tests.io",
+                  "pkg.ut.core", "a.unit.b", "x.unittest", "y.fuzz.case"):
+            self.assertTrue(is_test_domain(d), d)
+
+    def test_production_domains_stay(self):
+        from _builder.export.domain_match import is_test_domain
+        for d in ("spdk.lib.blob", "libstorage_uio", "contest",
+                  "attest.verify", "latest"):
+            self.assertFalse(is_test_domain(d), d)

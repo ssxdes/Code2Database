@@ -19,6 +19,14 @@ from typing import List
 
 _SEPARATOR_RUN = re.compile(r"[-_.]+")
 
+# A domain is a test domain when one dotted path component says so.
+_TEST_COMPONENT_RE = re.compile(
+    r"(^|\.)(ut|ut_mock|unit|unittest|test|tests|fuzz)(\.|$)")
+
+
+def is_test_domain(domain: str) -> bool:
+    return bool(_TEST_COMPONENT_RE.search(domain or ""))
+
 
 def canon_domain(name: str) -> str:
     """Canonical form: separator runs collapse to single dots."""

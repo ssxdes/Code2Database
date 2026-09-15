@@ -189,6 +189,21 @@ class TestDesignDocMatching(unittest.TestCase):
         with self.assertRaises(ValueError):
             design_doc(_doc_graph(), "no.such.module")
 
+    def test_hyphen_module_resolves_underscore_domain(self):
+        # Domain segments use underscores; hyphen slips must resolve.
+        from _builder.export.design_doc import design_doc
+        doc = design_doc(_doc_graph(), "lib-bdev")
+        self.assertIn("# Design Document: lib-bdev", doc)
+        self.assertIn("5 functions", doc)
+
+    def test_missing_module_error_lists_hints(self):
+        from _builder.export.design_doc import design_doc
+        with self.assertRaises(ValueError) as cm:
+            design_doc(_doc_graph(), "lib-bdav")
+        self.assertIn("no functions found for module 'lib-bdav'",
+                      str(cm.exception))
+        self.assertIn("Did you mean:", str(cm.exception))
+
     def test_output_file_written(self):
         from _builder.export.design_doc import design_doc
         fd, path = tempfile.mkstemp(suffix=".md")

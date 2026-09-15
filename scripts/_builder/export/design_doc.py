@@ -83,17 +83,19 @@ def design_doc(graph_dir: str, module: str,
 
     Args:
         graph_dir: C2D graph directory.
-        module: Domain name (exact) or source-file substring.
+        module: Domain name (exact, or equal after -/_ normalization) or
+            source-file substring.
         output: Write the document here when given; always returned.
 
     Raises:
         ValueError: when no functions match the module.
     """
     from _builder.graph.graph_build import _load_full_graph
+    from _builder.export.domain_match import (
+        exact_domain_nodes, domain_suggestions)
     G = _load_full_graph(graph_dir)
 
-    by_domain = [n for n in G.nodes
-                 if G.nodes[n].get("domain", "") == module]
+    by_domain = exact_domain_nodes(G, module)
     if by_domain:
         members = sorted(by_domain)
         module_kind = "domain"
@@ -103,9 +105,11 @@ def design_doc(graph_dir: str, module: str,
                                        or G.nodes[n].get("file_path", "")))
         module_kind = "file"
     if not members:
+        hints = domain_suggestions(G, module)
+        hint = f" Did you mean: {', '.join(hints)}?" if hints else ""
         raise ValueError(
             f"no functions found for module '{module}' "
-            f"(tried domain match and source-file substring)")
+            f"(tried domain match and source-file substring).{hint}")
     member_set = set(members)
 
     lines: List[str] = [f"# Design Document: {module}",

@@ -251,6 +251,31 @@ def _enable_streaming_deferred(G) -> bool:
 # Phase 5: create empty conditional nodes + build edge target index
 # ---------------------------------------------------------------------------
 
+def _apply_edge_attribute_defaults(raw_edges: list) -> None:
+    """Fill the two edge attributes every consumer may rely on.
+
+    - Call edges without evidence get a minimal origin marker. The Go
+      scanner (and other languages) emit direct calls without one, so
+      post-build validation counted them as unexplained; the marker
+      names the relation, defaulting to direct_call.
+    - spawn_target edges carry their trigger in call_condition: the
+      spawn call itself is the condition, so the field defaults to
+      "spawn" when the scanner did not record a branch condition.
+
+    Path-holder edges into __cond_ placeholders are skipped: they are
+    branch scaffolding, not invocations, and have no evidence of
+    their own by design.
+    """
+    for e in raw_edges:
+        if (not e.get("evidence")
+                and "__cond_" not in (e.get("target") or "")):
+            rel = (e.get("relation") or "").strip()
+            e["evidence"] = rel.lower() if rel else "direct_call"
+        if (e.get("concurrency") == "spawn_target"
+                and not e.get("call_condition")):
+            e["call_condition"] = "spawn"
+
+
 def _create_empty_conditional_nodes(G, raw_edges: list, id_registry: dict) -> None:
     """Create empty placeholder nodes for conditional sub-expressions.
 

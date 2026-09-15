@@ -665,7 +665,9 @@ def build_graph(extraction: dict, profile: dict = None,
 
     # Phase 5: process edges — create empty conditional placeholder nodes
     # and build the target→first-edge index used by downstream condition lookup
-    from _builder.build.build_phases import _create_empty_conditional_nodes
+    from _builder.build.build_phases import (
+        _create_empty_conditional_nodes, _apply_edge_attribute_defaults)
+    _apply_edge_attribute_defaults(raw_edges)
     _create_empty_conditional_nodes(G, raw_edges, id_registry)
 
     # Phase 6: build vtable field-name set + struct_type→{field→[func]} index

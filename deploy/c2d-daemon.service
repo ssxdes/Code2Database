@@ -1,0 +1,64 @@
+# /etc/systemd/system/c2d-daemon.service
+#
+# Code2Database Daemon — real-time file-watch graph sync.
+#
+# Installation:
+#   1. Copy this file to /etc/systemd/system/c2d-daemon.service
+#   2. Edit GRAPH_DIR, SOURCE_DIR, WorkingDirectory and ExecStart paths
+#   3. Run: systemctl daemon-reload && systemctl enable --now c2d-daemon
+#
+# Logs:
+#   journalctl -u c2d-daemon -f
+#   (or: code2database_builder.py daemon-logs --graph ${GRAPH_DIR})
+#
+# Status from any shell:
+#   code2database_builder.py daemon-status --graph ${GRAPH_DIR}
+#
+# NOTE on PrivateTmp: the daemon's control socket lives in $TMPDIR
+# (path = $TMPDIR/code2database-daemon-<hash-of-graph-dir>.sock) and
+# user-shell commands (daemon-status / daemon-pause / daemon-resume /
+# daemon-force-refresh) connect to the SAME path. PrivateTmp=true would
+# hide the socket in a per-service /tmp namespace and break every
+# client. Keep PrivateTmp=false and TMPDIR pinned to /tmp.
+
+[Unit]
+Description=Code2Database Daemon (file-watch graph sync)
+After=network.target
+
+[Service]
+Type=simple
+
+# --- Edit these paths for your installation ---
+WorkingDirectory=/opt/Code2Database
+Environment=GRAPH_DIR=/opt/Code2Database/code2db-out
+Environment=SOURCE_DIR=/opt/project-sources/my-project
+Environment=PYTHONPATH=/opt/Code2Database/scripts
+Environment=TMPDIR=/tmp
+
+ExecStart=/usr/bin/python3 /opt/Code2Database/scripts/code2database_builder.py \
+    daemon-start \
+    --graph ${GRAPH_DIR} \
+    --source ${SOURCE_DIR}
+
+# The daemon batches events and syncs in transactions; on restart it
+# recovers pending events and defers the recovery bulk sync until its
+# startup grace window ends, so a fast RestartSec is safe.
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+# Resource limits (adjust for your hardware; per-file syncs are modest,
+# but full recovery rebuilds after long downtime can be large)
+LimitNOFILE=4096
+MemoryMax=8G
+
+# Security hardening (PrivateTmp intentionally OFF — see the note above:
+# the control socket must stay reachable from user shells)
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=false
+ReadWritePaths=${GRAPH_DIR}
+
+[Install]
+WantedBy=multi-user.target

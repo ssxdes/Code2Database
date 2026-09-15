@@ -398,14 +398,14 @@ ok "References (11 files) [core]"
 # RUNTIME_CONFIG.md and PROFILE_MANUAL.md live at
 # docs/<lang>/ (not references/) — install them at the skill root so
 # SKILL_ops.md's reference path resolves correctly.
-for doc_file in RUNTIME_CONFIG.md PROFILE_MANUAL.md; do
+for doc_file in RUNTIME_CONFIG.md PROFILE_MANUAL.md DEPLOYMENT.md; do
     if [ -f "$SCRIPT_DIR/docs/$LANG/$doc_file" ]; then
         copy_to "$SCRIPT_DIR/docs/$LANG/$doc_file" "$INSTALL_DIR/$doc_file"
     elif [ -f "$SCRIPT_DIR/docs/en/$doc_file" ]; then
         copy_to "$SCRIPT_DIR/docs/en/$doc_file" "$INSTALL_DIR/$doc_file"
     fi
 done
-ok "RUNTIME_CONFIG.md + PROFILE_MANUAL.md [core]"
+ok "RUNTIME_CONFIG.md + PROFILE_MANUAL.md + DEPLOYMENT.md [core]"
 
 # 3. Scripts — all needed for commands to work (only installed in core skill)
 mkdir -p "$INSTALL_DIR/scripts"

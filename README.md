@@ -650,6 +650,7 @@ This separation lets you:
 | `docs/en/OVERVIEW.md` | Internal architecture and algorithms | Tool developers only |
 | `docs/en/PROFILE_MANUAL.md` | Profile writing guide | Tool developers |
 | `docs/en/RUNTIME_CONFIG.md` | Runtime configuration reference | Tool developers |
+| `docs/en/DEPLOYMENT.md` | Service deployment: MCP/daemon units, backup, monitoring | Operators |
 | `CLAUDE.md` | Claude Code integration guide | AI agents (auto-loaded) |
 | `AGENTS.md` | Codex / agent integration guide | Tool developers |
 | `SECURITY.md` | Security policy and output-sensitivity notes | All readers |

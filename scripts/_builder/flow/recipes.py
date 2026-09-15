@@ -115,9 +115,9 @@ RECIPES: List[Dict[str, Any]] = [
         "requires": ["from", "to"],
         "example": "call chain from spdk_app_start to bdev_start",
         "patterns": [
-            r"(?:call\s+chain|path)\s+from\s+(\w+)\s+to\s+(\w+)",
-            r"how\s+does\s+(\w+)\s+(?:reach|call|get\s+to)\s+(\w+)",
-            r"does\s+(\w+)\s+(?:ever\s+)?call\s+(\w+)",
+            r"(?:call\s+chain|path)\s+from\s+([\w:.]+)\s+to\s+([\w:.]+)",
+            r"how\s+does\s+([\w:.]+)\s+(?:reach|call|get\s+to)\s+([\w:.]+)",
+            r"does\s+([\w:.]+)\s+(?:ever\s+)?call\s+([\w:.]+)",
         ],
         "steps": [
             {"cmd": "path", "args": ["--from", "{from}", "--to", "{to}"],
@@ -130,9 +130,9 @@ RECIPES: List[Dict[str, Any]] = [
         "requires": ["from", "to"],
         "example": "is the path from io_submit to nvme_admin_cmd feasible?",
         "patterns": [
-            r"is\s+the\s+path\s+from\s+(\w+)\s+to\s+(\w+)\s+(?:feasible|possible|reachable)",
-            r"path\s+feasibility\s+(?:from|between)\s+(\w+)\s+(?:to|and)\s+(\w+)",
-            r"can\s+(\w+)\s+reach\s+(\w+)\s+under\s+(?:these\s+)?constraints",
+            r"is\s+the\s+path\s+from\s+([\w:.]+)\s+to\s+([\w:.]+)\s+(?:feasible|possible|reachable)",
+            r"path\s+feasibility\s+(?:from|between)\s+([\w:.]+)\s+(?:to|and)\s+([\w:.]+)",
+            r"can\s+([\w:.]+)\s+reach\s+([\w:.]+)\s+under\s+(?:these\s+)?constraints",
         ],
         "steps": [
             {"cmd": "path-guards", "args": ["--from", "{from}", "--to", "{to}"],

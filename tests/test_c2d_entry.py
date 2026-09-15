@@ -159,6 +159,20 @@ class TestClassification(unittest.TestCase):
         self.assertEqual(params, {"from": "spdk_app_start",
                                   "to": "bdev_start"})
 
+    def test_call_path_qualified_names(self):
+        # Qualified names (Class::method, pkg.Func) must be captured
+        # whole, like every other node-capturing recipe.
+        recipe, params = classify_question(
+            "call chain from Class::method to pkg.Func")
+        self.assertEqual(recipe["name"], "call-path")
+        self.assertEqual(params, {"from": "Class::method",
+                                  "to": "pkg.Func"})
+        recipe, params = classify_question(
+            "does Class::method ever call pkg.Func")
+        self.assertEqual(recipe["name"], "call-path")
+        self.assertEqual(params, {"from": "Class::method",
+                                  "to": "pkg.Func"})
+
     def test_value_origin(self):
         recipe, params = classify_question(
             "where does the req variable come from")

@@ -54,6 +54,29 @@ def _name(G, nid: str) -> str:
     return G.nodes[nid].get("name") or nid
 
 
+def _state_access_labels(entries) -> Set[str]:
+    """Render state-access entries as display labels.
+
+    The scanner emits dict entries — ``{"name": ..., "type": ...}`` for
+    globals and ``{"struct_chain": ..., "field_name": ...}`` for struct
+    fields — and the per-domain JSON round trip preserves that shape.
+    Bare-string entries are tolerated for hand-built graphs.
+    """
+    labels: Set[str] = set()
+    for item in entries or []:
+        if isinstance(item, dict):
+            chain = item.get("struct_chain", "")
+            field = item.get("field_name", "")
+            if chain or field:
+                labels.add(f"{chain}->{field}" if chain and field
+                           else (field or chain))
+            elif item.get("name"):
+                labels.add(item["name"])
+        elif item:
+            labels.add(str(item))
+    return labels
+
+
 def design_doc(graph_dir: str, module: str,
                output: Optional[str] = None) -> str:
     """Render the nine-section design document for a module.
@@ -167,10 +190,10 @@ def design_doc(graph_dir: str, module: str,
     fields_written: Set[str] = set()
     for nid in members:
         nd = G.nodes[nid]
-        globals_read.update(nd.get("globals_read", []) or [])
-        globals_written.update(nd.get("globals_written", []) or [])
-        fields_read.update(nd.get("fields_read", []) or [])
-        fields_written.update(nd.get("fields_written", []) or [])
+        globals_read |= _state_access_labels(nd.get("globals_read"))
+        globals_written |= _state_access_labels(nd.get("globals_written"))
+        fields_read |= _state_access_labels(nd.get("fields_read"))
+        fields_written |= _state_access_labels(nd.get("fields_written"))
     lines += ["## 5. Data Model", ""]
     lines.append(f"- Globals read: {len(globals_read)}"
                  + (f" — {sorted(globals_read)[:10]}" if globals_read else ""))

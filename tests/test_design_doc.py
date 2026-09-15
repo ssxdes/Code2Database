@@ -30,12 +30,16 @@ def _doc_graph():
         [{"id": "open", "name": "bdev_open", "domain": "lib.bdev",
           "source_file": "/bdev/core.c", "labels": ["API_entry"],
           "signature": "int bdev_open(const char *name)",
-          "globals_read": ["g_bdev_list"], "fields_written": ["bdev->state"],
+          "globals_read": [{"name": "g_bdev_list", "type": "struct bdev *",
+                            "source_file": "/bdev/core.c"}],
+          "fields_written": [{"struct_chain": "bdev", "field_name": "state"}],
           "thread_entry": False},
          {"id": "process", "name": "bdev_process", "domain": "lib.bdev",
           "source_file": "/bdev/core.c", "labels": [],
           "signature": "void bdev_process(struct bdev *b)",
-          "fields_read": ["bdev->state"], "globals_written": ["g_bdev_list"]},
+          "fields_read": [{"struct_chain": "bdev", "field_name": "state"}],
+          "globals_written": [{"name": "g_bdev_list", "type": "struct bdev *",
+                               "source_file": "/bdev/core.c"}]},
          {"id": "flush", "name": "bdev_flush", "domain": "lib.bdev",
           "source_file": "/bdev/io.c", "labels": ["callback_func"],
           "signature": "void bdev_flush(void *ctx)"},
@@ -119,6 +123,55 @@ class TestDesignDoc(unittest.TestCase):
         sec = self.doc.split("## 9.")[1]
         self.assertIn("bdev_worker", sec)
         self.assertIn("bdev_flush", sec)
+
+
+class TestDesignDocStateAccess(unittest.TestCase):
+    """The scanner emits dict-shaped state-access entries; the data-model
+    section must render them (this shape used to crash rendering) and keep
+    tolerating bare-string entries from hand-built graphs."""
+
+    def _graph_with(self, open_state, worker_state):
+        return _make_quality_graph(
+            [{"id": "open", "name": "bdev_open", "domain": "lib.bdev",
+              "source_file": "/bdev/core.c", "signature": "int f(void)",
+              **open_state},
+             {"id": "worker", "name": "bdev_worker", "domain": "lib.bdev",
+              "source_file": "/bdev/io.c", **worker_state}],
+            [])
+
+    def test_dict_shaped_globals_and_fields_render(self):
+        # Exact shape emitted by state_access.py and preserved by the
+        # per-domain JSON round trip.
+        from _builder.export.design_doc import design_doc
+        doc = design_doc(self._graph_with(
+            {"globals_read": [{"name": "failed", "type": "int",
+                               "source_file": "test/nvme/err_injection.c"}],
+             "fields_written": [{"struct_chain": "ctrlr", "field_name": "reset"}]},
+            {"globals_written": [{"name": "failed", "type": "int",
+                                  "source_file": "test/nvme/err_injection.c"}],
+             "fields_read": [{"struct_chain": "ctrlr", "field_name": "reset"}]}),
+            "lib.bdev")
+        self.assertIn("failed", doc)
+        self.assertIn("ctrlr->reset", doc)
+
+    def test_mixed_string_and_dict_entries(self):
+        from _builder.export.design_doc import design_doc
+        doc = design_doc(self._graph_with(
+            {"globals_read": [{"name": "g_count", "type": "int"},
+                              "g_legacy"]},
+            {"fields_read": [{"struct_chain": "t", "field_name": "done"},
+                             "t->pending"]}),
+            "lib.bdev")
+        self.assertIn("g_count", doc)
+        self.assertIn("g_legacy", doc)
+        self.assertIn("t->done", doc)
+        self.assertIn("t->pending", doc)
+
+    def test_nameless_dict_entry_is_skipped(self):
+        from _builder.export.design_doc import design_doc
+        doc = design_doc(self._graph_with(
+            {"globals_read": [{"type": "int"}]}, {}), "lib.bdev")
+        self.assertIn("Globals read: 0", doc)
 
 
 class TestDesignDocMatching(unittest.TestCase):

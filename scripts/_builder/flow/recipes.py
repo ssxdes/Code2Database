@@ -115,7 +115,8 @@ RECIPES: List[Dict[str, Any]] = [
         "requires": ["from", "to"],
         "example": "call chain from spdk_app_start to bdev_start",
         "patterns": [
-            r"(?:call\s+chain|path)\s+from\s+([\w:.]+)\s+to\s+([\w:.]+)",
+            r"(?:call\s+chain|path)\s+from\s+([\w:.]+)\s+to\s+([\w:.]+)"
+            r"(?![\w:.])(?!\s+(?:feasible|possible|reachable))",
             r"how\s+does\s+([\w:.]+)\s+(?:reach|call|get\s+to)\s+([\w:.]+)",
             r"does\s+([\w:.]+)\s+(?:ever\s+)?call\s+([\w:.]+)",
         ],

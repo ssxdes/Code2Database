@@ -173,6 +173,23 @@ class TestClassification(unittest.TestCase):
         self.assertEqual(params, {"from": "Class::method",
                                   "to": "pkg.Func"})
 
+    def test_path_feasibility_qualified_names(self):
+        # Qualified names must be captured whole here too; this also
+        # guards the routing precedence: a feasibility question must
+        # not be claimed by the call-path "path from X to Y" pattern.
+        recipe, params = classify_question(
+            "is the path from a::b to c.d feasible?")
+        self.assertEqual(recipe["name"], "path-feasibility")
+        self.assertEqual(params, {"from": "a::b", "to": "c.d"})
+        recipe, params = classify_question(
+            "can foo::bar reach baz.qux under constraints?")
+        self.assertEqual(recipe["name"], "path-feasibility")
+        self.assertEqual(params, {"from": "foo::bar", "to": "baz.qux"})
+        # The recipe's own example question must route to itself.
+        recipe, params = classify_question(
+            "is the path from io_submit to nvme_admin_cmd feasible?")
+        self.assertEqual(recipe["name"], "path-feasibility")
+
     def test_value_origin(self):
         recipe, params = classify_question(
             "where does the req variable come from")

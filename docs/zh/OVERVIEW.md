@@ -52,7 +52,7 @@ C/C++ 提取后端有两种模式，服务于不同需求：
 
 skill 以 3 个子 skill 形式发布（`/Code2Database` 核心、`/Code2Database-analysis` 深度分析、`/Code2Database-ops` 运维），让 LLM 代理只加载与当前问题相关的命令：
 
-- **核心（26 个 Tier-1 命令）**——常驻加载。构建、浏览、基础查询（scan、build、explore-flow、describe-node、trace-chain、neighbors、path、search、key-paths 等）。
+- **核心（27 个 Tier-1 命令，含 `c2d` 总入口）**——常驻加载。构建、浏览、基础查询（scan、build、explore-flow、describe-node、trace-chain、neighbors、path、search、key-paths 等）。
 - **分析（13 个 Tier-1 + 19 个 cgdb_* MCP 工具）**——按需加载。并发、数据流、不变量、FFI、路径可行性、来源、cgdb 表。
 - **运维（23 个 Tier-1 命令）**——按需加载。事务、守护进程、profile 健康、文档-代码对齐、导出、插件、记忆、嵌入。
 
@@ -666,7 +666,7 @@ ASM（.s .S .asm）用正则扫描——无需 tree-sitter 语法。
 
 | 组件 | 用途 |
 |------|------|
-| **pytest** | 测试运行器（88 个测试文件，覆盖扫描器/构建器/cgdb/守护进程/MCP/并发等） |
+| **pytest** | 测试运行器（160 个测试文件，覆盖扫描器/构建器/cgdb/守护进程/MCP/并发等） |
 | **evals/evals_en.json** + **evals_zh.json** | 端到端场景评测（多语言扫描 + 查询） |
 | **BUG benchmark** | `bug_benchmark.py`：GraphInvestigator vs GrepInvestigator 召回/精确/token 效率 |
 
@@ -857,6 +857,6 @@ Code2Database 当前能力，按类别组织：
 - Python skill，3 个子 skill（`/Code2Database`、`/Code2Database-analysis`、`/Code2Database-ops`）
 - 一键安装器（`install.sh`），支持 Claude Code / Cursor / Codex / OpenCode / Gemini
 - 按语言安装（`C2D_LANGUAGES` 环境变量或 `setup.sh --languages`）
-- 88 个测试文件（扫描器、构建器、cgdb、守护进程、MCP、并发、FFI 等）
+- 160 个测试文件（扫描器、构建器、cgdb、守护进程、MCP、并发、FFI 等）
 - 中英文端到端评测（`evals/evals_en.json`、`evals/evals_zh.json`）
 - 双语文档（`docs/en/`、`docs/zh/`）

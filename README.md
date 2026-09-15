@@ -568,7 +568,7 @@ The skill is split into 3 sub-skills to keep LLM context lean. Each sub-skill ha
 
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|
-| `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded. 24 Tier-1 high-weight commands (scan, build, explore-flow, describe-node, trace-chain, etc.) |
+| `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded. 27 Tier-1 high-weight commands incl. the `c2d` umbrella (scan, build, explore-flow, describe-node, trace-chain, etc.) |
 | `Code2Database-analysis` | `/Code2Database-analysis` | Deep semantic analysis — concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb tables. 13 Tier-1 commands + 19 `cgdb_*` MCP tools |
 | `Code2Database-ops` | `/Code2Database-ops` | Graph editing + ops — transactions, daemon, profile/doc-code, exports, plugins, memory, embeddings. 23 Tier-1 commands |
 

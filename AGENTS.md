@@ -23,7 +23,7 @@ Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/
 - **cgdb layer** (clang backend only) — typed semantic tables alongside the legacy `functions`/`edges`: AST nodes, types, config predicates, CFG, data flow, alias (stub), ops_bindings (typed vtable dispatch), sync_primitives + happens_before, provenance + time-travel versions. Queried via 19 `cgdb_*` MCP tools or the `cgdb-*` CLI family.
 - **Dual knowledge/memory stores** — knowledge = lean per-project brief (`knowledge/brief.json`, size-budgeted); memory = shared accumulating SQLite store (`memory/memory.db`, hierarchical categories, FTS5 BM25 retrieval, split/merge/move/compact governance; compact merges near-duplicate roots after every build). `session-init` is the one-shot entry (brief + memory digest + graph state incl. freshness + known-unknowns); `save-memory --correct` is the correct-first save; `brief-suggest` mines graduation candidates (no auto-write).
 
-Full capability catalog with per-command detail: `docs/en/references/usage_reference.md` (intent index → pipeline walkthrough → complete 260-command reference). Do not duplicate it here.
+Full capability catalog with per-command detail: `docs/en/references/usage_reference.md` (intent index → pipeline walkthrough → complete 261-command reference). Do not duplicate it here.
 
 ## Skill Structure (3 sub-skills)
 
@@ -76,9 +76,9 @@ Full usage constraints (daemon freshness, doc-code alignment, invariants confide
 python3 -m pytest tests/ -v
 ```
 
-Capability modules have dedicated unit tests in `tests/` (156 files) covering invariants, auto-enhance thresholds, transactions, FFI, Web UI (HTTP + JS), daemon, LSP, hybrid search, embeddings, SARIF, AST pattern matching, taint analysis, code intelligence, concurrency, data dependencies, commit provenance, updates, and profile generation.
+Capability modules have dedicated unit tests in `tests/` (160 files) covering invariants, auto-enhance thresholds, transactions, FFI, Web UI (HTTP + JS), daemon, LSP, hybrid search, embeddings, SARIF, AST pattern matching, taint analysis, code intelligence, concurrency, data dependencies, commit provenance, updates, and profile generation.
 
-**Test suite**: 3100+ tests across 156 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails. Tests that drive a real scanner subprocess must pin `--memory-limit 9999` (and raised `--memory-warn/crit-threshold`) — MemoryGuard reads SYSTEM memory, so its auto cap (total RAM × 0.8) can cancel even a tiny scan on a busy machine, and make now fails fast on the leftover checkpoint. tests/test_web_ui_js.py extracts the shipped `<script>` block and runs it under Node.js — skipped when node is not on PATH. tests/test_skill_manifest.py introspects both argparse trees and pins skill.json/skill_analysis.json/skill_ops.json command lists against them — so adding a CLI command without updating the manifests fails CI.)
+**Test suite**: 3100+ tests across 160 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails. Tests that drive a real scanner subprocess must pin `--memory-limit 9999` (and raised `--memory-warn/crit-threshold`) — MemoryGuard reads SYSTEM memory, so its auto cap (total RAM × 0.8) can cancel even a tiny scan on a busy machine, and make now fails fast on the leftover checkpoint. tests/test_web_ui_js.py extracts the shipped `<script>` block and runs it under Node.js — skipped when node is not on PATH. tests/test_skill_manifest.py introspects both argparse trees and pins skill.json/skill_analysis.json/skill_ops.json command lists against them — so adding a CLI command without updating the manifests fails CI.)
 
 ## Language Support
 

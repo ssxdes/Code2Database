@@ -13,7 +13,7 @@ Code2Database scans C/C++/Go/Python/Java/Rust/ASM codebases into a queryable dir
 | Concern | Location |
 |---------|----------|
 | Usage, Quick Start, usage constraints | `SKILL.md` / `docs/en/SKILL.md` |
-| Command catalog (intent index → pipeline walkthrough → all 260 commands) | `docs/en/references/usage_reference.md` |
+| Command catalog (intent index → pipeline walkthrough → all 261 commands) | `docs/en/references/usage_reference.md` |
 | Worked examples | `docs/en/references/usage_examples.md` |
 | Analysis / ops sub-skills | `docs/en/SKILL_analysis.md`, `docs/en/SKILL_ops.md` |
 | Runtime tuning, profile authoring | `docs/en/RUNTIME_CONFIG.md`, `docs/en/PROFILE_MANUAL.md` |

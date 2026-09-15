@@ -10,7 +10,7 @@ trigger: /Code2Database
 
 ## One-Click Lifecycle — the `c2d` Umbrella
 
-You do not need to memorize the 260-command surface. One command covers the whole workflow — learn 4 verbs:
+You do not need to memorize the 261-command surface. One command covers the whole workflow — learn 4 verbs:
 
 | Verb | Purpose | Example |
 |------|---------|---------|

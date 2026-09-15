@@ -3100,7 +3100,7 @@ def main():
         sys.exit(130)
     if not args.command:
         parser.print_help()
-        sys.exit(1)
+        sys.exit(2)
 
     # Configure logging once, before dispatching to the subcommand handler.
     # All cmd_* modules call get_logger(__name__) at import time; the root
@@ -3407,7 +3407,8 @@ def main():
     except SystemExit:
         raise  # propagate explicit sys.exit() calls
     except Exception as exc:
-        logger.error("command_failed", exc_info=True,
+        logger.error("command_failed",
+                     exc_info=bool(os.environ.get("C2D_TRACEBACK")),
                      extra={"command": args.command, "error": str(exc)})
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)

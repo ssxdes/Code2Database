@@ -3483,8 +3483,8 @@ def main():
         print(f"Unknown command: {args.command}", file=sys.stderr)
         sys.exit(2)
     # O15: unified exit codes — 0=success (implicit), 1=error, 2=unknown
-    # command, 130=KeyboardInterrupt. Avoids inconsistent exit behavior
-    # across subcommands.
+    # command or usage error, 130=KeyboardInterrupt. Set C2D_TRACEBACK=1
+    # for the full traceback on error (both CLIs honor it).
     try:
         handler(args)
     except KeyboardInterrupt:
@@ -3492,9 +3492,10 @@ def main():
     except SystemExit:
         raise  # propagate explicit sys.exit() calls from handlers
     except Exception as exc:
-        import traceback
+        if os.environ.get("C2D_TRACEBACK"):
+            import traceback
+            traceback.print_exc(file=sys.stderr)
         print(f"Error: {exc}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
 

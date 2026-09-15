@@ -58,8 +58,8 @@ class TestBuilderModuleImport(unittest.TestCase):
              '--log-level', 'CRITICAL'],
             capture_output=True, text=True, timeout=30,
         )
-        # Should exit non-zero (sys.exit(1)) and print help to stdout
-        self.assertEqual(proc.returncode, 1)
+        # Usage error: exit 2 (the contract both CLIs share), help on stdout
+        self.assertEqual(proc.returncode, 2)
 
 
 class TestCLICommandRegistration(unittest.TestCase):

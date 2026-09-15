@@ -66,7 +66,7 @@ Browse: https://github.com/topics/claude-skill
    - Concurrent windows (concurrent_groups) — if bug relates to thread races
    - Param flow (param_flow) — if bug relates to parameter value passing
 
-**Key principle**: **Don't propose fixes before finding the root cause.** code graph's chain data helps narrow the investigation scope, but is not the fix itself.
+**Key principle**: **Don't propose solutions before finding the root cause.** code graph's chain data helps narrow the investigation scope, but is not the solution itself.
 
 **Key principle**: **Build a feedback loop.** code graph's resolve-chain is itself a feedback loop — under given conditions, which code path will execute. If resolve-chain results don't match actual behavior, the code graph data has gaps (needs semantic enhancement).
 
@@ -222,7 +222,7 @@ For more general merge conflict handling, search for installed skill matching "m
    → Get all possible targets of indirect calls on the crash path via callback_dispatch edges
 
 4. Determine if external skill is needed (capability keywords: security, vulnerability, exploit):
-   - Bug is a clear code path issue → code graph trace sufficient, analyze directly
+   - Bug sits on a clear code path → code graph trace sufficient, analyze directly
    - Bug involves complex memory safety → search for installed skill matching "security/vulnerability"
    - Bug involves specific exploit technique → search for installed skill matching "exploit/pwn"
 

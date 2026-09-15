@@ -329,7 +329,7 @@ Use **global-to-local** mode: read context_pack_lite for global understanding fi
 cat code2db-out/.code2database_context_pack_lite.json
 ```
 
-Upgrade to standard or full when more context is needed.
+Step up to standard or full when more context is needed.
 
 ### 4b — Tiered Single-Node Description
 
@@ -626,7 +626,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
   --graph code2db-out/ --action decay
 
 # Compact: merge near-duplicate ROOTS (multi-author drift, no_merge
-# leftovers) with audit trail + re-point orphaned variants.
+# leftovers) with a full change trail + re-point orphaned variants.
 # consolidate() runs this automatically after every build.
 python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
   --graph code2db-out/ --action compact

@@ -69,7 +69,7 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 | `serve` | MCP 服务器模式（stdio 或 HTTP，83 个工具 (55 base + 28 design-report)：36 code2database_* + 19 cgdb_*）。HTTP：`--transport http --host 0.0.0.0 --port 8765 --token SECRET --read-only` |
 | `kb-rebuild-index` | 从 memory.db + brief.json 重建统一 FTS5 索引（build/update 后运行） |
 | `kb-cluster` | 聚类相似 kb 条目 + 链接 principle |
-| `kb-audit` | KB 审计：counts by kind / stale / low-confidence / citations |
+| `kb-audit` | KB 核查：counts by kind / stale / low-confidence / citations |
 | `kb-known-unknowns` | 列出未命中的查询（feedback loop） |
 | `kb-forget` | 立即删除某条 kb 条目（不靠 decay；**需用户确认**，写 audit_log） |
 | `kb-rollback` | 把 kb_item 回滚到旧版本（保留当前为版本历史） |

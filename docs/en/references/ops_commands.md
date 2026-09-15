@@ -209,7 +209,7 @@ python3 scripts/code2database_builder.py semantic-status \
 
 ### `audit-log`
 
-View audit log of past writes to the graph.
+View the recorded trail of past writes to the graph.
 
 ```bash
 python3 scripts/code2database_builder.py audit-log \
@@ -786,7 +786,7 @@ python3 scripts/code2database_builder.py kb-known-unknowns \
 
 ### `kb-audit`
 
-Audit the project KB: counts by kind, stale items (>90d untouched),
+Review the project KB: counts by kind, stale items (>90d untouched),
 low-confidence (<0.5), high-citation (top access_count), most-linked
 principles. Optional `--topic` for "what do we know about X".
 

@@ -92,7 +92,7 @@ python3 scripts/code2database_builder.py daemon-start \
   --graph code2db-out/ --source /path/to/code
 ```
 
-After building, start with `code2db-out/.code2database_context_pack_micro.md` (~200 tokens) for a project overview, upgrade to `lite` for more detail, then use the query commands to drill down. This **micro → lite → local** pattern keeps token cost minimal — the agent only loads what the question actually needs.
+After building, start with `code2db-out/.code2database_context_pack_micro.md` (~200 tokens) for a project overview, step up to `lite` for more detail, then use the query commands to drill down. This **micro → lite → local** pattern keeps token cost minimal — the agent only loads what the question actually needs.
 
 ---
 
@@ -214,7 +214,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **Multi-language AST scanning** | C/C++, Go, Python, Java, Rust, ASM via tree-sitter / regex |
 | **Condition-aware chains** | `if`/`switch`/`#ifdef` branches with empty node aggregation and conditional compilation annotation |
 | **Concurrency modeling** | Thread spawn, goroutine, callback detection; data race detection; concurrency safety analysis |
-| **Edge confidence** | EXTRACTED (1.0) / INFERRED (0.7-0.95) / AMBIGUOUS (0.1-0.3) with source audit trail |
+| **Edge confidence** | EXTRACTED (1.0) / INFERRED (0.7-0.95) / AMBIGUOUS (0.1-0.3) with the source evidence trail |
 | **One-shot exploration** | `explore-flow` — single query to get relevant nodes, paths, and conditions |
 | **Incremental updates** | `quick-update` — patch graph without LLM; `light-scan` / `patch-from-git` for zero-token updates |
 | **MCP server mode** | `serve` — expose 83 MCP tools (55 base + 28 design-report) (36 `code2database_*` + 19 `cgdb_*`) for LLM agents (stdio transport) |

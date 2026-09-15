@@ -48,7 +48,7 @@
       "id": 7,
       "category": "bug_localization",
       "prompt": "Use the code graph to find the root cause of a memory leak: alloc_buffer() is called but release_buffer() is never reached in some paths. Identify which conditional branch skips the release.",
-      "expected_output": "Should use trace-chain from alloc_buffer to release_buffer, then use path-feasible to verify each path. Should identify the `if (error) return -1;` branch that skips release_buffer() and propose a fix (move release before return).",
+      "expected_output": "Should use trace-chain from alloc_buffer to release_buffer, then use path-feasible to verify each path. Should identify the `if (error) return -1;` branch that skips release_buffer() and propose the correction (move release before return).",
       "files": []
     },
     {
@@ -83,7 +83,7 @@
       "id": 12,
       "category": "bug_localization",
       "prompt": "An off-by-one error in buffer_write() writes past the end of a 1024-byte buffer. Trace which callers pass size=1024 and identify the missing bounds check.",
-      "expected_output": "Should use param-flow to trace size=1024 from callers to buffer_write, then use cfg-of buffer_write to find the loop `for (i=0; i<=size; i++)` (off-by-one). Should propose fix: change `<=` to `<`.",
+      "expected_output": "Should use param-flow to trace size=1024 from callers to buffer_write, then use cfg-of buffer_write to find the loop `for (i=0; i<=size; i++)` (off-by-one). Should propose the correction: change `<=` to `<`.",
       "files": []
     },
     {
@@ -111,7 +111,7 @@
       "id": 16,
       "category": "feature_implementation",
       "prompt": "Implement a new callback register function register_notifier() that takes a function pointer and stores it in a global notification table. Add to code graph and verify the callback dispatch edge.",
-      "expected_output": "Should add the function via add_function, register the callback pattern in profile, re-scan, and verify callback_dispatch edge from register_notifier to the registered function. Should also update the vtable_dispatch detection.",
+      "expected_output": "Should add the function via add_function, register the callback pattern in profile, re-scan, and verify callback_dispatch edge from register_notifier to the registered function. Should also refresh the vtable_dispatch detection.",
       "files": []
     },
     {
@@ -124,7 +124,7 @@
     {
       "id": 18,
       "category": "feature_implementation",
-      "prompt": "Add a new thread spawn in start_workers() that calls worker_main() in a new thread. Update the code graph and verify the thread_processor label is applied to worker_main.",
+      "prompt": "Add a new thread spawn in start_workers() that calls worker_main() in a new thread. Re-sync the code graph and verify the thread_processor label is applied to worker_main.",
       "expected_output": "Should use insert_node_after to add pthread_create(&tid, NULL, worker_main, NULL) in start_workers, re-scan, and verify worker_main has label thread_processor. Should also verify concurrency-analyze flags the new thread.",
       "files": []
     },
@@ -159,7 +159,7 @@
     {
       "id": 23,
       "category": "feature_implementation",
-      "prompt": "Refactor function process_request() to extract a helper function validate_request() that handles input validation. Update the code graph to reflect the new call chain.",
+      "prompt": "Refactor function process_request() to extract a helper function validate_request() that handles input validation. Re-sync the code graph to reflect the new call chain.",
       "expected_output": "Should use add_function to create validate_request, use move-tokens (via edit_token) to transfer the validation code, then commit_db_transaction. Should verify the new chain process_request → validate_request → (validation helpers).",
       "files": []
     },
@@ -173,7 +173,7 @@
     {
       "id": 25,
       "category": "concurrency_risk",
-      "prompt": "Analyze whether start_worker_thread() and stop_worker_thread() can race on the global worker_count variable. If so, propose a fix.",
+      "prompt": "Analyze whether start_worker_thread() and stop_worker_thread() can race on the global worker_count variable. If so, propose the remedy.",
       "expected_output": "Should use concurrency-analyze start_worker_thread stop_worker_thread, identify the shared global worker_count, check lock-coverage for both functions. Should report whether the lock is held and propose adding mutex protection if missing.",
       "files": []
     },
@@ -271,14 +271,14 @@
     {
       "id": 39,
       "category": "refactoring",
-      "prompt": "Refactor function process_request() to extract two helper functions: validate_input() and execute_request(). Update the code graph and verify the call chain is preserved.",
+      "prompt": "Refactor function process_request() to extract two helper functions: validate_input() and execute_request(). Re-sync the code graph and verify the call chain is preserved.",
       "expected_output": "Should use add_function twice, move tokens via edit_token/insert_token/delete_token, commit_db_transaction, re-scan, and verify the new chain process_request → validate_input → execute_request preserves the original semantics. Should verify blast-radius is minimal.",
       "files": []
     },
     {
       "id": 40,
       "category": "refactoring",
-      "prompt": "Rename function do_work() to process_task() across the codebase. Update the code graph to reflect the new name and verify all callers are updated.",
+      "prompt": "Rename function do_work() to process_task() across the codebase. Re-sync the code graph to reflect the new name and verify all callers follow.",
       "expected_output": "Should use edit_token on the function definition token, then for each caller use edit_token on the callee token. After commit_db_transaction and re-scan, verify callers_of process_task returns the same set as before, and callees_of each caller shows process_task instead of do_work.",
       "files": []
     },
@@ -292,7 +292,7 @@
     {
       "id": 42,
       "category": "refactoring",
-      "prompt": "Move function process_io() from module_a.c to module_b.c (file relocation). Update the code graph and verify the function's domain is updated.",
+      "prompt": "Move function process_io() from module_a.c to module_b.c (file relocation). Re-sync the code graph and verify the function's domain moved.",
       "expected_output": "Should use edit_token to move tokens to the new file (or use add_function + delete_node), commit_db_transaction, re-scan, and verify the function's domain in cgdb_nodes changes from module_a to module_b.",
       "files": []
     },
@@ -326,7 +326,7 @@
     {
       "id": 46,
       "category": "knowledge_base",
-      "prompt": "Audit the project knowledge base: report counts by kind, stale items, low-confidence, high-citation items, and what we know about 'bdev registration'",
+      "prompt": "Review the project knowledge base: report counts by kind, stale items, weak-confidence and frequently-cited items, and what we know about 'bdev registration'",
       "expected_output": "Should run 'kb-audit --graph code2db-out/ --topic \"bdev registration\"'. Output must include by_kind dict, total_items, stale_items, low_confidence_items, high_citation_items, most_linked_principles, and what_we_know_about_X (top-5 kb hits for the topic).",
       "commands": [
         "kb-audit --graph code2db-out/ --topic 'bdev registration'"

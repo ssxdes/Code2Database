@@ -48,7 +48,7 @@
       "id": 7,
       "category": "bug_localization",
       "prompt": "使用代码图找出内存泄漏根因：alloc_buffer() 被调用但 release_buffer() 在某些路径上从未到达。识别跳过释放的条件分支。",
-      "expected_output": "应使用 trace-chain 从 alloc_buffer 到 release_buffer，然后用 path-feasible 验证每条路径。应识别 `if (error) return -1;` 分支跳过了 release_buffer()，并建议修复（将释放移到 return 之前）。",
+      "expected_output": "应使用 trace-chain 从 alloc_buffer 到 release_buffer，然后用 path-feasible 验证每条路径。应识别 `if (error) return -1;` 分支跳过了 release_buffer()，并给出更正建议（将释放移到 return 之前）。",
       "files": []
     },
     {
@@ -83,7 +83,7 @@
       "id": 12,
       "category": "bug_localization",
       "prompt": "buffer_write() 越界写入 1024 字节缓冲区末尾。追踪哪些调用者传入 size=1024，并识别缺失的边界检查。",
-      "expected_output": "应使用 param-flow 追踪 size=1024 从调用者到 buffer_write，然后用 cfg-of buffer_write 找到循环 `for (i=0; i<=size; i++)`（off-by-one）。建议修复：将 `<=` 改为 `<`。",
+      "expected_output": "应使用 param-flow 追踪 size=1024 从调用者到 buffer_write，然后用 cfg-of buffer_write 找到循环 `for (i=0; i<=size; i++)`（off-by-one）。给出更正建议：将 `<=` 改为 `<`。",
       "files": []
     },
     {
@@ -111,7 +111,7 @@
       "id": 16,
       "category": "feature_implementation",
       "prompt": "实现新回调注册函数 register_notifier()，接收函数指针并存入全局通知表。添加到代码图并验证回调派发边。",
-      "expected_output": "应通过 add_function 添加函数，在 profile 中注册回调模式，重新扫描，并验证从 register_notifier 到注册函数的 callback_dispatch 边。还应更新 vtable_dispatch 检测。",
+      "expected_output": "应通过 add_function 添加函数，在 profile 中注册回调模式，重新扫描，并验证从 register_notifier 到注册函数的 callback_dispatch 边。还应刷新 vtable_dispatch 检测。",
       "files": []
     },
     {
@@ -124,7 +124,7 @@
     {
       "id": 18,
       "category": "feature_implementation",
-      "prompt": "在 start_workers() 中新增线程 spawn，调用 worker_main()。更新代码图并验证 worker_main 被标注 thread_processor。",
+      "prompt": "在 start_workers() 中新增线程 spawn，调用 worker_main()。重新同步代码图并验证 worker_main 被标注 thread_processor。",
       "expected_output": "应使用 insert_node_after 在 start_workers 中添加 pthread_create(&tid, NULL, worker_main, NULL)，重新扫描，并验证 worker_main 有 thread_processor 标签。还应验证 concurrency-analyze 标记了新线程。",
       "files": []
     },
@@ -159,7 +159,7 @@
     {
       "id": 23,
       "category": "feature_implementation",
-      "prompt": "重构 process_request()，抽取辅助函数 validate_request() 处理输入验证。更新代码图反映新调用链。",
+      "prompt": "重构 process_request()，抽取辅助函数 validate_request() 处理输入验证。重新同步代码图反映新调用链。",
       "expected_output": "应使用 add_function 创建 validate_request，通过 edit_token 移动验证代码，然后 commit_db_transaction。应验证新链 process_request → validate_request → (验证助手)。",
       "files": []
     },
@@ -173,7 +173,7 @@
     {
       "id": 25,
       "category": "concurrency_risk",
-      "prompt": "分析 start_worker_thread() 和 stop_worker_thread() 是否能在全局变量 worker_count 上竞争。若是，提出修复方案。",
+      "prompt": "分析 start_worker_thread() 和 stop_worker_thread() 是否能在全局变量 worker_count 上竞争。若是，给出更正方案。",
       "expected_output": "应使用 concurrency-analyze start_worker_thread stop_worker_thread，识别共享全局 worker_count，检查两者的 lock-coverage。应报告是否持锁，并在缺失时建议加 mutex 保护。",
       "files": []
     },
@@ -181,7 +181,7 @@
       "id": 26,
       "category": "concurrency_risk",
       "prompt": "通过找出以不同顺序获取两把或以上锁的函数，检测代码库中所有潜在死锁。",
-      "expected_output": "应使用 concurrency-risks 列出所有风险点，筛选锁顺序问题。应报告至少 2 个锁获取顺序不一致的函数（如一个 L1→L2，另一个 L2→L1）。",
+      "expected_output": "应使用 concurrency-risks 列出所有风险点，筛选锁顺序不一致的情形。应报告至少 2 个锁获取顺序不一致的函数（如一个 L1→L2，另一个 L2→L1）。",
       "files": []
     },
     {
@@ -271,14 +271,14 @@
     {
       "id": 39,
       "category": "refactoring",
-      "prompt": "重构 process_request() 抽取两个辅助函数：validate_input() 和 execute_request()。更新代码图并验证调用链被保留。",
+      "prompt": "重构 process_request() 抽取两个辅助函数：validate_input() 和 execute_request()。重新同步代码图并验证调用链被保留。",
       "expected_output": "应使用 add_function 两次，通过 edit_token/insert_token/delete_token 移动 token，commit_db_transaction，重新扫描，并验证新链 process_request → validate_input → execute_request 保留原语义。应验证 blast-radius 最小。",
       "files": []
     },
     {
       "id": 40,
       "category": "refactoring",
-      "prompt": "在代码库中将函数 do_work() 重命名为 process_task()。更新代码图反映新名字并验证所有调用者已更新。",
+      "prompt": "在代码库中将函数 do_work() 重命名为 process_task()。重新同步代码图反映新名字并验证所有调用者均已跟随。",
       "expected_output": "应对函数定义 token 用 edit_token，然后对每个调用者的 callee token 用 edit_token。commit_db_transaction 后重新扫描，验证 callers_of process_task 返回与之前相同的集合，且每个调用者的 callees_of 显示 process_task 而非 do_work。",
       "files": []
     },
@@ -292,7 +292,7 @@
     {
       "id": 42,
       "category": "refactoring",
-      "prompt": "将函数 process_io() 从 module_a.c 移到 module_b.c（文件迁移）。更新代码图并验证函数的域已更新。",
+      "prompt": "将函数 process_io() 从 module_a.c 移到 module_b.c（文件迁移）。重新同步代码图并验证函数的域已迁移。",
       "expected_output": "应使用 edit_token 将 token 移到新文件（或用 add_function + delete_node），commit_db_transaction，重新扫描，并验证 cgdb_nodes 中函数的域从 module_a 改为 module_b。",
       "files": []
     },
@@ -326,7 +326,7 @@
     {
       "id": 46,
       "category": "knowledge_base",
-      "prompt": "审计项目知识库：按 kind 计数、过期条目、低置信度、高引用条目，以及'关于 bdev 注册我们知道什么'",
+      "prompt": "核查项目知识库：按 kind 计数、过期条目、低置信度、高引用条目，以及'关于 bdev 注册我们知道什么'",
       "expected_output": "应运行 'kb-audit --graph code2db-out/ --topic \"bdev 注册\"'。输出必须包含 by_kind 字典、total_items、stale_items、low_confidence_items、high_citation_items、most_linked_principles，以及 what_we_know_about_X（该主题的 top-5 kb 命中）。",
       "commands": [
         "kb-audit --graph code2db-out/ --topic 'bdev 注册'"

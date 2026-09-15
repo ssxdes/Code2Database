@@ -575,7 +575,7 @@ LLM 为每个节点填写 `semantic_desc`，然后 `apply-semantics` 写回。
 | `concurrent_groups[].concurrent_with_thread` | array | 父函数中与派生线程并发执行的调用 |
 | `concurrent_groups[].concurrency_type` | string | `"thread_spawn"`、`"goroutine"` 等 |
 
-## 边置信度与来源（审计追踪）
+## 边置信度与来源（证据追踪）
 
 每条边携带来源元数据，指示其发现方式和确定程度。
 

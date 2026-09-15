@@ -85,7 +85,7 @@ parent_skill: Code2Database
 - `explain-label` — 解释某节点为何得到某标签
 - `why-ambiguous` — 解释某边为何标记为 AMBIGUOUS
 - `extract-semantics` / `apply-semantics` — 从文档提取并应用语义描述
-- `audit-log` — 查看历史写入审计日志
+- `audit-log` — 查看历史写入操作追踪
 
 ## 激活移交
 

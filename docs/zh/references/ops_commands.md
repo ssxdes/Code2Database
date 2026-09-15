@@ -209,7 +209,7 @@ python3 scripts/code2database_builder.py semantic-status \
 
 ### `audit-log`
 
-查看图的历史写入审计日志。
+查看图的历史写入操作追踪。
 
 ```bash
 python3 scripts/code2database_builder.py audit-log \
@@ -780,7 +780,7 @@ python3 scripts/code2database_builder.py kb-known-unknowns \
 
 ### `kb-audit`
 
-审计项目 KB：按 kind 计数、过期条目（>90 天未访问）、低置信度
+核查项目 KB：按 kind 计数、过期条目（>90 天未访问）、低置信度
 （<0.5）、高引用（top access_count）、最被链接的 principles。
 可选 `--topic` 用于"关于 X 我们知道什么"。
 
@@ -814,7 +814,7 @@ python3 scripts/code2database_builder.py kb-rollback \
 ### `kb-forget`  [write]
 
 立即删除某条 `kb_paragraph`（不等 decay）。写 audit_log 条目
-（操作者、时间戳、原因）以备审计。
+（操作者、时间戳、原因）以备追溯。
 
 ```bash
 python3 scripts/code2database_builder.py kb-forget \

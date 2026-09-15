@@ -626,7 +626,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
   --graph code2db-out/ --action decay
 
 # 压实：合并近似重复的根记忆（多作者漂移、no_merge 残留），
-# 带完整审计轨迹 + 重指向孤儿变体。build 后的 consolidate() 自动执行。
+# 带完整变更轨迹 + 重指向孤儿变体。build 后的 consolidate() 自动执行。
 python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
   --graph code2db-out/ --action compact
 

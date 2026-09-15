@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability in Code2Database, please report it responsibly:
 
-- **Do not** file a public GitHub issue for security vulnerabilities
+- **Do not** report security vulnerabilities publicly (GitHub or otherwise)
 - Email the maintainers directly or use GitHub's private vulnerability reporting feature
 - Include: description of the vulnerability, steps to reproduce, potential impact
 

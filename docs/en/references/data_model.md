@@ -78,7 +78,7 @@ Borrowing the Deep Module concept from codebase-design:
 | **Implementation** (hidden) | Non-API functions within domain | Internal logic not exposed externally |
 | **Depth** (small interface, large implementation) | `API_entry count / total functions in domain` | Smaller ratio = deeper (few interfaces, rich behavior) |
 | **Leverage** (invoker benefit) | How many external invokers an API_entry serves | One API_entry serving N invokers = high leverage |
-| **Locality** (maintainer benefit) | Change concentration | Bug fix only touching one domain function = high locality |
+| **Locality** (maintainer benefit) | Change concentration | One-domain-function change = strong locality |
 
 **Depth assessment**:
 - **Deep module** (good): API_entry ≤ 3, domain functions > 10 — few interfaces, rich behavior

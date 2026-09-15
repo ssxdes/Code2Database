@@ -212,7 +212,7 @@ bash scripts/setup.sh --languages c,go
 | **多语言 AST 扫描** | C/C++、Go、Python、Java、Rust、ASM（tree-sitter / 正则） |
 | **条件感知链** | `if`/`switch`/`#ifdef` 分支 + 空节点聚合 + 条件编译标注 |
 | **并发建模** | 线程创建、goroutine、回调检测；数据竞争检测；并发安全分析 |
-| **边置信度** | EXTRACTED(1.0) / INFERRED(0.7-0.95) / AMBIGUOUS(0.1-0.3) + 来源审计 |
+| **边置信度** | EXTRACTED(1.0) / INFERRED(0.7-0.95) / AMBIGUOUS(0.1-0.3) + 来源追踪 |
 | **一键探索** | `explore-flow` — 单次查询获取相关节点、路径和条件 |
 | **增量更新** | `quick-update` 无需 LLM；`light-scan`/`patch-from-git` 零 token 更新 |
 | **MCP 服务器** | `serve` — 通过 stdio 暴露 83 个查询工具（36 code2database_* + 19 cgdb_*）供 LLM 代理使用 |

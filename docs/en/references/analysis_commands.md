@@ -557,11 +557,11 @@ Output: list of functions that read/write the field, with location and context.
 
 **Object origin annotation**: When the project profile declares `allocation_sites` (see PROFILE_MANUAL.md §3.16) and `build` was run with `--profile`, each writer/reader entry includes an `object_origin` field showing where the variable was initialized (e.g., `"alloc_buffer_head(...):buffer_head"` vs `"jh->bh"`). This lets you distinguish same-typed-different-instance objects — critical for proving that two writers operate on different objects and therefore cannot race.
 
-## Audit
+## Operation Trail
 
 ### `audit-log`
 
-View audit log of past writes to the graph.
+View the recorded trail of past writes to the graph.
 
 ```bash
 python3 scripts/code2database_builder.py audit-log \

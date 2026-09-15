@@ -291,7 +291,7 @@ C 扫描器在 AST 遍历期间跟踪预处理条件栈，正确处理嵌套 `#i
 
 ### 7. 非破坏性 LLM 补充
 
-数据库写入约束是"内容可能缺失，但必须准确"。每次 LLM 驱动的写（`update-node`、`update-edge`、`apply-semantics`、`apply-invariants`、`auto-enhance`、`profile-evolve`）把补充存储为 `{key}_supplemented` 字段，**不覆盖**原始扫描数据。每个补充包含 `_supplement_meta`（来源/置信度/时间戳/原始值），可在 `describe-node` 输出中审计。`rollback` 按时间或范围回滚。原始扫描事实始终保留。
+数据库写入约束是"内容可能缺失，但必须准确"。每次 LLM 驱动的写（`update-node`、`update-edge`、`apply-semantics`、`apply-invariants`、`auto-enhance`、`profile-evolve`）把补充存储为 `{key}_supplemented` 字段，**不覆盖**原始扫描数据。每个补充包含 `_supplement_meta`（来源/置信度/时间戳/原始值），可在 `describe-node` 输出中追溯。`rollback` 按时间或范围回滚。原始扫描事实始终保留。
 
 ### 8. 置信度阈值自动写入
 
@@ -505,7 +505,7 @@ scripts/
 │   ├── doc_code_align.py         ← 检测返回/参数/签名/陈旧文档不匹配
 │   ├── commit_meta.py            ← Git/svn 提交检测、blame、manifest 富化
 │   ├── graph_history.py          ← graph-history、graph-diff、graph-record-version
-│   ├── audit_log.py              ← 过去写图的审计日志
+│   ├── audit_log.py              ← 过去写图的操作日志
 │   ├── ffi_bridge.py             ← 检测 ctypes/cgo/extern "C"；构建 FFI_BRIDGE 边（948 行）
 │   ├── value_flow.py             ← DATA_FLOW 边构建；参数→返回值传播
 │   ├── lock_coverage.py          ← 锁持有事件流提取，带字符位置
@@ -529,7 +529,7 @@ scripts/
 │   ├── kb_index.py               ← 统一 KB FTS5+BM25 索引（kb_paragraphs 表，跨 memory+knowledge 查询）
 │   ├── kb_cluster.py             ← KB 聚类（union-find on FTS5 similarity，scope_id/canonical_id/principle_ref）
 │   ├── kb_global.py              ← 跨项目全局 KB（~/.code2database_global_kb/global.db，跨项目复用知识）
-│   ├── kb_audit.py               ← KB 审计（counts by kind、stale、low-confidence、citations、audit_log 接入）
+│   ├── kb_audit.py               ← KB 核查（counts by kind、stale、low-confidence、citations、audit_log 接入）
 │   ├── kb_conflict.py
 │   ├── build_multi.py             ← Multi-project aggregate build (manifest-driven, project-name domain prefix)
 │   ├── c2d_foreign.py             ← Cross-C2D foreign_refs + watched_c2ds (add/sync/list/remove)

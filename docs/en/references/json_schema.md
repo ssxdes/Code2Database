@@ -575,7 +575,7 @@ Thread spawn relationships and concurrent execution windows.
 | `concurrent_groups[].concurrent_with_thread` | array | Calls in the parent that execute concurrently with the spawned thread |
 | `concurrent_groups[].concurrency_type` | string | `"thread_spawn"`, `"goroutine"`, etc. |
 
-## Edge Confidence & Source (Audit Trail)
+## Edge Confidence & Source (Evidence Trail)
 
 Every edge carries provenance metadata indicating how it was discovered and how certain it is.
 

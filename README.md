@@ -652,6 +652,7 @@ This separation lets you:
 | `docs/en/RUNTIME_CONFIG.md` | Runtime configuration reference | Tool developers |
 | `CLAUDE.md` | Claude Code integration guide | AI agents (auto-loaded) |
 | `AGENTS.md` | Codex / agent integration guide | Tool developers |
+| `SECURITY.md` | Security policy and output-sensitivity notes | All readers |
 
 ---
 

@@ -902,8 +902,7 @@ info "  pip install libclang==17.0.6   # enables cgdb clang backend (typed vtabl
 info "  pip install z3-solver          # enables sound path feasibility (heuristic fallback without it)"
 echo ""
 info "Not installed (developer-only): tests/, evals/, OVERVIEW.md,"
-info "  PROFILE_MANUAL.md, RUNTIME_CONFIG.md, CHANGELOG.md, README.md,"
-info "  skill-self-scan/, code2db-out/, etc."
+info "  CHANGELOG.md, README.md, skill-self-scan/, code2db-out/, etc."
 echo ""
 info "To uninstall: bash install.sh --uninstall --dir $INSTALL_DIR"
 

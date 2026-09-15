@@ -43,6 +43,25 @@ def _check(name: str, status: str, detail: str,
     return entry
 
 
+def _kb_only_db_hint(conn) -> Optional[str]:
+    """Hint for a db created by knowledge-base tooling on a storage=json
+    build: kb_* tables exist, graph tables do not, and the graph itself
+    lives in the per-domain JSON files."""
+    try:
+        tables = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+    except sqlite3.Error:
+        return None
+    if "functions" in tables or "edges" in tables:
+        return None
+    if any(t.startswith("kb_") for t in tables):
+        return ("the database was created by knowledge-base tooling; "
+                "with storage=json the graph lives in per-domain JSON "
+                "under domains/ — rebuild with --storage sqlite to "
+                "populate the database, or remove the file")
+    return None
+
+
 def _check_database(graph_dir: str) -> Dict:
     db_path = os.path.join(graph_dir, "code2database.db")
     if not os.path.isfile(db_path):
@@ -66,7 +85,12 @@ def _check_database(graph_dir: str) -> Dict:
                 "SELECT COUNT(*) FROM edges").fetchone()[0],
         }
     except sqlite3.Error as exc:
+        kb_hint = _kb_only_db_hint(conn)
         conn.close()
+        if kb_hint and "no such table" in str(exc).lower():
+            return _check("database", _FAIL,
+                          "code2database.db holds knowledge-base tables "
+                          "but no graph tables (functions/edges)", kb_hint)
         return _check("database", _FAIL, f"cannot query database: {exc}")
     conn.close()
     if integrity_result != "ok":
@@ -91,13 +115,21 @@ def _check_schema(graph_dir: str) -> Dict:
     db_path = os.path.join(graph_dir, "code2database.db")
     if not os.path.isfile(db_path):
         return _check("schema", _FAIL, "database absent")
+    conn = None
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5.0)
         rows = dict(conn.execute(
             "SELECT key, value FROM meta").fetchall())
-        conn.close()
     except sqlite3.Error as exc:
+        hint = _kb_only_db_hint(conn) if conn is not None else None
+        if conn is not None:
+            conn.close()
+        if hint:
+            return _check("schema", _FAIL,
+                          "no graph schema recorded (meta table absent)",
+                          hint)
         return _check("schema", _FAIL, f"cannot read meta table: {exc}")
+    conn.close()
 
     main_version = rows.get("schema_version")
     if main_version is None:
@@ -131,6 +163,7 @@ def _check_graph_content(graph_dir: str) -> Dict:
     db_path = os.path.join(graph_dir, "code2database.db")
     if not os.path.isfile(db_path):
         return _check("graph_content", _FAIL, "database absent")
+    conn = None
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5.0)
         functions = conn.execute(
@@ -139,9 +172,15 @@ def _check_graph_content(graph_dir: str) -> Dict:
             "SELECT COUNT(*) FROM edges").fetchone()[0]
         files = conn.execute(
             "SELECT COUNT(DISTINCT source_file) FROM functions").fetchone()[0]
-        conn.close()
     except sqlite3.Error as exc:
+        hint = _kb_only_db_hint(conn) if conn is not None else None
+        if conn is not None:
+            conn.close()
+        if hint and "no such table" in str(exc).lower():
+            return _check("graph_content", _FAIL,
+                          "no graph tables in code2database.db", hint)
         return _check("graph_content", _FAIL, f"cannot query counts: {exc}")
+    conn.close()
     if functions == 0:
         return _check("graph_content", _FAIL,
                       "graph is empty (0 functions)",

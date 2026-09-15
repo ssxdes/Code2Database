@@ -920,6 +920,18 @@ class LazySQLiteGraph:
         self._db_path = db_path
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        # Guard: a db created by knowledge-base tooling on a storage=json
+        # build holds kb_* tables only — every later query would die on a
+        # missing functions table. Fail at construction with the cause.
+        _has_functions = self._conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='functions'").fetchone()
+        if not _has_functions:
+            self._conn.close()
+            raise ValueError(
+                f"{db_path} holds no graph tables — created by "
+                f"knowledge-base tooling on a storage=json build? "
+                f"Rebuild with --storage sqlite to populate the database")
         # PRAGMA tuning for read-heavy workloads. Without these, SQLite
         # defaults to 2MB cache (vs 64MB) and no memory-mapped I/O,
         # causing page-cache thrashing on 700K-node / 3.7M-edge graphs.

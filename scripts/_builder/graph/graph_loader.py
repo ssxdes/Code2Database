@@ -25,6 +25,27 @@ from _builder.graph.sqlite_postprocess import (
     _validate_stats_consistency_sqlite,
 )
 
+def _db_has_graph_tables(db_path: str) -> bool:
+    """True when the db carries the graph schema (functions table).
+
+    Knowledge-base tooling creates code2database.db with kb_* tables
+    only on storage=json builds; such a file must never serve as the
+    graph fallback (queries would die on missing tables).
+    """
+    import sqlite3
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            row = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='functions'").fetchone()
+            return row is not None
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False
+
+
 def _load_full_graph(graph_dir: str) -> nx.DiGraph:
     """Load the full invocation graph from domain-split JSON files.
 
@@ -58,15 +79,23 @@ def _load_full_graph(graph_dir: str) -> nx.DiGraph:
                 or _master_head.get("total_functions", 0)
             )
             if _func_count >= _LARGE_GRAPH_THRESHOLD:
-                print(f"[load] Large graph ({_func_count} nodes) — using "
-                      f"LazySQLiteGraph for fast on-demand queries: {db_path}",
-                      file=sys.stderr)
-                try:
-                    from scripts._builder.graph.streaming_graph import LazySQLiteGraph
-                except ImportError:
-                    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-                    from _builder.graph.streaming_graph import LazySQLiteGraph
-                return LazySQLiteGraph(db_path)
+                if not _db_has_graph_tables(db_path):
+                    # A kb-only db (knowledge-base tooling on a
+                    # storage=json build) must not shadow the per-domain
+                    # JSON the master file points at.
+                    print(f"[load] {db_path} has no graph tables "
+                          f"(knowledge-base only) — eager load from "
+                          f"per-domain JSON", file=sys.stderr)
+                else:
+                    print(f"[load] Large graph ({_func_count} nodes) — using "
+                          f"LazySQLiteGraph for fast on-demand queries: {db_path}",
+                          file=sys.stderr)
+                    try:
+                        from scripts._builder.graph.streaming_graph import LazySQLiteGraph
+                    except ImportError:
+                        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+                        from _builder.graph.streaming_graph import LazySQLiteGraph
+                    return LazySQLiteGraph(db_path)
         except Exception as _e:
             print(f"[load] Failed to peek master.json for size check: {_e}, "
                   f"falling back to eager load", file=sys.stderr)
@@ -76,6 +105,15 @@ def _load_full_graph(graph_dir: str) -> nx.DiGraph:
         # Use LazySQLiteGraph (on-demand loading) instead of eager full-load
         # — eager load of 1.5M nodes times out interactive queries.
         if os.path.exists(db_path):
+            if not _db_has_graph_tables(db_path):
+                print(f"Error: {db_path} holds no graph tables — it was "
+                      f"created by knowledge-base tooling on a storage=json "
+                      f"build, and {master_path} is missing, so there is no "
+                      f"graph to load. Rebuild with --storage sqlite or "
+                      f"restore the per-domain JSON files.", file=sys.stderr)
+                raise FileNotFoundError(
+                    f"{db_path} has no graph tables and "
+                    f"{master_path} is missing")
             print(f"[load] master not found, using LazySQLiteGraph: {db_path}",
                   file=sys.stderr)
             try:

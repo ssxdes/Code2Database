@@ -250,3 +250,55 @@ class TestFfiDetectOnLazyGraph(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _make_kb_only_db(d):
+    """A db created by knowledge-base tooling: kb_* tables, no graph."""
+    import sqlite3
+    db = os.path.join(d, "code2database.db")
+    conn = sqlite3.connect(db)
+    conn.executescript(
+        "CREATE TABLE kb_paragraphs (id INTEGER PRIMARY KEY, text TEXT);"
+        "CREATE TABLE kb_items (id INTEGER PRIMARY KEY, topic TEXT);")
+    conn.commit()
+    conn.close()
+    return db
+
+
+class TestKbOnlyDatabaseGuards(unittest.TestCase):
+    """A storage=json build keeps the graph in per-domain JSON; later
+    knowledge-base commands create a kb-only code2database.db. That file
+    must never shadow the JSON graph or masquerade as a graph fallback."""
+
+    def test_large_graph_kb_only_db_falls_back_to_json(self):
+        from _builder.graph.graph_loader import _load_full_graph
+        with tempfile.TemporaryDirectory() as d:
+            _make_kb_only_db(d)
+            with open(os.path.join(d, "domain_lib.json"), "w",
+                      encoding="utf-8") as f:
+                json.dump({"nodes": [
+                    {"id": "n0", "name": "fn0", "domain": "lib",
+                     "source_file": "a.c", "line": 1, "labels": []}],
+                    "edges": []}, f)
+            with open(os.path.join(d, "code2database_master.json"), "w",
+                      encoding="utf-8") as f:
+                json.dump({"stats": {"total_functions": 60000},
+                           "domains": {"lib": "domain_lib.json"}}, f)
+            G = _load_full_graph(d)
+            self.assertIn("n0", G)
+
+    def test_master_missing_kb_only_db_raises_clearly(self):
+        from _builder.graph.graph_loader import _load_full_graph
+        with tempfile.TemporaryDirectory() as d:
+            _make_kb_only_db(d)
+            with self.assertRaises(FileNotFoundError) as cm:
+                _load_full_graph(d)
+            self.assertIn("no graph tables", str(cm.exception))
+
+    def test_lazy_sqlite_graph_rejects_kb_only_db(self):
+        from _builder.graph.streaming_graph import LazySQLiteGraph
+        with tempfile.TemporaryDirectory() as d:
+            db = _make_kb_only_db(d)
+            with self.assertRaises(ValueError) as cm:
+                LazySQLiteGraph(db)
+            self.assertIn("no graph tables", str(cm.exception))

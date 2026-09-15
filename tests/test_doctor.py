@@ -128,3 +128,48 @@ class TestDoctor(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestKbOnlyDatabaseDiagnosis(unittest.TestCase):
+    """A storage=json build keeps the graph in per-domain JSON; a later
+    knowledge-base command then creates code2database.db holding only
+    kb_* tables. doctor must name that state precisely instead of a raw
+    'no such table' error."""
+
+    def _kb_only_graph_dir(self):
+        import shutil
+        tmp = tempfile.mkdtemp(prefix="c2d_doctor_kb_")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        graph_dir = os.path.join(tmp, "code2db-out")
+        os.makedirs(graph_dir)
+        # Simulate the KB-tooling bootstrap on a json-storage project.
+        conn = sqlite3.connect(os.path.join(graph_dir, "code2database.db"))
+        conn.executescript("""
+            CREATE TABLE kb_paragraphs (id INTEGER PRIMARY KEY, text TEXT);
+            CREATE TABLE kb_items (id INTEGER PRIMARY KEY, topic TEXT);
+        """)
+        conn.commit()
+        conn.close()
+        return graph_dir
+
+    def test_database_check_names_kb_only_state(self):
+        report = run_doctor(self._kb_only_graph_dir())
+        db = _by_name(report)["database"]
+        self.assertEqual(db["status"], "fail")
+        self.assertIn("knowledge-base tables", db["detail"])
+        self.assertIn("--storage sqlite", db["hint"])
+        self.assertIn("per-domain JSON", db["hint"])
+
+    def test_schema_and_content_carry_the_hint(self):
+        report = run_doctor(self._kb_only_graph_dir())
+        schema = _by_name(report)["schema"]
+        content = _by_name(report)["graph_content"]
+        self.assertEqual(schema["status"], "fail")
+        self.assertIn("--storage sqlite", schema["hint"])
+        self.assertEqual(content["status"], "fail")
+        self.assertIn("--storage sqlite", content["hint"])
+
+    def test_exit_code_is_failure(self):
+        report = run_doctor(self._kb_only_graph_dir())
+        self.assertEqual(report["exit_code"], 2)
+        self.assertGreaterEqual(report["summary"]["fail"], 3)

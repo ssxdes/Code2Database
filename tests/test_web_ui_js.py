@@ -40,9 +40,10 @@ def _ui_js() -> str:
 
 
 def _extract_function(js: str, name: str) -> str:
-    """Extract one `function name(...) {...}` declaration (balanced
-    braces — the UI functions contain no braces inside strings)."""
-    m = re.search(r"\bfunction\s+%s\s*\(" % re.escape(name), js)
+    """Extract one `[async] function name(...) {...}` declaration
+    (balanced braces — the UI functions contain no braces inside
+    strings)."""
+    m = re.search(r"\b(?:async\s+)?function\s+%s\s*\(" % re.escape(name), js)
     if not m:
         raise AssertionError("function %s not found in UI JS" % name)
     start = js.find("{", m.end())
@@ -90,10 +91,27 @@ function applyCommunityColors() {}
 function syncCyFromModel() { syncCyCalls++; }
 function drawMinimap() {}
 function loadNodeDetails(id) {}
-// Minimal document stub — syncCyFromModel touches stats + edge-legend.
+// Minimal document stub. Elements are cached per id (a function that
+// fetches the same element twice must see its own earlier writes) and
+// carry classList/setAttribute/textContent for the panel toggles.
+const _els = {};
+function _mkEl() {
+  const el = { style: {}, innerHTML: '', textContent: '', title: '',
+               _cls: new Set(), _attrs: {} };
+  el.classList = {
+    add: (c) => el._cls.add(c),
+    remove: (c) => el._cls.delete(c),
+    toggle: (c) => { el._cls.has(c) ? el._cls.delete(c) : el._cls.add(c);
+                     return el._cls.has(c); },
+    contains: (c) => el._cls.has(c),
+  };
+  el.setAttribute = (k, v) => { el._attrs[k] = v; };
+  el.getAttribute = (k) => el._attrs[k];
+  return el;
+}
 const window = { _lastStatsHtml: '' };
 const document = {
-  getElementById: (id) => ({ style: {}, innerHTML: '' }),
+  getElementById: (id) => { if (!_els[id]) _els[id] = _mkEl(); return _els[id]; },
 };
 
 function _mkEle(id, data) {
@@ -365,3 +383,63 @@ class TestWebUIJs(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCodePanelJs(unittest.TestCase):
+    """Source-panel behavior: no phantom blank lines between code lines
+    (the spans are display:block; a '\n' join inside white-space:pre
+    renders an empty line between every pair), and the line-number
+    toggle persists."""
+
+    def _run_harness(self, tests: str, function_names, preamble=""):
+        js = _ui_js()
+        functions = "\n\n".join(_extract_function(js, n) for n in function_names)
+        proc = _run_node(_HARNESS % {"functions": functions,
+                                     "tests": preamble + tests})
+        self.assertEqual(
+            proc.returncode, 0,
+            "node harness failed:\nSTDOUT: %s\nSTDERR: %s" % (proc.stdout, proc.stderr))
+        self.assertIn("ALL_OK", proc.stdout)
+
+    def test_load_code_renders_one_span_per_line_without_newlines(self):
+        self._run_harness("""
+            (async () => {
+              await loadCode('n1');
+              const html = document.getElementById('code-content').innerHTML;
+              assert.strictEqual(
+                html,
+                '<span class="code-line">int a;</span>'
+                + '<span class="code-line">int b;</span>',
+                'spans must join with no newline text nodes');
+              assert.strictEqual(
+                document.getElementById('code-content').style.counterReset,
+                'lineno 4', 'counter must start at the source line');
+              assert.strictEqual(
+                document.getElementById('code-panel-title').textContent,
+                'y.c:5');
+            })();
+        """, ["loadCode", "escapeHtml"],
+        preamble="""
+            async function api() {
+              return { code: 'int a;\\nint b;', line: 5, file: '/x/y.c' };
+            }
+        """)
+
+    def test_line_number_toggle_roundtrip_persists(self):
+        self._run_harness("""
+            const store = {};
+            const localStorage = {
+              getItem: (k) => (k in store ? store[k] : null),
+              setItem: (k, v) => { store[k] = v; },
+            };
+            toggleLineNumbers();
+            assert.ok(document.getElementById('code-content')
+                      .classList.contains('hide-lineno'),
+                      'first toggle hides the gutter');
+            assert.strictEqual(store['c2d-lineno'], 'off');
+            toggleLineNumbers();
+            assert.ok(!document.getElementById('code-content')
+                      .classList.contains('hide-lineno'),
+                      'second toggle restores the gutter');
+            assert.strictEqual(store['c2d-lineno'], 'on');
+        """, ["toggleLineNumbers"])

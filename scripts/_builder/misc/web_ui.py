@@ -632,6 +632,9 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
   display: inline-block; width: 3.5em; text-align: right;
   padding-right: 10px; color: var(--muted); user-select: none;
   border-right: 1px solid var(--border); margin-right: 10px; }
+/* Line-number toggle — the gutter box disappears entirely so the code
+   shifts left instead of keeping an empty gutter. */
+#code-content.hide-lineno .code-line::before { content: none; }
 #code-empty { padding: 20px; color: var(--muted-fg); font-size: 12px; text-align: center; }
 
 /* Resize handles — thin vertical bars on the left edge of the
@@ -692,6 +695,8 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
     <span id="code-panel-title">Source</span>
     <span id="code-panel-actions">
       <button onclick="copyCode()" aria-label="Copy code">Copy</button>
+      <button id="lineno-btn" onclick="toggleLineNumbers()" title="Toggle line numbers"
+              aria-label="Toggle line numbers" aria-pressed="true">#</button>
       <button onclick="closeCodePanel()" aria-label="Close panel">&times;</button>
     </span>
   </div>
@@ -1591,8 +1596,11 @@ async function loadCode(nodeId) {
     const startLine = data.line || 1;
     content.style.counterReset = 'lineno ' + (startLine - 1);
     const lines = code.split('\n');
+    // Join with '' — the .code-line spans are display:block and break
+    // lines themselves; a '\n' text node inside white-space:pre
+    // renders as a blank line between every pair of code lines.
     content.innerHTML = lines.map(l =>
-      '<span class="code-line">' + escapeHtml(l) + '</span>').join('\n');
+      '<span class="code-line">' + escapeHtml(l) + '</span>').join('');
     content.style.display = 'block';
     empty.style.display = 'none';
   } else {
@@ -1612,6 +1620,30 @@ async function loadCode(nodeId) {
 function closeCodePanel() {
   document.getElementById('code-panel').classList.remove('visible');
 }
+
+// Line-number toggle — persists to localStorage (same pattern as the
+// theme toggle) so a page refresh keeps the preference.
+function toggleLineNumbers() {
+  const content = document.getElementById('code-content');
+  const btn = document.getElementById('lineno-btn');
+  if (!content) return;
+  const hidden = content.classList.toggle('hide-lineno');
+  if (btn) btn.setAttribute('aria-pressed', hidden ? 'false' : 'true');
+  try { localStorage.setItem('c2d-lineno', hidden ? 'off' : 'on'); } catch (e) {}
+}
+
+// Apply the saved line-number preference on load — matches the theme
+// restore pattern so the gutter state survives refreshes.
+(function applySavedLineno() {
+  let saved = null;
+  try { saved = localStorage.getItem('c2d-lineno'); } catch (e) {}
+  if (saved === 'off') {
+    const content = document.getElementById('code-content');
+    if (content) content.classList.add('hide-lineno');
+    const btn = document.getElementById('lineno-btn');
+    if (btn) btn.setAttribute('aria-pressed', 'false');
+  }
+})();
 
 function copyCode() {
   const content = document.getElementById('code-content');

@@ -1257,6 +1257,24 @@ class SQLiteStore:
         )
         self._conn.commit()
 
+    def store_change_log_entries(self, entries: List[Dict]):
+        """Store a batch of commit-aware change log rows (one commit)."""
+        if not entries:
+            return
+        rows = [(e.get("commit_hash"), e.get("commit_short"),
+                 e.get("commit_author"), e.get("commit_date"),
+                 e.get("commit_subject"), e.get("branch"),
+                 e.get("node_id"), e.get("change_type"),
+                 e.get("diff_summary"),
+                 json.dumps(e.get("affected_attrs", []), separators=(',', ':')) if e.get("affected_attrs") else None,
+                 e.get("logged_at")) for e in entries]
+        self._conn.executemany(
+            "INSERT INTO change_log (commit_hash, commit_short, commit_author, "
+            "commit_date, commit_subject, branch, node_id, change_type, "
+            "diff_summary, affected_attrs, logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            rows)
+        self._conn.commit()
+
     # ---- Read operations ----
 
     def get_function(self, func_id: str) -> Optional[Dict]:

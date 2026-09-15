@@ -10,7 +10,7 @@ Public API:
 - enrich_manifest_with_commit(manifest_dict, source_root) → adds source_commit
 - query_commit_for_file(source_root, file_path) → (introduced_commit, last_modified_commit)
 - query_commit_for_lines(source_root, file_path, line_range) → blame-style mapping
-- store_commit_aware_change_log(store, source_root, changed_files, branch)
+- record_sync_change_log(store, source_root, written_by_file, deleted_files)
 
 Design notes:
 - All git invocations use --no-pager and -c to suppress pager/config issues.
@@ -279,14 +279,18 @@ def _safe_mtime(file_path: str) -> Optional[str]:
         return None
 
 
-def store_commit_aware_change_log(store, source_root: str,
-                                  changed_files: List[str],
-                                  branch: Optional[str] = None) -> int:
-    """Record a change_log entry per changed file (commit-aware).
+def record_sync_change_log(store, source_root: str,
+                           written_by_file: Dict[str, List[str]],
+                           deleted_files: List[str]) -> int:
+    """Record change_log rows for a completed per-file graph sync.
 
-    Called after a build/update to record which commit affected which files.
-    Uses current HEAD as the commit (assumes changes are committed).
-    Returns number of entries written.
+    One 'modified' row per re-written node id (the sync rewrites whole
+    files, so every surviving function in a synced file counts as
+    modified) and one file-level 'deleted' row per removed file — all
+    anchored to the source commit that was HEAD when the sync ran.
+    describe-commit / node-history read these rows back. Skipped
+    entirely in non-VCS trees (no commit to anchor to). Returns the
+    number of rows written.
     """
     from datetime import datetime, timezone
     vcs = detect_vcs_info(source_root)
@@ -298,25 +302,43 @@ def store_commit_aware_change_log(store, source_root: str,
         return 0
 
     logged_at = datetime.now(timezone.utc).isoformat()
-    written = 0
-    for file_path in changed_files:
-        entry = {
+
+    def _rel(file_path: str) -> str:
+        try:
+            return os.path.relpath(file_path, source_root)
+        except ValueError:
+            return file_path
+
+    def _entry(node_id, change_type: str, summary: str) -> Dict:
+        return {
             "commit_hash": commit_hash,
             "commit_short": vcs.get("head_short"),
             "commit_author": vcs.get("author"),
             "commit_date": vcs.get("date"),
             "commit_subject": vcs.get("subject"),
-            "branch": branch or vcs.get("branch"),
-            "node_id": None,  # filled by caller with affected node ids
-            "change_type": "modified",
-            "diff_summary": f"file changed: {file_path}",
+            "branch": vcs.get("branch"),
+            "node_id": node_id,
+            "change_type": change_type,
+            "diff_summary": summary,
             "affected_attrs": ["body_text", "callee_args"],
             "logged_at": logged_at,
         }
-        try:
-            store.store_change_log_entry(entry)
-            written += 1
-        except Exception as exc:
-            print(f"[commit_meta] change_log write failed for {file_path}: {exc}",
-                  file=sys.stderr)
-    return written
+
+    entries: List[Dict] = []
+    for file_path, node_ids in (written_by_file or {}).items():
+        summary = f"per-file sync: {_rel(file_path)}"
+        for nid in node_ids:
+            if nid:
+                entries.append(_entry(nid, "modified", summary))
+    for file_path in (deleted_files or []):
+        entries.append(_entry(None, "deleted", f"file deleted: {_rel(file_path)}"))
+
+    if not entries:
+        return 0
+    try:
+        store.store_change_log_entries(entries)
+    except Exception as exc:
+        print(f"[commit_meta] change_log batch write failed: {exc}",
+              file=sys.stderr)
+        return 0
+    return len(entries)

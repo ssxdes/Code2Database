@@ -446,6 +446,7 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
         print(f"[build-update] version record skipped: {exc}",
               file=sys.stderr)
         _version_id = 1
+    _written_ids_by_file = {}
     bulk_ok = False
     cgdb_store.begin_bulk_load()
     try:
@@ -495,6 +496,8 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
             if functions:
                 store.store_functions(functions, autocommit=False)
                 report["written_functions"] += len(functions)
+                _written_ids_by_file[fp] = [
+                    f.get("id") for f in functions if f.get("id")]
             edges = result.get("edges") or []
             if edges:
                 report["written_edges"] += _store_resolved_edges(
@@ -515,6 +518,18 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
             _cgdb_delete_file(cgdb_store, conn, fp, source_root)
         cgdb_store.finalize()
         bulk_ok = True
+        # Commit-anchored change rows (one per re-written node, one per
+        # deleted file; no-op in non-VCS trees). Must run AFTER finalize:
+        # the row writer commits, which would prematurely end the
+        # bulk-load transaction if called mid-flight. Best-effort: a
+        # failure here must not mark the bulk load as failed.
+        try:
+            from _builder.commit_meta import record_sync_change_log
+            report["change_log_entries"] = record_sync_change_log(
+                store, source_root, _written_ids_by_file, deleted)
+        except Exception as exc:
+            print(f"[build-update] change rows skipped: {exc}",
+                  file=sys.stderr)
     finally:
         if not bulk_ok:
             try:
@@ -607,3 +622,5 @@ def cmd_build_update(args):
     print(f"  rescaned {report['updated_files']} file(s): "
           f"{report['removed_functions']} function row(s) removed, "
           f"{report['written_functions']} written")
+    if report.get("change_log_entries"):
+        print(f"  change rows recorded: {report['change_log_entries']}")

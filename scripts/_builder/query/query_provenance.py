@@ -63,20 +63,22 @@ def cmd_describe_commit(args):
             _output_result(result, getattr(args, 'json', False))
             return
         except Exception as exc:
-            # The log EXISTS but can't be read/parsed. Saying "run a
-            # build with --track-commits" here would be a lie — the data
-            # was tracked, the file is corrupt. Say so.
+            # The log EXISTS but can't be read/parsed. Pointing at a
+            # rebuild flag here would be a lie — the data was recorded,
+            # the file is corrupt. Say so.
             logging.getLogger(__name__).debug(
                 "change_log read failed: %s", exc, exc_info=True)
             log_corrupt = True
     if log_corrupt:
         print(f"Change log at {log_path} exists but could not be read "
-              f"(corrupt or truncated). Delete it and re-run a build "
-              f"with --track-commits to regenerate.", file=sys.stderr)
-    else:
-        print(f"No change log found for commit {commit}. "
-              f"Run a build with --track-commits to populate change_log.",
+              f"(corrupt or truncated). Delete it; per-file syncs record "
+              f"fresh rows into the SQLite change_log as they run.",
               file=sys.stderr)
+    else:
+        print(f"No change log rows for commit {commit}. Per-file syncs "
+              f"record rows automatically, anchored to the source commit "
+              f"that was HEAD when they ran — this graph has none for "
+              f"that commit.", file=sys.stderr)
     sys.exit(1)
 
 
@@ -134,10 +136,13 @@ def cmd_node_history(args):
             log_corrupt = True
     if log_corrupt:
         print(f"Change log at {log_path} exists but could not be read "
-              f"(corrupt or truncated). Delete it and re-run a build "
-              f"with --track-commits to regenerate.", file=sys.stderr)
+              f"(corrupt or truncated). Delete it; per-file syncs record "
+              f"fresh rows into the SQLite change_log as they run.",
+              file=sys.stderr)
     else:
-        print(f"No change log found for node {node_id}.", file=sys.stderr)
+        print(f"No change log rows for node {node_id}. Per-file syncs "
+              f"record one row per re-written node — a node untouched by "
+              f"any sync has no rows.", file=sys.stderr)
     sys.exit(1)
 
 

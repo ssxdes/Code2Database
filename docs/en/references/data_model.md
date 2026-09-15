@@ -299,15 +299,15 @@ When the clang extraction backend is enabled (`--extraction-backend clang` or `a
 
 | Layer | Table(s) | Purpose | Key Columns |
 |-------|----------|---------|-------------|
-| L0 | `graph_versions` | Per-commit snapshot for time-travel queries | `version_id`, `commit_hash`, `created_at`, `parent_version` |
-| L1 | `cgdb_nodes`, `cgdb_files` | Multi-kind first-class nodes + file registry | `node_id` (SHA-256 truncated 60-bit), `kind`, `fqn`, `name`, `source_file_id`, `line`, `col`, `enclosing_symbol_id`, `config_predicate_id`, `source_snippet`, `description`, `llm_confidence` |
-| L2 | `cgdb_types` | Independent type system (builtin/pointer/reference/array/record/enum/function/template/typedef) | `type_id`, `kind`, `name`, `size`, `alignment`, `const`, `volatile`, `pointee_type_id` |
-| L3 | `conditions` | Z3 SMT-LIB boolean expression trees | `condition_id`, `z3_form`, `human_form`, `kind` (atomic/not/and/or/implies) |
-| L3.5 | `config_predicates` | `#ifdef` predicate tree (BDD + Z3 form), cross-language (Go `//go:build`, Rust `#[cfg]`, Python `sys.platform`, Java `@Profile`, ASM/C `#ifdef`) | `predicate_id`, `normalized_form`, `z3_form`, `bdd_form`, `status` (UNCONDITIONAL/CONTRADICTORY/CONDITIONAL), `language`, `source_file_id`, `line` |
-| L4 | `basic_blocks`, `cfg_edges` | Control flow graph | `block_id`, `function_id`, `statement_ids`, `terminator_kind`; `edge_id`, `src_block`, `dst_block`, `condition_id`, `kind` (fallthrough/true/false/loop_back/exception) |
-| L5 | `data_flow`, `alias_sets` | Def-use chain + pointer alias | `flow_id`, `function_id`, `variable`, `def_block`, `def_kind` (param/var/return), `use_block`, `use_kind` (call/return/branch/assign); `alias_set_id`, `pointer`, `aliases` (JSON) |
-| L7 | `invoke_sites`, `ops_bindings` | Invocation refinement + typed vtable dispatch | `site_id`, `caller_function_id`, `callee_expr`, `callee_resolved_id`, `condition_id`, `is_indirect`; `binding_id`, `ops_table_id`, `field_node_id`, `impl_function_id`, `signature_match` |
-| L8 | `sync_primitives`, `happens_before` | Concurrency + memory model | `prim_id`, `kind` (mutex/spinlock/rwlock/atomic/condvar/barrier), `var_name`, `acquire_site_id`, `release_site_id`, `memory_order`; `hb_id`, `event_a`, `event_b`, `ordering` (happens_before/concurrent/undetermined) |
+| Layer 0 | `graph_versions` | Per-commit snapshot for time-travel queries | `version_id`, `commit_hash`, `created_at`, `parent_version` |
+| Layer 1 | `cgdb_nodes`, `cgdb_files` | Multi-kind first-class nodes + file registry | `node_id` (SHA-256 truncated 60-bit), `kind`, `fqn`, `name`, `source_file_id`, `line`, `col`, `enclosing_symbol_id`, `config_predicate_id`, `source_snippet`, `description`, `llm_confidence` |
+| Layer 2 | `cgdb_types` | Independent type system (builtin/pointer/reference/array/record/enum/function/template/typedef) | `type_id`, `kind`, `name`, `size`, `alignment`, `const`, `volatile`, `pointee_type_id` |
+| Layer 3 | `conditions` | Z3 SMT-LIB boolean expression trees | `condition_id`, `z3_form`, `human_form`, `kind` (atomic/not/and/or/implies) |
+| Layer 3.5 | `config_predicates` | `#ifdef` predicate tree (BDD + Z3 form), cross-language (Go `//go:build`, Rust `#[cfg]`, Python `sys.platform`, Java `@Profile`, ASM/C `#ifdef`) | `predicate_id`, `normalized_form`, `z3_form`, `bdd_form`, `status` (UNCONDITIONAL/CONTRADICTORY/CONDITIONAL), `language`, `source_file_id`, `line` |
+| Layer 4 | `basic_blocks`, `cfg_edges` | Control flow graph | `block_id`, `function_id`, `statement_ids`, `terminator_kind`; `edge_id`, `src_block`, `dst_block`, `condition_id`, `kind` (fallthrough/true/false/loop_back/exception) |
+| Layer 5 | `data_flow`, `alias_sets` | Def-use chain + pointer alias | `flow_id`, `function_id`, `variable`, `def_block`, `def_kind` (param/var/return), `use_block`, `use_kind` (call/return/branch/assign); `alias_set_id`, `pointer`, `aliases` (JSON) |
+| Layer 7 | `invoke_sites`, `ops_bindings` | Invocation refinement + typed vtable dispatch | `site_id`, `caller_function_id`, `callee_expr`, `callee_resolved_id`, `condition_id`, `is_indirect`; `binding_id`, `ops_table_id`, `field_node_id`, `impl_function_id`, `signature_match` |
+| Layer 8 | `sync_primitives`, `happens_before` | Concurrency + memory model | `prim_id`, `kind` (mutex/spinlock/rwlock/atomic/condvar/barrier), `var_name`, `acquire_site_id`, `release_site_id`, `memory_order`; `hb_id`, `event_a`, `event_b`, `ordering` (happens_before/concurrent/undetermined) |
 | FTS | `nodes_fts` | FTS5 virtual table for symbol search | FTS5 columns over `cgdb_nodes.name`, `fqn`, `description` |
 
 ### Cross-Language Config Predicate Normalization

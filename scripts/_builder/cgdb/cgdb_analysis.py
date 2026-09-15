@@ -2,7 +2,7 @@
 
 Per cgdb-architecture-and-poc-report.md 5.4:
   L4 (CFG):    `clang -cc1 -analyze -analyzer-checker=debug.DumpCFG`
-  L5 (data flow): `clang -cc1 -analyze -analyzer-checker=debug.DumpLiveVars`
+  layer 5 (data flow): `clang -cc1 -analyze -analyzer-checker=debug.DumpLiveVars`
                   + AST-level def-use via DeclRefExpr tracking
   L6 (alias):  `clang -cc1 -analyze -analyzer-checker=debug.DumpDominators`
                 + heuristics on pointer assignments (MVP — clang's full
@@ -648,7 +648,7 @@ class ConditionExtractor:
 
 
 class DataFlowExtractor:
-    """L5: extract def-use chains from clang's DumpLiveVars + AST analysis.
+    """Layer 5: extract def-use chains from clang's DumpLiveVars + AST analysis.
 
     Combines two layers:
       1. clang -cc1 -analyzer-checker=debug.DumpLiveVars output (when available)

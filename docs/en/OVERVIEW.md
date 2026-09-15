@@ -70,43 +70,43 @@ Each tier provides progressively more detail at higher token cost. The agent sta
 
 ### Why cgdb (Code Graph Database) Layer
 
-> **Naming clarification (v4+)**: The cgdb layer names below (CGDB-L0 through CGDB-L11 + FTS) are **different from** the design-report L1~L4 layers (`C代码数据库化方案-分析与执行报告.md`):
-> - **Report-L1** (无损重建层 / lossless reconstruction): `tokens` / `macros` / `macro_invocations` / `pp_branches` / `pp_directives` / `pragmas` / `attributes` / `literals` / `string_literals` / `comments` — added in schema v4
-> - **Report-L2** (AST 层): `symbols` / `ast_nodes` / `references` / `call_edges` / `includes` / `globals` / `types` / `modules` — partially covered by `cgdb_nodes` / `cgdb_edges` / `cgdb_types` / `cgdb_includes`
-> - **Report-L3** (IR 层): `ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` — added in schema v4 (LLVM Pass + SVF integration is P1, populator not yet implemented)
-> - **Report-L4** (派生层 / derived): `call_graph_reachability` / `module_deps` / `function_embeddings` / `precise_write_sets` / `arch_metrics` / `history_snapshots` / `alignment_errors` — added in schema v4
+> **Naming clarification (v4+)**: The cgdb layer names below (cgdb layer 0 through cgdb layer 11 + FTS) are **different from** the design-report L1~L4 layers (`C代码数据库化方案-分析与执行报告.md`):
+> - **report layer 1** (无损重建层 / lossless reconstruction): `tokens` / `macros` / `macro_invocations` / `pp_branches` / `pp_directives` / `pragmas` / `attributes` / `literals` / `string_literals` / `comments` — added in schema v4
+> - **report layer 2** (AST 层): `symbols` / `ast_nodes` / `references` / `call_edges` / `includes` / `globals` / `types` / `modules` — partially covered by `cgdb_nodes` / `cgdb_edges` / `cgdb_types` / `cgdb_includes`
+> - **report layer 3** (IR 层): `ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` — added in schema v4 (LLVM Pass + SVF integration is P1, populator not yet implemented)
+> - **report layer 4** (派生层 / derived): `call_graph_reachability` / `module_deps` / `function_embeddings` / `precise_write_sets` / `arch_metrics` / `history_snapshots` / `alignment_errors` — added in schema v4
 > - **Report-多库** (multi-DB routing): `db_routing` / `precompute_tasks` — added in schema v4 (router not yet implemented)
 > - **Report-跨语言** (cross-language bridge): `cross_lang_bindings` / `type_mappings` / `ffi_call_sites` / `language_adapters` / `runtime_observations` / `dependencies` — added in schema v4
 >
-> The legacy cgdb layers (CGDB-L0 through CGDB-L11) below are the original semantic-table layers populated by the clang backend; the report layers above are additive (they sit side-by-side in the same SQLite database). See `report/Code2Database-最终差距分析与优化报告.md` for the full gap matrix.
+> The legacy cgdb layers (cgdb layer 0 through cgdb layer 11) below are the original semantic-table layers populated by the clang backend; the report layers above are additive (they sit side-by-side in the same SQLite database). See `report/Code2Database-最终差距分析与优化报告.md` for the full gap matrix.
 
 The legacy graph (`functions` + `edges` tables) answers "who calls whom." The cgdb layer adds typed semantic tables that answer questions the legacy graph cannot:
 
 | CGDB-Layer | Table | Answers |
 |------------|-------|---------|
-| CGDB-L0 | `graph_versions` | Per-commit snapshot for time-travel queries |
-| CGDB-L1 | `cgdb_nodes`, `cgdb_files` | Multi-kind first-class nodes (function/method/ctor/dtor/var/parm/field/struct/class/enum/stmt/expr/label/namespace/template/concept/file/macro/include/vtable/ops_table) + file registry |
-| CGDB-L2 | `cgdb_types` | Independent type system with size/alignment/const/volatile/pointee |
-| CGDB-L3 | `conditions` | Z3-reasonable boolean expression trees |
-| CGDB-L3.5 | `config_predicates` | `#ifdef` predicate tree (BDD + Z3 form), cross-language (Go `//go:build`, Rust `#[cfg]`, Python `sys.platform`, Java `@Profile`, ASM/C `#ifdef`) |
-| CGDB-L4 | `basic_blocks` + `cfg_edges` | Control flow graph |
-| CGDB-L5 | `data_flow` + `alias_sets` | Def-use chain + pointer alias (alias_sets is heuristic stub; Report-L3 `ssa_values`/`points_to`/`indirect_calls` are the full version) |
-| CGDB-L6 | (alias — see CGDB-L5 / Report-L3) | (Reserved for full alias analysis via SVF; currently in CGDB-L5 `alias_sets` table) |
-| CGDB-L7 | `invoke_sites` + `ops_bindings` | Invocation refinement + typed vtable dispatch (FieldDecl → FunctionDecl) |
-| CGDB-L8 | `sync_primitives` + `happens_before` | Concurrency + memory model |
-| CGDB-L9 | `cgdb_includes` | `#include` dependency graph for incremental sync |
-| CGDB-L10 | `doc_comments` + `graph_versions` | Doc comments + time-travel version queries |
-| CGDB-L11 | `node_metadata` + `edge_metadata` | Typed-key metadata per target |
+| cgdb layer 0 | `graph_versions` | Per-commit snapshot for time-travel queries |
+| cgdb layer 1 | `cgdb_nodes`, `cgdb_files` | Multi-kind first-class nodes (function/method/ctor/dtor/var/parm/field/struct/class/enum/stmt/expr/label/namespace/template/concept/file/macro/include/vtable/ops_table) + file registry |
+| cgdb layer 2 | `cgdb_types` | Independent type system with size/alignment/const/volatile/pointee |
+| cgdb layer 3 | `conditions` | Z3-reasonable boolean expression trees |
+| cgdb layer 3.5 | `config_predicates` | `#ifdef` predicate tree (BDD + Z3 form), cross-language (Go `//go:build`, Rust `#[cfg]`, Python `sys.platform`, Java `@Profile`, ASM/C `#ifdef`) |
+| cgdb layer 4 | `basic_blocks` + `cfg_edges` | Control flow graph |
+| cgdb layer 5 | `data_flow` + `alias_sets` | Def-use chain + pointer alias (alias_sets is heuristic stub; report layer 3 `ssa_values`/`points_to`/`indirect_calls` are the full version) |
+| cgdb layer 6 | (alias — see cgdb layer 5 / report layer 3) | (Reserved for full alias analysis via SVF; currently in cgdb layer 5 `alias_sets` table) |
+| cgdb layer 7 | `invoke_sites` + `ops_bindings` | Invocation refinement + typed vtable dispatch (FieldDecl → FunctionDecl) |
+| cgdb layer 8 | `sync_primitives` + `happens_before` | Concurrency + memory model |
+| cgdb layer 9 | `cgdb_includes` | `#include` dependency graph for incremental sync |
+| cgdb layer 10 | `doc_comments` + `graph_versions` | Doc comments + time-travel version queries |
+| cgdb layer 11 | `node_metadata` + `edge_metadata` | Typed-key metadata per target |
 | FTS | `nodes_fts` | Full-text search over cgdb_nodes (FTS5 external-content) |
 
 Plus the design-report v4 layers (additive, populated by `source_renderer.py` when full toolchain is installed):
 
 | Report-Layer | Tables (v4) | Populated by |
 |--------------|-------------|--------------|
-| Report-L1 | `tokens` / `macros` / `macro_invocations` / `pp_branches` / `pp_directives` / `pragmas` / `attributes` / `literals` / `string_literals` / `comments_freeform` + `comments_fts` | `l1_ingest.py` (P1, pending) — libclang Lexer raw_tokens + PPCallbacks simulation |
-| Report-L2 | (covered by cgdb_nodes/edges/types/includes) | existing scanners |
-| Report-L3 | `ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` | (P1, pending — IR adapter not yet implemented) |
-| Report-L4 | `call_graph_reachability` / `module_deps` / `function_embeddings` / `precise_write_sets` / `arch_metrics` / `history_snapshots` / `alignment_errors` | `l4_derive.py` (P1, pending) — precompute tasks |
+| report layer 1 | `tokens` / `macros` / `macro_invocations` / `pp_branches` / `pp_directives` / `pragmas` / `attributes` / `literals` / `string_literals` / `comments_freeform` + `comments_fts` | `l1_ingest.py` (P1, pending) — libclang Lexer raw_tokens + PPCallbacks simulation |
+| report layer 2 | (covered by cgdb_nodes/edges/types/includes) | existing scanners |
+| report layer 3 | `ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` | (P1, pending — IR adapter not yet implemented) |
+| report layer 4 | `call_graph_reachability` / `module_deps` / `function_embeddings` / `precise_write_sets` / `arch_metrics` / `history_snapshots` / `alignment_errors` | `l4_derive.py` (P1, pending) — precompute tasks |
 | Report-多库 | `db_routing` / `precompute_tasks` | `db_router.py` (P1, pending) |
 | Report-跨语言 | `cross_lang_bindings` / `type_mappings` / `ffi_call_sites` / `language_adapters` / `runtime_observations` / `dependencies` | `ffi_bridge.py` (existing) |
 
@@ -368,15 +368,15 @@ Every node in the invocation graph has:
 
 | Layer | Table(s) | Purpose |
 |-------|----------|---------|
-| L0 | `graph_versions` | Per-commit snapshot for time-travel queries |
-| L1 | `cgdb_nodes`, `cgdb_files` | Multi-kind first-class nodes + file registry |
-| L2 | `cgdb_types` | Independent type system (builtin/pointer/reference/array/record/enum/function/template/typedef) |
-| L3 | `conditions` | Z3 SMT-LIB boolean expression trees |
-| L3.5 | `config_predicates` | `#ifdef` predicate tree (BDD + Z3 form), cross-language |
-| L4 | `basic_blocks`, `cfg_edges` | Control flow graph |
-| L5 | `data_flow`, `alias_sets` | Def-use chain + pointer alias |
-| L7 | `invoke_sites`, `ops_bindings` | Invocation refinement + typed vtable dispatch |
-| L8 | `sync_primitives`, `happens_before` | Concurrency + memory model |
+| Layer 0 | `graph_versions` | Per-commit snapshot for time-travel queries |
+| Layer 1 | `cgdb_nodes`, `cgdb_files` | Multi-kind first-class nodes + file registry |
+| Layer 2 | `cgdb_types` | Independent type system (builtin/pointer/reference/array/record/enum/function/template/typedef) |
+| Layer 3 | `conditions` | Z3 SMT-LIB boolean expression trees |
+| Layer 3.5 | `config_predicates` | `#ifdef` predicate tree (BDD + Z3 form), cross-language |
+| Layer 4 | `basic_blocks`, `cfg_edges` | Control flow graph |
+| Layer 5 | `data_flow`, `alias_sets` | Def-use chain + pointer alias |
+| Layer 7 | `invoke_sites`, `ops_bindings` | Invocation refinement + typed vtable dispatch |
+| Layer 8 | `sync_primitives`, `happens_before` | Concurrency + memory model |
 | FTS | `nodes_fts` | FTS5 virtual table for symbol search |
 
 See `references/data_model.md` for full schemas.

@@ -4,33 +4,33 @@ Adds 13-layer semantic tables to the existing code2database.db (side-by-side wit
 the legacy `functions`/`edges` tables for backward compatibility).
 
 CGDB-Layers (legacy cgdb naming — distinct from design-report L1~L4; see OVERVIEW.md):
-  CGDB-L0   meta / graph_versions                  — version control + metadata
-  CGDB-L1   nodes / files                           — multi-kind first-class nodes
-  CGDB-L2   types                                   — independent type system
-  CGDB-L3   conditions                              — Z3-reasonable boolean expression trees
-  CGDB-L3.5 config_predicates                       — #ifdef predicate tree (BDD + Z3 form)
-  CGDB-L4   basic_blocks / cfg_edges                — control flow graph
-  CGDB-L5   data_flow / alias_sets                  — def-use chain + pointer alias
-  CGDB-L7   invoke_sites / ops_bindings             — invocation graph refinement + typed vtable dispatch
-  CGDB-L8   sync_primitives / happens_before        — concurrency + memory model
-  CGDB-L9   cgdb_includes                          — #include dependency graph
-  CGDB-L10  doc_comments + graph_versions           — comments + time-travel
-  CGDB-L11  node_metadata / edge_metadata           — typed-key metadata
+  cgdb layer 0   meta / graph_versions                  — version control + metadata
+  cgdb layer 1   nodes / files                           — multi-kind first-class nodes
+  cgdb layer 2   types                                   — independent type system
+  cgdb layer 3   conditions                              — Z3-reasonable boolean expression trees
+  cgdb layer 3.5 config_predicates                       — #ifdef predicate tree (BDD + Z3 form)
+  cgdb layer 4   basic_blocks / cfg_edges                — control flow graph
+  cgdb layer 5   data_flow / alias_sets                  — def-use chain + pointer alias
+  cgdb layer 7   invoke_sites / ops_bindings             — invocation graph refinement + typed vtable dispatch
+  cgdb layer 8   sync_primitives / happens_before        — concurrency + memory model
+  cgdb layer 9   cgdb_includes                          — #include dependency graph
+  cgdb layer 10  doc_comments + graph_versions           — comments + time-travel
+  cgdb layer 11  node_metadata / edge_metadata           — typed-key metadata
   Full-text: nodes_fts (FTS5 virtual table)
 
 Design-report layers (per report/C代码数据库化方案-分析与执行报告.md) — distinct from cgdb layers:
-  Report-L1  无损重建层: tokens / macros / macro_invocations / pp_branches /
+  report layer 1  无损重建层: tokens / macros / macro_invocations / pp_branches /
               pp_directives / pragmas / attributes / literals / string_literals /
               comments (+ source_files_meta extension to cgdb_files)
-  Report-L2  AST 层:    symbols / ast_nodes / references / call_edges / includes /
+  report layer 2  AST 层:    symbols / ast_nodes / references / call_edges / includes /
               globals / types / modules / git_meta (partially covered by cgdb_nodes
               + cgdb_edges + cgdb_types + cgdb_includes)
-  Report-L3  IR 层:     ir_functions / cfg_blocks / cfg_edges / ssa_values /
+  report layer 3  IR 层:     ir_functions / cfg_blocks / cfg_edges / ssa_values /
               mem_accesses / alias_sets / points_to / indirect_calls / data_deps /
-              path_states (new in v4 — see Report-L3 section below)
-  Report-L4  派生层:    call_graph_reachability / module_deps / function_embeddings /
+              path_states (new in v4 — see report layer 3 section below)
+  report layer 4  派生层:    call_graph_reachability / module_deps / function_embeddings /
               precise_write_sets / arch_metrics / history_snapshots / alignment_errors
-              (new in v4 — see Report-L4 section below)
+              (new in v4 — see report layer 4 section below)
   Report-多库: db_routing / precompute_tasks (new in v4 — see Multi-DB routing section)
   Report-跨语言: cross_lang_bindings / type_mappings / ffi_call_sites /
               language_adapters / runtime_observations / dependencies
@@ -98,7 +98,7 @@ def apply_cgdb_schema(conn: sqlite3.Connection) -> None:
 # ============================================================================
 _CGDB_DDL = """
 -- ============================================================================
--- L0: graph_versions — per-commit snapshot for time-travel queries
+-- layer 0: graph_versions — per-commit snapshot for time-travel queries
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS graph_versions (
   version_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS graph_versions (
 CREATE INDEX IF NOT EXISTS idx_cgdb_versions_commit ON graph_versions(commit_hash);
 
 -- ============================================================================
--- L1: files — separate file table (solves ASTDump JSON no-file-field issue)
+-- layer 1: files — separate file table (solves ASTDump JSON no-file-field issue)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS cgdb_files (
   id INTEGER PRIMARY KEY,
@@ -132,7 +132,7 @@ CREATE INDEX IF NOT EXISTS idx_cgdb_files_path ON cgdb_files(path);
 CREATE INDEX IF NOT EXISTS idx_cgdb_files_hash ON cgdb_files(content_hash);
 
 -- ============================================================================
--- L1: nodes — multi-kind first-class nodes (replaces single-type functions)
+-- layer 1: nodes — multi-kind first-class nodes (replaces single-type functions)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS cgdb_nodes (
   id INTEGER PRIMARY KEY,
@@ -196,7 +196,7 @@ CREATE INDEX IF NOT EXISTS idx_cgdb_nodes_legacy ON cgdb_nodes(legacy_function_i
 CREATE INDEX IF NOT EXISTS idx_cgdb_nodes_description ON cgdb_nodes(description) WHERE description != '';
 
 -- ============================================================================
--- L2: types — independent type system
+-- layer 2: types — independent type system
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS cgdb_types (
   id INTEGER PRIMARY KEY,
@@ -220,7 +220,7 @@ CREATE INDEX IF NOT EXISTS idx_cgdb_types_canonical ON cgdb_types(canonical_spel
 CREATE INDEX IF NOT EXISTS idx_cgdb_types_pointee ON cgdb_types(pointee_type_id);
 
 -- ============================================================================
--- L3: conditions — Z3-reasonable boolean expression trees (for CFG branches)
+-- layer 3: conditions — Z3-reasonable boolean expression trees (for CFG branches)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS conditions (
   id INTEGER PRIMARY KEY,
@@ -237,7 +237,7 @@ CREATE INDEX IF NOT EXISTS idx_conditions_root ON conditions(root_expr_id);
 CREATE INDEX IF NOT EXISTS idx_conditions_text ON conditions(text_form);
 
 -- ============================================================================
--- L3.5: config_predicates — #ifdef predicate tree (per cdb 5.2)
+-- layer 3.5: config_predicates — #ifdef predicate tree (per cdb 5.2)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS config_predicates (
   id INTEGER PRIMARY KEY,
@@ -256,7 +256,7 @@ CREATE INDEX IF NOT EXISTS idx_pred_bdd ON config_predicates(bdd_serialized);
 CREATE INDEX IF NOT EXISTS idx_pred_unconditional ON config_predicates(is_unconditional);
 
 -- ============================================================================
--- L1: cgdb_edges — semantic edges (complements legacy edges table)
+-- layer 1: cgdb_edges — semantic edges (complements legacy edges table)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS cgdb_edges (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -305,7 +305,7 @@ CREATE INDEX IF NOT EXISTS idx_cgdb_edges_enclosing ON cgdb_edges(enclosing_symb
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cgdb_edges_unique ON cgdb_edges(src_id, dst_id, kind, file_id, line, col);
 
 -- ============================================================================
--- L4: basic_blocks + cfg_edges — control flow graph
+-- layer 4: basic_blocks + cfg_edges — control flow graph
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS basic_blocks (
   id INTEGER PRIMARY KEY,
@@ -337,7 +337,7 @@ CREATE INDEX IF NOT EXISTS idx_cfg_edges_dst ON cfg_edges(dst_block_id);
 CREATE INDEX IF NOT EXISTS idx_cfg_edges_function ON cfg_edges(function_id);
 
 -- ============================================================================
--- L5: data_flow + alias_sets — def-use chain + pointer alias
+-- layer 5: data_flow + alias_sets — def-use chain + pointer alias
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS data_flow (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -371,7 +371,7 @@ CREATE INDEX IF NOT EXISTS idx_alias_ptr2 ON alias_sets(ptr2_node_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_alias_pair ON alias_sets(ptr1_node_id, ptr2_node_id, kind);
 
 -- ============================================================================
--- L7: invoke_sites + ops_bindings — invocation graph refinement
+-- layer 7: invoke_sites + ops_bindings — invocation graph refinement
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS invoke_sites (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -405,7 +405,7 @@ CREATE INDEX IF NOT EXISTS idx_opsbind_impl ON ops_bindings(impl_function_id);
 CREATE INDEX IF NOT EXISTS idx_opsbind_table ON ops_bindings(ops_table_id);
 
 -- ============================================================================
--- L8: sync_primitives + happens_before — concurrency + memory model
+-- layer 8: sync_primitives + happens_before — concurrency + memory model
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS sync_primitives (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -437,7 +437,7 @@ CREATE INDEX IF NOT EXISTS idx_happens_before_write ON happens_before(write_even
 CREATE INDEX IF NOT EXISTS idx_happens_before_read ON happens_before(read_event_id);
 
 -- ============================================================================
--- L9: includes — #include dependency graph for incremental sync
+-- layer 9: includes — #include dependency graph for incremental sync
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS cgdb_includes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -452,7 +452,7 @@ CREATE INDEX IF NOT EXISTS idx_includes_target ON cgdb_includes(included_file_id
 CREATE INDEX IF NOT EXISTS idx_includes_path ON cgdb_includes(included_path);
 
 -- ============================================================================
--- L10: doc_comments — doc-comment extraction per node
+-- layer 10: doc_comments — doc-comment extraction per node
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS doc_comments (
@@ -475,7 +475,7 @@ CREATE INDEX IF NOT EXISTS idx_doc_comments_file ON doc_comments(file_id);
 CREATE INDEX IF NOT EXISTS idx_doc_comments_kind ON doc_comments(comment_kind);
 
 -- ============================================================================
--- L11: node_metadata / edge_metadata — typed-key metadata per target
+-- layer 11: node_metadata / edge_metadata — typed-key metadata per target
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS node_metadata (
@@ -576,7 +576,7 @@ _CGDB_DDL_V4 = """
 -- ============================================================================
 
 -- ============================================================================
--- Report-L1: source_files_meta — extension columns on cgdb_files for L1
+-- report layer 1: source_files_meta — extension columns on cgdb_files for L1
 --无损重建层. Adds encoding / line_ending / has_bom / byte_length / loc / mtime
 -- to cgdb_files via a side table (cgdb_files already has path/language/sha256/
 -- line_count/byte_count/commit_hash/last_modified/content_hash).
@@ -599,7 +599,7 @@ CREATE TABLE IF NOT EXISTS source_files_meta (
 CREATE INDEX IF NOT EXISTS idx_source_files_meta_sha ON source_files_meta(disk_sha256);
 
 -- ============================================================================
--- Report-L1: tokens — full token stream for character-level reconstruction
+-- report layer 1: tokens — full token stream for character-level reconstruction
 -- Each token carries its preceding_whitespace so DB→file render is byte-exact.
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS tokens (
@@ -640,7 +640,7 @@ CREATE INDEX IF NOT EXISTS idx_tokens_kind ON tokens(kind);
 CREATE INDEX IF NOT EXISTS idx_tokens_byte ON tokens(file_id, byte_offset);
 
 -- ============================================================================
--- Report-L1: macros — macro definitions (function-like / variadic / params)
+-- report layer 1: macros — macro definitions (function-like / variadic / params)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS macros (
   id INTEGER PRIMARY KEY,
@@ -661,7 +661,7 @@ CREATE INDEX IF NOT EXISTS idx_macros_name ON macros(name);
 CREATE INDEX IF NOT EXISTS idx_macros_file ON macros(file_id, line);
 
 -- ============================================================================
--- Report-L1: macro_invocations — macro expansion sites
+-- report layer 1: macro_invocations — macro expansion sites
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS macro_invocations (
   id INTEGER PRIMARY KEY,
@@ -677,7 +677,7 @@ CREATE INDEX IF NOT EXISTS idx_macroinv_macro ON macro_invocations(macro_id);
 CREATE INDEX IF NOT EXISTS idx_macroinv_file ON macro_invocations(file_id, line);
 
 -- ============================================================================
--- Report-L1: pp_branches — conditional compilation branch tree
+-- report layer 1: pp_branches — conditional compilation branch tree
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS pp_branches (
   id INTEGER PRIMARY KEY,
@@ -696,7 +696,7 @@ CREATE INDEX IF NOT EXISTS idx_pp_branches_file ON pp_branches(file_id);
 CREATE INDEX IF NOT EXISTS idx_pp_branches_parent ON pp_branches(parent_id);
 
 -- ============================================================================
--- Report-L1: pp_directives — preprocessor directives (include/pragma/line/error)
+-- report layer 1: pp_directives — preprocessor directives (include/pragma/line/error)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS pp_directives (
   id INTEGER PRIMARY KEY,
@@ -712,7 +712,7 @@ CREATE INDEX IF NOT EXISTS idx_pp_directives_file ON pp_directives(file_id, line
 CREATE INDEX IF NOT EXISTS idx_pp_directives_kind ON pp_directives(kind);
 
 -- ============================================================================
--- Report-L1: pragmas — pragma directives
+-- report layer 1: pragmas — pragma directives
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS pragmas (
   id INTEGER PRIMARY KEY,
@@ -729,7 +729,7 @@ CREATE INDEX IF NOT EXISTS idx_pragmas_file ON pragmas(file_id, line);
 CREATE INDEX IF NOT EXISTS idx_pragmas_kind ON pragmas(pragma_kind);
 
 -- ============================================================================
--- Report-L1: attributes — __attribute__((...)) metadata
+-- report layer 1: attributes — __attribute__((...)) metadata
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS attributes (
   id INTEGER PRIMARY KEY,
@@ -743,7 +743,7 @@ CREATE INDEX IF NOT EXISTS idx_attributes_node ON attributes(ast_node_id);
 CREATE INDEX IF NOT EXISTS idx_attributes_kind ON attributes(attr_kind);
 
 -- ============================================================================
--- Report-L1: literals — numeric / char / string literals (parsed form).
+-- report layer 1: literals — numeric / char / string literals (parsed form).
 -- String literals get a parent row here (kind='string') plus a child row in
 -- string_literals with security_flags etc. The 'string' value was added to
 -- the CHECK constraint after the original schema shipped — l1_ingest.py
@@ -765,7 +765,7 @@ CREATE INDEX IF NOT EXISTS idx_literals_token ON literals(token_id);
 CREATE INDEX IF NOT EXISTS idx_literals_kind ON literals(kind);
 
 -- ============================================================================
--- Report-L1: string_literals — precise byte content for security audit
+-- report layer 1: string_literals — precise byte content for security audit
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS string_literals (
   id INTEGER PRIMARY KEY,
@@ -783,7 +783,7 @@ CREATE INDEX IF NOT EXISTS idx_strlit_decoded ON string_literals(decoded);
 CREATE INDEX IF NOT EXISTS idx_strlit_func ON string_literals(in_function_id);
 
 -- ============================================================================
--- Report-L1: comments_fts — full-text search over doc_comments + raw comments
+-- report layer 1: comments_fts — full-text search over doc_comments + raw comments
 -- Adds FTS5 over doc_comments. We also store line/block/doc comment rows here.
 -- (doc_comments above is per-node; this is for free-form comment search.)
 -- ============================================================================
@@ -818,7 +818,7 @@ CREATE TRIGGER IF NOT EXISTS comments_freeform_au AFTER UPDATE ON comments_freef
 END;
 
 -- ============================================================================
--- Report-L3: ir_functions — IR-level function descriptors (aligned to symbols)
+-- report layer 3: ir_functions — IR-level function descriptors (aligned to symbols)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS ir_functions (
   id INTEGER PRIMARY KEY,
@@ -834,7 +834,7 @@ CREATE TABLE IF NOT EXISTS ir_functions (
 CREATE INDEX IF NOT EXISTS idx_irfunc_symbol ON ir_functions(symbol_id);
 
 -- ============================================================================
--- Report-L3: ssa_values — SSA values aligned to AST nodes / tokens
+-- report layer 3: ssa_values — SSA values aligned to AST nodes / tokens
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS ssa_values (
   id INTEGER PRIMARY KEY,
@@ -854,7 +854,7 @@ CREATE INDEX IF NOT EXISTS idx_ssa_symbol ON ssa_values(aligned_symbol_id);
 CREATE INDEX IF NOT EXISTS idx_ssa_block ON ssa_values(def_block_id);
 
 -- ============================================================================
--- Report-L3: mem_accesses — pointer/value read-write sites with SSA tracking
+-- report layer 3: mem_accesses — pointer/value read-write sites with SSA tracking
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS mem_accesses (
   id INTEGER PRIMARY KEY,
@@ -874,7 +874,7 @@ CREATE INDEX IF NOT EXISTS idx_mem_symbol ON mem_accesses(aligned_symbol_id);
 CREATE INDEX IF NOT EXISTS idx_mem_block ON mem_accesses(block_id);
 
 -- ============================================================================
--- Report-L3: points_to — points-to sets (target symbol / kind / analysis)
+-- report layer 3: points_to — points-to sets (target symbol / kind / analysis)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS points_to (
   ssa_value_id INTEGER NOT NULL REFERENCES ssa_values(id) ON DELETE CASCADE,
@@ -888,7 +888,7 @@ CREATE INDEX IF NOT EXISTS idx_pt_target ON points_to(target_symbol_id);
 CREATE INDEX IF NOT EXISTS idx_pt_analysis ON points_to(analysis);
 
 -- ============================================================================
--- Report-L3: indirect_calls — call-site→target candidates (LLVM+SVF aligned)
+-- report layer 3: indirect_calls — call-site→target candidates (LLVM+SVF aligned)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS indirect_calls (
   call_site_id INTEGER PRIMARY KEY,
@@ -905,7 +905,7 @@ CREATE INDEX IF NOT EXISTS idx_icall_target ON indirect_calls(possible_target_sy
 CREATE INDEX IF NOT EXISTS idx_icall_func ON indirect_calls(function_id);
 
 -- ============================================================================
--- Report-L3: data_deps — SSA-level data dependencies (def-use across blocks)
+-- report layer 3: data_deps — SSA-level data dependencies (def-use across blocks)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS data_deps (
   from_ssa_id INTEGER NOT NULL REFERENCES ssa_values(id) ON DELETE CASCADE,
@@ -919,7 +919,7 @@ CREATE INDEX IF NOT EXISTS idx_dep_to ON data_deps(to_ssa_id);
 CREATE INDEX IF NOT EXISTS idx_dep_func ON data_deps(function_id);
 
 -- ============================================================================
--- Report-L3: path_states — path-sensitive analysis state per (function, block)
+-- report layer 3: path_states — path-sensitive analysis state per (function, block)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS path_states (
   id INTEGER PRIMARY KEY,
@@ -935,14 +935,14 @@ CREATE INDEX IF NOT EXISTS idx_path_block ON path_states(block_id);
 CREATE INDEX IF NOT EXISTS idx_path_pathid ON path_states(path_id);
 
 -- ============================================================================
--- Report-L3 (upgrade): alias_sets_v3_view — view exposing the v3 alias_sets
+-- report layer 3 (upgrade): alias_sets_v3_view — view exposing the v3 alias_sets
 -- with the additional analysis/ssa_value columns expected by the report.
 -- The underlying alias_sets table is left untouched for backward compatibility;
 -- new columns are populated via ALTER TABLE (see cgdb_migrations v3→v4).
 -- ============================================================================
 
 -- ============================================================================
--- Report-L4: call_graph_reachability — precomputed reachability matrix
+-- report layer 4: call_graph_reachability — precomputed reachability matrix
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS call_graph_reachability (
   source_symbol_id INTEGER NOT NULL REFERENCES cgdb_nodes(id) ON DELETE CASCADE,
@@ -957,7 +957,7 @@ CREATE INDEX IF NOT EXISTS idx_reach_target ON call_graph_reachability(target_sy
 CREATE INDEX IF NOT EXISTS idx_reach_pred ON call_graph_reachability(config_predicate_id);
 
 -- ============================================================================
--- Report-L4: module_deps — module dependency matrix (edge count per pair)
+-- report layer 4: module_deps — module dependency matrix (edge count per pair)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS module_deps (
   from_module TEXT NOT NULL,
@@ -970,7 +970,7 @@ CREATE INDEX IF NOT EXISTS idx_moddeps_from ON module_deps(from_module);
 CREATE INDEX IF NOT EXISTS idx_moddeps_to ON module_deps(to_module);
 
 -- ============================================================================
--- Report-L4: function_embeddings — vector embeddings for semantic search
+-- report layer 4: function_embeddings — vector embeddings for semantic search
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS function_embeddings (
   symbol_id INTEGER PRIMARY KEY REFERENCES cgdb_nodes(id) ON DELETE CASCADE,
@@ -984,7 +984,7 @@ CREATE INDEX IF NOT EXISTS idx_emb_model ON function_embeddings(model);
 CREATE INDEX IF NOT EXISTS idx_emb_generated ON function_embeddings(generated_at);
 
 -- ============================================================================
--- Report-L4: precise_write_sets — global variable writer sites (AST+IR merged)
+-- report layer 4: precise_write_sets — global variable writer sites (AST+IR merged)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS precise_write_sets (
   global_symbol_id INTEGER NOT NULL REFERENCES cgdb_nodes(id) ON DELETE CASCADE,
@@ -1000,7 +1000,7 @@ CREATE INDEX IF NOT EXISTS idx_writeset_global ON precise_write_sets(global_symb
 CREATE INDEX IF NOT EXISTS idx_writeset_writer ON precise_write_sets(writer_symbol_id);
 
 -- ============================================================================
--- Report-L4: arch_metrics — coupling / cohesion / complexity / cycle_count
+-- report layer 4: arch_metrics — coupling / cohesion / complexity / cycle_count
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS arch_metrics (
   module_name TEXT PRIMARY KEY,
@@ -1017,7 +1017,7 @@ CREATE INDEX IF NOT EXISTS idx_archmetrics_coupling ON arch_metrics(coupling);
 CREATE INDEX IF NOT EXISTS idx_archmetrics_complexity ON arch_metrics(complexity);
 
 -- ============================================================================
--- Report-L4: history_snapshots — per-commit source sha256 + commit_sha
+-- report layer 4: history_snapshots — per-commit source sha256 + commit_sha
 -- (Distinct from graph_versions which is per-build; this is per-source-snapshot
 --  and carries the disk sha256 used in consistency verification.)
 -- ============================================================================
@@ -1034,7 +1034,7 @@ CREATE INDEX IF NOT EXISTS idx_hist_file ON history_snapshots(source_file_id);
 CREATE INDEX IF NOT EXISTS idx_hist_sha ON history_snapshots(sha256);
 
 -- ============================================================================
--- Report-L4: alignment_errors — layer-misalignment registry (write-back block)
+-- report layer 4: alignment_errors — layer-misalignment registry (write-back block)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS alignment_errors (
   id INTEGER PRIMARY KEY,

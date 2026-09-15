@@ -289,15 +289,15 @@ CREATE INDEX idx_field_struct ON field_access(struct_name);
 
 | 层 | 表 | 用途 | 关键列 |
 |----|----|------|--------|
-| L0 | `graph_versions` | 每提交快照，支持时间旅行查询 | `version_id`、`commit_hash`、`created_at`、`parent_version` |
-| L1 | `cgdb_nodes`、`cgdb_files` | 多种类一等节点 + 文件注册表 | `node_id`（SHA-256 截断 60 位）、`kind`、`fqn`、`name`、`source_file_id`、`line`、`col`、`enclosing_symbol_id`、`config_predicate_id`、`source_snippet`、`description`、`llm_confidence` |
-| L2 | `cgdb_types` | 独立类型系统（builtin/pointer/reference/array/record/enum/function/template/typedef） | `type_id`、`kind`、`name`、`size`、`alignment`、`const`、`volatile`、`pointee_type_id` |
-| L3 | `conditions` | Z3 SMT-LIB 布尔表达式树 | `condition_id`、`z3_form`、`human_form`、`kind`（atomic/not/and/or/implies） |
-| L3.5 | `config_predicates` | `#ifdef` 谓词树（BDD + Z3 形式），跨语言（Go `//go:build`、Rust `#[cfg]`、Python `sys.platform`、Java `@Profile`、ASM/C `#ifdef`） | `predicate_id`、`normalized_form`、`z3_form`、`bdd_form`、`status`（UNCONDITIONAL/CONTRADICTORY/CONDITIONAL）、`language`、`source_file_id`、`line` |
-| L4 | `basic_blocks`、`cfg_edges` | 控制流图 | `block_id`、`function_id`、`statement_ids`、`terminator_kind`；`edge_id`、`src_block`、`dst_block`、`condition_id`、`kind`（fallthrough/true/false/loop_back/exception） |
-| L5 | `data_flow`、`alias_sets` | def-use 链 + 指针别名 | `flow_id`、`function_id`、`variable`、`def_block`、`def_kind`（param/var/return）、`use_block`、`use_kind`（call/return/branch/assign）；`alias_set_id`、`pointer`、`aliases`（JSON） |
-| L7 | `invoke_sites`、`ops_bindings` | 调用点精化 + 强类型 vtable 分发 | `site_id`、`caller_function_id`、`callee_expr`、`callee_resolved_id`、`condition_id`、`is_indirect`；`binding_id`、`ops_table_id`、`field_node_id`、`impl_function_id`、`signature_match` |
-| L8 | `sync_primitives`、`happens_before` | 并发 + 内存模型 | `prim_id`、`kind`（mutex/spinlock/rwlock/atomic/condvar/barrier）、`var_name`、`acquire_site_id`、`release_site_id`、`memory_order`；`hb_id`、`event_a`、`event_b`、`ordering`（happens_before/concurrent/undetermined） |
+| Layer 0 | `graph_versions` | 每提交快照，支持时间旅行查询 | `version_id`、`commit_hash`、`created_at`、`parent_version` |
+| Layer 1 | `cgdb_nodes`、`cgdb_files` | 多种类一等节点 + 文件注册表 | `node_id`（SHA-256 截断 60 位）、`kind`、`fqn`、`name`、`source_file_id`、`line`、`col`、`enclosing_symbol_id`、`config_predicate_id`、`source_snippet`、`description`、`llm_confidence` |
+| Layer 2 | `cgdb_types` | 独立类型系统（builtin/pointer/reference/array/record/enum/function/template/typedef） | `type_id`、`kind`、`name`、`size`、`alignment`、`const`、`volatile`、`pointee_type_id` |
+| Layer 3 | `conditions` | Z3 SMT-LIB 布尔表达式树 | `condition_id`、`z3_form`、`human_form`、`kind`（atomic/not/and/or/implies） |
+| Layer 3.5 | `config_predicates` | `#ifdef` 谓词树（BDD + Z3 形式），跨语言（Go `//go:build`、Rust `#[cfg]`、Python `sys.platform`、Java `@Profile`、ASM/C `#ifdef`） | `predicate_id`、`normalized_form`、`z3_form`、`bdd_form`、`status`（UNCONDITIONAL/CONTRADICTORY/CONDITIONAL）、`language`、`source_file_id`、`line` |
+| Layer 4 | `basic_blocks`、`cfg_edges` | 控制流图 | `block_id`、`function_id`、`statement_ids`、`terminator_kind`；`edge_id`、`src_block`、`dst_block`、`condition_id`、`kind`（fallthrough/true/false/loop_back/exception） |
+| Layer 5 | `data_flow`、`alias_sets` | def-use 链 + 指针别名 | `flow_id`、`function_id`、`variable`、`def_block`、`def_kind`（param/var/return）、`use_block`、`use_kind`（call/return/branch/assign）；`alias_set_id`、`pointer`、`aliases`（JSON） |
+| Layer 7 | `invoke_sites`、`ops_bindings` | 调用点精化 + 强类型 vtable 分发 | `site_id`、`caller_function_id`、`callee_expr`、`callee_resolved_id`、`condition_id`、`is_indirect`；`binding_id`、`ops_table_id`、`field_node_id`、`impl_function_id`、`signature_match` |
+| Layer 8 | `sync_primitives`、`happens_before` | 并发 + 内存模型 | `prim_id`、`kind`（mutex/spinlock/rwlock/atomic/condvar/barrier）、`var_name`、`acquire_site_id`、`release_site_id`、`memory_order`；`hb_id`、`event_a`、`event_b`、`ordering`（happens_before/concurrent/undetermined） |
 | FTS | `nodes_fts` | FTS5 虚拟表，用于符号全文搜索 | FTS5 列覆盖 `cgdb_nodes.name`、`fqn`、`description` |
 
 ### 跨语言 config 谓词归一化

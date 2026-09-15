@@ -743,7 +743,7 @@ FTS5 搜索 AST 节点（函数、类型、变量）。
 
 ### `cgdb_find_cfg_paths`
 
-在控制流图（L4 层）中查找路径。
+在控制流图（第 4 层）中查找路径。
 
 ```json
 {"tool": "cgdb_find_cfg_paths", "arguments": {"function": "my_function", "from_block": 0, "to_block": 5}}
@@ -751,7 +751,7 @@ FTS5 搜索 AST 节点（函数、类型、变量）。
 
 ### `cgdb_find_data_flow`
 
-在数据流分析（L5 层）中查找 def-use 链。
+在数据流分析（第 5 层）中查找 def-use 链。
 
 ```json
 {"tool": "cgdb_find_data_flow", "arguments": {"function": "my_function", "variable": "ptr"}}
@@ -759,7 +759,7 @@ FTS5 搜索 AST 节点（函数、类型、变量）。
 
 ### `cgdb_find_aliases`
 
-查找某指针的别名（L6 层——MVP 阶段为 stub）。
+查找某指针的别名（第 6 层——MVP 阶段为 stub）。
 
 ```json
 {"tool": "cgdb_find_aliases", "arguments": {"variable": "ptr"}}

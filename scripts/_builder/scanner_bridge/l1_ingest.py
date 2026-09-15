@@ -27,7 +27,7 @@ Python libclang 绑定不暴露 PPCallbacks API，所以我们用以下替代策
   8. 对注释 token 单独处理为 comments_freeform 表
 
 此模块不依赖 LLVM Pass/SVF/CSA — 仅用 libclang 的 Lexer + AST cursor。
-因此它是 L1（无损重建层）的"务实版本"——满足报告 L1 的所有功能要求，
+因此它是第 1 层（无损重建层）的"务实版本"——满足报告第 1 层的所有功能要求，
 但不依赖完整 LLVM 工具链。
 
 调用方式：

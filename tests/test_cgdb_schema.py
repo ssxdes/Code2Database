@@ -56,7 +56,7 @@ class TestSchemaCreation(unittest.TestCase):
         # L4
         self.assertIn("basic_blocks", tables)
         self.assertIn("cfg_edges", tables)
-        # L5
+        # layer 5
         self.assertIn("data_flow", tables)
         self.assertIn("alias_sets", tables)
         # L7

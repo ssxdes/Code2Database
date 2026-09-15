@@ -546,15 +546,15 @@ When the clang backend is enabled, the build step populates the cgdb semantic ta
 
 | Layer | Table | Content |
 |-------|-------|---------|
-| L1 | `cgdb_nodes` | AST nodes (functions, types, vars, fields) with source range |
-| L2 | `cgdb_types` | Type definitions (struct, union, enum, typedef) |
-| L3.5 | `cgdb_predicates` | Config predicates (`#ifdef CONFIG_*`) with source range |
-| L4 | `cgdb_basic_blocks` + `cgdb_cfg_edges` | Control-flow graph per function |
-| L5 | `cgdb_data_flow` | Def-use chains per function |
-| L6 | `cgdb_aliases` | Alias analysis (stub for MVP) |
-| L7 | `cgdb_ops_bindings` | Typed vtable dispatch (FieldDecl → FunctionDecl) |
-| L8 | `cgdb_sync_primitives` + `cgdb_happens_before` | Sync primitives + happens-before |
-| L10 | `cgdb_versions` | Time-travel version queries |
+| Layer 1 | `cgdb_nodes` | AST nodes (functions, types, vars, fields) with source range |
+| Layer 2 | `cgdb_types` | Type definitions (struct, union, enum, typedef) |
+| Layer 3.5 | `cgdb_predicates` | Config predicates (`#ifdef CONFIG_*`) with source range |
+| Layer 4 | `cgdb_basic_blocks` + `cgdb_cfg_edges` | Control-flow graph per function |
+| Layer 5 | `cgdb_data_flow` | Def-use chains per function |
+| Layer 6 | `cgdb_aliases` | Alias analysis (stub for MVP) |
+| Layer 7 | `cgdb_ops_bindings` | Typed vtable dispatch (FieldDecl → FunctionDecl) |
+| Layer 8 | `cgdb_sync_primitives` + `cgdb_happens_before` | Sync primitives + happens-before |
+| Layer 10 | `cgdb_versions` | Time-travel version queries |
 
 These tables are queried directly via 19 `cgdb_*` MCP tools — see the `/Code2Database-analysis` sub-skill for the full tool reference.
 

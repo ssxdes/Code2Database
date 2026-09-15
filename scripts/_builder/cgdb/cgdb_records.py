@@ -129,7 +129,7 @@ class CFGEdgeRecord:
 
 @dataclass
 class DataFlowRecord:
-    """L5: a def-use chain entry."""
+    """Layer 5: a def-use chain entry."""
     function_id: int
     var_id: int
     def_block_id: Optional[int] = None
@@ -284,7 +284,7 @@ class IngestBatch:
     # L4
     basic_blocks: List[BasicBlockRecord] = field(default_factory=list)
     cfg_edges: List[CFGEdgeRecord] = field(default_factory=list)
-    # L5
+    # layer 5
     data_flow: List[DataFlowRecord] = field(default_factory=list)
     # L6
     alias_sets: List[AliasSetRecord] = field(default_factory=list)

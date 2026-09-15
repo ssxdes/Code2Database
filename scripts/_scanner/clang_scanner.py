@@ -782,7 +782,7 @@ class ClangScanner(BaseScanner):
                 'cgdb_invoke_sites': [], 'functions': [], 'edges': [],
             }
 
-        # Track (func_cursor, func_node_id) for L4/L5/L8 per-function extraction.
+        # Track (func_cursor, func_node_id) for layer 4/5/8 per-function extraction.
         function_cursors = []  # list of (cursor, node_id)
         for top in tu.cursor.get_children():
             # Skip cursors from system headers — only emit main-file nodes.
@@ -908,7 +908,7 @@ class ClangScanner(BaseScanner):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
 
-        # L4/L5/L6/L8: CFG + data_flow + alias_sets + sync_primitives, per function.
+        # Layers 4/5/6/8: CFG + data_flow + alias_sets + sync_primitives, per function.
         # Walk each function body for basic blocks,
         # def-use chains, alias sets, and sync primitive calls.
         cgdb_basic_blocks = []

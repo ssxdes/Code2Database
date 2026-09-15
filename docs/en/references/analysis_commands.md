@@ -743,7 +743,7 @@ Returns: list of `{ops_table_id, field_node_id, impl_function_id, signature_matc
 
 ### `cgdb_find_cfg_paths`
 
-Find paths in the control-flow graph (L4 layer).
+Find paths in the control-flow graph (layer 4).
 
 ```json
 {"tool": "cgdb_find_cfg_paths", "arguments": {"function": "my_function", "from_block": 0, "to_block": 5}}
@@ -751,7 +751,7 @@ Find paths in the control-flow graph (L4 layer).
 
 ### `cgdb_find_data_flow`
 
-Find def-use chains in data-flow analysis (L5 layer).
+Find def-use chains in data-flow analysis (layer 5).
 
 ```json
 {"tool": "cgdb_find_data_flow", "arguments": {"function": "my_function", "variable": "ptr"}}
@@ -759,7 +759,7 @@ Find def-use chains in data-flow analysis (L5 layer).
 
 ### `cgdb_find_aliases`
 
-Find aliases of a pointer (L6 layer — currently a stub for MVP).
+Find aliases of a pointer (layer 6 — currently a stub for MVP).
 
 ```json
 {"tool": "cgdb_find_aliases", "arguments": {"variable": "ptr"}}

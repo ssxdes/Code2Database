@@ -70,43 +70,43 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 
 ### 为什么是 cgdb（代码图数据库）层
 
-> **命名澄清（v4+）**：下方 cgdb 层命名（CGDB-L0 至 CGDB-L11 + FTS）**与**设计报告 `C代码数据库化方案-分析与执行报告.md` 中的 L1~L4 层**是不同概念**：
-> - **报告 L1**（无损重建层）：`tokens` / `macros` / `macro_invocations` / `pp_branches` / `pp_directives` / `pragmas` / `attributes` / `literals` / `string_literals` / `comments` —— schema v4 新增
-> - **报告 L2**（AST 层）：`symbols` / `ast_nodes` / `references` / `call_edges` / `includes` / `globals` / `types` / `modules` —— 部分由 `cgdb_nodes` / `cgdb_edges` / `cgdb_types` / `cgdb_includes` 覆盖
-> - **报告 L3**（IR 层）：`ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` —— schema v4 新增（LLVM Pass + SVF 集成属于 P1，填充器尚未实现）
-> - **报告 L4**（派生层）：`call_graph_reachability` / `module_deps` / `function_embeddings` / `precise_write_sets` / `arch_metrics` / `history_snapshots` / `alignment_errors` —— schema v4 新增
+> **命名澄清（v4+）**：下方 cgdb 层命名（cgdb layer 0 至 cgdb layer 11 + FTS）**与**设计报告 `C代码数据库化方案-分析与执行报告.md` 中的 L1~L4 层**是不同概念**：
+> - **报告第 1 层**（无损重建层）：`tokens` / `macros` / `macro_invocations` / `pp_branches` / `pp_directives` / `pragmas` / `attributes` / `literals` / `string_literals` / `comments` —— schema v4 新增
+> - **报告第 2 层**（AST 层）：`symbols` / `ast_nodes` / `references` / `call_edges` / `includes` / `globals` / `types` / `modules` —— 部分由 `cgdb_nodes` / `cgdb_edges` / `cgdb_types` / `cgdb_includes` 覆盖
+> - **报告第 3 层**（IR 层）：`ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` —— schema v4 新增（LLVM Pass + SVF 集成属于 P1，填充器尚未实现）
+> - **报告第 4 层**（派生层）：`call_graph_reachability` / `module_deps` / `function_embeddings` / `precise_write_sets` / `arch_metrics` / `history_snapshots` / `alignment_errors` —— schema v4 新增
 > - **报告多库**：`db_routing` / `precompute_tasks` —— schema v4 新增（路由层未实现，属 P1）
 > - **报告跨语言**：`cross_lang_bindings` / `type_mappings` / `ffi_call_sites` / `language_adapters` / `runtime_observations` / `dependencies` —— schema v4 新增
 >
-> 下方遗留 cgdb 层（CGDB-L0 至 CGDB-L11）是 clang 后端填充的原始语义表分层；上述报告层是附加（与遗留表共存于同一个 SQLite 数据库）。完整差距矩阵见 `report/Code2Database-最终差距分析与优化报告.md`。
+> 下方遗留 cgdb 层（cgdb layer 0 至 cgdb layer 11）是 clang 后端填充的原始语义表分层；上述报告层是附加（与遗留表共存于同一个 SQLite 数据库）。完整差距矩阵见 `report/Code2Database-最终差距分析与优化报告.md`。
 
 遗留图（`functions` + `edges` 表）回答"谁调用谁"。cgdb 层增加强类型语义表，回答遗留图无法回答的疑问：
 
 | CGDB 层 | 表 | 回答 |
 |---------|----|------|
-| CGDB-L0 | `graph_versions` | 每提交快照，支持时间旅行查询 |
-| CGDB-L1 | `cgdb_nodes`、`cgdb_files` | 多种类一等节点（function/method/ctor/dtor/var/parm/field/struct/class/enum/stmt/expr/label/namespace/template/concept/file/macro/include/vtable/ops_table）+ 文件注册表 |
-| CGDB-L2 | `cgdb_types` | 独立类型系统，含 size/alignment/const/volatile/pointee |
-| CGDB-L3 | `conditions` | Z3 可判定的布尔表达式树 |
-| CGDB-L3.5 | `config_predicates` | `#ifdef` 谓词树（BDD + Z3 形式），跨语言（Go `//go:build`、Rust `#[cfg]`、Python `sys.platform`、Java `@Profile`、ASM/C `#ifdef`） |
-| CGDB-L4 | `basic_blocks` + `cfg_edges` | 控制流图 |
-| CGDB-L5 | `data_flow` + `alias_sets` | def-use 链 + 指针别名（alias_sets 是启发式 stub；报告 L3 的 `ssa_values`/`points_to`/`indirect_calls` 是完整版） |
-| CGDB-L6 | （alias —— 见 CGDB-L5 / 报告 L3） | （为通过 SVF 的完整别名分析预留；当前在 CGDB-L5 `alias_sets` 表） |
-| CGDB-L7 | `invoke_sites` + `ops_bindings` | 调用点精化 + 强类型 vtable 分发（FieldDecl → FunctionDecl） |
-| CGDB-L8 | `sync_primitives` + `happens_before` | 并发 + 内存模型 |
-| CGDB-L9 | `cgdb_includes` | `#include` 依赖图，用于增量同步 |
-| CGDB-L10 | `doc_comments` + `graph_versions` | 文档注释 + 时间旅行版本查询 |
-| CGDB-L11 | `node_metadata` + `edge_metadata` | 按 target 的类型化键元数据 |
+| cgdb layer 0 | `graph_versions` | 每提交快照，支持时间旅行查询 |
+| cgdb layer 1 | `cgdb_nodes`、`cgdb_files` | 多种类一等节点（function/method/ctor/dtor/var/parm/field/struct/class/enum/stmt/expr/label/namespace/template/concept/file/macro/include/vtable/ops_table）+ 文件注册表 |
+| cgdb layer 2 | `cgdb_types` | 独立类型系统，含 size/alignment/const/volatile/pointee |
+| cgdb layer 3 | `conditions` | Z3 可判定的布尔表达式树 |
+| cgdb layer 3.5 | `config_predicates` | `#ifdef` 谓词树（BDD + Z3 形式），跨语言（Go `//go:build`、Rust `#[cfg]`、Python `sys.platform`、Java `@Profile`、ASM/C `#ifdef`） |
+| cgdb layer 4 | `basic_blocks` + `cfg_edges` | 控制流图 |
+| cgdb layer 5 | `data_flow` + `alias_sets` | def-use 链 + 指针别名（alias_sets 是启发式 stub；报告第 3 层 的 `ssa_values`/`points_to`/`indirect_calls` 是完整版） |
+| cgdb layer 6 | （alias —— 见 cgdb layer 5 / 报告第 3 层） | （为通过 SVF 的完整别名分析预留；当前在 cgdb layer 5 `alias_sets` 表） |
+| cgdb layer 7 | `invoke_sites` + `ops_bindings` | 调用点精化 + 强类型 vtable 分发（FieldDecl → FunctionDecl） |
+| cgdb layer 8 | `sync_primitives` + `happens_before` | 并发 + 内存模型 |
+| cgdb layer 9 | `cgdb_includes` | `#include` 依赖图，用于增量同步 |
+| cgdb layer 10 | `doc_comments` + `graph_versions` | 文档注释 + 时间旅行版本查询 |
+| cgdb layer 11 | `node_metadata` + `edge_metadata` | 按 target 的类型化键元数据 |
 | FTS | `nodes_fts` | 对 cgdb_nodes 的全文搜索（FTS5 external-content） |
 
 加上设计报告 v4 层（附加，当完整工具链安装时由 `source_renderer.py` 填充）：
 
 | 报告层 | 表（v4） | 填充者 |
 |--------|----------|--------|
-| 报告 L1 | `tokens` / `macros` / `macro_invocations` / `pp_branches` / `pp_directives` / `pragmas` / `attributes` / `literals` / `string_literals` / `comments_freeform` + `comments_fts` | `l1_ingest.py`（P1，待实现）—— libclang Lexer raw_tokens + PPCallbacks 模拟 |
-| 报告 L2 | （由 cgdb_nodes/edges/types/includes 覆盖） | 现有扫描器 |
-| 报告 L3 | `ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` | （P1，待实现 —— IR 适配器尚未实现） |
-| 报告 L4 | `call_graph_reachability` / `module_deps` / `function_embeddings` / `precise_write_sets` / `arch_metrics` / `history_snapshots` / `alignment_errors` | `l4_derive.py`（P1，待实现）—— 预计算任务 |
+| 报告第 1 层 | `tokens` / `macros` / `macro_invocations` / `pp_branches` / `pp_directives` / `pragmas` / `attributes` / `literals` / `string_literals` / `comments_freeform` + `comments_fts` | `l1_ingest.py`（P1，待实现）—— libclang Lexer raw_tokens + PPCallbacks 模拟 |
+| 报告第 2 层 | （由 cgdb_nodes/edges/types/includes 覆盖） | 现有扫描器 |
+| 报告第 3 层 | `ir_functions` / `ssa_values` / `mem_accesses` / `points_to` / `indirect_calls` / `data_deps` / `path_states` | （P1，待实现 —— IR 适配器尚未实现） |
+| 报告第 4 层 | `call_graph_reachability` / `module_deps` / `function_embeddings` / `precise_write_sets` / `arch_metrics` / `history_snapshots` / `alignment_errors` | `l4_derive.py`（P1，待实现）—— 预计算任务 |
 | 报告多库 | `db_routing` / `precompute_tasks` | `db_router.py`（P1，待实现） |
 | 报告跨语言 | `cross_lang_bindings` / `type_mappings` / `ffi_call_sites` / `language_adapters` / `runtime_observations` / `dependencies` | `ffi_bridge.py`（现有） |
 
@@ -366,15 +366,15 @@ LLM 补充带置信度标签：`EXTRACTED`（带证据直接解析）、`INFERRE
 
 | 层 | 表 | 用途 |
 |----|----|------|
-| L0 | `graph_versions` | 每提交快照，支持时间旅行查询 |
-| L1 | `cgdb_nodes`、`cgdb_files` | 多种类一等节点 + 文件注册表 |
-| L2 | `cgdb_types` | 独立类型系统（builtin/pointer/reference/array/record/enum/function/template/typedef） |
-| L3 | `conditions` | Z3 SMT-LIB 布尔表达式树 |
-| L3.5 | `config_predicates` | `#ifdef` 谓词树（BDD + Z3 形式），跨语言 |
-| L4 | `basic_blocks`、`cfg_edges` | 控制流图 |
-| L5 | `data_flow`、`alias_sets` | def-use 链 + 指针别名 |
-| L7 | `invoke_sites`、`ops_bindings` | 调用点精化 + 强类型 vtable 分发 |
-| L8 | `sync_primitives`、`happens_before` | 并发 + 内存模型 |
+| Layer 0 | `graph_versions` | 每提交快照，支持时间旅行查询 |
+| Layer 1 | `cgdb_nodes`、`cgdb_files` | 多种类一等节点 + 文件注册表 |
+| Layer 2 | `cgdb_types` | 独立类型系统（builtin/pointer/reference/array/record/enum/function/template/typedef） |
+| Layer 3 | `conditions` | Z3 SMT-LIB 布尔表达式树 |
+| Layer 3.5 | `config_predicates` | `#ifdef` 谓词树（BDD + Z3 形式），跨语言 |
+| Layer 4 | `basic_blocks`、`cfg_edges` | 控制流图 |
+| Layer 5 | `data_flow`、`alias_sets` | def-use 链 + 指针别名 |
+| Layer 7 | `invoke_sites`、`ops_bindings` | 调用点精化 + 强类型 vtable 分发 |
+| Layer 8 | `sync_primitives`、`happens_before` | 并发 + 内存模型 |
 | FTS | `nodes_fts` | FTS5 虚拟表，用于符号全文搜索 |
 
 完整 schema 见 `references/data_model.md`。

@@ -542,15 +542,15 @@ python3 scripts/code2database_scanner.py scan --source /path --extraction-backen
 
 | 层 | 表 | 内容 |
 |----|----|----|
-| L1 | `cgdb_nodes` | AST 节点（函数、类型、变量、字段）含源码范围 |
-| L2 | `cgdb_types` | 类型定义（struct、union、enum、typedef）|
-| L3.5 | `cgdb_predicates` | 配置谓词（`#ifdef CONFIG_*`）含源码范围 |
-| L4 | `cgdb_basic_blocks` + `cgdb_cfg_edges` | 每函数的控制流图 |
-| L5 | `cgdb_data_flow` | 每函数的 def-use 链 |
-| L6 | `cgdb_aliases` | 别名分析（MVP 阶段为 stub）|
-| L7 | `cgdb_ops_bindings` | 类型化 vtable 派发（FieldDecl → FunctionDecl）|
-| L8 | `cgdb_sync_primitives` + `cgdb_happens_before` | 同步原语 + happens-before |
-| L10 | `cgdb_versions` | 时间旅行版本查询 |
+| Layer 1 | `cgdb_nodes` | AST 节点（函数、类型、变量、字段）含源码范围 |
+| Layer 2 | `cgdb_types` | 类型定义（struct、union、enum、typedef）|
+| Layer 3.5 | `cgdb_predicates` | 配置谓词（`#ifdef CONFIG_*`）含源码范围 |
+| Layer 4 | `cgdb_basic_blocks` + `cgdb_cfg_edges` | 每函数的控制流图 |
+| Layer 5 | `cgdb_data_flow` | 每函数的 def-use 链 |
+| Layer 6 | `cgdb_aliases` | 别名分析（MVP 阶段为 stub）|
+| Layer 7 | `cgdb_ops_bindings` | 类型化 vtable 派发（FieldDecl → FunctionDecl）|
+| Layer 8 | `cgdb_sync_primitives` + `cgdb_happens_before` | 同步原语 + happens-before |
+| Layer 10 | `cgdb_versions` | 时间旅行版本查询 |
 
 这些表通过 19 个 `cgdb_*` MCP 工具直接查询——完整工具参考见 `/Code2Database-analysis` 子技能。
 

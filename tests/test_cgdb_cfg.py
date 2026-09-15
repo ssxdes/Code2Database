@@ -1,4 +1,4 @@
-"""Tests for cgdb_analysis (L4 CFG + L5 data_flow + L6 alias).
+"""Tests for cgdb_analysis (layer 4 CFG + layer 5 data_flow + layer 6 alias).
 
 Verifies that:
   - CFGExtractor parses clang's DumpCFG output and emits basic_blocks + cfg_edges

@@ -511,7 +511,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             function_id=func_id,
         ))
 
-    # 9. Convert cgdb_data_flow → DataFlowRecord (L5)
+    # 9. Convert cgdb_data_flow → DataFlowRecord (layer 5)
     #    De-dup by (var_id, def_stmt_id, use_stmt_id, kind).
     seen_df_keys = {
         (d.var_id, d.def_stmt_id, d.use_stmt_id, d.kind)

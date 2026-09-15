@@ -1,7 +1,9 @@
-.gitignore
 __pycache__/
 *.pyc
 .pytest_cache/
 ROADMAP.md
 CHANGELOG.md
 code2db-out/
+build/
+dist/
+*.egg-info/

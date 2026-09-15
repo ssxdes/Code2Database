@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS graph_versions (
 CREATE INDEX IF NOT EXISTS idx_cgdb_versions_commit ON graph_versions(commit_hash);
 
 -- ============================================================================
--- layer 1: files — separate file table (solves ASTDump JSON no-file-field issue)
+-- layer 1: files — separate file table (solves the ASTDump JSON missing-file-field gap)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS cgdb_files (
   id INTEGER PRIMARY KEY,
@@ -765,7 +765,7 @@ CREATE INDEX IF NOT EXISTS idx_literals_token ON literals(token_id);
 CREATE INDEX IF NOT EXISTS idx_literals_kind ON literals(kind);
 
 -- ============================================================================
--- report layer 1: string_literals — precise byte content for security audit
+-- report layer 1: string_literals — precise byte content for security review
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS string_literals (
   id INTEGER PRIMARY KEY,
@@ -935,7 +935,7 @@ CREATE INDEX IF NOT EXISTS idx_path_block ON path_states(block_id);
 CREATE INDEX IF NOT EXISTS idx_path_pathid ON path_states(path_id);
 
 -- ============================================================================
--- report layer 3 (upgrade): alias_sets_v3_view — view exposing the v3 alias_sets
+-- report layer 3 (enhanced): alias_sets_v3_view — view exposing the v3 alias_sets
 -- with the additional analysis/ssa_value columns expected by the report.
 -- The underlying alias_sets table is left untouched for backward compatibility;
 -- new columns are populated via ALTER TABLE (see cgdb_migrations v3→v4).

@@ -1037,8 +1037,9 @@ class Daemon:
             time.sleep(batch_window_ms / 1000.0)
             # Snapshot pending paths and dispatch a sync job to the worker
             with self._pending_lock:
-                paths_to_sync = sorted(self._pending)
+                _pending_snapshot = sorted(self._pending)
                 self.state.pending_events = 0
+            paths_to_sync = _pending_snapshot
             # D32: filter out format-only changes (whitespace/comments only)
             if self.config.get("format_only_filter", True):
                 paths_to_sync = self._filter_format_only(paths_to_sync)
@@ -1058,11 +1059,14 @@ class Daemon:
             else:
                 job_kind = "incremental"
             self._enqueue_sync_job(job_kind, paths_to_sync)
-            # Clear pending AFTER enqueuing so wait-sync doesn't see a
-            # transient state where _pending is empty but no job is queued
-            # yet (race condition: wait-sync returns ok without a sync).
+            # Remove only the paths this job took (or dropped as
+            # format-only) — AFTER enqueuing, so wait-sync cannot observe
+            # "pending empty + no job queued" and return without a sync.
+            # A blanket clear() would also wipe events that arrived while
+            # the format filter (disk reads) and the enqueue ran;
+            # difference_update keeps those queued for the next cycle.
             with self._pending_lock:
-                self._pending.clear()
+                self._pending.difference_update(_pending_snapshot)
             last_activity = time.time()
         # Cleanup
         self._cleanup()

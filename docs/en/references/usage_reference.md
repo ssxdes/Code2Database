@@ -329,7 +329,15 @@ Use **global-to-local** mode: read context_pack_lite for global understanding fi
 cat code2db-out/.code2database_context_pack_lite.json
 ```
 
-Step up to standard or full when more context is needed.
+Step up to the standard pack (or the base `.code2database_context_pack.json`) when more context is needed.
+
+Three independent "tier" axes exist — do not mix them up:
+
+| Axis | Values | Controls |
+|------|--------|----------|
+| Context pack file | micro (~200 tokens) / lite (~500) / standard (~1500) / base `.code2database_context_pack.json` (full) | Which pre-built file you read for global context |
+| Token budget | micro=500 / lite=2000 / standard=5000 / deep=10000 / unlimited=0 | Per-query token caps (`--max-tokens`, explore-flow sizing) |
+| describe detail | brief / standard / full | `describe-node --detail` output depth |
 
 ### 4b — Tiered Single-Node Description
 

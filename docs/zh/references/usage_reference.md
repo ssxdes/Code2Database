@@ -329,7 +329,15 @@ code2db-out/
 cat code2db-out/.code2database_context_pack_lite.json
 ```
 
-需要更多上下文时升级到standard或full版。
+需要更多上下文时升级到 standard 包（或基础包 `.code2database_context_pack.json`）。
+
+存在三条独立的 "tier" 轴——不要混淆：
+
+| 轴 | 取值 | 控制什么 |
+|------|--------|----------|
+| 上下文包文件 | micro（~200 tokens）/ lite（~500）/ standard（~1500）/ 基础包 `.code2database_context_pack.json`（完整） | 读取哪个预构建文件获得全局上下文 |
+| token 预算 | micro=500 / lite=2000 / standard=5000 / deep=10000 / unlimited=0 | 每次查询的 token 上限（`--max-tokens`、explore-flow 规模） |
+| describe 细度 | brief / standard / full | `describe-node --detail` 输出深度 |
 
 ### 4b — 分级单节点描述
 

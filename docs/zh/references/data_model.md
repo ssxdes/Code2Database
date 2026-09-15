@@ -97,7 +97,7 @@ JSON 输出按域组织。大型图会被拆分为多个文件，通过 `code2da
 
 节点的 `labels_source` 记录每个标签的来源。置信度分布统计可在 CODE2DATABASE_SUMMARY.md 中查看。
 
-总边数必须与置信度分类的总和匹配。若边数未对齐，构建步骤的自动校验将标记此问题。
+总边数必须与置信度分类的总和匹配。若边数未对齐，构建步骤的自动校验将标记这一偏差。
 
 ## 构建系统宏解析
 
@@ -360,7 +360,7 @@ CREATE INDEX idx_field_struct ON field_access(struct_name);
 
 ### 遗留 ↔ cgdb 同步
 
-`cgdb_sync.sync_legacy_and_cgdb()` 保持 `functions`/`edges`（遗留）与 `cgdb_nodes`/`cgdb_edges`（cgdb）同步。遗留表回答"谁调用谁"；cgdb 表回答强类型语义问题。两者共存于同一个 SQLite 数据库。
+`cgdb_sync.sync_legacy_and_cgdb()` 保持 `functions`/`edges`（遗留）与 `cgdb_nodes`/`cgdb_edges`（cgdb）同步。遗留表回答"谁调用谁"；cgdb 表回答强类型语义疑问。两者共存于同一个 SQLite 数据库。
 
 ### 跨语言统一节点 ID
 

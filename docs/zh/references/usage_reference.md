@@ -598,9 +598,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" think-chain \
 
 ```bash
 python3 "$SKILL_DIR/scripts/code2database_builder.py" save-memory \
-  --graph code2db-out/ --question "问题" --answer "回答" --tags "tag1,tag2"
+  --graph code2db-out/ --question "疑问" --answer "回答" --tags "tag1,tag2"
 python3 "$SKILL_DIR/scripts/code2database_builder.py" search-memory \
-  --graph code2db-out/ --query "相关问题" --top 5
+  --graph code2db-out/ --query "相关疑问" --top 5
 ```
 
 可信机制：trusted(验证通过,权重1.0) / experience(可能过时,权重0.5-0.7)
@@ -611,7 +611,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" search-memory \
 # 添加记忆（自动合并到根记忆）
 python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
   --graph code2db-out/ --action add \
-  --question "问题" --answer "回答" --tags "tag1"
+  --question "疑问" --answer "回答" --tags "tag1"
 
 # 修正记忆字段
 python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
@@ -641,7 +641,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
 
 # 查询记忆
 python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
-  --graph code2db-out/ --action query --query "相关问题" --top 5
+  --graph code2db-out/ --action query --query "相关疑问" --top 5
 
 # 生成记忆包
 python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
@@ -649,7 +649,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
 ```
 
 记忆分层：L0(热,权重>0.7) / L1(温,0.3-0.7) / L2(冷,<0.3)
-根记忆合并：相似问题(Jaccard>0.7)自动合并，保留版本历史
+根记忆合并：相似提问(Jaccard>0.7)自动合并，保留版本历史
 权重衰减：recency x importance x access，衰减条目自动归档为 experience
 
 ## 第9步 — 导出
@@ -665,7 +665,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" export-obsidian --graph co
 ## 第0步 — 会话上下文
 
 ```bash
-# 一站式：简报 + 前辈记忆摘要 + 图状态 + 未解答问题
+# 一站式：简报 + 前辈记忆摘要 + 图状态 + 未解答疑问
 python3 "$SKILL_DIR/scripts/code2database_builder.py" session-init \
   --graph code2db-out/ [--top 10] [--json]
 ```
@@ -1040,7 +1040,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `knowledge-brief` | 渲染项目简报（会话启动加载） |
 | `brief-validate` | 校验简报（schema、体积预算、图漂移） |
 | `brief-suggest` | 从高价值记忆挖掘简报候选（只建议不写入） |
-| `session-init` | 一站式会话上下文：简报 + 记忆摘要 + 图状态（含过期检查）+ 未解答问题 |
+| `session-init` | 一站式会话上下文：简报 + 记忆摘要 + 图状态（含过期检查）+ 未解答疑问 |
 | `light-scan` | Lightweight scan of changed files (no LLM) |
 | `load` | Load and summarize the invocation graph |
 | `lock-coverage` | Analyze lock-held regions and per-access locksets (replaces over-approximation) |

@@ -14,8 +14,8 @@ parent_skill: Code2Database
 ## 何时激活
 
 - 用户显式输入 `/Code2Database-analysis`
-- 父技能 `/Code2Database` 检测到深度分析问题，并用短语 *"activate Code2Database-analysis sub-skill"* 移交
-- 用户询问以下任一问题：
+- 父技能 `/Code2Database` 检测到深度分析类提问，并用短语 *"activate Code2Database-analysis sub-skill"* 移交
+- 用户提出以下任一疑问：
   - "这是线程安全的吗？" / "这两条链会竞争吗？"
   - "这个 NULL / 值从哪来？"
   - "改这个函数会影响什么？"
@@ -47,13 +47,13 @@ parent_skill: Code2Database
 | `blame-node` | 定位引入某节点的提交 |
 | `query` | Cypher 子集查询（MATCH/WHERE/RETURN），用于一次性结构化查询 |
 
-## 路由表 — 按问题类型分组的情景命令
+## 路由表 — 按提问类型分组的情景命令
 
-当问题类型匹配下列某项时，使用所列命令序列。仅在需要详细语法时才读取参考文档（`references/analysis_commands.md`）。
+当提问类型匹配下列某项时，使用所列命令序列。仅在需要详细语法时才读取参考文档（`references/analysis_commands.md`）。
 
 > **可执行捷径**：带配方的提问族也可从父技能一次调用完成 — `c2d ask --question "..."` 自动分类并执行序列（见 `c2d recipes`）。
 
-| 问题类型 | 命令序列 |
+| 提问类型 | 命令序列 |
 |---------|---------|
 | **这是线程安全的吗？** | `concurrency-risks` → `concurrency-analyze` → `detect-races` → `lock-coverage` → `happens-before` → `memory-ordering` → `who-locks` |
 | **这个 NULL / 值从哪来？** | `value-flow` → `param-flow` → `data-dep` → `field-flow` → `null-source` → `data-lifecycle` → `io-path` |
@@ -89,13 +89,13 @@ parent_skill: Code2Database
 
 ## 激活移交
 
-当检测到属于**图谱编辑、事务、守护进程、profile/文档-代码、导出、插件、记忆、embeddings**的问题时，移交给 ops 子技能：
+当检测到属于**图谱编辑、事务、守护进程、profile/文档-代码、导出、插件、记忆、embeddings**的提问时，移交给 ops 子技能：
 
-> "这个问题属于图谱运维 / 守护进程 / profile / 事务。激活 `Code2Database-ops` 子技能。"
+> "这个提问属于图谱运维 / 守护进程 / profile / 事务。激活 `Code2Database-ops` 子技能。"
 
-当检测到属于**简单浏览、扫描、构建、一般调用关系**的问题时，移交给父技能：
+当检测到属于**简单浏览、扫描、构建、一般调用关系**的提问时，移交给父技能：
 
-> "这个问题属于基本图谱导航。激活 `Code2Database` 子技能。"
+> "这个提问属于基本图谱导航。激活 `Code2Database` 子技能。"
 
 ## 约束（继承自父技能）
 

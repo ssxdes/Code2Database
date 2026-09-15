@@ -52,7 +52,7 @@ done
 
 **工作流**：
 
-1. Code2Database：使用 resolve-chain + bindings 追踪问题函数的执行路径
+1. Code2Database：使用 resolve-chain + bindings 追踪目标函数的执行路径
    → 获取：哪些分支被执行、哪些函数参与、并发窗口、参数流
 
 2. 判断是否需要外部技能（能力关键词：debug, diagnose, root cause）：
@@ -61,7 +61,7 @@ done
    - 缺陷是非确定性/时序相关 → 搜索匹配 "diagnose/feedback loop" 的已安装技能
 
 3. 传递给匹配技能的上下文：
-   - 问题函数的 describe-node 输出（body_text + signature + params + condition_vars）
+   - 目标函数的 describe-node 输出（body_text + signature + params + condition_vars）
    - resolve-chain 结果（执行路径 + 哪些分支存活/剪枝）
    - 并发窗口（concurrent_groups）— 如果缺陷与线程竞争相关
    - 参数流（param_flow）— 如果缺陷与参数值传递相关
@@ -72,7 +72,7 @@ done
 
 ## 10b - 架构评审协作
 
-**触发**：用户说"架构评审"/"模块太深/太浅"/"重构"/"架构问题"等。
+**触发**：用户说"架构评审"/"模块太深/太浅"/"重构"/"架构疑问"等。
 
 **工作流**：
 
@@ -222,7 +222,7 @@ done
    → 通过 callback_dispatch 边获取崩溃路径上间接调用的所有可能目标
 
 4. 判断是否需要外部技能（能力关键词：security, vulnerability, exploit）：
-   - 缺陷是清晰的代码路径问题 → 调用图追踪充足，直接分析
+   - 缺陷位于清晰的代码路径上 → 调用图追踪充足，直接分析
    - 缺陷涉及复杂内存安全 → 搜索匹配 "security/vulnerability" 的已安装技能
    - 缺陷涉及特定利用技术 → 搜索匹配 "exploit/pwn" 的已安装技能
 

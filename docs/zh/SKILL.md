@@ -6,7 +6,7 @@ trigger: /Code2Database
 
 # /Code2Database
 
-**扫描一次 → 持久图 → 查询替代 grep。** 一次工具调用即可回答原本需要多次 grep/glob/Read 的问题。
+**扫描一次 → 持久图 → 查询替代 grep。** 一次工具调用即可回答原本需要多次 grep/glob/Read 的疑问。
 
 ## 一键式生命周期 — `c2d` 总入口
 
@@ -41,7 +41,7 @@ python3 scripts/code2database_builder.py session-init   # --graph 自动发现 c
 提问时，按以下优先级查询：
 
 ```
-1. Memory (recall / kb-query) — 之前回答过这个问题吗？→ 最快
+1. Memory (recall / kb-query) — 之前回答过这个提问吗？→ 最快
 2. Knowledge (know / kb-query) — 有架构级不变式/约束记录吗？
 3. Graph (query / describe / trace) — 查询代码图
 4. Source (describe --code) — 最后才读源码
@@ -53,7 +53,7 @@ python3 scripts/code2database_builder.py session-init   # --graph 自动发现 c
 
 ## 何时激活
 
-- 任何关于调用关系、调用链、架构、影响面、并发的问题
+- 任何关于调用关系、调用链、架构、影响面、并发的疑问
 - 当 `code2db-out/` 或 `code2database.db` 存在时 — 查询而非 grep
 - `#ifdef` 条件路径、数据竞争、FFI 边界、数据流
 

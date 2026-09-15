@@ -1,6 +1,6 @@
 # 标签规则参考
 
-> **标签是函数在代码库中可查询的角色。** 七个标签——`API_entry`、`thread_processor`、`callback_func`、`constructor`、`destructor`、`out_end`、`unknown_end`——分类函数*是什么类型的东西*，不只是它在哪里。查询"所有公共 API"按 `API_entry` 过滤；"所有线程入口"按 `thread_processor` 过滤；"所有回调"按 `callback_func` 过滤。没有标签，你不得不 grep 命名约定（跨项目和语言不可靠）。有了标签，图谱直接回答基于角色的问题——这就是数据库的优势。
+> **标签是函数在代码库中可查询的角色。** 七个标签——`API_entry`、`thread_processor`、`callback_func`、`constructor`、`destructor`、`out_end`、`unknown_end`——分类函数*是什么类型的东西*，不只是它在哪里。查询"所有公共 API"按 `API_entry` 过滤；"所有线程入口"按 `thread_processor` 过滤；"所有回调"按 `callback_func` 过滤。没有标签，你不得不 grep 命名约定（跨项目和语言不可靠）。有了标签，图谱直接回答基于角色的疑问——这就是数据库的优势。
 
 ## 函数标签
 

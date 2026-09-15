@@ -2,7 +2,7 @@
 
 本文档覆盖 `/Code2Database-analysis` 子技能暴露的 50 个分析命令和 19 个 `cgdb_*` MCP 工具的完整语法。**按需读取**——除非需要某命令的详细语法，否则不要加载到 agent 上下文。
 
-命令按问题类型分组，与 `SKILL_analysis.md` 中的路由表对应。
+命令按提问类型分组，与 `SKILL_analysis.md` 中的路由表对应。
 
 ## 并发安全
 

@@ -14,8 +14,8 @@ parent_skill: Code2Database
 ## 何时激活
 
 - 用户显式输入 `/Code2Database-ops`
-- 父技能 `/Code2Database` 检测到运维问题，并用短语 *"activate Code2Database-ops sub-skill"* 移交
-- 用户询问以下任一问题：
+- 父技能 `/Code2Database` 检测到运维类提问，并用短语 *"activate Code2Database-ops sub-skill"* 移交
+- 用户提出以下任一疑问：
   - "如何安全地编辑这个节点/边？" / "更新这个函数的语义"
   - "启动/停止守护进程" / "守护进程是最新的吗？"
   - "改之前先存个快照" / "回滚这个事务"
@@ -77,11 +77,11 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 | `kb-global-add` / `kb-global-search` / `kb-global-share` / `kb-global-import` | 跨项目全局 KB（~/.code2database_global_kb/） |
 | `kb-global-share-memory` / `kb-global-search-memory` / `kb-global-import-memory` | 跨项目全局记忆 Q&A：将最有价值的记忆导出到全局 KB、跨项目搜索相似 Q&A、将匹配项导入当前项目的 memory.db（含合并） |
 
-## 路由表 — 按问题类型分组的情景命令
+## 路由表 — 按提问类型分组的情景命令
 
 > **可执行捷径**：这里的多个路由族（质量检查、文档对齐）也可从父技能一次调用完成 — `c2d ask --recipe quality` / `c2d ask --question "..."`（见 `c2d recipes`）。
 
-| 问题类型 | 命令序列 |
+| 提问类型 | 命令序列 |
 |---------|---------|
 | **安全图谱编辑** | `tx-begin` → `tx-status` → `update-node` / `update-edge` / `patch-profile` / `classify-endpoints` / `auto-enhance` / `heuristic-enhance` / `batch-confirm` / `rollback` / `fill-request` / `add-semantic-edges` / `semantic-status` / `audit-log` → `tx-commit`（带确认）→ 必要时 `tx-restore` / `tx-list-snapshots` / `tx-replay-wal` |
 | **保持图谱新鲜** | `daemon-start` → `daemon-status` → `daemon-pause` / `daemon-resume` / `daemon-force-refresh` / `daemon-wait-sync` / `daemon-logs` / `daemon-reload` / `daemon-list-projects` → `daemon-stop`；或 `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes`；精确按文件更新：`build-update --source SRC --graph DIR` 或 `quick-update --source SRC --graph DIR` |
@@ -105,13 +105,13 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 
 ## 激活移交
 
-当检测到属于**并发、数据流、不变量、FFI、路径可行性、来源、cgdb 表**的问题时，移交给分析子技能：
+当检测到属于**并发、数据流、不变量、FFI、路径可行性、来源、cgdb 表**的提问时，移交给分析子技能：
 
-> "这个问题属于深度语义分析。激活 `Code2Database-analysis` 子技能。"
+> "这个提问属于深度语义分析。激活 `Code2Database-analysis` 子技能。"
 
-当检测到属于**简单浏览、扫描、构建、一般调用关系**的问题时，移交给父技能：
+当检测到属于**简单浏览、扫描、构建、一般调用关系**的提问时，移交给父技能：
 
-> "这个问题属于基本图谱导航。激活 `Code2Database` 子技能。"
+> "这个提问属于基本图谱导航。激活 `Code2Database` 子技能。"
 
 ## 约束（继承自父技能）
 

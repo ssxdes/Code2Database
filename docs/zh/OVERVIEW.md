@@ -6,7 +6,7 @@
 
 ## 设计目标：代码数据库，不只是调用图
 
-Code2Database 旨在回答传统调用图工具无法回答的问题：**"工程师阅读这段代码时，真正需要推理什么？"** 答案很少只是"A 调 B"。它是：
+Code2Database 旨在回答传统调用图工具无法回答的疑问：**"工程师阅读这段代码时，真正需要推理什么？"** 答案很少只是"A 调 B"。它是：
 
 - **在什么条件下** A 调用 B？（`call_condition`——if/switch/#ifdef/三元，跨语言 `//go:build` / `#[cfg]` / `sys.platform` / `@Profile`）
 - **在什么并发上下文中** 这次调用发生？（`thread_model`、`concurrency` 边属性）
@@ -19,7 +19,7 @@ Code2Database 旨在回答传统调用图工具无法回答的问题：**"工程
 - **这两条链会竞争吗？**（`concurrency-analyze`——成对线程模型 + 锁重叠）
 - **文档还跟代码对得上吗？**（`doc_code_mismatches`——返回值/参数/签名/陈旧文档）
 
-多数工具止步于第一个问题。Code2Database 回答了全部问题，把答案持久化在图谱里，让 LLM 代理可以用一次工具调用查询，而不是跨 N 个文件 grep/glob/Read。这就是从*阅读*代码到*查询*代码的转变。
+多数工具止步于第一个疑问。Code2Database 回答了全部疑问，把答案持久化在图谱里，让 LLM 代理可以用一次工具调用查询，而不是跨 N 个文件 grep/glob/Read。这就是从*阅读*代码到*查询*代码的转变。
 
 下面的架构服务于这个目标：三阶段流水线把不可变 AST 事实与可迭代推理分离；分层上下文包系统最小化 token 开销；双 tree-sitter + clang 提取后端；强类型 cgdb（代码图数据库）层提供语义表；带 WAL + 快照的事务性更新；以及保持图谱新鲜度的实时守护进程。
 
@@ -50,7 +50,7 @@ C/C++ 提取后端有两种模式，服务于不同需求：
 
 ### 为什么是三个子 skill 而不是一个
 
-skill 以 3 个子 skill 形式发布（`/Code2Database` 核心、`/Code2Database-analysis` 深度分析、`/Code2Database-ops` 运维），让 LLM 代理只加载与当前问题相关的命令：
+skill 以 3 个子 skill 形式发布（`/Code2Database` 核心、`/Code2Database-analysis` 深度分析、`/Code2Database-ops` 运维），让 LLM 代理只加载与当前疑问相关的命令：
 
 - **核心（27 个 Tier-1 命令，含 `c2d` 总入口）**——常驻加载。构建、浏览、基础查询（scan、build、explore-flow、describe-node、trace-chain、neighbors、path、search、key-paths 等）。
 - **分析（13 个 Tier-1 + 19 个 cgdb_* MCP 工具）**——按需加载。并发、数据流、不变量、FFI、路径可行性、来源、cgdb 表。
@@ -60,7 +60,7 @@ skill 以 3 个子 skill 形式发布（`/Code2Database` 核心、`/Code2Databas
 
 ### 为什么是 micro → lite → local 查询模式
 
-LLM token 成本主导用户体验。Code2Database 用分层上下文包系统解决这个问题：
+LLM token 成本主导用户体验。Code2Database 用分层上下文包系统化解这一点：
 
 ```
 micro 包（~200 token） → lite 包（~500 token） → explore-flow → describe-node → get-code-snippet
@@ -80,7 +80,7 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 >
 > 下方遗留 cgdb 层（CGDB-L0 至 CGDB-L11）是 clang 后端填充的原始语义表分层；上述报告层是附加（与遗留表共存于同一个 SQLite 数据库）。完整差距矩阵见 `report/Code2Database-最终差距分析与优化报告.md`。
 
-遗留图（`functions` + `edges` 表）回答"谁调用谁"。cgdb 层增加强类型语义表，回答遗留图无法回答的问题：
+遗留图（`functions` + `edges` 表）回答"谁调用谁"。cgdb 层增加强类型语义表，回答遗留图无法回答的疑问：
 
 | CGDB 层 | 表 | 回答 |
 |---------|----|------|
@@ -512,7 +512,7 @@ scripts/
 │   ├── path_feasibility.py       ← Z3 SMT 编码；无 Z3 时启发式回退
 │   ├── data_dep.py               ← DATA_DEP 边；扫描所有节点找读者/写者
 │   ├── intent_router.py          ← 自然语言意图 → 图操作
-│   ├── query_router.py           ← 查询路由（按问题类型选命令）
+│   ├── query_router.py           ← 查询路由（按提问类型选命令）
 │   ├── query_lang.py             ← Cypher 子集解析器（MATCH/WHERE/RETURN，1304 行）
 │   ├── query_cache.py            ← 查询结果缓存
 │   ├── transactions.py           ← WAL + 快照 + fcntl 文件锁；transaction() 上下文

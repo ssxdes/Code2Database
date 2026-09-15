@@ -8,7 +8,7 @@ Code2Database separates two long-lived stores with opposite shapes:
 | **Storage** | `memory/memory.db` (SQLite WAL + FTS5) | `knowledge/brief.json` |
 | **Size** | Unbounded growth | Budget: warn >3000 chars, error >6000 (`brief-validate`) |
 | **When loaded** | On demand (`search-memory`, `kb-query`) | **Every session start** (`knowledge-brief`) |
-| **Update cadence** | Continuously (save/merge/split) | Small scope, only when architecture genuinely changes |
+| **Refresh cadence** | Continuously (save/merge/split) | Small scope, only when architecture genuinely changes |
 
 ## session-init — the one-shot entry
 

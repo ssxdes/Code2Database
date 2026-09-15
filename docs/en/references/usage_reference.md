@@ -19,7 +19,7 @@ $BUILDER c2d session                           # = session-init
 $BUILDER c2d ask --question "is bdev_start thread safe?"
 $BUILDER c2d ask --recipe impact --target bdev_start
 $BUILDER c2d capture --question "..." --answer "..." --category bdev --author you
-$BUILDER c2d freshen                           # freshness check + update routing
+$BUILDER c2d freshen                           # freshness check + sync routing
 $BUILDER c2d report --kind design --module fs  # design|diagnose|html|mermaid|plantuml
 
 # Self-documentation
@@ -52,7 +52,7 @@ Start here: find the task, use the one call, or drop to the direct command seque
 | Explore a topic | `c2d ask --recipe explore --query TOPIC` | `hybrid-search` → `explore-flow` |
 | Ingest a project (first time) | `c2d setup --source DIR` | `make` (env-check → scan → build → derived artifacts → exports) |
 | Load session context | `c2d session` | `session-init` |
-| Freshness check + update routing | `c2d freshen` | `cgdb-freshness` → `make` / `daemon-start` / `build-update` |
+| Freshness check + sync routing | `c2d freshen` | `cgdb-freshness` → `make` / `daemon-start` / `build-update` |
 | Generate a report artifact | `c2d report --kind KIND` | `design-doc` / `diagnose` / `export-html` / `export-mermaid` / `export-plantuml` |
 | Save a Q&A into memory | `c2d capture --question .. --answer ..` | `save-memory` |
 | Safe graph editing | — | `tx-begin` → `update-node` / `update-edge` / `patch-profile` → `tx-commit` |
@@ -63,7 +63,7 @@ Start here: find the task, use the one call, or drop to the direct command seque
 
 Accuracy boundaries of the analysis layer, consolidated here for on-demand reading:
 
-- **Large graphs (>=50K functions)**: `update`/`merge`/`sync` require an in-memory graph and fall back to LazySQLiteGraph (read-only); they print a friendly error pointing to `daemon-start` or `build`. Use `daemon-start` for incremental sync or `build-update --source SRC --graph DIR` for precise per-file updates (content-hash detection + `#include` closure; format-only edits skipped structurally).
+- **Large graphs (>=50K functions)**: `update`/`merge`/`sync` require an in-memory graph and fall back to LazySQLiteGraph (read-only); they print a friendly error pointing to `daemon-start` or `build`. Use `daemon-start` for incremental sync or `build-update --source SRC --graph DIR` for precise per-file syncs (content-hash detection + `#include` closure; format-only edits skipped structurally).
 - **`build-update` cross-file edge limitation**: only changed files are rescanned. When a function is renamed/deleted in file A, cross-file call edges into A are deleted but not recreated — the calling files are not rescanned, so the new function ID (which embeds the file path) will not match. Cross-file edges into the changed file are lost until a full `build`. For frequent cross-file refactors prefer `daemon-start` (transactional sync) or schedule periodic full builds.
 - **Concurrency analysis is function-level, not access-site-level**: TOCTOU races are NOT detected; lock detection uses regex, not CFG. Results may contain false positives/negatives — use `lock-coverage` for finer-grained analysis.
 - **`path`/`trace-chain` same-name ambiguity**: functions with the same name in different files need `--source-file` to disambiguate. With `--source-file`, `--from`/`--to` accept function names (resolved by name+file); without it they must be node IDs. Multiple resolutions print a warning listing candidate source files. `path --domain-filter fs,block` hard-restricts traversal to allowlisted domains (+ `root`) for cross-subsystem reachability queries.
@@ -157,7 +157,7 @@ ASM files are processed with a dedicated regex-based scanner (no tree-sitter gra
   - `SYM_FUNC_START`/`SYM_FUNC_END`, `SYM_FUNC_START_LOCAL`/`SYM_FUNC_END`, `SYM_INNER_LABEL` — function boundary markers
   - `ENTRY`/`ENDPROC` — legacy kernel function markers
   - `EXPORT_SYMBOL` / `EXPORT_SYMBOL_GPL` — exported symbol annotations, marking functions as API_entry
-- **Cross-language call edge merging (ASM <-> C)**: When an ASM function calls a C function (or vice versa), edges are merged during the build phase. The builder matches by symbol name, reconciling ASM labels with C function names.
+- **Cross-language call edge merging (ASM <-> C)**: When an ASM function calls a C function (or vice versa), edges are merged during the build stage. The builder matches by symbol name, reconciling ASM labels with C function names.
 - **C inline asm call extraction**: `__asm__`/`asm` volatile blocks within C/C++ source are parsed for `call` instructions; extracted invoked edges are annotated with confidence `INFERRED` and source `inline_asm`.
 - **ARM bl/blr instruction support**: ARM assembly `bl` (branch with link) and `blr` (branch with link to register) instructions are extracted as call edges. Register-indirect `blr` edges are modeled as function pointer dispatch (similar to C fn_ptr_calls).
 - **GCC extended asm named operands**: `%[name]` syntax in inline asm is parsed — `blr %[func]` resolves to the named operand's bound variable.
@@ -344,7 +344,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" describe-node \
 python3 "$SKILL_DIR/scripts/code2database_builder.py" describe-node \
   --graph code2db-out/ --node NODE_ID --detail brief --context
 
-# Token budget control (auto-drops low-priority fields)
+# Token budget control (auto-drops least-critical fields)
 python3 "$SKILL_DIR/scripts/code2database_builder.py" describe-node \
   --graph code2db-out/ --node NODE_ID --max-tokens 300
 
@@ -552,7 +552,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" search \
 
 Progress indicators show during long queries.
 
-## Step 5 — Incremental Update
+## Step 5 — Incremental Sync
 
 ```bash
 python3 "$SKILL_DIR/scripts/code2database_builder.py" update \
@@ -564,7 +564,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" update \
 - File modification timestamp-based change detection
 - File-level dependency graph: when a file changes, only rebuild affected functions and edges
 - Maintain a `file_deps.json` tracking which functions/edges depend on which source files
-- Changed files → rescan only those files → patch graph → update affected domains
+- Changed files → rescan only those files → patch graph → refresh affected domains
 - Semantic descriptions for stale nodes filled on-demand during `describe-node` queries
 
 ### 5c — Team Sync
@@ -696,7 +696,7 @@ Knowledge is the lean per-project brief: `code2db-out/knowledge/brief.json`.
 
 ## Step 9c — Efficient Graph Updates
 
-Lightweight update workflow for code changes (no LLM needed):
+Lightweight sync workflow for code changes (no LLM needed):
 
 ```bash
 # Method 1: Auto-patch from git diff
@@ -712,12 +712,12 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" patch-from-diff \
   --graph code2db-out/ --diff-file changes.diff
 ```
 
-Three-layer lazy update strategy:
-- **Layer 0** (real-time, 0 LLM tokens): File change → AST rescan → incremental graph update
+Three-layer lazy sync strategy:
+- **Layer 0** (real-time, 0 LLM tokens): File change → AST rescan → incremental graph refresh
 - **Layer 1** (deferred, 0 LLM tokens): git diff → change patches → mark stale nodes
 - **Layer 2** (on-demand, LLM involved): Semantic description fill → endpoint classification → knowledge extraction
 
-Changes accumulate to a threshold before triggering full semantic update. Stale nodes get their semantics filled on-demand during describe-node queries.
+Changes accumulate to a threshold before triggering full semantic refresh. Stale nodes get their semantics filled on-demand during describe-node queries.
 
 ## Step 9d — Source Code Snippet
 
@@ -771,7 +771,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" memory-health \
 python3 "$SKILL_DIR/scripts/code2database_builder.py" install-hook \
   --source /path/to/project
 
-# quick-update with auto-threshold: auto-triggers semantic update when stale ratio exceeds threshold
+# quick-update with auto-threshold: auto-triggers semantic refresh when stale ratio exceeds threshold
 python3 "$SKILL_DIR/scripts/code2database_builder.py" quick-update \
   --source /path/to/project \
   --graph code2db-out/ \
@@ -803,7 +803,7 @@ Output `.code2database_signal_map.json`: condition variable → affected edges/f
 
 ## Step 10 — LLM-Assisted Profile Generation
 
-When auto-profile detection is insufficient (e.g., low callback pattern coverage, missing registration macros), use LLM-assisted profile generation.
+When auto-profile detection is insufficient (e.g., thin callback pattern coverage, missing registration macros), use LLM-assisted profile generation.
 
 ### 10a — Auto-detect Need for LLM Assistance
 
@@ -850,9 +850,9 @@ After LLM analysis, verify profile quality:
 - `api_detection.public_header_paths` should be non-empty
 - `endpoint_types` should include project-specific types as needed
 
-If quality is still insufficient, execute Phase 6 (LLM result check) for further improvement.
+If quality is still insufficient, execute Stage 6 (LLM result check) for further improvement.
 
-### 10e — Phase 6: LLM Result Check
+### 10e — Stage 6: LLM Result Check
 
 ```bash
 # After scanning completes, check extraction quality
@@ -877,16 +877,16 @@ All 261 CLI subparsers across `code2database_builder.py` (253) and `code2databas
 | `add-function` | Add a new function to the graph |
 | `add-semantic-edges` | Walk graph and add ALLOCATES/FREES/LOCKS/UNLOCKS edges from body text |
 | `apply-invariants` | Apply LLM-enhanced invariants from .code2database_invariants.json back to the graph |
-| `brief-update` | Update a section of the project brief |
+| `brief-update` | Edit a section of the project brief |
 | `apply-semantics` | Apply LLM semantic descriptions to graph |
 | `ast-search` | Structural code search: write patterns AS code with $metavars and ... ellipsis |
-| `audit-log` | Query the audit log (who edited what, when, why) |
+| `audit-log` | Query the write trail (who edited what, when, why) |
 | `auto-enhance` | Auto-enhance a node with LLM-supplied attributes (auto-writes EXTRACTED, prompts INFERRED) |
 | `auto-profile` | Auto-detect project type and generate/recommend profile |
 | `batch-confirm` | Batch-confirm pending supplements (accept-all / reject-all / per-item / apply) |
 | `blame-node` | Attribute a node to its introducing/last-modifying commit |
 | `blast-radius` | Show blast radius: affected tests/APIs for a function change |
-| `bridge-nodes` | Bridge nodes with high betweenness centrality (chokepoints) |
+| `bridge-nodes` | Bridge nodes with large betweenness centrality (chokepoints) |
 | `bug-benchmark` | Run BUG benchmark (graph vs grep) and report recall/precision/tool-call/token efficiency |
 | `build` | Build invocation graph from extraction JSON |
 | `build-diff` | Compare two graph builds: added/removed/changed nodes+edges+communities |
@@ -895,7 +895,7 @@ All 261 CLI subparsers across `code2database_builder.py` (253) and `code2databas
 | `c2d-add-foreign-stub` | Register a vendor SDK stub C2D (signatures only) |
 | `c2d-check-compat` | Check if B's foreign_refs still valid against new A version |
 | `c2d-list-foreign` | List watched foreign C2Ds with sync status |
-| `c2d-pin-foreign` | Pin a foreign_ref so it won't auto-update |
+| `c2d-pin-foreign` | Pin a foreign_ref so it won't auto-sync |
 | `c2d-prune-foreign` | Remove old deleted/orphaned foreign_refs |
 | `c2d-remove-foreign` | Unregister a foreign C2D |
 | `c2d-resolve-foreign` | Force re-resolve stale/deleted foreign_refs by name |
@@ -1024,7 +1024,7 @@ All 261 CLI subparsers across `code2database_builder.py` (253) and `code2databas
 | `install-hook` | Install git post-commit hook for auto quick-update |
 | `intent-query` | Classify a natural-language question and route to a CLI command |
 | `io-path` | Trace IO path from a function, auto-detecting vtable dispatch options |
-| `kb-audit` | Audit KB: counts, stale, low-confidence, citations |
+| `kb-audit` | Review the KB: counts, stale, weak-confidence, citations |
 | `kb-cluster` | Cluster kb_paragraphs by FTS5 similarity + link principles |
 | `kb-conflict` | Detect contradictory items in the same cluster |
 | `kb-forget` | Immediately delete a kb_paragraph (no decay) |
@@ -1032,7 +1032,7 @@ All 261 CLI subparsers across `code2database_builder.py` (253) and `code2databas
 | `kb-global-import` | Import a shared global KB JSON file |
 | `kb-global-search` | Search the cross-project global KB |
 | `kb-global-share` | Export global KB to a portable JSON file |
-| `kb-known-unknowns` | List queries that returned no matches (Phase 9) |
+| `kb-known-unknowns` | List queries that returned no matches (Stage 9) |
 | `kb-migrate` | Migrate kb_paragraphs rows into kb_items (fact-level) |
 | `kb-query` | Unified FTS5+BM25 query across memory and knowledge |
 | `kb-rebuild-index` | Rebuild the unified kb_paragraphs FTS5 index  |
@@ -1040,7 +1040,7 @@ All 261 CLI subparsers across `code2database_builder.py` (253) and `code2databas
 | `key-paths` | Extract key execution paths from entry points automatically |
 | `knowledge-brief` | Render the project brief (session-start load) |
 | `brief-validate` | Validate the brief (schema, size budget, graph drift) |
-| `brief-suggest` | Suggest brief additions from high-value memories (no writes) |
+| `brief-suggest` | Suggest brief additions from valuable memories (no writes) |
 | `session-init` | One-shot session context: brief + memory digest + graph (+staleness check) + known-unknowns |
 | `light-scan` | Lightweight scan of changed files (no LLM) |
 | `load` | Load and summarize the invocation graph |
@@ -1084,7 +1084,7 @@ All 261 CLI subparsers across `code2database_builder.py` (253) and `code2databas
 | `search` | Search nodes by keywords |
 | `search-memory` | Search memory for similar questions; `--symbol` filters by grounded symbol |
 | `semantic-search` | Neural semantic search: FTS5 BM25 + neural embedding + RRF fusion |
-| `semantic-status` | Check if semantic update is recommended |
+| `semantic-status` | Check if a semantic refresh is recommended |
 | `serve` | Start MCP server for LLM agent queries (stdio or HTTP transport; `--transport http --host 0.0.0.0 --port 8765 --token SECRET --read-only`) |
 | `sync` | Sync local code2db-out with git-tracked version (local wins) |
 | `taint-analysis` | Taint analysis: source/sink/sanitizer propagation through DATA_FLOW edges |
@@ -1100,7 +1100,7 @@ All 261 CLI subparsers across `code2database_builder.py` (253) and `code2databas
 | `tx-snapshot` | Take a manual snapshot (without starting a transaction) |
 | `tx-status` | Show current transaction state and WAL status |
 | `unbalanced-alloc-free` | Find functions that alloc without free (or vice versa) |
-| `update` | Incremental update: re-scan changed files and merge |
+| `update` | Incremental re-scan: changed files merged into the graph |
 | `update-edge` | LLM-driven incremental supplement of edge attributes (non-destructive, requires user confirmation) |
 | `update-node` | LLM-driven incremental supplement of node attributes (non-destructive, requires user confirmation) |
 | `validate` | Validate build output files for correctness |
@@ -1109,7 +1109,7 @@ All 261 CLI subparsers across `code2database_builder.py` (253) and `code2databas
 | `validate-profile` | Validate a profile JSON against coverage metrics |
 | `value-flow` | Build and query value-flow edges (where does this value come from / go to?) |
 | `verify-consistency` | Verify DB render matches disk sha256 |
-| `watch` | Auto-sync: watch source directory and update incrementally |
+| `watch` | Auto-sync: watch source directory and sync incrementally |
 | `web-ui` | Start interactive Web UI server for graph browsing, path highlighting, LOD rendering |
 | `who-allocates` | Find functions that allocate a resource (ALLOCATES edges) |
 | `who-frees` | Find functions that free a resource (FREES edges) |

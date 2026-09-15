@@ -331,7 +331,7 @@ CREATE INDEX idx_field_struct ON field_access(struct_name);
 
 ### 知识库表（Schema v9-v12）
 
-| 表 | 用途 | Phase |
+| 表 | 用途 | 阶段 |
 |---|---|---|
 | `kb_paragraphs` | 跨 memory + knowledge 的统一 FTS5 索引（派生；可重建） | 1 |
 | `kb_paragraphs_fts` | FTS5 虚拟表（porter + unicode61） | 1 |
@@ -344,7 +344,7 @@ CREATE INDEX idx_field_struct ON field_access(struct_name);
 
 ### 跨 C2D 同步表（Schema v13）
 
-| 表 | 用途 | Phase |
+| 表 | 用途 | 阶段 |
 |---|---|---|
 | `foreign_refs` | B 的未解析调用 + 缓存的 A 端元数据（foreign_node_id, name, domain, source_file, signature, status） | 1 |
 | `watched_c2ds` | 监听的外部 C2D 及其 db mtime/size/count（变更检测） | 1 |

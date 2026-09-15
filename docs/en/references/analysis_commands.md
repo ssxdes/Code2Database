@@ -8,7 +8,7 @@ The commands are grouped by question type, mirroring the routing table in `SKILL
 
 ### `concurrency-risks`
 
-List all global concurrency risk hot-spots detected during the build phase.
+List all global concurrency risk hot-spots detected during the build stage.
 
 ```bash
 python3 scripts/code2database_builder.py concurrency-risks --graph code2db-out/ [--threshold high|medium|low]

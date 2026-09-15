@@ -85,7 +85,7 @@ These commands are listed by **name only**. They are experimental, niche, or rar
 - `explain-label` — explain why a node got a particular label
 - `why-ambiguous` — explain why an edge is marked AMBIGUOUS
 - `extract-semantics` / `apply-semantics` — extract and apply semantic descriptions from docs
-- `audit-log` — view audit log of past writes
+- `audit-log` — view the recorded trail of past writes
 
 ## Activation Hand-off
 

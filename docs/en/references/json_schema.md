@@ -398,7 +398,7 @@ Directory: `code2db-out/memory/`
 
 ### Experience Entry: `memory/experience/experience_<id>.json`
 
-When a memory's `node_ids` reference nodes that no longer exist in the graph (e.g., after code update deleted those functions), the memory is invalidated and moved to experience:
+When a memory's `node_ids` reference nodes that no longer exist in the graph (e.g., after a code change deleted those functions), the memory is invalidated and moved to experience:
 
 ```json
 {
@@ -412,7 +412,7 @@ When a memory's `node_ids` reference nodes that no longer exist in the graph (e.
   "created": "2026-06-29T10:00:00",
   "validated_at": "2026-06-29T10:30:00",
   "invalidated_at": "2026-06-29T11:00:00",
-  "invalidated_reason": "1 node(s) removed by update: ['deleted_func_id']",
+  "invalidated_reason": "1 node(s) no longer in graph: ['deleted_func_id']",
   "merged_count": 0
 }
 ```

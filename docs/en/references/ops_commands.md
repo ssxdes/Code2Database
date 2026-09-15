@@ -266,7 +266,7 @@ Pause the daemon (e.g., before manual updates).
 ```bash
 python3 scripts/code2database_builder.py daemon-pause \
   --graph code2db-out/ \
-  --reason "manual update"
+  --reason "manual edit"
 ```
 
 ### `daemon-resume`
@@ -399,7 +399,7 @@ python3 scripts/code2database_builder.py patch-from-git \
 
 ### `install-hook`
 
-Install a git post-commit hook for auto-update on commit.
+Install a git post-commit hook for auto-sync on commit.
 
 ```bash
 python3 scripts/code2database_builder.py install-hook \
@@ -787,7 +787,7 @@ python3 scripts/code2database_builder.py kb-known-unknowns \
 ### `kb-audit`
 
 Review the project KB: counts by kind, stale items (>90d untouched),
-low-confidence (<0.5), high-citation (top access_count), most-linked
+low_confidence_items (<0.5), high_citation_items (top access_count), most-linked
 principles. Optional `--topic` for "what do we know about X".
 
 ```bash
@@ -884,7 +884,7 @@ python3 scripts/code2database_builder.py c2d-prune-foreign \
 
 ### `c2d-pin-foreign`  [write]
 
-Pin a resolved foreign_ref so it won't auto-update when A changes. Pinned
+Pin a resolved foreign_ref so it won't auto-sync when A changes. Pinned
 refs keep their current `foreign_node_id` even if A renames or deletes the
 function. Useful for stable API contracts.
 
@@ -896,7 +896,7 @@ python3 scripts/code2database_builder.py c2d-pin-foreign \
 
 ### `c2d-unpin-foreign`
 
-Restore auto-update behavior for a pinned foreign_ref.
+Restore auto-sync behavior for a pinned foreign_ref.
 
 ```bash
 python3 scripts/code2database_builder.py c2d-unpin-foreign \

@@ -819,12 +819,12 @@ Source-path substrings that mark code as non-API / test / vendor / external. The
 
 ---
 
-### 3.21 `phases` (Phase Tracking)
+### 3.21 `phases` (Stage Tracking)
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `prescan_completed` | `false` | Whether the pre-scan phase is complete |
-| `test_scan_completed` | `false` | Whether the test scan phase is complete |
+| `prescan_completed` | `false` | Whether the pre-scan stage is complete |
+| `test_scan_completed` | `false` | Whether the test scan stage is complete |
 | `llm_header_analysis_completed` | `false` | Whether LLM header analysis is complete |
 | `llm_result_check_completed` | `false` | Whether LLM result checking is complete |
 

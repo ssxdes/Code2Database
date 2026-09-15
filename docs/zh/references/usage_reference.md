@@ -52,7 +52,7 @@ $BUILDER c2d ask --question "..." --dry-run    # 预览翻译后的命令
 | 探索某个主题 | `c2d ask --recipe explore --query TOPIC` | `hybrid-search` → `explore-flow` |
 | 首次建库 | `c2d setup --source DIR` | `make`（env-check → scan → build → 派生产物 → exports） |
 | 加载会话上下文 | `c2d session` | `session-init` |
-| 新鲜度检查与更新路由 | `c2d freshen` | `cgdb-freshness` → `make` / `daemon-start` / `build-update` |
+| 新鲜度检查与同步路由 | `c2d freshen` | `cgdb-freshness` → `make` / `daemon-start` / `build-update` |
 | 生成报告工件 | `c2d report --kind KIND` | `design-doc` / `diagnose` / `export-html` / `export-mermaid` / `export-plantuml` |
 | 沉淀问答到记忆 | `c2d capture --question .. --answer ..` | `save-memory` |
 | 安全的图编辑 | — | `tx-begin` → `update-node` / `update-edge` / `patch-profile` → `tx-commit` |
@@ -552,7 +552,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" search \
 
 长查询期间显示进度指示器。
 
-## 第5步 — 增量更新
+## 第5步 — 增量同步
 
 ```bash
 python3 "$SKILL_DIR/scripts/code2database_builder.py" update \
@@ -712,7 +712,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" patch-from-diff \
 ```
 
 三层延迟更新策略：
-- **Layer 0**（实时，0 LLM token）: 文件变更 → AST重扫描 → 图结构增量更新
+- **Layer 0**（实时，0 LLM token）: 文件变更 → AST重扫描 → 图结构增量同步
 - **Layer 1**（延迟，0 LLM token）: git diff → 变更补丁 → 标记stale节点
 - **Layer 2**（按需，LLM参与）: 语义描述填充 → 端点分类 → 知识提取
 
@@ -851,7 +851,7 @@ LLM分析后，验证profile质量：
 
 如果质量仍不够，执行Phase 6（LLM结果检查）进一步改进。
 
-### 10e — Phase 6: LLM结果检查
+### 10e — 第 6 阶段：LLM结果检查
 
 ```bash
 # 扫描完成后，检查extraction质量
@@ -885,7 +885,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `batch-confirm` | Batch-confirm pending supplements (accept-all / reject-all / per-item / apply) |
 | `blame-node` | Attribute a node to its introducing/last-modifying commit |
 | `blast-radius` | Show blast radius: affected tests/APIs for a function change |
-| `bridge-nodes` | Bridge nodes with high betweenness centrality (chokepoints) |
+| `bridge-nodes` | Bridge nodes with large betweenness centrality (chokepoints) |
 | `bug-benchmark` | Run BUG benchmark (graph vs grep) and report recall/precision/tool-call/token efficiency |
 | `build` | Build invocation graph from extraction JSON |
 | `build-diff` | Compare two graph builds: added/removed/changed nodes+edges+communities |
@@ -894,7 +894,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `c2d-add-foreign-stub` | Register a vendor SDK stub C2D (signatures only) |
 | `c2d-check-compat` | Check if B's foreign_refs still valid against new A version |
 | `c2d-list-foreign` | List watched foreign C2Ds with sync status |
-| `c2d-pin-foreign` | Pin a foreign_ref so it won't auto-update |
+| `c2d-pin-foreign` | Pin a foreign_ref so it won't auto-sync |
 | `c2d-prune-foreign` | Remove old deleted/orphaned foreign_refs |
 | `c2d-remove-foreign` | Unregister a foreign C2D |
 | `c2d-resolve-foreign` | Force re-resolve stale/deleted foreign_refs by name |
@@ -1023,7 +1023,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `install-hook` | Install git post-commit hook for auto quick-update |
 | `intent-query` | Classify a natural-language question and route to a CLI command |
 | `io-path` | Trace IO path from a function, auto-detecting vtable dispatch options |
-| `kb-audit` | Audit KB: counts, stale, low-confidence, citations |
+| `kb-audit` | Review the KB: counts, stale, weak-confidence, citations |
 | `kb-cluster` | Cluster kb_paragraphs by FTS5 similarity + link principles |
 | `kb-conflict` | Detect contradictory items in the same cluster |
 | `kb-forget` | Immediately delete a kb_paragraph (no decay) |
@@ -1031,7 +1031,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `kb-global-import` | Import a shared global KB JSON file |
 | `kb-global-search` | Search the cross-project global KB |
 | `kb-global-share` | Export global KB to a portable JSON file |
-| `kb-known-unknowns` | List queries that returned no matches (Phase 9) |
+| `kb-known-unknowns` | List queries that returned no matches （第 9 阶段） |
 | `kb-migrate` | Migrate kb_paragraphs rows into kb_items (fact-level) |
 | `kb-query` | Unified FTS5+BM25 query across memory and knowledge |
 | `kb-rebuild-index` | Rebuild the unified kb_paragraphs FTS5 index  |
@@ -1083,7 +1083,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `search` | Search nodes by keywords |
 | `search-memory` | Search memory for similar questions; `--symbol` filters by grounded symbol |
 | `semantic-search` | Neural semantic search: FTS5 BM25 + neural embedding + RRF fusion |
-| `semantic-status` | Check if semantic update is recommended |
+| `semantic-status` | Check if a semantic refresh is recommended |
 | `serve` | 启动 MCP 服务器供 LLM 代理查询（stdio 或 HTTP 传输；`--transport http --host 0.0.0.0 --port 8765 --token SECRET --read-only`） |
 | `sync` | Sync local code2db-out with git-tracked version (local wins) |
 | `taint-analysis` | Taint analysis: source/sink/sanitizer propagation through DATA_FLOW edges |
@@ -1099,7 +1099,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `tx-snapshot` | Take a manual snapshot (without starting a transaction) |
 | `tx-status` | Show current transaction state and WAL status |
 | `unbalanced-alloc-free` | Find functions that alloc without free (or vice versa) |
-| `update` | Incremental update: re-scan changed files and merge |
+| `update` | Incremental re-scan: changed files merged into the graph |
 | `update-edge` | LLM-driven incremental supplement of edge attributes (non-destructive, requires user confirmation) |
 | `update-node` | LLM-driven incremental supplement of node attributes (non-destructive, requires user confirmation) |
 | `validate` | Validate build output files for correctness |
@@ -1108,7 +1108,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `validate-profile` | Validate a profile JSON against coverage metrics |
 | `value-flow` | Build and query value-flow edges (where does this value come from / go to?) |
 | `verify-consistency` | Verify DB render matches disk sha256 |
-| `watch` | Auto-sync: watch source directory and update incrementally |
+| `watch` | Auto-sync: watch source directory and sync incrementally |
 | `web-ui` | Start interactive Web UI server for graph browsing, path highlighting, LOD rendering |
 | `who-allocates` | Find functions that allocate a resource (ALLOCATES edges) |
 | `who-frees` | Find functions that free a resource (FREES edges) |

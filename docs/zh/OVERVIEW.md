@@ -443,7 +443,7 @@ scripts/
 │   │                                to_builder_config。_DEFAULT_PROFILE 以 Python dict 内嵌
 │   ├── generate.py               ← 自动 profile 生成：预扫描、测试扫描、auto-config、
 │   │                                auto-detect 阶段。SourceInfoCollector 单次 os.walk
-│   └── llm_phases.py             ← LLM 驱动的 Phase 4（头文件分析）+ Phase 6（结果检查）
+│   └── llm_phases.py             ← LLM 驱动的第 4 阶段（头文件分析）+ 第 6 阶段（结果检查）
 │
 ├── _builder/                     ← 图构建和查询模块（85K 行，139 个文件，14 子目录）
 │   ├── __init__.py               ← 懒加载机制（首次访问才加载模块）
@@ -518,7 +518,7 @@ scripts/
 │   ├── transactions.py           ← WAL + 快照 + fcntl 文件锁；transaction() 上下文
 │   ├── daemon.py                 ← inotify + 轮询；熔断器；事务性同步；
 │   │                                socket API（1400 行）
-│   ├── watcher.py                ← 文件变更监视器，用于自动更新
+│   ├── watcher.py                ← 文件变更监视器，用于自动同步
 │   ├── update_sync.py            ← cmd_merge、cmd_update、cmd_sync
 │   ├── embeddings.py             ← TF-IDF 字符 n-gram 嵌入，用于语义搜索
 │   ├── explain.py                ← explain-label、why-ambiguous

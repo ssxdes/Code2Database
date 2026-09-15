@@ -51,7 +51,7 @@ Edit this file when you need to tune pipeline behavior without modifying source 
 
 ## Field Reference
 
-### `scan` — Scan Phase Parameters
+### `scan` — Scan Stage Parameters
 
 | Field | Type | Default | CLI Override | Description |
 |-------|------|---------|--------------|-------------|
@@ -60,14 +60,14 @@ Edit this file when you need to tune pipeline behavior without modifying source 
 | `max_file_size_kb` | int | `1024` | — | Maximum file size (in KB) to scan. Files larger than this are skipped. Increase for projects with large generated files that you want included; decrease to skip bulky auto-generated code. |
 | `skip_dirs` | string[] | `[".git", "__pycache__", "node_modules", "build", ".cache"]` | — | Directory names to skip during scanning (matched by directory name, not path). These are **merged** with the scanner's built-in skip set (`__pycache__`, `node_modules`, `.git`, `build`, `dist`, `out`, `bin`, `obj`, `venv`, `.venv`, `.tox`, `.cache`, `third_party`, `vendor`, etc.). Add project-specific directories you want excluded (e.g., `["generated", "vendor"]`). |
 
-### `build` — Build Phase Parameters
+### `build` — Build Stage Parameters
 
 | Field | Type | Default | CLI Override | Description |
 |-------|------|---------|--------------|-------------|
 | `default_config` | string | `"auto"` | `--build-config` | Build configuration for `#ifdef` macro resolution. `"auto"` = auto-detect from build system. Can also be a path to a compile_commands.json or a build type name like `"Release"`, `"Debug"`. |
 | `max_domain_files` | int | `50` | `--max-domain-files` | Maximum number of JSON files per subdirectory when writing domain-split output. `0` = flat (all in one file). Increase for very large projects to keep individual files smaller; decrease to reduce file count. |
 
-### `query` — Query Phase Parameters
+### `query` — Query Stage Parameters
 
 | Field | Type | Default | CLI Override | Description |
 |-------|------|---------|--------------|-------------|

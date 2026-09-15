@@ -617,7 +617,7 @@ if [ "$TARGET" = "claudecode" ] || [ "$TARGET" = "all" ]; then
     _link_sub "$ANALYSIS_DIR" "Code2Database-analysis"
     _link_sub "$OPS_DIR" "Code2Database-ops"
 
-    # Update Claude Code settings for MCP server
+    # Sync Claude Code settings for MCP server
     CLAUDE_SETTINGS="$HOME/.claude/settings.json"
     MCP_ENTRY=$(cat <<JSONEOF
 {"type":"stdio","command":"python3","args":["$INSTALL_DIR/scripts/code2database_builder.py","serve","--graph","code2db-out/"]}
@@ -691,7 +691,7 @@ Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/
 - **Only 7 labels**: API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end
 - **Always annotate** edge confidence (EXTRACTED/INFERRED/AMBIGUOUS) and invocation conditions
 - **Do not propose fixes** before finding root cause
-- **Verify** after sync/update operations
+- **Verify** after sync operations
 - **Keep diffs minimal** — don't refactor unrelated code
 - Skill instructions are in `SKILL.md`; reference docs in `references/` are on-demand only
 CURSOREOF

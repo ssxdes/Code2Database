@@ -341,7 +341,7 @@ Each predicate carries a `status` field:
 
 ### Knowledge Base Tables (Schema v9-v12)
 
-| Table | Purpose | Phase |
+| Table | Purpose | Stage |
 |---|---|---|
 | `kb_paragraphs` | Unified FTS5 index across memory + knowledge (derived; rebuildable) | 1 |
 | `kb_paragraphs_fts` | FTS5 virtual table (porter + unicode61) | 1 |
@@ -354,7 +354,7 @@ The global KB at `~/.code2database_global_kb/global.db` has a separate
 
 ### Cross-C2D Sync Tables (Schema v13)
 
-| Table | Purpose | Phase |
+| Table | Purpose | Stage |
 |---|---|---|
 | `foreign_refs` | B's unresolved calls + cached A-side metadata (foreign_node_id, name, domain, source_file, signature, status) | 1 |
 | `watched_c2ds` | Monitored foreign C2Ds with db mtime/size/count for change detection | 1 |

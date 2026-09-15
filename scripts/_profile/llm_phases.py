@@ -4,11 +4,11 @@ These phases are optional and do NOT modify scanner/builder code.
 They produce structured prompts that an LLM (or MCP tool) can consume,
 and parse the LLM's structured output back into profile updates.
 
-Phase 4 (LLM header analysis):
+Stage 4 (LLM header analysis):
   - Input: key header files + draft profile
   - Output: callback registration patterns, thread/task/message dispatch mechanisms
 
-Phase 6 (LLM result check):
+Stage 6 (LLM result check):
   - Input: extraction.json + profile
   - Output: quality findings (missing edges, false positives, misclassified endpoints)
 """

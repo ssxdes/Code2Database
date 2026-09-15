@@ -412,7 +412,7 @@ LLM 为每个节点填写 `semantic_desc`，然后 `apply-semantics` 写回。
   "created": "2026-06-29T10:00:00",
   "validated_at": "2026-06-29T10:30:00",
   "invalidated_at": "2026-06-29T11:00:00",
-  "invalidated_reason": "1 node(s) removed by update: ['deleted_func_id']",
+  "invalidated_reason": "1 node(s) no longer in graph: ['deleted_func_id']",
   "merged_count": 0
 }
 ```

@@ -216,7 +216,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **Concurrency modeling** | Thread spawn, goroutine, callback detection; data race detection; concurrency safety analysis |
 | **Edge confidence** | EXTRACTED (1.0) / INFERRED (0.7-0.95) / AMBIGUOUS (0.1-0.3) with the source evidence trail |
 | **One-shot exploration** | `explore-flow` — single query to get relevant nodes, paths, and conditions |
-| **Incremental updates** | `quick-update` — patch graph without LLM; `light-scan` / `patch-from-git` for zero-token updates |
+| **Incremental syncs** | `quick-update` — patch graph without LLM; `light-scan` / `patch-from-git` for zero-token syncs |
 | **MCP server mode** | `serve` — expose 83 MCP tools (55 base + 28 design-report) (36 `code2database_*` + 19 `cgdb_*`) for LLM agents (stdio transport) |
 | **Memory system** | `save-memory` / `search-memory` / `manage-memory` — persistent Q&A memory with decay |
 | **Blast radius analysis** | `blast-radius` — what functions, APIs, and tests are affected by a change |

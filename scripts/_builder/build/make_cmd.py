@@ -1,18 +1,18 @@
 """One-click project ingestion: env-check + full build pipeline.
 
-Two phases, strictly ordered:
-- Phase 1 (env-check): validate the full environment BEFORE any build step
+Two stages, strictly ordered:
+- Stage 1 (env-check): validate the full environment BEFORE any build step
   starts — source readability, language census, extraction backend
   resolvability (libclang / tree-sitter grammars), compile_commands.json
   discovery, graph-dir writability, free disk. Hard errors abort here, so
   the user never discovers a missing dependency halfway through a build.
-- Phase 2 (do_make): scan -> build -> derived artifacts -> exports:
+- Stage 2 (do_make): scan -> build -> derived artifacts -> exports:
   value-flow/data-dep edge builds, #ifdef signal map, FFI SQLite persist,
   brief bootstrap, unified KB index, embeddings, Obsidian vault + HTML
   export, profile-health report. Core steps (scan, build) are fatal;
   enrichment/export steps degrade to warnings so a usable graph survives.
 
-``make --check`` runs phase 1 only (a dry-run of the prerequisites).
+``make --check`` runs stage 1 only (a dry-run of the prerequisites).
 """
 
 import json
@@ -185,7 +185,7 @@ def decide_backend(requested, lang_counts, libclang, grammars_missing):
 def run_env_check(source, graph, backend_requested="auto",
                   compile_commands="", workers=0, lang_requested="auto",
                   create_dirs=True) -> dict:
-    """Phase 1: validate everything the full pipeline will need, up front.
+    """Stage 1: validate everything the full pipeline will need, up front.
 
     Pure checks only — no subprocess is started, nothing is written.
     Returns a report dict; rep['ok'] is False iff hard errors were found.
@@ -316,7 +316,7 @@ def _fmt_langs(rep) -> str:
 
 
 def print_env_check_report(rep):
-    print("[make] phase 1/2: environment check")
+    print("[make] stage 1/2: environment check")
     print("  python            : %s" % rep["python"])
     print("  source            : %s" % rep["source"])
     print("  languages         : %s" % _fmt_langs(rep))
@@ -574,7 +574,7 @@ def _verify_scan_completed(source, graph_dir, extraction_path):
 
 
 def _do_make(rep, args):
-    """Phase 2: run the full pipeline with per-step failure policy.
+    """Stage 2: run the full pipeline with per-step failure policy.
 
     Derived steps that produce only JSON/file artifacts (no DB writes)
     run in a ThreadPoolExecutor — each is a subprocess that loads the
@@ -622,7 +622,7 @@ def _do_make(rep, args):
         "profile-health",
     })
 
-    print("\n[make] phase 2/2: build pipeline (%d steps)" % total)
+    print("\n[make] stage 2/2: build pipeline (%d steps)" % total)
     step_num = 0
 
     # --- Fatal steps (scan, build) — always serial ---

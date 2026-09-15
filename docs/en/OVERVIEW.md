@@ -118,7 +118,7 @@ Graph modifications (LLM auto-enhance, patch-from-diff, daemon sync) need ACID-l
 
 - **Snapshot**: copy `code2database.db` + key JSON files to `.code2database_tx/snapshots/<id>/` before any write.
 - **WAL (Write-Ahead Log)**: every write is appended to `.code2database_tx/wal.jsonl` *before* it's applied. Crash mid-write = replay or rollback.
-- **Two-phase commit**: WAL first (phase 1), apply to live DB (phase 2), checkpoint (phase 3).
+- **Staged commit**: WAL first (stage 1), apply to live DB (stage 2), checkpoint (stage 3).
 - **File lock**: `fcntl` on Linux, `msvcrt` on Windows — multi-process coordination.
 
 `transaction()` is a context manager: `with transaction(graph_dir):` commits on success, rolls back on exception. `tx-replay-wal` recovers from crashes.
@@ -303,7 +303,7 @@ LLM supplements carry confidence labels: `EXTRACTED` (directly parsed with evide
 - `INFERRED` → require user confirmation (LLM MUST report old/new value, source, confidence before executing)
 - `AMBIGUOUS` → rejected, never applied
 
-This prevents LLM hallucinations from polluting the graph while letting high-confidence enhancements flow through without user friction.
+This prevents LLM hallucinations from polluting the graph while letting EXTRACTED-grade enhancements flow through without user friction.
 
 ## Data Model
 
@@ -445,14 +445,14 @@ scripts/
 │   │                                to_builder_config. _DEFAULT_PROFILE embedded as Python dict
 │   ├── generate.py               ← Auto-profile generation: pre-scan, test scan, auto-config,
 │   │                                auto-detect phases. SourceInfoCollector single os.walk
-│   └── llm_phases.py             ← LLM-driven Phase 4 (header analysis) + Phase 6 (result check)
+│   └── llm_phases.py             ← LLM-driven stage 4 (header analysis) + stage 6 (result check)
 │
 ├── _builder/                     ← Graph building and query modules (85K lines, 139 files, 14 subdirs)
 │   ├── __init__.py               ← Lazy import mechanism (delays module load until first access)
 │   ├── graph_build.py (graph/)  ← Core graph construction (5496 lines): build_graph, cmd_build,
 │   │                                domain split, commit hash detection, test domain detection,
 │   │                                cgdb wipe-and-rebuild
-│   ├── build_phases.py           ← Extracted build phases (1399 lines): 23 testable phase
+│   ├── build_phases.py           ← Extracted build stages (1399 lines): 23 testable stage
 │   │                                functions called by build_graph (setup, filtering, vtable,
 │   │                                dispatch, labeling, goto annotation, etc.)
 │   ├── streaming_graph.py        ← StreamingGraph: NetworkX-compatible API that streams to
@@ -510,7 +510,7 @@ scripts/
 │   ├── doc_code_align.py         ← Detect return/param/signature/stale-doc mismatches
 │   ├── commit_meta.py            ← Git/svn commit detection, blame, manifest enrichment
 │   ├── graph_history.py          ← graph-history, graph-diff, graph-record-version
-│   ├── audit_log.py              ← Audit log of past writes to the graph
+│   ├── audit_log.py              ← Edit trail of past writes to the graph
 │   ├── ffi_bridge.py             ← Detect ctypes/cgo/extern "C"; build FFI_BRIDGE edges (948 lines)
 │   ├── value_flow.py             ← DATA_FLOW edge construction; param→return propagation
 │   ├── lock_coverage.py          ← Lock-held event-stream extraction with char positions
@@ -523,7 +523,7 @@ scripts/
 │   ├── transactions.py           ← WAL + snapshots + fcntl file locks; transaction() context
 │   ├── daemon.py                 ← inotify + polling; circuit breaker; transactional sync;
 │   │                                socket API (1400 lines)
-│   ├── watcher.py                ← File change watcher for auto-update
+│   ├── watcher.py                ← File change watcher for auto-sync
 │   ├── update_sync.py            ← cmd_merge, cmd_update, cmd_sync
 │   ├── embeddings.py             ← TF-IDF char n-gram embeddings for semantic search
 │   ├── explain.py                ← explain-label, why-ambiguous
@@ -534,7 +534,7 @@ scripts/
 │   ├── kb_index.py               ← Unified KB FTS5+BM25 index (kb_paragraphs table, cross memory+knowledge query)
 │   ├── kb_cluster.py             ← KB clustering (union-find on FTS5 similarity, scope_id/canonical_id/principle_ref)
 │   ├── kb_global.py              ← Cross-project global KB (~/.code2database_global_kb/global.db, reusable knowledge)
-│   ├── kb_audit.py               ← KB audit (counts by kind, stale, low-confidence, citations, audit_log integration)
+│   ├── kb_audit.py               ← KB review (counts by kind, stale, weak-confidence, citations, audit_log integration)
 │   ├── kb_conflict.py
 │   ├── build_multi.py             ← Multi-project aggregate build (manifest-driven, project-name domain prefix)
 │   ├── c2d_foreign.py             ← Cross-C2D foreign_refs + watched_c2ds (add/sync/list/remove)
@@ -690,7 +690,7 @@ Test functions are filtered out before scoring using patterns: `test_`, `testcas
 
 ### Vtable Dispatch Resolution
 
-Three-phase resolution of indirect calls through struct field assignments:
+Three-stage resolution of indirect calls through struct field assignments:
 
 1. **Direct field assignment** (e.g., `.submit_request = nvme_submit_request`): Creates `vtable_dispatch` edge from the calling function to the assigned function
 2. **Callback bridging** (2-hop): If function A calls function B with a callback argument, and that callback is registered elsewhere, create edge from A to the callback target
@@ -822,7 +822,7 @@ Code2Database's current capabilities, organized by category:
 - Conditional compilation tracking (#ifdef, //go:build, #[cfg], sys.platform, @Profile)
 
 ### Graph Construction
-- Vtable dispatch resolution (3-phase + typed ops_bindings via clang)
+- Vtable dispatch resolution (3-stage + typed ops_bindings via clang)
 - Callback bridging (2-hop)
 - Domain classification + external code separation
 - Cross-domain Leiden community detection

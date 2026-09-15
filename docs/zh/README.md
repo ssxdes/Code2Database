@@ -580,7 +580,7 @@ python3 scripts/code2database_builder.py daemon-start --graph code2db-out/ --sou
 
 # 另一个终端——查询状态、暂停手动更新、恢复
 python3 scripts/code2database_builder.py daemon-status --graph code2db-out/
-python3 scripts/code2database_builder.py daemon-pause --graph code2db-out/ --reason "manual update"
+python3 scripts/code2database_builder.py daemon-pause --graph code2db-out/ --reason "手动编辑"
 python3 scripts/code2database_builder.py daemon-resume --graph code2db-out/
 
 # 强制刷新某文件

@@ -585,7 +585,7 @@ python3 scripts/code2database_builder.py query \
 
 支持子句：`MATCH`（节点/边模式）、`WHERE`（含 `CONFIG(var, 'pred')` 过滤）、`RETURN`（投影）。完整 schema 见 `references/data_model.md`。
 
-## 按需 / 低权重命令
+## 按需命令
 
 ### `think-chain`
 

@@ -26,7 +26,7 @@ python3 -m pytest tests/ -v
 1. **Fork** the repository and create a feature branch
 2. **Make your changes** — keep diffs minimal and focused
 3. **Run tests** — ensure `python3 -m pytest tests/` passes
-4. **Update documentation** — if you add features, update `docs/en/` and `docs/zh/` accordingly
+4. **Refresh documentation** — if you add features, refresh `docs/en/` and `docs/zh/` accordingly
 5. **Submit a pull request** with a clear description of the change
 
 ## Code Style
@@ -40,7 +40,7 @@ python3 -m pytest tests/ -v
 
 - Documentation lives in `docs/en/` (English) and `docs/zh/` (Chinese)
 - The `SKILL.md` in each language directory is the main skill instruction file
-- When adding new features, update both language versions
+- When adding new features, refresh both language versions
 - Reference docs go in `docs/*/references/`
 
 ## Adding a New Language Scanner
@@ -50,7 +50,7 @@ python3 -m pytest tests/ -v
 3. Register in `scripts/_scanner/__init__.py`
 4. Add tree-sitter binding to `scripts/requirements.txt`
 5. Add tests in `tests/`
-6. Update `skill.json` and both `SKILL.md` files
+6. Refresh `skill.json` and both `SKILL.md` files
 
 ## Adding a New Capability Module
 
@@ -60,10 +60,10 @@ When extending Code2Database with a new reasoning, query, or operational capabil
 2. Wire CLI commands in `scripts/code2database_builder.py` (argparse routing)
 3. Add unit tests in `tests/` covering the core behavior
 4. Document config fields (if any) in `docs/<lang>/RUNTIME_CONFIG.md` (both EN and ZH)
-5. Update `skill.json` `commands` array and `output_files` (if new artifacts are produced)
-6. Update `docs/<lang>/SKILL.md` Quick Reference and Constraint sections (both EN and ZH)
-7. Update `README.md` and `docs/zh/README.md` Capability/Feature tables
-8. Update `CLAUDE.md` and `AGENTS.md` if the capability introduces constraints or query entry points
+5. Refresh `skill.json` `commands` array and `output_files` (if new artifacts are produced)
+6. Refresh `docs/<lang>/SKILL.md` Quick Reference and Constraint sections (both EN and ZH)
+7. Refresh `README.md` and `docs/zh/README.md` Capability/Feature tables
+8. Refresh `CLAUDE.md` and `AGENTS.md` if the capability introduces constraints or query entry points
 9. Add a CHANGELOG entry under `### Added` describing the capability and its commands
 
 Keep the boundary clear: SKILL.md is for AI agents using the tool; CLAUDE.md/AGENTS.md are for developers modifying the tool; reference docs are for on-demand detail; OVERVIEW.md is internal architecture only.

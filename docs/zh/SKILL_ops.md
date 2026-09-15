@@ -48,7 +48,7 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 
 **非破坏性写入保证**：`update-node` / `update-edge` / `apply-invariants` / `auto-enhance` / `profile-evolve` 把 LLM 补充存储为 `{key}_supplemented` 字段——原始扫描数据永不覆盖。每条补充带 `_supplement_meta`（source / confidence / timestamp / original），可在 `describe-node` 输出中追溯；`rollback` 按时间或范围回滚。原始扫描事实始终保留，LLM 增量数据可追溯、可回滚。
 
-## Tier 1 — 高权重命令（速查）
+## Tier 1 — 核心命令（速查）
 
 | 命令 | 用途 |
 |------|------|
@@ -75,9 +75,9 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 | `kb-rollback` | 把 kb_item 回滚到旧版本（保留当前为版本历史） |
 | `kb-conflict` | 检测同 cluster 内矛盾条目（yes/no, must/must not 等） |
 | `kb-global-add` / `kb-global-search` / `kb-global-share` / `kb-global-import` | 跨项目全局 KB（~/.code2database_global_kb/） |
-| `kb-global-share-memory` / `kb-global-search-memory` / `kb-global-import-memory` | 跨项目全局记忆 Q&A：将高权重记忆导出到全局 KB、跨项目搜索相似 Q&A、将匹配项导入当前项目的 memory.db（含合并） |
+| `kb-global-share-memory` / `kb-global-search-memory` / `kb-global-import-memory` | 跨项目全局记忆 Q&A：将最有价值的记忆导出到全局 KB、跨项目搜索相似 Q&A、将匹配项导入当前项目的 memory.db（含合并） |
 
-## 路由表 — 按问题类型分组的中权重命令
+## 路由表 — 按问题类型分组的情景命令
 
 > **可执行捷径**：这里的多个路由族（质量检查、文档对齐）也可从父技能一次调用完成 — `c2d ask --recipe quality` / `c2d ask --question "..."`（见 `c2d recipes`）。
 
@@ -92,7 +92,7 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 | **导出 / 插件 / 基准** | `export-html` / `export-obsidian` / `web-ui`；`plugins` / `validate-plugin`；`bug-benchmark` |
 | **Embeddings（实验性）** | `embeddings-build` → `embeddings-search` |
 
-## 按需命令（低权重，实验性 / 罕用）
+## 按需命令（专项 / 罕用）
 
 仅列出**名字**。调用前先读 `references/ops_commands.md`——仅在用户显式要求时使用。
 

@@ -1003,7 +1003,7 @@ python3 scripts/code2database_builder.py import-foreign-knowledge \
   --graph B/c2db-out/ --foreign-c2d A/c2db-out/ --project-name A
 ```
 
-## 按需 / 低权重命令
+## 按需命令
 
 ### `domain`
 

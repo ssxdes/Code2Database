@@ -27,7 +27,7 @@ This sub-skill does **not** re-scan or rebuild the graph. It assumes `code2db-ou
   - "Which functions hold this lock?"
   - "Query cgdb tables directly" (clang backend — types, CFG, data flow, ops bindings, sync primitives, config predicates, time-travel versions)
 
-## Tier 1 — High-weight Commands (Quick Reference)
+## Tier 1 — Core Commands (Quick Reference)
 
 These are the commands you'll reach for most often. Each one replaces dozens of grep/Read calls.
 
@@ -47,7 +47,7 @@ These are the commands you'll reach for most often. Each one replaces dozens of 
 | `blame-node` | Find the commit that introduced a node |
 | `query` | Cypher-subset query (MATCH/WHERE/RETURN) for one-off structured queries |
 
-## Routing Table — Medium-weight Commands by Question Type
+## Routing Table — Situational Commands by Question Type
 
 When the question type matches one of these, use the listed command sequence. Read the reference file (`references/analysis_commands.md`) only when you need detailed syntax.
 
@@ -75,7 +75,7 @@ Commonly used: `cgdb_search_symbols`, `cgdb_find_invokers` / `cgdb_find_invoked`
 
 **Prerequisite**: cgdb tables are populated only when the `clang` extraction backend is enabled (auto-detected when libclang is installed, or forced with `--extraction-backend clang`). In tree-sitter-only mode, cgdb tables are empty and these MCP tools return empty results — fall back to the standard `code2database_*` MCP tools.
 
-## On-demand Commands (low-weight, experimental / rare)
+## On-demand Commands (specialized / rare)
 
 These commands are listed by **name only**. They are experimental, niche, or rarely needed. Read `references/analysis_commands.md` to learn what each does before invoking — only when the user explicitly asks for them.
 

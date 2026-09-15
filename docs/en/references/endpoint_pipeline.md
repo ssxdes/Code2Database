@@ -55,7 +55,7 @@ Claude reads the endpoint list and for each endpoint judges:
 
 ## Step 5: Write back to graph
 
-Run the classify-endpoints command to update graph data:
+Run the classify-endpoints command to refresh graph data:
 
 ```bash
 python3 "$SKILL_DIR/scripts/code2database_builder.py" classify-endpoints \

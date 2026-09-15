@@ -585,7 +585,7 @@ python3 scripts/code2database_builder.py query \
 
 Supported clauses: `MATCH` (node/edge patterns), `WHERE` (filters including `CONFIG(var, 'pred')`), `RETURN` (projection). See `references/data_model.md` for the full schema.
 
-## On-demand / Low-weight Commands
+## On-demand Commands
 
 ### `think-chain`
 

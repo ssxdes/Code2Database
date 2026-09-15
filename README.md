@@ -342,12 +342,12 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 
 ## Command Reference
 
-### Build & Update
+### Build & Sync
 
 | Command | Description |
 |---------|-------------|
 | `build` | Build invocation graph from extraction JSON |
-| `update` | Incremental update (rescan changed files) |
+| `update` | Incremental re-scan of changed files |
 | `sync` | Merge local + git-tracked code graph |
 | `quick-update` | One-click patch + light-scan (no LLM) |
 | `auto-profile` | Auto-detect project type and generate profile |
@@ -568,7 +568,7 @@ The skill is split into 3 sub-skills to keep LLM context lean. Each sub-skill ha
 
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|
-| `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded. 27 Tier-1 high-weight commands incl. the `c2d` umbrella (scan, build, explore-flow, describe-node, trace-chain, etc.) |
+| `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded. 27 Tier-1 core commands incl. the `c2d` umbrella (scan, build, explore-flow, describe-node, trace-chain, etc.) |
 | `Code2Database-analysis` | `/Code2Database-analysis` | Deep semantic analysis — concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb tables. 13 Tier-1 commands + 19 `cgdb_*` MCP tools |
 | `Code2Database-ops` | `/Code2Database-ops` | Graph editing + ops — transactions, daemon, profile/doc-code, exports, plugins, memory, embeddings. 23 Tier-1 commands |
 
@@ -586,7 +586,7 @@ python3 scripts/code2database_builder.py daemon-start --graph code2db-out/ --sou
 
 # In another terminal — query status, pause for manual updates, resume
 python3 scripts/code2database_builder.py daemon-status --graph code2db-out/
-python3 scripts/code2database_builder.py daemon-pause --graph code2db-out/ --reason "manual update"
+python3 scripts/code2database_builder.py daemon-pause --graph code2db-out/ --reason "manual edit"
 python3 scripts/code2database_builder.py daemon-resume --graph code2db-out/
 
 # Force-refresh a specific file
@@ -664,7 +664,7 @@ This separation lets you:
 - **Global-to-local query mode**: always start from micro/lite context packs, then drill down
 - **Only seven labels** supported (API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end)
 - **Do not propose fixes** before finding root cause
-- **Always verify** after sync/update operations
+- **Always verify** after sync operations
 - **DB writes need user confirmation**: LLM-initiated `update-node` / `update-edge` / `patch-profile` / `apply-semantics` / `apply-invariants` / `auto-enhance` (EXTRACTED+evidence bypasses; INFERRED requires confirm) / `profile-evolve --apply` (EXTRACTED only) / `doc-mark-stale` must prompt for user confirmation to prevent hallucinated data poisoning the graph
 - **Transactional writes**: wrap multi-step DB changes in `tx-begin` / `tx-commit` so failures roll back atomically; `patch-from-diff` / `patch-from-git` already wrap by default
 - **Daemon freshness**: before important queries, call `daemon-status`; if `syncing` or pending events, call `daemon-wait-sync` to block until sync completes

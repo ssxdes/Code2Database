@@ -27,7 +27,7 @@ parent_skill: Code2Database
   - "哪些函数持有这把锁？"
   - "直接查询 cgdb 表"（clang 后端——类型、CFG、数据流、ops 绑定、同步原语、配置谓词、时间旅行版本）
 
-## Tier 1 — 高权重命令（速查）
+## Tier 1 — 核心命令（速查）
 
 最常使用的命令。每一条都能替代数十次 grep/Read。
 
@@ -47,7 +47,7 @@ parent_skill: Code2Database
 | `blame-node` | 定位引入某节点的提交 |
 | `query` | Cypher 子集查询（MATCH/WHERE/RETURN），用于一次性结构化查询 |
 
-## 路由表 — 按问题类型分组的中权重命令
+## 路由表 — 按问题类型分组的情景命令
 
 当问题类型匹配下列某项时，使用所列命令序列。仅在需要详细语法时才读取参考文档（`references/analysis_commands.md`）。
 
@@ -75,7 +75,7 @@ parent_skill: Code2Database
 
 **前置条件**：仅当 `clang` 提取后端启用时（安装 libclang 后自动检测，或用 `--extraction-backend clang` 强制）才会填充 cgdb 表。tree-sitter-only 模式下 cgdb 表为空，这些 MCP 工具返回空结果——回退到标准 `code2database_*` MCP 工具。
 
-## 按需命令（低权重，实验性 / 罕用）
+## 按需命令（专项 / 罕用）
 
 这些命令仅列出**名字**。它们是实验性的、细分场景的或罕用的。在用户显式要求时，先读 `references/analysis_commands.md` 了解每个命令做什么，再调用。
 

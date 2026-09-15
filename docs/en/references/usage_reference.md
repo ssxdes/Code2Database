@@ -651,7 +651,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
 
 Memory tiers: L0 (hot, weight>0.7) / L1 (warm, 0.3-0.7) / L2 (cold, <0.3)
 Root memory merging: similar questions (Jaccard>0.7) auto-merge, preserving version history
-Weight decay: recency x importance x access, low-weight auto-archived as experience
+Weight decay: recency x importance x access, decayed entries auto-archived as experience
 
 ## Step 9 — Export
 

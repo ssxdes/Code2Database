@@ -406,7 +406,7 @@ scripts/
 │   │                                import/include extraction, condition Z3 form generation,
 │   │                                sync primitive pattern detection (per-language)
 │   ├── unified_id.py             ← Cross-language node ID: SHA-256 truncated to 60 bits,
-│   │                                high bit cleared for SQLite signed INTEGER, language prefix
+│   │                                top bit cleared for SQLite signed INTEGER, language prefix
 │   ├── changes.py                ← File fingerprint (mtime_ns:size), manifest save/load,
 │   │                                detect_changes for incremental updates
 │   ├── utils.py                  ← MIN_PYTHON=(3,8), EXTENSION_MAP, LANG_EXTENSIONS,
@@ -456,7 +456,7 @@ scripts/
 │   │                                functions called by build_graph (setup, filtering, vtable,
 │   │                                dispatch, labeling, goto annotation, etc.)
 │   ├── streaming_graph.py        ← StreamingGraph: NetworkX-compatible API that streams to
-│   │                                SQLite for low-memory builds (1.4M nodes in ~1.9GB RAM)
+│   │                                SQLite for memory-frugal builds (1.4M nodes in ~1.9GB RAM)
 │   ├── sqlite_store.py           ← SQLiteStore: WAL journal, 64MB cache, mmap 256MB,
 │   │                                schema migration v1→v6, field_access + global_access tables
 │   ├── sqlite_postprocess.py     ← Build indexes, CODE2DATABASE_SUMMARY.md, domain READMEs,
@@ -468,7 +468,7 @@ scripts/
 │   ├── cgdb_store.py             ← CGDBWriter + CGDBReader ABCs, SQLiteCGDBStore implementation
 │   ├── cgdb_ingest.py            ← Bulk import IngestBatch into cgdb tables
 │   ├── cgdb_sync.py              ← Sync legacy functions/edges ↔ cgdb_nodes/cgdb_edges
-│   ├── cgdb_incremental.py       ← Per-file incremental cgdb update (delete + re-insert)
+│   ├── cgdb_incremental.py       ← Per-file incremental cgdb sync (delete + re-insert)
 │   ├── cgdb_versions.py          ← graph_versions time-travel: record version, diff versions
 │   ├── cgdb_ops_bind.py          ← Typed vtable dispatch: FieldDecl → FunctionDecl bindings
 │   ├── cgdb_config_predicates.py ← ConfigPredicate: BDD + Z3 form, UNCONDITIONAL, CONTRADICTORY
@@ -500,7 +500,7 @@ scripts/
 │   ├── llm_invariants.py         ← LLM-driven invariant extraction
 │   ├── plugins.py                ← Plugin loading and execution
 │   ├── patcher.py                ← Incremental patching (patch-from-diff, patch-from-git, light-scan)
-│   ├── update_sync.py            ← Update, sync, merge operations
+│   ├── update_sync.py            ← Incremental sync and merge commands
 │   ├── update_cmd.py             ← update-node, update-edge, patch-profile (LLM supplements)
 │   ├── changelog_update.py       ← quick-update, export-changes, merge-changes, semantic-status
 │   ├── export.py                 ← HTML + Obsidian export
@@ -803,7 +803,7 @@ The primary storage is JSON files for human readability, but a SQLite backend (`
 
 - **Efficient querying**: SQL queries instead of loading entire JSON files
 - **Reduced disk usage**: zlib compression for body_text, no redundant indexes
-- **Scalability**: Handles 1.4M-node graphs with the `StreamingGraph` low-memory backend (~1.9GB RAM vs ~24GB with NetworkX)
+- **Scalability**: Handles 1.4M-node graphs with the `StreamingGraph` memory-frugal backend (~1.9GB RAM vs ~24GB with NetworkX)
 - **cgdb layer**: 13 typed semantic tables coexist with legacy `functions`/`edges` for backward compat
 - **Schema evolution**: `cgdb_migrations.run_migrations` ALTERs tables in-place, preserving data
 

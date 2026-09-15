@@ -48,7 +48,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 
 **Non-destructive write guarantee**: `update-node` / `update-edge` / `apply-invariants` / `auto-enhance` / `profile-evolve` store LLM supplements as `{key}_supplemented` fields — original scan data is never overwritten. Each supplement carries `_supplement_meta` (source / confidence / timestamp / original), visible in `describe-node` output; `rollback` reverts by time or scope. Original scan facts are always preserved; LLM incremental data is traceable and rollback-able.
 
-## Tier 1 — High-weight Commands (Quick Reference)
+## Tier 1 — Core Commands (Quick Reference)
 
 | Command | Purpose |
 |---------|---------|
@@ -75,9 +75,9 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 | `kb-rollback` | Roll a kb_item back to a prior version (saves current as version history) |
 | `kb-conflict` | Detect contradictory items in the same cluster (yes/no, must/must not, ...) |
 | `kb-global-add` / `kb-global-search` / `kb-global-share` / `kb-global-import` | Cross-project global KB (~/.code2database_global_kb/) |
-| `kb-global-share-memory` / `kb-global-search-memory` / `kb-global-import-memory` | Cross-project global memory Q&A: share high-weight memories to the global KB, search for similar Q&A across projects, import matches into the current project's memory.db (with merge) |
+| `kb-global-share-memory` / `kb-global-search-memory` / `kb-global-import-memory` | Cross-project global memory Q&A: share the most valuable memories to the global KB, search for similar Q&A across projects, import matches into the current project's memory.db (with merge) |
 
-## Routing Table — Medium-weight Commands by Question Type
+## Routing Table — Situational Commands by Question Type
 
 > **Executable shortcut**: several routing families here (quality checks, doc-alignment) are also runnable in one call from the parent skill — `c2d ask --recipe quality` / `c2d ask --question "..."` (see `c2d recipes`).
 
@@ -92,7 +92,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 | **Export / plugin / benchmark** | `export-html` / `export-obsidian` / `web-ui` ; `plugins` / `validate-plugin` ; `bug-benchmark` |
 | **Embeddings (experimental)** | `embeddings-build` → `embeddings-search` |
 
-## On-demand Commands (low-weight, experimental / rare)
+## On-demand Commands (specialized / rare)
 
 Listed by **name only**. Read `references/ops_commands.md` before invoking — only when the user explicitly asks for them.
 

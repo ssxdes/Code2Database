@@ -77,7 +77,7 @@ Borrowing the Deep Module concept from codebase-design:
 | **Interface** (exposed surface) | API_entry functions | Public functions exposed by the domain |
 | **Implementation** (hidden) | Non-API functions within domain | Internal logic not exposed externally |
 | **Depth** (small interface, large implementation) | `API_entry count / total functions in domain` | Smaller ratio = deeper (few interfaces, rich behavior) |
-| **Leverage** (invoker benefit) | How many external invokers an API_entry serves | One API_entry serving N invokers = high leverage |
+| **Leverage** (invoker benefit) | How many external invokers an API_entry serves | One API_entry serving N invokers = strong leverage |
 | **Locality** (maintainer benefit) | Change concentration | One-domain-function change = strong locality |
 
 **Depth assessment**:
@@ -148,7 +148,7 @@ python3 "$SKILL_DIR/scripts/code2database_scanner.py" scan \
 
 **Interactive confirmation**: When multiple build configurations are detected, builder prompts for selection. In non-interactive scenarios, use `--build-config Release` explicitly.
 
-**Output**: CODE2DATABASE_SUMMARY.md gains "Build Configuration" section; context_pack gains `build_config` field; standalone file `.code2database_build_config.json` for incremental update reuse.
+**Output**: CODE2DATABASE_SUMMARY.md gains "Build Configuration" section; context_pack gains `build_config` field; standalone file `.code2database_build_config.json` for incremental re-scan reuse.
 
 ## Community Detection (Leiden Algorithm)
 
@@ -226,7 +226,7 @@ Post-build pass: scans header files to bridge remaining unresolved external endp
 
 ## SQLite Storage Backend
 
-For large graphs, SQLite provides efficient querying with low memory overhead.
+For large graphs, SQLite provides efficient querying with modest memory overhead.
 
 Database schema (legacy tables):
 
@@ -376,7 +376,7 @@ automatically.
 
 ### Cross-Language Unified Node ID
 
-Every node ID across every language is a SHA-256 hash truncated to 60 bits (high bit cleared for SQLite signed INTEGER compatibility), prefixed with a language code (`c:`, `go:`, `py:`, `java:`, `rust:`, `asm:`). This prevents cross-language collisions while keeping IDs compact. See `_scanner/unified_id.py`.
+Every node ID across every language is a SHA-256 hash truncated to 60 bits (top bit cleared for SQLite signed INTEGER compatibility), prefixed with a language code (`c:`, `go:`, `py:`, `java:`, `rust:`, `asm:`). This prevents cross-language collisions while keeping IDs compact. See `_scanner/unified_id.py`.
 
 ## Globals Split
 

@@ -650,7 +650,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
 
 记忆分层：L0(热,权重>0.7) / L1(温,0.3-0.7) / L2(冷,<0.3)
 根记忆合并：相似问题(Jaccard>0.7)自动合并，保留版本历史
-权重衰减：recency x importance x access，低权重自动归档为experience
+权重衰减：recency x importance x access，衰减条目自动归档为 experience
 
 ## 第9步 — 导出
 

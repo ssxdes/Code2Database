@@ -1014,7 +1014,7 @@ python3 scripts/code2database_builder.py import-foreign-knowledge \
   --graph B/c2db-out/ --foreign-c2d A/c2db-out/ --project-name A
 ```
 
-## On-demand / Low-weight Commands
+## On-demand Commands
 
 ### `domain`
 

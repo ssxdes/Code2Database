@@ -18,7 +18,7 @@ You do not need to memorize the 261-command surface. One command covers the whol
 | `c2d session` | One-shot context load: brief + memory digest + graph state + known-unknowns | `c2d session` |
 | `c2d ask` | Ask any code question — the matched recipe runs the right read-only command sequence with aggregated output | `c2d ask --question "is bdev_start thread safe?"` |
 | `c2d capture` | Save a Q&A into project memory | `c2d capture --question "..." --answer "..." --category bdev --author you` |
-| `c2d freshen` | Freshness check → routes to full rebuild / daemon watch / per-file update | `c2d freshen` |
+| `c2d freshen` | Freshness check → routes to full rebuild / daemon watch / per-file sync | `c2d freshen` |
 | `c2d report` | Generate an artifact: design doc / diagnosis / html / mermaid / plantuml | `c2d report --kind design --module fs` |
 
 - `c2d recipes` lists the question→command routing recipes (13 built in; detail view: `c2d recipes --recipe thread-safety`). `c2d ask` classifies `--question` against them, or run one directly with `--recipe NAME`; no match falls back to the single-command intent router.

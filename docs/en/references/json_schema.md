@@ -294,7 +294,7 @@ Rules:
 - Root-level files: domain is `root`
 - External/unresolved invoked: domain is `external`
 
-## Incremental Update: Manifest File
+## Incremental Sync: Manifest File
 
 File: `code2db-out/.code2database_manifest.json`
 
@@ -784,7 +784,7 @@ Auto-generated Markdown at `code2db-out/ARCHITECTURE_FLOWS.md`. Contains:
 - **Domain Flow Map**: Cross-domain call edges ranked by volume (which domains call into which)
 - **Hub Functions**: Most-connected functions by in-degree + out-degree
 
-Generated for both NetworkX (in-memory) and SQLite (streaming/low-memory) build paths.
+Generated for both NetworkX (in-memory) and SQLite (streaming, memory-frugal) build paths.
 
 ## Plugin Architecture
 

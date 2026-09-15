@@ -81,15 +81,15 @@ Edit this file when you need to tune pipeline behavior without modifying source 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `decay_factor` | float | `0.95` | Weight decay multiplier applied during memory consolidation. Controls how quickly unused memory entries lose weight over time. Range 0.0–1.0. Higher values = slower decay (memories persist longer); lower values = faster decay (stale memories are pruned sooner). The actual decay uses exponential decay with `DECAY_LAMBDA = -ln(decay_factor)` per day. |
-| `consolidate_threshold` | int | `100` | Minimum number of memory entries before automatic consolidation runs. Consolidation performs weight decay, archives low-weight entries, and rebuilds indexes. Set higher to reduce consolidation frequency; lower to keep memory tighter. |
+| `consolidate_threshold` | int | `100` | Minimum number of memory entries before automatic consolidation runs. Consolidation performs weight decay, archives decayed entries, and rebuilds indexes. Set higher to reduce consolidation frequency; lower to keep memory tighter. |
 | `scratch_ttl_hours` | float | `24.0` | Time-to-live (in hours) for scratch (temporary) memory entries. Scratch entries auto-expire after this duration. Increase for longer-lived temporary context; decrease to clean up faster. |
 
 ### `semantic` — Semantic Analysis Parameters
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `stale_ratio_threshold` | float | `0.15` | Stale node ratio threshold for recommending a semantic update. When the fraction of stale (outdated) nodes exceeds this value, the system recommends running a full semantic update. Lower = more sensitive (recommends updates sooner); higher = more tolerant. |
-| `stale_api_threshold` | int | `1` | Minimum number of stale API entry points that triggers a semantic update recommendation. If any API entry becomes stale, a refresh is recommended. Set to `0` to never trigger on stale APIs alone; increase to tolerate more stale APIs. |
+| `stale_ratio_threshold` | float | `0.15` | Stale node ratio threshold for recommending a semantic refresh. When the fraction of stale (outdated) nodes exceeds this value, the system recommends running a full semantic refresh. Lower = more sensitive (recommends a refresh sooner); higher = more tolerant. |
+| `stale_api_threshold` | int | `1` | Minimum number of stale API entry points that triggers a semantic refresh recommendation. If any API entry becomes stale, a refresh is recommended. Set to `0` to never trigger on stale APIs alone; increase to tolerate more stale APIs. |
 
 ### `invariants` — Invariant Extraction Parameters
 
@@ -111,7 +111,7 @@ Edit this file when you need to tune pipeline behavior without modifying source 
 | `rollback_window` | int | `100` | Number of applied enhancements retained in the rollback log. Older entries beyond this window are pruned. |
 | `batch_confirm_size` | int | `20` | Number of pending INFERRED enhancements per `batch-confirm` call. |
 
-### `transactions` — Transactional Update Parameters
+### `transactions` — Transactional Write Parameters
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -172,7 +172,7 @@ Edit this file when you need to tune pipeline behavior without modifying source 
 | `debounce_ms` | int | `500` | Debounce window for editor saves. Lower = more responsive but more re-scans. |
 | `batch_window_ms` | int | `1000` | Batch window for coalescing multiple events. |
 | `auto_rebuild_outputs` | bool | `true` | Touch `CODE2DATABASE_SUMMARY.md`, context packs, indices after each sync. |
-| `idle_sleep_minutes` | int | `30` | Idle sleep before daemon enters low-power polling. |
+| `idle_sleep_minutes` | int | `30` | Idle sleep before daemon enters power-saving polling. |
 | `max_events_per_minute` | int | `1000` | Circuit breaker threshold; above this, bulk rebuild is triggered. |
 | `backend` | string | `"auto"` | `"inotify"` (Linux), `"polling"`, or `"auto"` (inotify if available, else polling). |
 | `startup_grace_sec` | float | `60` | Startup grace period: file events seen during this window after daemon start are held, not synced. Avoids re-syncing a flurry of events from a build that just finished or a daemon restart. `daemon-wait-sync` and `daemon-force-refresh` end the grace early. Overridable via env `CALLGRAPH_DAEMON_STARTUP_GRACE_SEC`. |
@@ -215,7 +215,7 @@ Most `runtime.json` fields provide defaults that can be overridden by command-li
 }
 ```
 
-### For high-performance machines (64+ cores, 64GB+ RAM)
+### For large machines (64+ cores, 64GB+ RAM)
 ```json
 {
   "scan": {

@@ -41,7 +41,7 @@ When a callback registration pattern is detected (e.g. `pthread_create(&tid, NUL
 | Label | Meaning | Source |
 |-------|---------|--------|
 | `dead_code` | Function in dead preprocessor branch | `preproc_dead` |
-| `hub` | High betweenness-centrality function | `betweenness` |
+| `hub` | Large betweenness-centrality function | `betweenness` |
 
 ## Header Declaration vs API_entry Distinction
 

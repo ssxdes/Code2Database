@@ -1,4 +1,4 @@
-# build-multi Manifest Schema (中文)
+# build-multi Manifest 清单结构
 
 `build-multi` 命令通过 JSON manifest 文件从多个有依赖关系的项目构建统一 C2D。
 

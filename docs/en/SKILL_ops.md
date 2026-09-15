@@ -129,6 +129,8 @@ When you detect a question about **simple browsing, scanning, building, or gener
 | Document | Content |
 |----------|---------|
 | `references/ops_commands.md` | Full syntax for all ops commands (transactions, daemon, profile, doc-code, exports, plugins, memory, embeddings) |
+| `references/web_ui.md` | Web UI usage: HTTP API endpoints, keyboard shortcuts, performance notes |
+| `references/manifest_schema.md` | `build-multi` manifest schema for multi-project graphs |
 | `RUNTIME_CONFIG.md` *(inherited — parent skill dir)* | Runtime tuning (invariants, auto_enhance, transactions, ffi, web_ui, benchmark, profile_health, doc_code, daemon sections) |
 | `PROFILE_MANUAL.md` *(inherited — parent skill dir)* | Profile authoring (skip_names, callback_detection, struct_op_types, registration_macros, domain_rules, threading_models) |
 

@@ -129,6 +129,8 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 | 文档 | 内容 |
 |------|------|
 | `references/ops_commands.md` | 所有运维命令（事务、守护进程、profile、文档-代码、导出、插件、记忆、embeddings）的完整语法 |
+| `references/web_ui.md` | Web UI 使用（HTTP API 端点、快捷键、性能说明） |
+| `references/manifest_schema.md` | 多项目图谱的 `build-multi` manifest 清单结构 |
 | `RUNTIME_CONFIG.md` *（继承——父技能目录）* | 运行时调优（invariants、auto_enhance、transactions、ffi、web_ui、benchmark、profile_health、doc_code、daemon 各节） |
 | `PROFILE_MANUAL.md` *（继承——父技能目录）* | Profile 编写（skip_names、callback_detection、struct_op_types、registration_macros、domain_rules、threading_models） |
 

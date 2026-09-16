@@ -1414,6 +1414,9 @@ async function focusNodeOnly(nodeId) {
     loadNodeDetails(nodeId);
     pushNavHistory(nodeId);
     renderBreadcrumb();
+  } catch (e) {
+    document.getElementById('stats').textContent =
+      'Failed to load node: ' + (e && e.message ? e.message : e);
   } finally { hideLoading(); }
 }
 
@@ -1457,6 +1460,9 @@ async function focusNode(nodeId, depth) {
     applyFocusContext(nodeId);
     pushNavHistory(nodeId);
     renderBreadcrumb();
+  } catch (e) {
+    document.getElementById('stats').textContent =
+      'Failed to load neighborhood: ' + (e && e.message ? e.message : e);
   } finally { hideLoading(); }
 }
 
@@ -1709,38 +1715,51 @@ async function loadNodeDetails(nodeId) {
 }
 
 async function loadCode(nodeId) {
-  const data = await api('/api/code?node=' + encodeURIComponent(nodeId));
   const panel = document.getElementById('code-panel');
   const content = document.getElementById('code-content');
   const empty = document.getElementById('code-empty');
   const title = document.getElementById('code-panel-title');
-  const code = data.code || '';
-  if (code) {
-    // Render with line numbers using CSS counters. The counter-reset
-    // value is (startLine - 1) so the first line shows the correct
-    // source line number from the backend.
-    const startLine = data.line || 1;
-    content.style.counterReset = 'lineno ' + (startLine - 1);
-    const lines = code.split('\n');
-    // Join with '' — the .code-line spans are display:block and break
-    // lines themselves; a '\n' text node inside white-space:pre
-    // renders as a blank line between every pair of code lines.
-    content.innerHTML = lines.map(l =>
-      '<span class="code-line">' + escapeHtml(l) + '</span>').join('');
-    content.style.display = 'block';
-    empty.style.display = 'none';
-  } else {
+  showLoading();
+  try {
+    const data = await api('/api/code?node=' + encodeURIComponent(nodeId));
+    const code = data.code || '';
+    if (code) {
+      // Render with line numbers using CSS counters. The counter-reset
+      // value is (startLine - 1) so the first line shows the correct
+      // source line number from the backend.
+      const startLine = data.line || 1;
+      content.style.counterReset = 'lineno ' + (startLine - 1);
+      const lines = code.split('\n');
+      // Join with '' — the .code-line spans are display:block and break
+      // lines themselves; a '\n' text node inside white-space:pre
+      // renders as a blank line between every pair of code lines.
+      content.innerHTML = lines.map(l =>
+        '<span class="code-line">' + escapeHtml(l) + '</span>').join('');
+      content.style.display = 'block';
+      empty.style.display = 'none';
+    } else {
+      content.style.display = 'none';
+      empty.style.display = 'block';
+      empty.textContent = 'No source available';
+    }
+    // Show file path + line range in the title bar so users can jump
+    // to the same location in their editor. The backend returns the
+    // source file and the node's starting line.
+    const fileLabel = data.file ? data.file.split('/').pop() : '';
+    const lineLabel = data.line ? (':' + data.line) : '';
+    title.textContent = fileLabel ? (fileLabel + lineLabel) : (nodeId || 'Source');
+    title.title = data.file ? (data.file + lineLabel) : '';
+    panel.classList.add('visible');
+  } catch (e) {
+    // A failed source fetch used to vanish as an unhandled rejection —
+    // the panel never opened and nothing told the user why.
     content.style.display = 'none';
     empty.style.display = 'block';
-  }
-  // Show file path + line range in the title bar so users can jump
-  // to the same location in their editor. The backend returns the
-  // source file and the node's starting line.
-  const fileLabel = data.file ? data.file.split('/').pop() : '';
-  const lineLabel = data.line ? (':' + data.line) : '';
-  title.textContent = fileLabel ? (fileLabel + lineLabel) : (nodeId || 'Source');
-  title.title = data.file ? (data.file + lineLabel) : '';
-  panel.classList.add('visible');
+    empty.textContent = 'Failed to load source: ' + (e && e.message ? e.message : e);
+    title.textContent = 'Source';
+    title.title = '';
+    panel.classList.add('visible');
+  } finally { hideLoading(); }
 }
 
 function closeCodePanel() {
@@ -1812,6 +1831,9 @@ async function loadImpact(nodeId) {
     if (data.max_depth) title += ' · depth ≤ ' + data.max_depth;
     div.innerHTML = '<div class="call-list-title">' + escapeHtml(title) + '</div>';
     sidebar.appendChild(div);
+  } catch (e) {
+    document.getElementById('stats').textContent =
+      'Impact failed: ' + (e && e.message ? e.message : e);
   } finally { hideLoading(); }
 }
 
@@ -2091,8 +2113,14 @@ document.getElementById('png-btn').addEventListener('click', exportPNG);
 document.getElementById('json-btn').addEventListener('click', exportJSON);
 document.getElementById('cycle-btn').addEventListener('click', toggleCycles);
 document.getElementById('reload-btn').addEventListener('click', async () => {
-  await api('/api/reload', { method: 'POST' }); loadSummary();
-  if (cache.focus) focusNode(cache.focus, 1);
+  try {
+    await api('/api/reload', { method: 'POST' });
+    loadSummary();
+    if (cache.focus) focusNode(cache.focus, 1);
+  } catch (e) {
+    document.getElementById('stats').textContent =
+      'Reload failed: ' + (e && e.message ? e.message : e);
+  }
 });
 document.getElementById('help-btn').addEventListener('click', () => {
   const m = document.getElementById('help-modal');

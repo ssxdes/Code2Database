@@ -96,6 +96,9 @@ function syncCyFromModel() { syncCyCalls++; }
 function drawMinimap() {}
 function loadNodeDetails(id) {}
 function focusNode(id, depth) {}  // breadcrumb crumbs reference it in markup only
+function showLoading() {}   // replaced by the real one when extracted
+function hideLoading() {}
+let cache = { nodes: [], edges: [], focus: null };
 // localStorage is NOT stubbed here: tests that exercise persistence
 // bring their own in-memory stub (see the line-number roundtrip test).
 // Minimal document stub. Elements are cached per id (a function that
@@ -782,3 +785,56 @@ class TestCopyCodeJs(unittest.TestCase):
               writeText: () => { called = true; return Promise.resolve(); },
             } };
         """)
+
+
+class TestFailureSurfacingJs(unittest.TestCase):
+    """Backend call failures used to vanish as unhandled rejections —
+    the code panel never opened, focus/impact clicks did nothing. Each
+    failure path must land somewhere the user can see."""
+
+    _FETCH_500 = """
+        const fetch = async () =>
+          ({ ok: false, status: 500, statusText: 'boom' });
+    """
+
+    def _run_harness(self, tests, function_names, preamble=""):
+        js = _ui_js()
+        functions = "\n\n".join(_extract_function(js, n) for n in function_names)
+        proc = _run_node(_HARNESS % {"functions": functions,
+                                     "preamble": preamble, "tests": tests})
+        self.assertEqual(
+            proc.returncode, 0,
+            "node harness failed:\nSTDOUT: %s\nSTDERR: %s" % (proc.stdout, proc.stderr))
+        self.assertIn("ALL_OK", proc.stdout)
+
+    def test_focus_failure_lands_in_stats(self):
+        self._run_harness("""
+            await focusNode('func1', 1);
+            const stats = document.getElementById('stats');
+            assert.ok(stats.textContent.indexOf(
+                'Failed to load neighborhood: boom') === 0,
+                'got: ' + stats.textContent);
+        """, ["focusNode", "api"], preamble=self._FETCH_500)
+
+    def test_impact_failure_lands_in_stats(self):
+        self._run_harness("""
+            await loadImpact('func1');
+            const stats = document.getElementById('stats');
+            assert.ok(stats.textContent.indexOf('Impact failed: boom') === 0,
+                'got: ' + stats.textContent);
+        """, ["loadImpact", "api"], preamble=self._FETCH_500)
+
+    def test_code_failure_opens_panel_with_reason(self):
+        self._run_harness("""
+            await loadCode('func1');
+            const panel = document.getElementById('code-panel');
+            const empty = document.getElementById('code-empty');
+            const content = document.getElementById('code-content');
+            assert.ok(panel.classList.contains('visible'),
+                'the panel opens even on failure');
+            assert.strictEqual(empty.style.display, 'block');
+            assert.strictEqual(content.style.display, 'none');
+            assert.ok(empty.textContent.indexOf(
+                'Failed to load source: boom') === 0,
+                'got: ' + empty.textContent);
+        """, ["loadCode", "api"], preamble=self._FETCH_500)

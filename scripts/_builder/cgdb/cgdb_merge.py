@@ -124,7 +124,15 @@ def _load_graph_functions(graph_dir: str) -> Dict[str, dict]:
     funcs = {}
     domains = master.get("domains", {})
     for domain, domain_info in domains.items():
-        domain_file = domain_info.get("file", "")
+        # Build writes domains as {name: "domains/<sub>/<file>.json"}
+        # (a string relpath — see domain_split's domain_map). Accept the
+        # string form as well as a dict form {name: {"file": ...}}.
+        if isinstance(domain_info, str):
+            domain_file = domain_info
+        elif isinstance(domain_info, dict):
+            domain_file = domain_info.get("file", "")
+        else:
+            domain_file = ""
         if not domain_file:
             continue
         domain_path = os.path.join(graph_dir, domain_file)
@@ -137,13 +145,26 @@ def _load_graph_functions(graph_dir: str) -> Dict[str, dict]:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
         for func in domain_data.get("functions", []):
-            fid = func.get("id", "")
+            if isinstance(func, dict):
+                fid = func.get("id", "")
+                name = func.get("name", "")
+                source_file = func.get("source_file", "")
+                signature = func.get("signature", "")
+            elif isinstance(func, list) and len(func) >= 5 and func[0]:
+                # Position rows (current builds): [id, name, source_file,
+                # line, labels_json, signature]
+                fid = func[0]
+                name = func[1] or ""
+                source_file = func[2] or ""
+                signature = func[5] if len(func) > 5 else ""
+            else:
+                continue
             if fid:
                 funcs[fid] = {
-                    "name": func.get("name", ""),
-                    "domain": func.get("domain", domain),
-                    "source_file": func.get("source_file", ""),
-                    "signature": func.get("signature", ""),
+                    "name": name,
+                    "domain": domain,
+                    "source_file": source_file,
+                    "signature": signature,
                 }
     return funcs
 

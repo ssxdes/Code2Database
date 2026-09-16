@@ -153,9 +153,12 @@ def _load_functions(graph_dir: str) -> Dict[str, dict]:
         except (OSError, json.JSONDecodeError):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             continue
+        details = domain_data.get("function_details", {}) or {}
         for func in domain_data.get("functions", []):
-            fid = func.get("id", "")
-            if fid:
+            if isinstance(func, dict):
+                fid = func.get("id", "")
+                if not fid:
+                    continue
                 funcs[fid] = {
                     "name": func.get("name", ""),
                     "domain": func.get("domain", domain),
@@ -164,6 +167,29 @@ def _load_functions(graph_dir: str) -> Dict[str, dict]:
                     "labels": func.get("labels", []),
                     "semantic_desc": func.get("semantic_desc", ""),
                     "is_empty": func.get("is_empty", False),
+                }
+            elif isinstance(func, list) and len(func) >= 5 and func[0]:
+                # Position rows (current builds): [id, name, source_file,
+                # line, labels_json, signature]; rich attributes live in
+                # the separate function_details map.
+                fid = func[0]
+                labels_raw = func[4]
+                if isinstance(labels_raw, str) and labels_raw:
+                    try:
+                        labels = json.loads(labels_raw)
+                    except json.JSONDecodeError:
+                        labels = labels_raw
+                else:
+                    labels = labels_raw or []
+                extra = details.get(fid, {}) or {}
+                funcs[fid] = {
+                    "name": func[1] or "",
+                    "domain": domain,
+                    "source_file": func[2] or "",
+                    "signature": func[5] if len(func) > 5 else "",
+                    "labels": labels,
+                    "semantic_desc": extra.get("semantic_desc", ""),
+                    "is_empty": extra.get("is_empty", False),
                 }
     return funcs
 

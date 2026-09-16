@@ -643,6 +643,30 @@ class TestAutoExtract(unittest.TestCase):
         # by the first extract and preserved
         self.assertNotIn("[auto]", brief.get("project", ""))
 
+    def test_auto_extract_project_from_parent_dir(self):
+        """Build-multi projects carry no project_name and an empty
+        source_root in master.json; the directory holding the graph
+        output is the project root, so its basename becomes the name."""
+        proj_dir = os.path.join(self.tmp.name, "libstorage", "code2db-out")
+        os.makedirs(proj_dir)
+        with open(os.path.join(proj_dir,
+                  "code2database_master.json"), "w") as f:
+            json.dump({"source_root": "", "domains": {}}, f)
+        brief = brief_extract(proj_dir)
+        self.assertEqual(brief["project"], "libstorage")
+        self.assertIn("libstorage", brief["one_liner"])
+
+    def test_auto_extract_skips_generic_parent_dir(self):
+        """A graph output under a generic container directory (src/,
+        code/, ...) must not adopt the container as its project name."""
+        proj_dir = os.path.join(self.tmp.name, "src", "code2db-out")
+        os.makedirs(proj_dir)
+        with open(os.path.join(proj_dir,
+                  "code2database_master.json"), "w") as f:
+            json.dump({"source_root": "", "domains": {}}, f)
+        brief = brief_extract(proj_dir)
+        self.assertEqual(brief.get("project", ""), "")
+
 
 if __name__ == "__main__":
     unittest.main()

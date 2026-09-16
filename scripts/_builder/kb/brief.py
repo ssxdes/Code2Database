@@ -406,6 +406,16 @@ def _auto_extract_from_graph(graph_dir: str, brief: dict) -> None:
         basename = os.path.basename(source_root.rstrip("/"))
         if basename and basename not in ("tmp", "var", "home", "opt", "src"):
             project_name = basename
+    if not project_name:
+        # Last resort: the directory that holds the graph output usually
+        # is the project root (e.g. .../libstorage/code2db-out ->
+        # "libstorage"). Skip generic container names so build-multi
+        # projects under a shared parent don't pick up the parent.
+        _parent = os.path.basename(os.path.dirname(graph_dir.rstrip("/")))
+        if _parent and _parent not in (
+                "tmp", "var", "home", "opt", "src", "code", "code_talk",
+                "data", "output", "out", "workspace", "repos"):
+            project_name = _parent
     if not brief.get("project") and project_name:
         brief["project"] = project_name
 

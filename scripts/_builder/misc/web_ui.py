@@ -2272,9 +2272,18 @@ document.getElementById('filter-btn').addEventListener('click', () => {
 });
 document.querySelectorAll('.filter-label').forEach(cb => cb.addEventListener('change', applyFilters));
 
+// Keys typed into a form control must not trigger graph shortcuts —
+// the layout dropdown kept focus after a selection, so the next "d"
+// flipped the theme mid-interaction.
+function _keyTargetBlocksShortcuts(target) {
+  const tag = (target && target.tagName) || '';
+  return tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' ||
+    !!(target && target.isContentEditable);
+}
+
 // Keyboard navigation
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT') return;
+  if (_keyTargetBlocksShortcuts(e.target)) return;
   switch(e.key) {
     case '/': e.preventDefault(); document.getElementById('search').focus(); break;
     case 'f': case 'F': if (cy) cy.fit(undefined, 42); break;

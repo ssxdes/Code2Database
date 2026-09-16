@@ -615,3 +615,40 @@ class TestBreadcrumbCollapse(unittest.TestCase):
                 'no history means no overlay');
             assert.strictEqual(bc.innerHTML, '');
         """)
+
+
+class TestKeyboardShortcutGuardJs(unittest.TestCase):
+    """Shortcut keys must stay idle while a form control has focus —
+    the layout dropdown kept focus after a selection, so the next "d"
+    flipped the theme mid-interaction."""
+
+    def _run_harness(self, tests):
+        js = _ui_js()
+        functions = "\n\n".join(_extract_function(js, n)
+                                for n in ["_keyTargetBlocksShortcuts"])
+        proc = _run_node(_HARNESS % {"functions": functions, "tests": tests})
+        self.assertEqual(
+            proc.returncode, 0,
+            "node harness failed:\nSTDOUT: %s\nSTDERR: %s" % (proc.stdout, proc.stderr))
+        self.assertIn("ALL_OK", proc.stdout)
+
+    def test_form_controls_block_shortcuts(self):
+        self._run_harness("""
+            for (const tag of ['INPUT', 'SELECT', 'TEXTAREA']) {
+                assert.ok(_keyTargetBlocksShortcuts({ tagName: tag }),
+                    tag + ' must block shortcuts');
+            }
+            assert.ok(_keyTargetBlocksShortcuts(
+                { tagName: 'DIV', isContentEditable: true }),
+                'editable regions must block shortcuts');
+        """)
+
+    def test_plain_targets_keep_shortcuts(self):
+        self._run_harness("""
+            for (const tag of ['BODY', 'DIV', 'CANVAS']) {
+                assert.ok(!_keyTargetBlocksShortcuts({ tagName: tag }),
+                    tag + ' must keep shortcuts live');
+            }
+            assert.ok(!_keyTargetBlocksShortcuts(null),
+                'a missing target must not throw');
+        """)

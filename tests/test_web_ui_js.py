@@ -85,6 +85,7 @@ let cycleEdges = new Set();
 let highlightPath = [];
 let expandChildren = {};
 let activeNodeId = null;
+let navHistory = [];
 let syncCyCalls = 0;
 let layoutCalls = 0;
 let userPositioned = new Set();
@@ -94,6 +95,9 @@ function applyCommunityColors() {}
 function syncCyFromModel() { syncCyCalls++; }
 function drawMinimap() {}
 function loadNodeDetails(id) {}
+function focusNode(id, depth) {}  // breadcrumb crumbs reference it in markup only
+// localStorage is NOT stubbed here: tests that exercise persistence
+// bring their own in-memory stub (see the line-number roundtrip test).
 // Minimal document stub. Elements are cached per id (a function that
 // fetches the same element twice must see its own earlier writes) and
 // carry classList/setAttribute/textContent for the panel toggles.
@@ -512,3 +516,102 @@ class TestLayoutPreservationJs(unittest.TestCase):
             assert.strictEqual(layoutCalls, 1,
                 'fresh canvas keeps the auto-layout behavior');
         """, ["syncCyFromModel", "nodeClasses"])
+
+
+class TestBreadcrumbCollapse(unittest.TestCase):
+    """Navigation-trail fold toggle: the breadcrumb floats over the
+    canvas at toolbar height, so it must collapse down to a single
+    re-open button (and remember the choice) on demand."""
+
+    def _run_harness(self, tests):
+        js = _ui_js()
+        names = ("renderBreadcrumb", "toggleBreadcrumb", "_crumbToggleHtml",
+                 "_syncCrumbToggle", "escapeHtml", "jsAttr")
+        functions = "\n\n".join(_extract_function(js, n) for n in names)
+        proc = _run_node(_HARNESS % {"functions": functions, "tests": tests})
+        self.assertEqual(
+            proc.returncode, 0,
+            "node harness failed:\nSTDOUT: %s\nSTDERR: %s" % (proc.stdout, proc.stderr))
+        self.assertIn("ALL_OK", proc.stdout)
+
+    def test_history_renders_toggle_and_crumbs(self):
+        self._run_harness("""
+            allNodes['func1'] = { id: 'func1', name: 'func1' };
+            allNodes['func2'] = { id: 'func2', name: 'func2' };
+            navHistory.push('func1');
+            navHistory.push('func2');
+            renderBreadcrumb();
+            const bc = document.getElementById('breadcrumb');
+            assert.ok(bc.classList.contains('visible'),
+                'a non-empty trail must be visible');
+            assert.ok(bc.innerHTML.includes('crumb-toggle'),
+                'the fold button must ship with the trail');
+            assert.ok(bc.innerHTML.includes('func1'));
+            assert.ok(bc.innerHTML.includes('func2'));
+            assert.ok(bc.innerHTML.includes('focusNode'),
+                'earlier crumbs must stay clickable jump-backs');
+            assert.ok(!bc.classList.contains('collapsed'));
+            const btn = document.getElementById('crumb-toggle');
+            assert.strictEqual(btn.getAttribute('aria-pressed'), 'false');
+        """)
+
+    def test_toggle_folds_trail_and_persists(self):
+        self._run_harness("""
+            const store = {};
+            const localStorage = {
+              getItem: (k) => (k in store ? store[k] : null),
+              setItem: (k, v) => { store[k] = v; },
+            };
+            allNodes['func1'] = { id: 'func1', name: 'func1' };
+            navHistory.push('func1');
+            renderBreadcrumb();
+            toggleBreadcrumb();
+            const bc = document.getElementById('breadcrumb');
+            assert.ok(bc.classList.contains('collapsed'),
+                'one toggle must fold the trail');
+            assert.strictEqual(localStorage.getItem('c2d-breadcrumb'), 'off');
+            const btn = document.getElementById('crumb-toggle');
+            assert.strictEqual(btn.getAttribute('aria-pressed'), 'true');
+            assert.strictEqual(btn.getAttribute('aria-label'),
+                'Show navigation trail');
+            // Round trip: unfold again.
+            toggleBreadcrumb();
+            assert.ok(!bc.classList.contains('collapsed'));
+            assert.strictEqual(localStorage.getItem('c2d-breadcrumb'), 'on');
+            assert.strictEqual(btn.getAttribute('aria-pressed'), 'false');
+        """)
+
+    def test_collapsed_render_keeps_fold_and_reopen_button(self):
+        self._run_harness("""
+            const store = {};
+            const localStorage = {
+              getItem: (k) => (k in store ? store[k] : null),
+              setItem: (k, v) => { store[k] = v; },
+            };
+            allNodes['func1'] = { id: 'func1', name: 'func1' };
+            navHistory.push('func1');
+            renderBreadcrumb();
+            toggleBreadcrumb();
+            // A new focus re-renders while folded.
+            navHistory.push('func2');
+            allNodes['func2'] = { id: 'func2', name: 'func2' };
+            renderBreadcrumb();
+            const bc = document.getElementById('breadcrumb');
+            assert.ok(bc.classList.contains('collapsed'),
+                'a re-render must not lose the fold state');
+            assert.ok(bc.innerHTML.includes('crumb-toggle'),
+                'the re-open button must stay reachable');
+            assert.ok(bc.innerHTML.includes('func2'),
+                'the trail content stays in the DOM (CSS hides it)');
+            const btn = document.getElementById('crumb-toggle');
+            assert.strictEqual(btn.getAttribute('aria-pressed'), 'true');
+        """)
+
+    def test_empty_history_hides_container(self):
+        self._run_harness("""
+            renderBreadcrumb();
+            const bc = document.getElementById('breadcrumb');
+            assert.ok(!bc.classList.contains('visible'),
+                'no history means no overlay');
+            assert.strictEqual(bc.innerHTML, '');
+        """)

@@ -516,6 +516,15 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
   background: var(--overlay-bg); padding: 2px 10px; border-radius: 4px;
   z-index: var(--z-toolbar); max-width: 60%; }
 #breadcrumb.visible { display: flex; }
+/* Collapsed: the trail folds away, leaving just the re-open button. */
+#breadcrumb.collapsed { padding: 2px 4px; max-width: none; }
+#breadcrumb.collapsed .crumb, #breadcrumb.collapsed .crumb-sep { display: none; }
+#breadcrumb.collapsed .when-open { display: none; }
+#breadcrumb:not(.collapsed) .when-closed { display: none; }
+#crumb-toggle { padding: 0 4px; background: transparent; color: var(--muted-fg);
+  border: none; cursor: pointer; font-size: 11px; line-height: 16px; }
+#crumb-toggle:hover { color: var(--fg); }
+#crumb-toggle:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .crumb { cursor: pointer; color: var(--primary); font-size: 11px; }
 .crumb:hover { text-decoration: underline; }
 
@@ -1465,15 +1474,55 @@ function renderBreadcrumb() {
   if (!bc) return;
   if (navHistory.length === 0) { bc.innerHTML = ''; bc.classList.remove('visible'); return; }
   bc.classList.add('visible');
-  bc.innerHTML = navHistory.map((id, i) => {
+  bc.innerHTML = _crumbToggleHtml() + navHistory.map((id, i) => {
     const name = (allNodes[id] && allNodes[id].name) ? allNodes[id].name : id;
     const isLast = i === navHistory.length - 1;
     const escaped = escapeHtml(name.length > 24 ? name.substring(0, 22) + '…' : name);
     if (isLast) return '<span class="crumb" style="color:var(--fg);font-weight:600">' + escaped + '</span>';
     return '<span class="crumb" onclick="focusNode(' + jsAttr(id) + ',1)">' + escaped + '</span>' +
-           '<span style="color:var(--muted);margin:0 2px">›</span>';
+           '<span class="crumb-sep" style="color:var(--muted);margin:0 2px">›</span>';
   }).join('');
+  _syncCrumbToggle();
 }
+
+// Fold toggle — the trail floats over the canvas at toolbar height
+// and can cover graph content, so it collapses down to a single
+// re-open button. Glyph pick and visibility are pure CSS driven by
+// the .collapsed class, so a re-render never loses the fold state.
+function _crumbToggleHtml() {
+  return '<button id="crumb-toggle" onclick="toggleBreadcrumb()"' +
+         ' aria-label="Hide navigation trail" aria-pressed="false">' +
+         '<span class="when-open">&#171;</span><span class="when-closed">&#187;</span></button>';
+}
+
+function _syncCrumbToggle() {
+  const bc = document.getElementById('breadcrumb');
+  const btn = document.getElementById('crumb-toggle');
+  if (!bc || !btn) return;
+  const collapsed = bc.classList.contains('collapsed');
+  btn.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+  btn.setAttribute('aria-label', collapsed ? 'Show navigation trail' : 'Hide navigation trail');
+  btn.title = collapsed ? 'Show trail' : 'Hide trail';
+}
+
+function toggleBreadcrumb() {
+  const bc = document.getElementById('breadcrumb');
+  if (!bc) return;
+  bc.classList.toggle('collapsed');
+  _syncCrumbToggle();
+  try { localStorage.setItem('c2d-breadcrumb', bc.classList.contains('collapsed') ? 'off' : 'on'); } catch (e) {}
+}
+
+// Apply the saved fold preference on load — matches the theme
+// restore pattern so the collapsed state survives refreshes.
+(function applySavedBreadcrumb() {
+  let saved = null;
+  try { saved = localStorage.getItem('c2d-breadcrumb'); } catch (e) {}
+  if (saved === 'off') {
+    const bc = document.getElementById('breadcrumb');
+    if (bc) bc.classList.add('collapsed');
+  }
+})();
 
 // Collapse a node's expand-children: remove the neighbors it brought
 // in, preserving nodes that another expand path also reaches. This

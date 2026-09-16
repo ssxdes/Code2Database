@@ -43,7 +43,8 @@ def _domain_subdir(domain: str, domain_count: dict, max_per_dir: int = 50) -> st
 def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
                     max_per_dir: int = 50, build_info: dict = None,
                     profile: dict = None,
-                    node_supplements: dict = None):
+                    node_supplements: dict = None,
+                    project_name: str = ""):
     """Split the graph into per-domain JSON files with a master navigation file.
 
     Domain JSON files are organized under a ``domains/`` subdirectory with
@@ -70,6 +71,19 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
     - domains/<group>/code2database_domain_<sanitized>.json  (hierarchical)
     """
     _split_start = time.time()
+
+    # Carry-over protection: when the caller derives no name for this
+    # run (build-multi projects have no single source root), keep the
+    # value recorded by a previous split instead of blanking it out.
+    if not project_name:
+        _existing_master = os.path.join(outdir, "code2database_master.json")
+        if os.path.exists(_existing_master):
+            try:
+                _prev = json.loads(Path(_existing_master).read_text(
+                    encoding="utf-8"))
+                project_name = _prev.get("project_name", "") or ""
+            except (json.JSONDecodeError, OSError):
+                pass
 
     # --- OPTIMIZATION for LazySQLiteGraph ---
     # Avoid multiple G.nodes(data=True) traversals (each re-executes SQL +
@@ -643,6 +657,7 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
     master = {
         "type": "code2database_master",
         "source_root": source_root,
+        "project_name": project_name,
         "domains": domain_map,
         "domain_labels": domain_labels,
         "cross_domain_edges": sorted(cross_domain_edges,
@@ -668,6 +683,7 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
         with open(master_path, "w", encoding="utf-8") as _mf:
             _mf.write('{\n  "type": "code2database_master",\n')
             _mf.write(f'  "source_root": {json.dumps(source_root)},\n')
+            _mf.write(f'  "project_name": {json.dumps(project_name)},\n')
             _mf.write('  "domains": ')
             json.dump(domain_map, _mf, ensure_ascii=False, indent=2)
             _mf.write(',\n  "cross_domain_edges": [')

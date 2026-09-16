@@ -272,6 +272,65 @@ class TestSplitByDomain(unittest.TestCase):
             self.assertIn("edge_fields", domain_data)
             self.assertIn("source_tag", domain_data["edge_fields"])
 
+    def test_project_name_written_to_master(self):
+        from _builder.graph.graph_build import build_graph, split_by_domain
+        extraction = {
+            "functions": [
+                {"id": "root_f", "name": "f", "source_file": "f.c",
+                 "line": 10, "domain": "root", "labels": []},
+            ],
+            "edges": [],
+            "domains": ["root"],
+            "lang_stats": {"c": 1},
+        }
+        G, _ = build_graph(extraction)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            master_path = split_by_domain(G, tmpdir, source_root="/src",
+                                          project_name="libstorage")
+            with open(master_path) as f:
+                master = json.load(f)
+            self.assertEqual(master["project_name"], "libstorage")
+
+    def test_project_name_carried_over_on_rerun(self):
+        """A rerun that derives no name must keep the recorded one
+        instead of blanking it (build-multi reruns pass no name)."""
+        from _builder.graph.graph_build import build_graph, split_by_domain
+        extraction = {
+            "functions": [
+                {"id": "root_f", "name": "f", "source_file": "f.c",
+                 "line": 10, "domain": "root", "labels": []},
+            ],
+            "edges": [],
+            "domains": ["root"],
+            "lang_stats": {"c": 1},
+        }
+        G, _ = build_graph(extraction)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            split_by_domain(G, tmpdir, source_root="/src",
+                            project_name="libstorage")
+            master_path = split_by_domain(G, tmpdir, source_root="/src")
+            with open(master_path) as f:
+                master = json.load(f)
+            self.assertEqual(master["project_name"], "libstorage")
+
+    def test_project_name_empty_when_unknown(self):
+        from _builder.graph.graph_build import build_graph, split_by_domain
+        extraction = {
+            "functions": [
+                {"id": "root_f", "name": "f", "source_file": "f.c",
+                 "line": 10, "domain": "root", "labels": []},
+            ],
+            "edges": [],
+            "domains": ["root"],
+            "lang_stats": {"c": 1},
+        }
+        G, _ = build_graph(extraction)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            master_path = split_by_domain(G, tmpdir, source_root="")
+            with open(master_path) as f:
+                master = json.load(f)
+            self.assertEqual(master.get("project_name", ""), "")
+
 
 class TestCompactEdgeFormat(unittest.TestCase):
     def test_read_compact(self):

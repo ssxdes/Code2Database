@@ -106,8 +106,11 @@ let cache = { nodes: [], edges: [], focus: null };
 // carry classList/setAttribute/textContent for the panel toggles.
 const _els = {};
 function _mkEl() {
-  const el = { style: {}, innerHTML: '', textContent: '', title: '',
+  const el = { innerHTML: '', textContent: '', title: '',
                _cls: new Set(), _attrs: {}, _children: [], _listeners: {} };
+  const style = {};
+  style.setProperty = (k, v) => { style[k] = v; };
+  el.style = style;
   el.classList = {
     add: (c) => el._cls.add(c),
     remove: (c) => el._cls.delete(c),
@@ -130,8 +133,17 @@ const document = {
   getElementById: (id) => { if (!_els[id]) _els[id] = _mkEl(); return _els[id]; },
   createElement: (tag) => _mkEl(),
   addEventListener: (t, fn) => { (_docListeners[t] = _docListeners[t] || []).push(fn); },
+  removeEventListener: (t, fn) => {
+    const l = _docListeners[t] || [];
+    const i = l.lastIndexOf(fn);
+    if (i !== -1) l.splice(i, 1);
+  },
   documentElement: _mkEl(),
+  body: _mkEl(),
 };
+// Computed-style double for the resize handles (panel start width).
+const getComputedStyle = (el) =>
+  ({ width: '320px', getPropertyValue: () => '' });
 
 function _mkEle(id, data) {
   const el = {
@@ -838,3 +850,82 @@ class TestFailureSurfacingJs(unittest.TestCase):
                 'Failed to load source: boom') === 0,
                 'got: ' + empty.textContent);
         """, ["loadCode", "api"], preamble=self._FETCH_500)
+
+
+class TestPanelWidthPersistenceJs(unittest.TestCase):
+    """The drag handles set panel widths but reset on every refresh —
+    the settled width must persist (theme-toggle pattern) and restore
+    clamped into the drag bounds."""
+
+    _SPECS = """
+        const PANEL_SPECS = [
+          { handle: 'sidebar-resize', cssVar: '--sidebar-w',
+            key: 'c2d-sidebar-w', min: 200, max: 700 },
+          { handle: 'code-panel-resize', cssVar: '--code-panel-w',
+            key: 'c2d-code-w', min: 300, max: 900 },
+        ];
+    """
+    _LS_STUB = """
+        const store = {};
+        const localStorage = {
+          getItem: (k) => (k in store ? store[k] : null),
+          setItem: (k, v) => { store[k] = v; },
+        };
+    """
+
+    def _run_harness(self, tests, function_names, preamble=""):
+        js = _ui_js()
+        functions = "\n\n".join(_extract_function(js, n) for n in function_names)
+        proc = _run_node(_HARNESS % {"functions": functions,
+                                     "preamble": preamble, "tests": tests})
+        self.assertEqual(
+            proc.returncode, 0,
+            "node harness failed:\nSTDOUT: %s\nSTDERR: %s" % (proc.stdout, proc.stderr))
+        self.assertIn("ALL_OK", proc.stdout)
+
+    def test_drag_settles_into_storage(self):
+        self._run_harness("""
+            initResize('sidebar-resize', '--sidebar-w', 200, 700, 'c2d-sidebar-w');
+            const handle = document.getElementById('sidebar-resize');
+            handle._listeners['mousedown'][0](
+              { preventDefault() {}, stopPropagation() {}, clientX: 500 });
+            // Drag left by 100px: start 320 + delta 100 = 420.
+            _docListeners['mousemove'].pop()({ clientX: 400 });
+            _docListeners['mouseup'].pop()();
+            assert.strictEqual(localStorage.getItem('c2d-sidebar-w'), '420px',
+                'the settled width persists');
+            assert.strictEqual(
+              document.documentElement.style['--sidebar-w'], '420px',
+                'the CSS variable tracks the drag');
+            // A drag far past the bound clamps before storing.
+            handle._listeners['mousedown'][0](
+              { preventDefault() {}, stopPropagation() {}, clientX: 500 });
+            _docListeners['mousemove'].pop()({ clientX: -2000 });
+            _docListeners['mouseup'].pop()();
+            assert.strictEqual(localStorage.getItem('c2d-sidebar-w'), '700px',
+                'out-of-range drags clamp to the max bound');
+        """, ["initResize"],
+        preamble=self._SPECS + self._LS_STUB)
+
+    def test_saved_widths_restore_clamped(self):
+        self._run_harness("""
+            store['c2d-sidebar-w'] = '550px';
+            store['c2d-code-w'] = '5000px';   // stale storage, must clamp
+            applySavedPanelWidths();
+            const de = document.documentElement;
+            assert.strictEqual(de.style['--sidebar-w'], '550px',
+                'an in-range width restores as-is');
+            assert.strictEqual(de.style['--code-panel-w'], '900px',
+                'an out-of-range width clamps to the max bound');
+        """, ["applySavedPanelWidths"],
+        preamble=self._SPECS + self._LS_STUB)
+
+    def test_missing_or_garbage_storage_is_ignored(self):
+        self._run_harness("""
+            store['c2d-sidebar-w'] = 'not-a-number';
+            applySavedPanelWidths();
+            assert.strictEqual(
+              document.documentElement.style['--sidebar-w'], undefined,
+                'garbage storage must leave the default width alone');
+        """, ["applySavedPanelWidths"],
+        preamble=self._SPECS + self._LS_STUB)

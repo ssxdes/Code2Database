@@ -2373,8 +2373,16 @@ document.addEventListener('click', (e) => {
 
 // Resizable panels — drag the thin vertical bar on the left edge of
 // the sidebar or code-panel to adjust its width. The cytoscape
-// canvas and minimap follow via the --sidebar-w CSS variable.
-function initResize(handleId, cssVar, minW, maxW) {
+// canvas and minimap follow via the --sidebar-w CSS variable. The
+// settled widths persist to localStorage (theme-toggle pattern) so a
+// refresh keeps the user's geometry.
+const PANEL_SPECS = [
+  { handle: 'sidebar-resize', cssVar: '--sidebar-w',
+    key: 'c2d-sidebar-w', min: 200, max: 700 },
+  { handle: 'code-panel-resize', cssVar: '--code-panel-w',
+    key: 'c2d-code-w', min: 300, max: 900 },
+];
+function initResize(handleId, cssVar, minW, maxW, storeKey) {
   const handle = document.getElementById(handleId);
   if (!handle) return;
   handle.addEventListener('mousedown', (e) => {
@@ -2383,12 +2391,13 @@ function initResize(handleId, cssVar, minW, maxW) {
     const startX = e.clientX;
     const panel = handle.parentElement;
     const startW = parseInt(getComputedStyle(panel).width, 10);
+    let w = startW;
     handle.classList.add('dragging');
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     const onMove = (ev) => {
       const delta = startX - ev.clientX;
-      let w = Math.max(minW, Math.min(maxW, startW + delta));
+      w = Math.max(minW, Math.min(maxW, startW + delta));
       document.documentElement.style.setProperty(cssVar, w + 'px');
     };
     const onUp = () => {
@@ -2398,13 +2407,31 @@ function initResize(handleId, cssVar, minW, maxW) {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
       if (cy) cy.resize();
+      // Persist the settled width so a refresh keeps the geometry.
+      if (storeKey) {
+        try { localStorage.setItem(storeKey, w + 'px'); } catch (err) {}
+      }
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   });
 }
-initResize('sidebar-resize', '--sidebar-w', 200, 700);
-initResize('code-panel-resize', '--code-panel-w', 300, 900);
+
+// Restore saved panel widths before the first layout so the canvas
+// starts at the user's chosen geometry. Out-of-range values clamp
+// back into the drag bounds instead of trusting stale storage.
+function applySavedPanelWidths() {
+  for (const s of PANEL_SPECS) {
+    let saved = null;
+    try { saved = localStorage.getItem(s.key); } catch (e) {}
+    const w = saved ? parseInt(saved, 10) : NaN;
+    if (!isFinite(w)) continue;
+    const clamped = Math.max(s.min, Math.min(s.max, w));
+    document.documentElement.style.setProperty(s.cssVar, clamped + 'px');
+  }
+}
+applySavedPanelWidths();
+PANEL_SPECS.forEach(s => initResize(s.handle, s.cssVar, s.min, s.max, s.key));
 
 loadSummary();
 window.addEventListener('resize', () => { if (cy) cy.resize(); });

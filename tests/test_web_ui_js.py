@@ -929,3 +929,55 @@ class TestPanelWidthPersistenceJs(unittest.TestCase):
                 'garbage storage must leave the default width alone');
         """, ["applySavedPanelWidths"],
         preamble=self._SPECS + self._LS_STUB)
+
+
+class TestSearchDropdownJs(unittest.TestCase):
+    """The search dropdown lists 10 of the backend's 30 matches — the
+    hidden remainder must be counted, not silently dropped."""
+
+    def _run_harness(self, tests, preamble=""):
+        js = _ui_js()
+        names = ["search", "api", "hideSearchResults", "shortLoc"]
+        functions = "\n\n".join(_extract_function(js, n) for n in names)
+        proc = _run_node(_HARNESS % {"functions": functions,
+                                     "preamble": preamble, "tests": tests})
+        self.assertEqual(
+            proc.returncode, 0,
+            "node harness failed:\nSTDOUT: %s\nSTDERR: %s" % (proc.stdout, proc.stderr))
+        self.assertIn("ALL_OK", proc.stdout)
+
+    @staticmethod
+    def _fetch_with(n):
+        return """
+            const _mkResults = (n) => Array.from({ length: n }, (_, i) => ({
+              id: 'f' + i, name: 'fun' + i, labels: [], domain: 'd',
+              source_file: 'a.c', line: i + 1 }));
+            const fetch = async () =>
+              ({ ok: true, json: async () => ({ results: _mkResults(%d) }) });
+        """ % n
+
+    def test_hidden_matches_are_counted(self):
+        self._run_harness("""
+            document.getElementById('search').value = 'fun';
+            await search();
+            const resEl = document.getElementById('search-results');
+            assert.strictEqual(resEl.style.display, 'block');
+            assert.strictEqual(resEl._children.length, 11,
+                'ten result rows plus the overflow hint');
+            const hint = resEl._children[10];
+            assert.strictEqual(hint.className, 'sr-more');
+            assert.ok(hint.textContent.indexOf('+2 more') === 0,
+                'got: ' + hint.textContent);
+            assert.ok(hint._listeners === undefined || !hint._listeners.click,
+                'the hint is informational, not clickable');
+        """, preamble=self._fetch_with(12))
+
+    def test_exact_ten_gets_no_hint(self):
+        self._run_harness("""
+            document.getElementById('search').value = 'fun';
+            await search();
+            const resEl = document.getElementById('search-results');
+            assert.strictEqual(resEl._children.length, 10,
+                'exactly ten results render ten rows and no hint');
+            assert.ok(!resEl._children.some(c => c.className === 'sr-more'));
+        """, preamble=self._fetch_with(10))

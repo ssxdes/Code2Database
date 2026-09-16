@@ -592,6 +592,8 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
   flex-shrink: 0; }
 #search-results .sr-loc { color: var(--muted-fg); font-size: 10px; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
+#search-results .sr-more { padding: 4px 10px; font-size: 10px; color: var(--muted-fg);
+  text-align: center; }
 #search-results .sr-item:hover .sr-loc, #search-results .sr-item.active .sr-loc { color: #dbeafe; }
 .call-loc { font-size: 10px; color: var(--muted-fg); overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; max-width: 180px; }
@@ -2074,6 +2076,14 @@ async function search() {
     div.onclick = () => { hideSearchResults(); focusNodeOnly(r.id); };
     resEl.appendChild(div);
   });
+  // The backend caps at 30 matches but the dropdown lists 10 — say so
+  // instead of silently hiding the rest.
+  if (results.length > 10) {
+    const more = document.createElement('div');
+    more.className = 'sr-more';
+    more.textContent = '+' + (results.length - 10) + ' more — refine your query';
+    resEl.appendChild(more);
+  }
   resEl.style.display = 'block';
   } catch (e) {
     hideSearchResults();

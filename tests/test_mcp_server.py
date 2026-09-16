@@ -358,13 +358,14 @@ class TestMcpSessionInitTool(unittest.TestCase):
         tmp = tempfile.mkdtemp(prefix="c2d_mcp_sess_")
         self.addCleanup(lambda: __import__("shutil").rmtree(tmp,
                                                            ignore_errors=True))
-        nodes = [{"id": f"n{i}", "name": f"n{i}", "source_file": "/tmp/x.c",
-                  "line": i + 1, "domain": "test", "labels": [],
-                  "is_empty": False} for i in range(3)]
-        edges = [{"source": "n0", "target": "n1", "relation": "INVOKES",
-                  "confidence": "EXTRACTED"}]
+        functions = [[f"n{i}", f"n{i}", "/tmp/x.c", i + 1, "[]", ""]
+                     for i in range(3)]
+        edges = [["n0", "n1", 1, "", "direct_call",
+                  "EXTRACTED", "ast", 1.0]]
         with open(os.path.join(tmp, "domain_test.json"), "w") as f:
-            json.dump({"nodes": nodes, "edges": edges}, f)
+            json.dump({"domain": "test", "functions": functions,
+                       "function_details": {}, "empty_nodes": [],
+                       "edges": edges}, f)
         with open(os.path.join(tmp, "code2database_master.json"), "w") as f:
             json.dump({"source_root": "/tmp",
                        "domains": {"test": "domain_test.json"}}, f)

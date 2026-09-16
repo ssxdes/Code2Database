@@ -43,19 +43,27 @@ def _run(fn, args):
 
 
 def _make_graph_dir(n_nodes=3, n_edges=2):
-    """Graph dir with a small JSON graph."""
+    """Graph dir with a small JSON graph (compact domain schema)."""
     tmp = tempfile.mkdtemp(prefix="c2d_brief_")
-    nodes = [{"id": f"n{i}", "name": f"n{i}", "source_file": "/tmp/x.c",
-              "line": i + 1, "domain": "test", "labels": [],
-              "is_empty": False} for i in range(n_nodes)]
-    nodes.append({"id": "empty", "name": "empty", "source_file": "/tmp/x.c",
-                  "line": 99, "domain": "test", "labels": [],
-                  "is_empty": True})
-    edges = [{"source": f"n{i}", "target": f"n{i+1}",
-              "relation": "INVOKES", "confidence": "EXTRACTED"}
-             for i in range(n_edges)]
+    # func rows: [id, name, source_file, line, labels_json, signature]
+    functions = [[f"n{i}", f"n{i}", "/tmp/x.c", i + 1, "[]", ""]
+                 for i in range(n_nodes)]
+    # empty-node rows: [id, condition, parent_id]
+    empty_nodes = [["empty", "#ifdef CONFIG_X", "n0"]]
+    # compact edge rows:
+    # [source, target, call_order, call_condition, concurrency,
+    #  confidence, source_tag, confidence_score]
+    edges = [[f"n{i}", f"n{i+1}", 1, "", "direct_call",
+              "EXTRACTED", "ast", 1.0] for i in range(n_edges)]
     with open(os.path.join(tmp, "domain_test.json"), "w") as f:
-        json.dump({"nodes": nodes, "edges": edges}, f)
+        json.dump({"type": "code2database_domain", "format_version": 3,
+                   "domain": "test", "functions": functions,
+                   "function_details": {}, "empty_nodes": empty_nodes,
+                   "edge_fields": ["source", "target", "call_order",
+                                   "call_condition", "concurrency",
+                                   "confidence", "source_tag",
+                                   "confidence_score"],
+                   "edges": edges}, f)
     with open(os.path.join(tmp, "code2database_master.json"), "w") as f:
         json.dump({"source_root": "/tmp",
                    "domains": {"test": "domain_test.json"}}, f)
@@ -198,12 +206,41 @@ class TestGraphStats(unittest.TestCase):
     def test_compute_from_graph(self):
         graph_dir = _make_graph_dir(n_nodes=3, n_edges=2)
         stats = compute_graph_stats(graph_dir)
-        # 3 non-empty nodes (is_empty excluded), 2 edges, 1 domain
+        # 3 function rows; the empty-node placeholder must not count
         self.assertEqual(stats["nodes"], 3)
         self.assertEqual(stats["edges"], 2)
         self.assertEqual(stats["domains"], 1)
         import shutil
         shutil.rmtree(graph_dir, ignore_errors=True)
+
+    def test_legacy_nodes_key_still_counted(self):
+        """Domain JSON written by very old builds uses a flat "nodes"
+        list with is_empty markers; those builds must keep counting."""
+        with tempfile.TemporaryDirectory() as tmp:
+            nodes = [{"id": "a", "name": "a", "is_empty": False},
+                     {"id": "b", "name": "b", "is_empty": False},
+                     {"id": "c", "name": "c", "is_empty": True}]
+            with open(os.path.join(tmp, "domain_old.json"), "w") as f:
+                json.dump({"nodes": nodes, "edges": []}, f)
+            with open(os.path.join(tmp, "code2database_master.json"),
+                      "w") as f:
+                json.dump({"domains": {"old": "domain_old.json"}}, f)
+            stats = compute_graph_stats(tmp)
+            self.assertEqual(stats["nodes"], 2)
+
+    def test_empty_nodes_do_not_count(self):
+        """A compact domain whose only rows are placeholders reports
+        zero nodes (they are condition guards, not functions)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "domain_g.json"), "w") as f:
+                json.dump({"domain": "g", "functions": [],
+                           "empty_nodes": [["e1", "#ifdef A", "x"]],
+                           "edges": []}, f)
+            with open(os.path.join(tmp, "code2database_master.json"),
+                      "w") as f:
+                json.dump({"domains": {"g": "domain_g.json"}}, f)
+            stats = compute_graph_stats(tmp)
+            self.assertEqual(stats["nodes"], 0)
 
     def test_missing_graph(self):
         with tempfile.TemporaryDirectory() as td:
@@ -402,12 +439,12 @@ class TestExtractAndValidate(unittest.TestCase):
     def test_validate_graph_drift(self):
         brief_extract(self.graph_dir)
         # simulate drift: rewrite the graph much larger
-        nodes = [{"id": f"n{i}", "name": f"n{i}",
-                  "source_file": "/tmp/x.c", "line": i, "domain": "test",
-                  "labels": [], "is_empty": False}
-                 for i in range(50)]
+        functions = [[f"n{i}", f"n{i}", "/tmp/x.c", i, "[]", ""]
+                     for i in range(50)]
         with open(os.path.join(self.graph_dir, "domain_test.json"), "w") as f:
-            json.dump({"nodes": nodes, "edges": []}, f)
+            json.dump({"domain": "test", "functions": functions,
+                       "function_details": {}, "empty_nodes": [],
+                       "edges": []}, f)
         result = validate_brief(self.graph_dir)
         self.assertTrue(any("drifted" in w for w in result["warnings"]))
 
@@ -502,25 +539,19 @@ class TestAutoExtract(unittest.TestCase):
                 "domains": {"core": "domain_core.json"},
             }, f)
         # Create a domain JSON file for compute_graph_stats
-        nodes = [
-            {"id": "fn1", "name": "main_init", "source_file": "/tmp/x.c",
-             "line": 1, "domain": "core", "labels": [],
-             "is_empty": False},
-            {"id": "fn2", "name": "dispatch", "source_file": "/tmp/x.c",
-             "line": 10, "domain": "core", "labels": [],
-             "is_empty": False},
-            {"id": "fn3", "name": "handler", "source_file": "/tmp/x.c",
-             "line": 20, "domain": "core", "labels": [],
-             "is_empty": False},
+        functions = [
+            ["fn1", "main_init", "/tmp/x.c", 1, "[]", ""],
+            ["fn2", "dispatch", "/tmp/x.c", 10, "[]", ""],
+            ["fn3", "handler", "/tmp/x.c", 20, "[]", ""],
         ]
         edges = [
-            {"source": "fn1", "target": "fn2",
-             "relation": "INVOKES", "confidence": "EXTRACTED"},
-            {"source": "fn2", "target": "fn3",
-             "relation": "INVOKES", "confidence": "EXTRACTED"},
+            ["fn1", "fn2", 1, "", "direct_call", "EXTRACTED", "ast", 1.0],
+            ["fn2", "fn3", 1, "", "direct_call", "EXTRACTED", "ast", 1.0],
         ]
         with open(os.path.join(self.graph_dir, "domain_core.json"), "w") as f:
-            json.dump({"domain": "core", "nodes": nodes, "edges": edges}, f)
+            json.dump({"domain": "core", "functions": functions,
+                       "function_details": {}, "empty_nodes": [],
+                       "edges": edges}, f)
         # Create the SQLite DB with functions + edges tables
         db_path = os.path.join(self.graph_dir, "code2database.db")
         conn = sqlite3.connect(db_path)

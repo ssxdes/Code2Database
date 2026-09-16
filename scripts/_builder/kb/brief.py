@@ -157,9 +157,17 @@ def compute_graph_stats(graph_dir: str) -> dict:
                 data = json.load(f)
         except (json.JSONDecodeError, OSError):
             continue
-        nodes = data.get("nodes", [])
-        stats["nodes"] += sum(1 for n in nodes
-                              if not n.get("is_empty", False))
+        if "functions" in data:
+            # Compact format (written by domain_split since format_version
+            # 2): "functions" holds only non-empty function rows and
+            # "empty_nodes" the conditional placeholders, so no is_empty
+            # filtering is needed.
+            stats["nodes"] += len(data.get("functions", []))
+        else:
+            # Legacy format: full node objects with is_empty markers.
+            nodes = data.get("nodes", [])
+            stats["nodes"] += sum(1 for n in nodes
+                                  if not n.get("is_empty", False))
         stats["edges"] += len(data.get("edges", []))
     return stats
 

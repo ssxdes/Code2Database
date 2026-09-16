@@ -41,14 +41,14 @@ def _run(fn, args):
 
 def _make_graph_dir(n_nodes=3, n_edges=2):
     tmp = tempfile.mkdtemp(prefix="c2d_sess_")
-    nodes = [{"id": f"n{i}", "name": f"n{i}", "source_file": "/tmp/x.c",
-              "line": i + 1, "domain": "test", "labels": [],
-              "is_empty": False} for i in range(n_nodes)]
-    edges = [{"source": f"n{i}", "target": f"n{i+1}",
-              "relation": "INVOKES", "confidence": "EXTRACTED"}
-             for i in range(n_edges)]
+    functions = [[f"n{i}", f"n{i}", "/tmp/x.c", i + 1, "[]", ""]
+                 for i in range(n_nodes)]
+    edges = [[f"n{i}", f"n{i+1}", 1, "", "direct_call",
+              "EXTRACTED", "ast", 1.0] for i in range(n_edges)]
     with open(os.path.join(tmp, "domain_test.json"), "w") as f:
-        json.dump({"nodes": nodes, "edges": edges}, f)
+        json.dump({"domain": "test", "functions": functions,
+                   "function_details": {}, "empty_nodes": [],
+                   "edges": edges}, f)
     with open(os.path.join(tmp, "code2database_master.json"), "w") as f:
         json.dump({"source_root": "/tmp",
                    "domains": {"test": "domain_test.json"}}, f)

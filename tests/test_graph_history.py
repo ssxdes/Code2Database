@@ -35,6 +35,31 @@ def _write_graph_dir(tmpdir, nodes, edges, master_domains=None):
             json.dump(dom_data, f)
 
 
+def _write_graph_dir_compact(tmpdir, functions, empty_nodes, details,
+                             edges, master_domains=None,
+                             cross=None, struct=None):
+    """Write a graph dir in the compact schema real builds produce
+    (position-based function/edge rows + function_details + empty_nodes)."""
+    if master_domains is None:
+        master_domains = {"test": "domain_test.json"}
+    master = {
+        "type": "code2database_master",
+        "domains": master_domains,
+        "cross_domain_edges": cross or [],
+        "structural_edges": struct or [],
+    }
+    with open(os.path.join(tmpdir, "code2database_master.json"), "w") as f:
+        json.dump(master, f)
+    for domain, fname in master_domains.items():
+        dom_data = {"type": "code2database_domain", "domain": domain,
+                    "functions": functions,
+                    "function_details": details,
+                    "empty_nodes": empty_nodes,
+                    "edges": edges}
+        with open(os.path.join(tmpdir, fname), "w") as f:
+            json.dump(dom_data, f)
+
+
 class TestRecordVersion(unittest.TestCase):
     """Test record_version and list_versions."""
 
@@ -297,6 +322,128 @@ class TestLoadFromDir(unittest.TestCase):
             ])
             edges = _load_edges_from_dir(tmp)
             self.assertEqual(len(edges), 2)
+
+
+class TestCompactSchema(unittest.TestCase):
+    """The compact domain schema (what real builds write) must load
+    through the same paths as the legacy flat-node schema."""
+
+    _FUNCS = [
+        ["root::f", "f", "a.c", 10, '["API_entry"]', "void f()"],
+        ["root::g", "g", "b.c", 20, "", "void g()"],
+    ]
+    _EMPTY = [["root::c1", "#ifdef CONFIG_X", "root::f"]]
+    _DETAILS = {"root::f": {"body_text": "return 0;",
+                            "complexity": 5}}
+    _EDGES = [
+        # [source, target, call_order, call_condition, concurrency,
+        #  confidence, source_tag, confidence_score, extras?]
+        ["root::f", "root::g", 1, "", "direct_call", "EXTRACTED",
+         "ast", 1.0],
+        ["root::f", "root::g", 2, "", "direct_call", "EXTRACTED",
+         "ast", 1.0, {"rel": "TAIL_CALLS"}],
+    ]
+
+    def test_load_nodes_from_dir_compact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _write_graph_dir_compact(tmp, self._FUNCS, self._EMPTY,
+                                     self._DETAILS, [])
+            nodes = _load_nodes_from_dir(tmp)
+            self.assertEqual(len(nodes), 3)
+            self.assertEqual(nodes["root::f"]["name"], "f")
+            self.assertEqual(nodes["root::f"]["labels"], ["API_entry"])
+            self.assertEqual(nodes["root::f"]["signature"], "void f()")
+            # details merge into the reconstructed node
+            self.assertEqual(nodes["root::f"]["complexity"], 5)
+            self.assertFalse(nodes["root::f"]["is_empty"])
+            # empty placeholder rows load as nodes too
+            self.assertTrue(nodes["root::c1"]["is_empty"])
+            self.assertEqual(nodes["root::c1"]["condition"],
+                             "#ifdef CONFIG_X")
+
+    def test_load_node_from_snapshot_compact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _write_graph_dir_compact(tmp, self._FUNCS, self._EMPTY,
+                                     self._DETAILS, [])
+            node = graph_history._load_node_from_snapshot(tmp, "root::g")
+            self.assertIsNotNone(node)
+            self.assertEqual(node["name"], "g")
+            node = graph_history._load_node_from_snapshot(tmp, "root::c1")
+            self.assertIsNotNone(node)
+            self.assertTrue(node["is_empty"])
+            self.assertIsNone(
+                graph_history._load_node_from_snapshot(tmp, "nope"))
+
+    def test_load_edges_from_dir_compact_rows(self):
+        """Compact position-based edge rows must come back as dicts —
+        _edge_key calls .get() on them and used to crash with
+        AttributeError on any real build."""
+        with tempfile.TemporaryDirectory() as tmp:
+            _write_graph_dir_compact(tmp, self._FUNCS, self._EMPTY,
+                                     self._DETAILS, self._EDGES)
+            edges = _load_edges_from_dir(tmp)
+            self.assertEqual(len(edges), 2)
+            rels = {e.get("relation") for e in edges}
+            self.assertIn("INVOKES", rels)
+            self.assertIn("TAIL_CALLS", rels)
+            # every edge must survive _edge_key without raising
+            keys = {_edge_key(e) for e in edges}
+            self.assertEqual(len(keys), 2)
+
+    def test_load_edges_includes_master_groups(self):
+        """Cross-domain and structural edges live only in the master
+        file; a diff that skips them misses exactly those changes."""
+        cross = [{"source": "root::f", "target": "other::h",
+                  "relation": "INVOKES"}]
+        struct = [{"source": "root::f", "target": "root::c1",
+                   "relation": "GUARDS"}]
+        with tempfile.TemporaryDirectory() as tmp:
+            _write_graph_dir_compact(tmp, self._FUNCS, self._EMPTY,
+                                     self._DETAILS, [], cross=cross,
+                                     struct=struct)
+            edges = _load_edges_from_dir(tmp)
+            self.assertEqual(len(edges), 2)
+            rels = {e.get("relation") for e in edges}
+            self.assertEqual(rels, {"INVOKES", "GUARDS"})
+
+    def test_graph_diff_between_compact_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dir_a = os.path.join(tmp, "a")
+            dir_b = os.path.join(tmp, "b")
+            os.makedirs(dir_a)
+            os.makedirs(dir_b)
+            funcs_a = self._FUNCS
+            funcs_b = self._FUNCS + [["root::h", "h", "c.c", 5, "", ""]]
+            _write_graph_dir_compact(dir_a, funcs_a, self._EMPTY,
+                                     self._DETAILS, self._EDGES[:1])
+            _write_graph_dir_compact(dir_b, funcs_b, self._EMPTY,
+                                     self._DETAILS, self._EDGES)
+            d = graph_diff(tmp, from_path=dir_a, to_path=dir_b)
+            self.assertEqual(d["summary"]["added_nodes"], 1)
+            self.assertEqual(d["added_nodes"][0]["id"], "root::h")
+            self.assertEqual(d["summary"]["added_edges"], 1)
+
+    def test_legacy_and_compact_mixed_diff(self):
+        """A legacy dir diffed against a compact dir (an old snapshot
+        vs the current build) must compare, not crash."""
+        with tempfile.TemporaryDirectory() as tmp:
+            dir_a = os.path.join(tmp, "a")
+            dir_b = os.path.join(tmp, "b")
+            os.makedirs(dir_a)
+            os.makedirs(dir_b)
+            _write_graph_dir(dir_a, [
+                {"id": "root::f", "name": "f", "complexity": 5},
+            ], [{"source": "root::f", "target": "root::g",
+                 "relation": "INVOKES"}])
+            _write_graph_dir_compact(
+                dir_b, self._FUNCS, [], self._DETAILS,
+                [["root::f", "root::g", 1, "", "direct_call",
+                  "EXTRACTED", "ast", 1.0]])
+            d = graph_diff(tmp, from_path=dir_a, to_path=dir_b)
+            self.assertEqual(d["summary"]["added_nodes"], 1)
+            self.assertEqual(d["summary"]["removed_nodes"], 0)
+            self.assertEqual(d["summary"]["added_edges"], 0)
+            self.assertEqual(d["summary"]["removed_edges"], 0)
 
 
 if __name__ == "__main__":

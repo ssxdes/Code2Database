@@ -279,6 +279,80 @@ def node_history(graph_dir: str, node_id: str,
     return history
 
 
+def _iter_dom_nodes(dom: Dict[str, Any]):
+    """Yield (nid, node_dict) pairs from a domain JSON in either schema.
+
+    Current builds write the compact schema (position-based "functions"
+    rows + "function_details" + "empty_nodes" rows); very old builds
+    wrote a flat "nodes" list of full node objects.
+    """
+    if "functions" in dom:
+        details = dom.get("function_details", {}) or {}
+        for row in dom.get("functions", []):
+            # func rows: [id, name, source_file, line, labels_json,
+            #             signature]
+            if not (isinstance(row, list) and len(row) >= 5 and row[0]):
+                continue
+            labels_raw = row[4]
+            if isinstance(labels_raw, str) and labels_raw:
+                try:
+                    labels = json.loads(labels_raw)
+                except json.JSONDecodeError:
+                    labels = labels_raw
+            elif isinstance(labels_raw, list):
+                labels = labels_raw
+            else:
+                labels = []
+            node = {
+                "id": row[0], "name": row[1] or "",
+                "source_file": row[2] or "", "line": row[3] or 0,
+                "labels": labels,
+                "signature": row[5] if len(row) > 5 else "",
+                "domain": dom.get("domain", "root"),
+                "is_empty": False,
+            }
+            node |= details.get(row[0], {}) or {}
+            yield row[0], node
+        for row in dom.get("empty_nodes", []):
+            # empty rows: [id, condition, parent_id]
+            if not (isinstance(row, list) and len(row) >= 3 and row[0]):
+                continue
+            yield row[0], {
+                "id": row[0], "name": f"<conditional:{row[1]}>",
+                "condition": row[1], "parent_id": row[2],
+                "domain": dom.get("domain", "root"),
+                "is_empty": True,
+            }
+    else:
+        for n in dom.get("nodes", []):
+            nid = n.get("id", "")
+            if nid:
+                yield nid, n
+
+
+def _iter_dom_edges(dom: Dict[str, Any]):
+    """Yield edge dicts from a domain JSON in either schema.
+
+    Compact edge rows are position-based lists:
+    [source, target, call_order, call_condition, concurrency,
+     confidence, source_tag, confidence_score, extras?] with the
+    relation living in extras["rel"] when not INVOKES.
+    """
+    for e in dom.get("edges", []):
+        if isinstance(e, dict):
+            yield e
+        elif isinstance(e, list) and len(e) >= 2:
+            extras = e[8] if len(e) > 8 and isinstance(e[8], dict) else {}
+            yield {
+                "source": e[0], "target": e[1],
+                "call_order": e[2] if len(e) > 2 else None,
+                "call_condition": e[3] if len(e) > 3 else "",
+                "concurrency": e[4] if len(e) > 4 else "",
+                "confidence": e[5] if len(e) > 5 else "",
+                "relation": extras.get("rel", "INVOKES"),
+            }
+
+
 def _load_node_from_snapshot(snap_path: str,
                              node_id: str) -> Optional[Dict[str, Any]]:
     """Load a single node's data from a snapshot directory."""
@@ -293,9 +367,9 @@ def _load_node_from_snapshot(snap_path: str,
                     continue
                 with open(dom_path, encoding="utf-8") as df:
                     dom = json.load(df)
-                for n in dom.get("nodes", []):
-                    if n.get("id") == node_id:
-                        return n
+                for nid, node in _iter_dom_nodes(dom):
+                    if nid == node_id:
+                        return node
         except (json.JSONDecodeError, OSError):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
@@ -332,10 +406,8 @@ def _load_nodes_from_dir(graph_dir: str) -> Dict[str, Dict[str, Any]]:
                     continue
                 with open(dom_path, encoding="utf-8") as df:
                     dom = json.load(df)
-                for n in dom.get("nodes", []):
-                    nid = n.get("id", "")
-                    if nid:
-                        nodes[nid] = n
+                for nid, node in _iter_dom_nodes(dom):
+                    nodes[nid] = node
         except (json.JSONDecodeError, OSError):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
@@ -373,8 +445,16 @@ def _load_edges_from_dir(graph_dir: str) -> List[Dict[str, Any]]:
                     continue
                 with open(dom_path, encoding="utf-8") as df:
                     dom = json.load(df)
-                for e in dom.get("edges", []):
+                for e in _iter_dom_edges(dom):
                     edges.append(e)
+            # Real builds keep every cross-domain call and structural
+            # relation in the master file (domain files only hold
+            # intra-domain edges), so a diff that skips them misses
+            # exactly the edges people diff for.
+            for group in ("cross_domain_edges", "structural_edges"):
+                for e in master.get(group, []):
+                    if isinstance(e, dict):
+                        edges.append(e)
         except (json.JSONDecodeError, OSError):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass

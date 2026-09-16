@@ -167,10 +167,21 @@ function _mkCy(initialNodeIds, initialEdgeSpecs) {
 // --- shipped functions under test ---
 %(functions)s
 
+// --- test-local stubs (module scope: shipped code resolves globals
+// here, so per-test fetch/navigator/localStorage doubles live at this
+// level, NOT inside the async test body) ---
+%(preamble)s
+
 // --- tests ---
 const assert = require('assert');
+// Async wrapper: test bodies may await promises (clipboard round
+// trips, fetch stubs); ALL_OK prints only after they settle and a
+// rejection fails the run with a nonzero exit code.
+(async () => {
 %(tests)s
-console.log('ALL_OK');
+})().then(
+  () => console.log('ALL_OK'),
+  (err) => { console.error(err); process.exit(1); });
 """
 
 
@@ -180,7 +191,7 @@ class TestWebUIJs(unittest.TestCase):
     def _run_harness(self, tests: str, function_names):
         js = _ui_js()
         functions = "\n\n".join(_extract_function(js, n) for n in function_names)
-        proc = _run_node(_HARNESS % {"functions": functions, "tests": tests})
+        proc = _run_node(_HARNESS % {"functions": functions, "preamble": "", "tests": tests})
         self.assertEqual(
             proc.returncode, 0,
             "node harness failed:\nSTDOUT: %s\nSTDERR: %s" % (proc.stdout, proc.stderr))
@@ -414,7 +425,7 @@ class TestCodePanelJs(unittest.TestCase):
         js = _ui_js()
         functions = "\n\n".join(_extract_function(js, n) for n in function_names)
         proc = _run_node(_HARNESS % {"functions": functions,
-                                     "tests": preamble + tests})
+                                     "preamble": preamble, "tests": tests})
         self.assertEqual(
             proc.returncode, 0,
             "node harness failed:\nSTDOUT: %s\nSTDERR: %s" % (proc.stdout, proc.stderr))
@@ -422,21 +433,19 @@ class TestCodePanelJs(unittest.TestCase):
 
     def test_load_code_renders_one_span_per_line_without_newlines(self):
         self._run_harness("""
-            (async () => {
-              await loadCode('n1');
-              const html = document.getElementById('code-content').innerHTML;
-              assert.strictEqual(
-                html,
-                '<span class="code-line">int a;</span>'
-                + '<span class="code-line">int b;</span>',
-                'spans must join with no newline text nodes');
-              assert.strictEqual(
-                document.getElementById('code-content').style.counterReset,
-                'lineno 4', 'counter must start at the source line');
-              assert.strictEqual(
-                document.getElementById('code-panel-title').textContent,
-                'y.c:5');
-            })();
+            await loadCode('n1');
+            const html = document.getElementById('code-content').innerHTML;
+            assert.strictEqual(
+              html,
+              '<span class="code-line">int a;</span>'
+              + '<span class="code-line">int b;</span>',
+              'spans must join with no newline text nodes');
+            assert.strictEqual(
+              document.getElementById('code-content').style.counterReset,
+              'lineno 4', 'counter must start at the source line');
+            assert.strictEqual(
+              document.getElementById('code-panel-title').textContent,
+              'y.c:5');
         """, ["loadCode", "escapeHtml"],
         preamble="""
             async function api() {
@@ -446,11 +455,6 @@ class TestCodePanelJs(unittest.TestCase):
 
     def test_line_number_toggle_roundtrip_persists(self):
         self._run_harness("""
-            const store = {};
-            const localStorage = {
-              getItem: (k) => (k in store ? store[k] : null),
-              setItem: (k, v) => { store[k] = v; },
-            };
             toggleLineNumbers();
             assert.ok(document.getElementById('code-content')
                       .classList.contains('hide-lineno'),
@@ -461,7 +465,14 @@ class TestCodePanelJs(unittest.TestCase):
                       .classList.contains('hide-lineno'),
                       'second toggle restores the gutter');
             assert.strictEqual(store['c2d-lineno'], 'on');
-        """, ["toggleLineNumbers"])
+        """, ["toggleLineNumbers"],
+        preamble="""
+            const store = {};
+            const localStorage = {
+              getItem: (k) => (k in store ? store[k] : null),
+              setItem: (k, v) => { store[k] = v; },
+            };
+        """)
 
 
 class TestLayoutPreservationJs(unittest.TestCase):
@@ -473,7 +484,7 @@ class TestLayoutPreservationJs(unittest.TestCase):
     def _run_harness(self, tests: str, function_names):
         js = _ui_js()
         functions = "\n\n".join(_extract_function(js, n) for n in function_names)
-        proc = _run_node(_HARNESS % {"functions": functions, "tests": tests})
+        proc = _run_node(_HARNESS % {"functions": functions, "preamble": "", "tests": tests})
         self.assertEqual(
             proc.returncode, 0,
             "node harness failed:\nSTDOUT: %s\nSTDERR: %s" % (proc.stdout, proc.stderr))
@@ -531,17 +542,25 @@ class TestBreadcrumbCollapse(unittest.TestCase):
     """Navigation-trail fold toggle: the breadcrumb floats over the
     canvas at toolbar height, so it must collapse down to a single
     re-open button (and remember the choice) on demand."""
-
-    def _run_harness(self, tests):
+    def _run_harness(self, tests, preamble=""):
         js = _ui_js()
         names = ("renderBreadcrumb", "toggleBreadcrumb", "_crumbToggleHtml",
                  "_syncCrumbToggle", "escapeHtml", "jsAttr")
         functions = "\n\n".join(_extract_function(js, n) for n in names)
-        proc = _run_node(_HARNESS % {"functions": functions, "tests": tests})
+        proc = _run_node(_HARNESS % {"functions": functions,
+                                     "preamble": preamble, "tests": tests})
         self.assertEqual(
             proc.returncode, 0,
             "node harness failed:\nSTDOUT: %s\nSTDERR: %s" % (proc.stdout, proc.stderr))
         self.assertIn("ALL_OK", proc.stdout)
+
+    _LS_STUB = """
+        const store = {};
+        const localStorage = {
+          getItem: (k) => (k in store ? store[k] : null),
+          setItem: (k, v) => { store[k] = v; },
+        };
+    """
 
     def test_history_renders_toggle_and_crumbs(self):
         self._run_harness("""
@@ -566,11 +585,6 @@ class TestBreadcrumbCollapse(unittest.TestCase):
 
     def test_toggle_folds_trail_and_persists(self):
         self._run_harness("""
-            const store = {};
-            const localStorage = {
-              getItem: (k) => (k in store ? store[k] : null),
-              setItem: (k, v) => { store[k] = v; },
-            };
             allNodes['func1'] = { id: 'func1', name: 'func1' };
             navHistory.push('func1');
             renderBreadcrumb();
@@ -588,15 +602,10 @@ class TestBreadcrumbCollapse(unittest.TestCase):
             assert.ok(!bc.classList.contains('collapsed'));
             assert.strictEqual(localStorage.getItem('c2d-breadcrumb'), 'on');
             assert.strictEqual(btn.getAttribute('aria-pressed'), 'false');
-        """)
+        """, preamble=self._LS_STUB)
 
     def test_collapsed_render_keeps_fold_and_reopen_button(self):
         self._run_harness("""
-            const store = {};
-            const localStorage = {
-              getItem: (k) => (k in store ? store[k] : null),
-              setItem: (k, v) => { store[k] = v; },
-            };
             allNodes['func1'] = { id: 'func1', name: 'func1' };
             navHistory.push('func1');
             renderBreadcrumb();
@@ -614,7 +623,7 @@ class TestBreadcrumbCollapse(unittest.TestCase):
                 'the trail content stays in the DOM (CSS hides it)');
             const btn = document.getElementById('crumb-toggle');
             assert.strictEqual(btn.getAttribute('aria-pressed'), 'true');
-        """)
+        """, preamble=self._LS_STUB)
 
     def test_empty_history_hides_container(self):
         self._run_harness("""
@@ -635,7 +644,7 @@ class TestKeyboardShortcutGuardJs(unittest.TestCase):
         js = _ui_js()
         functions = "\n\n".join(_extract_function(js, n)
                                 for n in ["_keyTargetBlocksShortcuts"])
-        proc = _run_node(_HARNESS % {"functions": functions, "tests": tests})
+        proc = _run_node(_HARNESS % {"functions": functions, "preamble": "", "tests": tests})
         self.assertEqual(
             proc.returncode, 0,
             "node harness failed:\nSTDOUT: %s\nSTDERR: %s" % (proc.stdout, proc.stderr))
@@ -674,7 +683,7 @@ class TestContextMenuClampJs(unittest.TestCase):
         # the menu builder itself needs no graph functions.
         functions = "\n\n".join(_extract_function(js, n)
                                 for n in ["showContextMenu"])
-        proc = _run_node(_HARNESS % {"functions": functions, "tests": tests})
+        proc = _run_node(_HARNESS % {"functions": functions, "preamble": "", "tests": tests})
         self.assertEqual(
             proc.returncode, 0,
             "node harness failed:\nSTDOUT: %s\nSTDERR: %s" % (proc.stdout, proc.stderr))
@@ -711,4 +720,65 @@ class TestContextMenuClampJs(unittest.TestCase):
                 assert.ok(labels.includes(want), 'missing action: ' + want);
             }
             assert.strictEqual(m.style.display, 'block');
+        """)
+
+
+class TestCopyCodeJs(unittest.TestCase):
+    """Copy-to-clipboard takes the button explicitly (the old implicit
+    global `event` read is Chromium-only) and must surface a denied
+    clipboard on the button instead of failing silently."""
+    def _run_harness(self, tests, preamble=""):
+        js = _ui_js()
+        functions = "\n\n".join(_extract_function(js, n)
+                                for n in ["copyCode"])
+        proc = _run_node(_HARNESS % {"functions": functions,
+                                     "preamble": preamble, "tests": tests})
+        self.assertEqual(
+            proc.returncode, 0,
+            "node harness failed:\nSTDOUT: %s\nSTDERR: %s" % (proc.stdout, proc.stderr))
+        self.assertIn("ALL_OK", proc.stdout)
+
+    def test_copy_roundtrip_flashes_label(self):
+        self._run_harness("""
+            document.getElementById('code-content').textContent = 'int a;';
+            const btn = _mkEl();
+            btn.textContent = 'Copy';
+            await copyCode(btn);
+            assert.deepStrictEqual(copied, ['int a;'],
+                'the panel text reaches the clipboard');
+            assert.strictEqual(btn.textContent, 'Copied');
+            await new Promise(r => setTimeout(r, 1400));
+            assert.strictEqual(btn.textContent, 'Copy',
+                'the label restores after the flash');
+        """, preamble="""
+            const copied = [];
+            const navigator = { clipboard: {
+              writeText: (t) => { copied.push(t); return Promise.resolve(); },
+            } };
+        """)
+
+    def test_clipboard_denial_surfaces_on_button(self):
+        self._run_harness("""
+            document.getElementById('code-content').textContent = 'int a;';
+            const btn = _mkEl();
+            btn.textContent = 'Copy';
+            await copyCode(btn);
+            assert.strictEqual(btn.textContent, 'Copy failed',
+                'a denied clipboard must show on the button');
+        """, preamble="""
+            const navigator = { clipboard: {
+              writeText: () => Promise.reject(new Error('denied')),
+            } };
+        """)
+
+    def test_empty_panel_short_circuits(self):
+        self._run_harness("""
+            document.getElementById('code-content').textContent = '';
+            await copyCode(null);
+            assert.ok(called === false, 'nothing to copy means no clipboard call');
+        """, preamble="""
+            let called = false;
+            const navigator = { clipboard: {
+              writeText: () => { called = true; return Promise.resolve(); },
+            } };
         """)

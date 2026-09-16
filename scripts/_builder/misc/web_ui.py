@@ -703,7 +703,7 @@ code, .mono, #node-details .field-value { font-family: "JetBrains Mono", "Fira C
   <div id="code-panel-header">
     <span id="code-panel-title">Source</span>
     <span id="code-panel-actions">
-      <button onclick="copyCode()" aria-label="Copy code">Copy</button>
+      <button onclick="copyCode(this)" aria-label="Copy code">Copy</button>
       <button id="lineno-btn" onclick="toggleLineNumbers()" title="Toggle line numbers"
               aria-label="Toggle line numbers" aria-pressed="true">#</button>
       <button onclick="closeCodePanel()" aria-label="Close panel">&times;</button>
@@ -1771,14 +1771,19 @@ function toggleLineNumbers() {
   }
 })();
 
-function copyCode() {
+// Copy-to-clipboard — takes the button explicitly (the old version
+// read the deprecated implicit global `event`, which is Chromium-only)
+// and reports clipboard denial on the button instead of doing nothing.
+function copyCode(btn) {
   const content = document.getElementById('code-content');
-  if (!content.textContent) return;
-  navigator.clipboard.writeText(content.textContent).then(() => {
-    const btn = event.target;
-    const orig = btn.textContent;
+  const text = content.textContent;
+  if (!text) return Promise.resolve();
+  return navigator.clipboard.writeText(text).then(() => {
+    if (!btn) return;
     btn.textContent = 'Copied';
-    setTimeout(() => { btn.textContent = orig; }, 1200);
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
+  }).catch(() => {
+    if (btn) btn.textContent = 'Copy failed';
   });
 }
 

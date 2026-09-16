@@ -4247,6 +4247,18 @@ def cmd_build(args):
     cgdb_metadata_data = data.get("cgdb_metadata", [])
     cgdb_includes_data = data.get("cgdb_includes", [])
     conditions_data = data.get("conditions", [])
+    # Derive the project name while the extraction dict is still alive;
+    # build_graph computes the same value for its FQN prefix but never
+    # persists it, so downstream consumers (briefs, the web UI) had no
+    # way to learn the name. split_by_domain writes it into master.json.
+    from _builder.build.build_phases import _derive_project_name as _dpn
+    _cmd_project_name = _dpn(data, data.get("functions", []))
+    if _cmd_project_name == "project":
+        # _derive_project_name falls back to the literal "project" when
+        # nothing about the sources reveals a name. Persisting that
+        # literal would block the better fallbacks downstream (source
+        # root, graph-dir parent), so record an empty name instead.
+        _cmd_project_name = ""
     # Free the massive extraction dict
     del data
     gc.collect()
@@ -4503,7 +4515,8 @@ def cmd_build(args):
     master_path = split_by_domain(G, outdir, source_root,
                                   max_per_dir=max_per_dir if max_per_dir > 0 else 999999,
                                   build_info=build_info,
-                                  profile=builder_profile)
+                                  profile=builder_profile,
+                                  project_name=_cmd_project_name)
     domain_files = glob.glob(os.path.join(outdir, "domains/**/*.json"), recursive=True)
     tracker.end_with_files([master_path] + domain_files,
                            extra={"domains": len(comm_result.communities)})

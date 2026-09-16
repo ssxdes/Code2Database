@@ -1880,6 +1880,14 @@ function showContextMenu(nodeId, x, y) {
   menu.style.left = x + 'px';
   menu.style.top = y + 'px';
   menu.style.display = 'block';
+  // Keep the menu on screen when opened near the right or bottom
+  // edge — the fixed-position menu used to overflow and get clipped.
+  const vw = window.innerWidth || 0, vh = window.innerHeight || 0;
+  if (vw && vh) {
+    const r = menu.getBoundingClientRect();
+    if (x + r.width > vw - 8) menu.style.left = Math.max(8, vw - 8 - r.width) + 'px';
+    if (y + r.height > vh - 8) menu.style.top = Math.max(8, vh - 8 - r.height) + 'px';
+  }
 }
 
 // Cycle detection toggle

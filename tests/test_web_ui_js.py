@@ -104,7 +104,7 @@ function focusNode(id, depth) {}  // breadcrumb crumbs reference it in markup on
 const _els = {};
 function _mkEl() {
   const el = { style: {}, innerHTML: '', textContent: '', title: '',
-               _cls: new Set(), _attrs: {} };
+               _cls: new Set(), _attrs: {}, _children: [], _listeners: {} };
   el.classList = {
     add: (c) => el._cls.add(c),
     remove: (c) => el._cls.delete(c),
@@ -114,11 +114,20 @@ function _mkEl() {
   };
   el.setAttribute = (k, v) => { el._attrs[k] = v; };
   el.getAttribute = (k) => el._attrs[k];
+  el.appendChild = (c) => { el._children.push(c); return c; };
+  el.addEventListener = (t, fn) => { (el._listeners[t] = el._listeners[t] || []).push(fn); };
+  // Fixed geometry — the context-menu clamp test only needs a stable
+  // size to reason about edge overflow.
+  el.getBoundingClientRect = () => ({ left: 0, top: 0, width: 150, height: 200 });
   return el;
 }
-const window = { _lastStatsHtml: '' };
+const window = { _lastStatsHtml: '', innerWidth: 1280, innerHeight: 800 };
+const _docListeners = {};
 const document = {
   getElementById: (id) => { if (!_els[id]) _els[id] = _mkEl(); return _els[id]; },
+  createElement: (tag) => _mkEl(),
+  addEventListener: (t, fn) => { (_docListeners[t] = _docListeners[t] || []).push(fn); },
+  documentElement: _mkEl(),
 };
 
 function _mkEle(id, data) {
@@ -651,4 +660,55 @@ class TestKeyboardShortcutGuardJs(unittest.TestCase):
             }
             assert.ok(!_keyTargetBlocksShortcuts(null),
                 'a missing target must not throw');
+        """)
+
+
+class TestContextMenuClampJs(unittest.TestCase):
+    """The right-click menu is fixed-positioned at the click point —
+    near the right or bottom screen edge it used to overflow and get
+    clipped by the viewport. It must clamp itself inside."""
+
+    def _run_harness(self, tests):
+        js = _ui_js()
+        # closeContextMenu is referenced by the sibling handlers only;
+        # the menu builder itself needs no graph functions.
+        functions = "\n\n".join(_extract_function(js, n)
+                                for n in ["showContextMenu"])
+        proc = _run_node(_HARNESS % {"functions": functions, "tests": tests})
+        self.assertEqual(
+            proc.returncode, 0,
+            "node harness failed:\nSTDOUT: %s\nSTDERR: %s" % (proc.stdout, proc.stderr))
+        self.assertIn("ALL_OK", proc.stdout)
+
+    def test_menu_clamps_inside_the_viewport(self):
+        self._run_harness("""
+            // Stub geometry: 150x200 menu on a 1280x800 viewport.
+            showContextMenu('func1', 1250, 300);   // overflows right
+            let m = document.getElementById('ctx-menu');
+            assert.strictEqual(m.style.left, '1122px',
+                'right-edge open shifts left to 1280-8-150');
+            assert.strictEqual(m.style.top, '300px', 'no vertical clamp needed');
+
+            showContextMenu('func1', 100, 700);    // overflows bottom
+            assert.strictEqual(m.style.left, '100px', 'no horizontal clamp needed');
+            assert.strictEqual(m.style.top, '592px',
+                'bottom-edge open shifts up to 800-8-200');
+
+            showContextMenu('func1', 40, 40);      // mid-screen stays put
+            assert.strictEqual(m.style.left, '40px');
+            assert.strictEqual(m.style.top, '40px');
+            assert.strictEqual(m.style.display, 'block');
+        """)
+
+    def test_menu_still_lists_every_action(self):
+        self._run_harness("""
+            showContextMenu('func1', 40, 40);
+            const m = document.getElementById('ctx-menu');
+            assert.strictEqual(m._children.length, 8,
+                'all eight context actions render');
+            const labels = m._children.map(c => c.textContent);
+            for (const want of ['Focus', 'Collapse All', 'View Code', 'Copy ID']) {
+                assert.ok(labels.includes(want), 'missing action: ' + want);
+            }
+            assert.strictEqual(m.style.display, 'block');
         """)

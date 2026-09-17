@@ -37,7 +37,7 @@ class _KbTestBase(unittest.TestCase):
 
     def _kb_rows(self, source_file=None):
         conn = sqlite3.connect(os.path.join(self.graph_dir,
-                                            "code2database.db"))
+                                            "kb_index.db"))
         try:
             if source_file:
                 return conn.execute(
@@ -101,8 +101,8 @@ class TestSyncMemoryEntries(_KbTestBase):
 
     def test_sync_is_noop_without_kb_db(self):
         mid = self.store.add("q", "a")
-        # No rebuild_kb_index yet — code2database.db may not exist.
-        db = os.path.join(self.graph_dir, "code2database.db")
+        # No rebuild_kb_index yet — the kb index store may not exist.
+        db = os.path.join(self.graph_dir, "kb_index.db")
         if os.path.exists(db):
             os.unlink(db)
         synced = sync_memory_entries(self.graph_dir, [mid])
@@ -125,7 +125,7 @@ class TestSyncMemoryEntries(_KbTestBase):
 
         def _rows(graph_dir):
             conn = sqlite3.connect(os.path.join(graph_dir,
-                                                "code2database.db"))
+                                                "kb_index.db"))
             try:
                 return conn.execute(
                     "SELECT source_file, title, body, kind, confidence "

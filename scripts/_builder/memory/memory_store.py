@@ -812,11 +812,14 @@ class MemoryStore:
         session-init aggregates kb_query_log misses into its
         known-unknowns layer ("questions worth capturing next") —
         without this, misses at the memory layer were invisible to
-        that signal. Never creates code2database.db just to log; a
-        missing KB db simply means no feedback loop yet.
+        that signal. Never creates a store file just to log; a missing
+        kb index simply means no feedback loop yet (neither the kb's
+        own kb_index.db nor the pre-isolation copy inside
+        code2database.db).
         """
-        db_path = os.path.join(self.graph_dir, "code2database.db")
-        if not os.path.exists(db_path):
+        from _builder.kb.kb_index import _kb_db_path, _legacy_kb_db_path
+        if not (os.path.exists(_kb_db_path(self.graph_dir))
+                or os.path.exists(_legacy_kb_db_path(self.graph_dir))):
             return
         try:
             from _builder.kb.kb_index import _kb_connect

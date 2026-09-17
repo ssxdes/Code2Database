@@ -1,9 +1,14 @@
 """Knowledge-base index builder and FTS5 query interface.
 
-Builds a derived SQLite table
+Builds a derived SQLite index
 (kb_paragraphs + kb_paragraphs_fts) from the canonical filesystem
 sources (memory/memory.db entries and knowledge/brief.json sections)
 so a single FTS5 + BM25 query can search across both stores.
+
+The index lives in its own store file, kb_index.db, next to the
+memory/ and knowledge/ directories — deliberately separate from the
+graph's code2database.db so the knowledge base works with or without
+a built graph and never creates graph artifacts as a side effect.
 
 The filesystem files remain the source of truth — kb_paragraphs is
 rebuildable via `kb-rebuild-index`. Writes to memory/knowledge should
@@ -24,18 +29,28 @@ import logging
 
 
 def _kb_db_path(graph_dir: str) -> str:
+    """Path of the knowledge base's own index store (kb_index.db)."""
+    return os.path.join(graph_dir, "kb_index.db")
+
+
+def _legacy_kb_db_path(graph_dir: str) -> str:
+    """Path of the pre-isolation kb index (inside the graph db).
+
+    Older releases kept the kb_* tables inside code2database.db; guards
+    and the one-time copy still recognize that layout.
+    """
     return os.path.join(graph_dir, "code2database.db")
 
 
 def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqlite3.Connection]:
-    """Open a connection to the project's code2database.db.
+    """Open a connection to the knowledge base index store (kb_index.db).
 
-    By default, creates the db file (and kb_* tables) if missing —
-    this lets `kb-rebuild-index` work even without a prior `build`
-    (e.g., user wants to populate kb from memory/knowledge alone).
-    Pass `create_if_missing=False` to instead return None when the
-    db doesn't exist (used by `query_kb` to fall back to legacy
-    per-store search when no project db has been built yet).
+    By default, creates the store file (and kb_* tables) if missing —
+    the kb index is the knowledge base's own artifact, so creating it
+    never touches or creates the graph's code2database.db. This lets
+    `kb-rebuild-index` and friends work on a store dir that has no
+    graph at all (knowledge/memory only). Pass `create_if_missing=False`
+    to instead return None when the store doesn't exist yet.
     """
     db_path = _kb_db_path(graph_dir)
     if not os.path.exists(db_path):
@@ -169,6 +184,12 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
                 ON kb_query_log(matched, queried_at);
             CREATE INDEX IF NOT EXISTS idx_kb_query_log_query
                 ON kb_query_log(query);
+            -- kb_meta holds small bookkeeping keys (e.g. the source-mtime
+            -- marker the incremental rebuild skip compares against).
+            CREATE TABLE IF NOT EXISTS kb_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            );
             -- audit_log table (mirrors SQLiteStore schema; needed when
             -- _kb_connect creates a fresh db without prior `build`.
             -- kb_audit.write_audit_log_entry writes here.)
@@ -254,14 +275,15 @@ def _record_query_log(conn: sqlite3.Connection, query: str,
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
 def get_known_unknowns(graph_dir: str, top_n: int = 20,
-                      min_occurrences: int = 2) -> List[Dict[str, Any]]:
+                       min_occurrences: int = 2) -> List[Dict[str, Any]]:
     """Aggregate unmatched queries into 'known unknowns'.
 
     Returns queries that returned 0 matches and were asked at least
     `min_occurrences` times. Grouped by FTS5 similarity so similar
-    unanswered questions cluster together.
+    unanswered questions cluster together. Read-only: returns [] when
+    the kb index store doesn't exist yet (never creates one).
     """
-    conn = _kb_connect(graph_dir)
+    conn = _kb_connect(graph_dir, create_if_missing=False)
     if conn is None:
         return []
     try:

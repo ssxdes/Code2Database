@@ -165,7 +165,7 @@ class TestRRFFusion(unittest.TestCase):
 
 
 def _make_kb_db(graph_dir: str, paragraphs: list = None) -> str:
-    """Create a real kb_paragraphs + FTS5 db at graph_dir/code2database.db.
+    """Create a real kb_paragraphs + FTS5 db at graph_dir/kb_index.db.
 
     Uses the actual _kb_connect() helper so the schema matches production
     (triggers, indexes, FTS5 tokenizer settings, etc.). Avoids drift
@@ -173,7 +173,7 @@ def _make_kb_db(graph_dir: str, paragraphs: list = None) -> str:
     """
     from _builder.kb.kb_index import _kb_connect
     os.makedirs(graph_dir, exist_ok=True)
-    db_path = os.path.join(graph_dir, "code2database.db")
+    db_path = os.path.join(graph_dir, "kb_index.db")
     if os.path.exists(db_path):
         os.remove(db_path)
     conn = _kb_connect(graph_dir, create_if_missing=True)

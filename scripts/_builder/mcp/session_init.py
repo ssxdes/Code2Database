@@ -111,8 +111,9 @@ def build_session_context(graph_dir: str, memory_top: int = 10) -> dict:
 
     # --- Layer 4: known unknowns (unanswered recurring queries) ---
     known_unknowns: List[dict] = []
-    db_path = os.path.join(graph_dir, "code2database.db")
-    if os.path.exists(db_path):
+    from _builder.kb.kb_index import _kb_db_path, _legacy_kb_db_path
+    if os.path.exists(_kb_db_path(graph_dir)) or \
+            os.path.exists(_legacy_kb_db_path(graph_dir)):
         try:
             from _builder.kb.kb_index import get_known_unknowns
             known_unknowns = get_known_unknowns(graph_dir, top_n=5,

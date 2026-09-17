@@ -77,16 +77,28 @@ class TestMakeEndToEnd(unittest.TestCase):
         self.assertIn("env-check OK", self.proc.stdout)
 
     def test_core_artifacts_exist(self):
-        for rel in ("code2database.db", "extraction.json",
-                    "code2database_master.json"):
+        # Default storage is auto → json for a project this small, so
+        # the graph lives in master.json + domains/. code2database.db is
+        # NOT a promised artifact here — before the kb index moved to
+        # its own kb_index.db, the kb rebuild step used to create it as
+        # a kb-only side effect (graph loaders then had to special-case
+        # that file).
+        for rel in ("extraction.json", "code2database_master.json"):
             self.assertTrue(os.path.isfile(os.path.join(self.graph, rel)),
                             "missing %s" % rel)
+        domains = os.path.join(self.graph, "domains")
+        self.assertTrue(os.path.isdir(domains), "missing domains/")
+        json_count = sum(
+            1 for _root, _dirs, files in os.walk(domains)
+            for f in files if f.endswith(".json"))
+        self.assertGreater(json_count, 0, "domains/ has no json files")
 
     def test_derived_artifacts_exist(self):
         for rel in (".code2database_data_flow.json",
                     ".code2database_data_dep.json",
                     ".code2database_ffi.json",
                     "embeddings.json",
+                    "kb_index.db",
                     "callgraph.html",
                     os.path.join("knowledge", "brief.json")):
             path = os.path.join(self.graph, rel)
@@ -103,7 +115,8 @@ class TestMakeEndToEnd(unittest.TestCase):
         self.assertGreater(len(mds), 0, "obsidian vault has no notes")
 
     def test_kb_index_tables_created(self):
-        conn = sqlite3.connect(os.path.join(self.graph, "code2database.db"))
+        # The kb index lives in its own store, separate from the graph db.
+        conn = sqlite3.connect(os.path.join(self.graph, "kb_index.db"))
         try:
             tables = [r[0] for r in conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'")]

@@ -99,14 +99,17 @@ class TestSyncMemoryEntries(_KbTestBase):
         rows = self._kb_rows(self._source(mid))
         self.assertEqual(rows[0][3], "memory_experience")
 
-    def test_sync_is_noop_without_kb_db(self):
+    def test_sync_creates_kb_store_when_missing(self):
         mid = self.store.add("q", "a")
-        # No rebuild_kb_index yet — the kb index store may not exist.
+        # No rebuild_kb_index yet — the kb store may not exist. Sync
+        # now provisions it (the kb store is the knowledge base's own
+        # artifact) and indexes the entry.
         db = os.path.join(self.graph_dir, "kb_index.db")
         if os.path.exists(db):
             os.unlink(db)
         synced = sync_memory_entries(self.graph_dir, [mid])
-        self.assertEqual(synced, 0)
+        self.assertEqual(synced, 1)
+        self.assertTrue(os.path.isfile(db))
 
     def test_synced_content_matches_full_rebuild(self):
         # graph A: add + incremental sync (kb db pre-created empty);

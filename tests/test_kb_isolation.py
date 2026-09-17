@@ -341,5 +341,56 @@ class TestForeignTablesHome(_KbOnlyBase):
         self.assertIn("functions", tables)
 
 
+class TestSaveSearchableImmediately(_KbOnlyBase):
+    """A saved memory must be searchable through the unified index
+    without a manual kb-rebuild-index — capture then query is the core
+    kb-only workflow."""
+
+    def _save(self, question, answer, **kw):
+        from types import SimpleNamespace
+        from _builder.memory.memory_cmd import cmd_save_memory
+        args = SimpleNamespace(
+            graph=self.graph_dir, question=question, answer=answer,
+            chains=None, tags="", node_ids="", category="",
+            author="tester", symbol=None, no_merge=False, correct=False)
+        for k, v in kw.items():
+            setattr(args, k, v)
+        cmd_save_memory(args)
+
+    def test_save_then_query_without_rebuild(self):
+        self._save("how does the nvme queue doorbell work",
+                   "write to the submission tail")
+        hits = query_kb(self.graph_dir, "nvme doorbell")
+        self.assertTrue(any("doorbell" in (h.get("title") or "")
+                            for h in hits), hits)
+        self._assert_no_graph_artifacts()
+
+    def test_merged_root_stays_searchable(self):
+        self._save("how does the nvme queue doorbell work",
+                   "write to the submission tail")
+        self._save("how does the nvme queue doorbell work",
+                   "a much longer and more detailed answer about "
+                   "doorbells that outranks the first one " * 3)
+        hits = query_kb(self.graph_dir, "nvme doorbell")
+        titles = [h.get("title") or "" for h in hits]
+        self.assertTrue(any("doorbell" in t for t in titles), hits)
+
+    def test_correct_path_reindexes(self):
+        self._save("how does the nvme queue doorbell work",
+                   "wrong answer")
+        from types import SimpleNamespace
+        from _builder.memory.memory_cmd import cmd_save_memory
+        cmd_save_memory(SimpleNamespace(
+            graph=self.graph_dir,
+            question="how does the nvme queue doorbell work",
+            answer="write to the submission tail doorbell register",
+            chains=None, tags="", node_ids="", category="",
+            author="tester", symbol=None, no_merge=False, correct=True))
+        hits = query_kb(self.graph_dir, "submission tail doorbell")
+        self.assertTrue(hits)
+        self.assertIn("write to the submission tail doorbell register",
+                      hits[0]["body"])
+
+
 if __name__ == "__main__":
     unittest.main()

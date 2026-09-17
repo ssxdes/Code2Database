@@ -1,6 +1,7 @@
 """callgraph builder module: memory_cmd (SQLite memory store commands)."""
 
 import json
+import sqlite3
 import sys
 from datetime import datetime
 
@@ -21,6 +22,18 @@ def _auto_validate_memory(G, mem_dir: str, graph_dir: str):
     from _builder.memory.memory_store import MemoryStore
     store = MemoryStore(graph_dir)
     store.validate_against_graph(set(G.nodes()))
+
+
+def _sync_kb_after_save(graph_dir: str, mem_ids):
+    """Make saved memory edits searchable without a full rebuild."""
+    ids = [mid for mid in mem_ids if mid]
+    if not ids:
+        return
+    try:
+        from _builder.kb.kb_index import sync_memory_entries
+        sync_memory_entries(graph_dir, ids)
+    except Exception:
+        _log.debug("kb sync after save skipped", exc_info=True)
 
 
 def cmd_save_memory(args):
@@ -49,11 +62,13 @@ def cmd_save_memory(args):
             author=getattr(args, "author", ""),
             symbols=getattr(args, "symbol", None))
         if result["action"] == "corrected":
+            _sync_kb_after_save(graph_dir, [result["id"]])
             print(f"Corrected memory #{result['id']} "
                   f"(was: {result['matched_question']!r}, "
                   f"similarity {result['score']:.2f}) — "
                   "no new variant created")
         else:
+            _sync_kb_after_save(graph_dir, [result["id"]])
             print(f"No similar memory found — saved as new "
                   f"#{result['id']}")
         return
@@ -70,6 +85,17 @@ def cmd_save_memory(args):
         no_merge=(args.no_merge is True),
         symbols=getattr(args, "symbol", None),
     )
+    # Keep the unified index in step: the new entry, plus the cluster
+    # root when it merged into one (the root absorbed tags/answer).
+    conn = sqlite3.connect(store.db_path)
+    try:
+        row = conn.execute(
+            "SELECT root_id FROM memories WHERE id = ?",
+            (entry_id,)).fetchone()
+        root_id = row[0] if row else None
+    finally:
+        conn.close()
+    _sync_kb_after_save(graph_dir, [entry_id, root_id])
     category = getattr(args, "category", "") or "uncategorized"
     syms = getattr(args, "symbol", None) or []
     print(f"Saved memory #{entry_id} (category: {category}, "

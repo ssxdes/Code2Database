@@ -154,7 +154,7 @@ def cmd_kb_migrate(args):
     from _builder.kb.kb_index import _kb_connect
     conn = _kb_connect(args.graph)
     if conn is None:
-        print("No code2database.db found")
+        print("No kb store could be opened")
         sys.exit(1)
     try:
         # Copy rows; kb_items gets the same id, title, body, tags etc.

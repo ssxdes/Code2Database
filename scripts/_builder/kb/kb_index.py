@@ -566,9 +566,9 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
     conn = _kb_connect(graph_dir)
     if conn is None:
         if verbose:
-            print(f"[kb-rebuild] No code2database.db at {graph_dir}; "
-                  f"nothing to rebuild", file=sys.stderr)
-        return {"rebuilt": False, "reason": "no_db",
+            print(f"[kb-rebuild] No kb store could be opened at "
+                  f"{graph_dir}; nothing to rebuild", file=sys.stderr)
+        return {"rebuilt": False, "reason": "no_store",
                 "memory_count": 0, "knowledge_count": 0}
     try:
         # P4: Incremental skip — compute max mtime of all source files
@@ -817,15 +817,15 @@ def sync_memory_entries(graph_dir: str, mem_ids: List[int]) -> int:
     (tombstoned 'merged' entries simply lose their rows). Uses the
     exact field mapping of rebuild_kb_index, so a synced entry is
     indistinguishable from a full-rebuild row. Keeps memory edits
-    searchable between full rebuilds. Returns the number of entries
-    re-inserted.
+    searchable between full rebuilds. The kb store is the knowledge
+    base's own artifact, so it is created when missing. Returns the
+    number of entries re-inserted.
     """
-    conn = _kb_connect(graph_dir, create_if_missing=False)
-    if conn is None:
-        return 0
+    conn = _kb_connect(graph_dir)
     db_path = os.path.join(graph_dir, "memory", "memory.db")
     if not os.path.exists(db_path):
-        conn.close()
+        if conn is not None:
+            conn.close()
         return 0
     mem = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     mem.row_factory = sqlite3.Row

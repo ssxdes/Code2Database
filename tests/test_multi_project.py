@@ -924,7 +924,8 @@ class TestForeignRefsCycle(unittest.TestCase):
         # The refs must actually be persisted, not just counted in the
         # summary (a summary-only success masks a rolled-back batch).
         import sqlite3 as _sq
-        conn = _sq.connect(os.path.join(self.b_dir, "code2database.db"))
+        from _builder.kb.kb_index import _kb_db_path
+        conn = _sq.connect(_kb_db_path(self.b_dir))
         try:
             persisted = conn.execute(
                 "SELECT COUNT(*) FROM foreign_refs WHERE status = 'resolved'"
@@ -1004,17 +1005,10 @@ class TestCompositeQuery(unittest.TestCase):
         _make_test_db(victim_db, functions=[
             {"id": "V_secret", "name": "secret", "domain": "V", "line": 1},
         ])
-        # Ensure watched_c2ds table exists but is empty for our graph_dir.
-        b_db = os.path.join(self.b_dir, "code2database.db")
-        conn = sqlite3.connect(b_db)
-        conn.executescript(
-            "CREATE TABLE IF NOT EXISTS watched_c2ds ("
-            "  c2d_path TEXT PRIMARY KEY, project_name TEXT, "
-            "  db_mtime_at_sync TEXT, db_size_at_sync INTEGER, "
-            "  functions_count_at_sync INTEGER, last_synced_at TEXT NOT NULL, "
-            "  sync_status TEXT NOT NULL DEFAULT 'unknown')")
-        conn.commit()
-        conn.close()
+        # Provision the kb store so its watched_c2ds table exists and
+        # is empty (the registration list lives there).
+        from _builder.kb.kb_index import _kb_connect
+        _kb_connect(self.b_dir).close()
         # Try to query with the unregistered victim path.
         result = composite_query(
             self.b_dir, "CALLEES_OF main",
@@ -1037,14 +1031,8 @@ class TestCompositeQuery(unittest.TestCase):
         _make_test_db(victim_db, functions=[
             {"id": "V_secret", "name": "secret", "domain": "V", "line": 1},
         ])
-        b_db = os.path.join(self.b_dir, "code2database.db")
-        conn = sqlite3.connect(b_db)
-        conn.executescript(
-            "CREATE TABLE IF NOT EXISTS watched_c2ds ("
-            "  c2d_path TEXT PRIMARY KEY, project_name TEXT, "
-            "  db_mtime_at_sync TEXT, db_size_at_sync INTEGER, "
-            "  functions_count_at_sync INTEGER, last_synced_at TEXT NOT NULL, "
-            "  sync_status TEXT NOT NULL DEFAULT 'unknown')")
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.b_dir)
         conn.execute(
             "INSERT INTO watched_c2ds (c2d_path, last_synced_at, "
             "sync_status) VALUES (?, ?, ?)",
@@ -1064,39 +1052,12 @@ class TestCheckCompat(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp(prefix="compat_test_")
         self.b_dir = os.path.join(self.tmpdir, "B")
         os.makedirs(self.b_dir, exist_ok=True)
-        # B's db with foreign_refs
+        # B's graph db (empty graph) + the kb store holding foreign_refs
+        # and the watched registration.
         b_db = os.path.join(self.b_dir, "code2database.db")
         _make_test_db(b_db)
-        conn = sqlite3.connect(b_db)
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS foreign_refs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                local_node_id TEXT NOT NULL,
-                invoked_name TEXT NOT NULL,
-                invoked_signature TEXT,
-                foreign_c2d_path TEXT NOT NULL,
-                foreign_project_name TEXT,
-                foreign_node_id TEXT,
-                foreign_name TEXT,
-                foreign_domain TEXT,
-                foreign_source_file TEXT,
-                foreign_signature TEXT,
-                status TEXT NOT NULL DEFAULT 'unresolved',
-                resolution_strategy TEXT,
-                last_resolved_at TEXT,
-                call_order INTEGER,
-                call_condition TEXT
-            );
-            CREATE TABLE IF NOT EXISTS watched_c2ds (
-                c2d_path TEXT PRIMARY KEY,
-                project_name TEXT,
-                db_mtime_at_sync TEXT,
-                db_size_at_sync INTEGER,
-                functions_count_at_sync INTEGER,
-                last_synced_at TEXT NOT NULL,
-                sync_status TEXT NOT NULL DEFAULT 'unknown'
-            );
-        """)
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.b_dir)
         # Insert a resolved foreign_ref
         conn.execute(
             "INSERT INTO foreign_refs (local_node_id, invoked_name, "

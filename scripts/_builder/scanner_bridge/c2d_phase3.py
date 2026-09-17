@@ -117,9 +117,9 @@ def add_foreign_stub(graph_dir: str, stub_c2d_path: str,
         unresolved = conn.execute(
             "SELECT e.invoker_id, e.invoked_id, e.call_order, "
             "e.call_condition "
-            "FROM edges e "
+            "FROM graph_db.edges e "
             "WHERE e.invoked_id = '' "
-            "   OR e.invoked_id NOT IN (SELECT id FROM functions) "
+            "   OR e.invoked_id NOT IN (SELECT id FROM graph_db.functions) "
             "   OR e.invoked_id LIKE 'external_%' "
             "LIMIT 5000"
         ).fetchall()
@@ -206,7 +206,7 @@ def auto_link_ffi_to_foreign(graph_dir: str, verbose: bool = True) -> Dict[str, 
         ffi_edges = conn.execute(
             "SELECT e.invoker_id, e.invoked_id, e.call_order, "
             "e.call_condition, e.relation "
-            "FROM edges e "
+            "FROM graph_db.edges e "
             "WHERE e.relation LIKE '%FFI%' OR e.relation LIKE '%ffi%' "
             "OR e.invoked_id LIKE '%extern%' "
             "OR e.invoked_id LIKE '%ctypes%' "
@@ -329,7 +329,7 @@ def scan_rpc_edges(graph_dir: str, verbose: bool = True) -> Dict[str, Any]:
         # Fetch body_text_compressed in the same SELECT to avoid N+1 queries.
         rows = conn.execute(
             "SELECT id, name, domain, source_file, line_number, "
-            "signature, body_text_compressed FROM functions "
+            "signature, body_text_compressed FROM graph_db.functions "
             "WHERE name IS NOT NULL "
             "AND body_text_compressed IS NOT NULL "
             "LIMIT 50000"
@@ -388,7 +388,7 @@ def scan_rpc_edges(graph_dir: str, verbose: bool = True) -> Dict[str, Any]:
                 # Insert stub function node (external_endpoint type)
                 try:
                     conn.execute(
-                        "INSERT OR IGNORE INTO functions "
+                        "INSERT OR IGNORE INTO graph_db.functions "
                         "(id, name, domain, source_file, line_number, "
                         "signature, labels, extra_json) "
                         "VALUES (?, ?, ?, ?, NULL, '', 'out_end', ?)",
@@ -404,7 +404,7 @@ def scan_rpc_edges(graph_dir: str, verbose: bool = True) -> Dict[str, Any]:
                     pass
             try:
                 conn.execute(
-                    "INSERT OR IGNORE INTO edges "
+                    "INSERT OR IGNORE INTO graph_db.edges "
                     "(invoker_id, invoked_id, relation, call_order, "
                     "confidence, source) "
                     "VALUES (?, ?, 'RPC_CALL', NULL, 'INFERRED', 'rpc_scan')",

@@ -482,11 +482,10 @@ def _fetch_foreign_refs_for_node(graph_dir: str, node_id: str) -> list:
     of dicts with foreign callee info, transparent to the LLM.
     """
     import sqlite3 as _sqlite3
-    db_path = os.path.join(graph_dir, "code2database.db")
-    if not os.path.exists(db_path):
+    from _builder.scanner_bridge.c2d_foreign import foreign_store_connect
+    conn = foreign_store_connect(graph_dir)
+    if conn is None:
         return []
-    conn = _sqlite3.connect(db_path)
-    conn.row_factory = _sqlite3.Row
     refs = []
     try:
         # Check if foreign_refs table exists

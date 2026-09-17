@@ -141,14 +141,21 @@ def _db_path(graph_dir: str) -> str:
 
 
 def _connect(graph_dir: str) -> Optional[sqlite3.Connection]:
-    """Connect to B's code2database.db, ensuring ALL tables exist.
+    """Connect to the store holding foreign_refs/watched_c2ds.
 
-    Delegates to kb_index._kb_connect (which creates kb_paragraphs,
-    kb_items, kb_query_log, audit_log, foreign_refs, watched_c2ds)
-    so any fresh db has the complete schema regardless of which
-    entry point created it. Also ensures c2d-specific tables via
-    _ensure_foreign_tables (idempotent — no-op if already created
-    by _kb_connect).
+    Delegates to kb_index._kb_connect (which provisions kb_paragraphs,
+    kb_items, kb_query_log, audit_log, foreign_refs, watched_c2ds in
+    the kb store, kb_index.db) so any fresh store has the complete
+    schema regardless of which entry point created it. Also ensures
+    c2d-specific tables via _ensure_foreign_tables (idempotent —
+    no-op if already created by _kb_connect).
+
+    B's graph tables (functions/edges) live in code2database.db; the
+    connection ATTACHes that file as `graph_db` so the cross-C2D flows
+    can read/write the graph alongside the foreign tables on one
+    connection. Without a graph db (json-storage or knowledge-only
+    store) an in-memory empty graph is attached instead, so graph
+    reads simply return nothing instead of erroring.
     """
     from _builder.kb.kb_index import _kb_connect
     conn = _kb_connect(graph_dir, create_if_missing=True)
@@ -158,7 +165,74 @@ def _connect(graph_dir: str) -> Optional[sqlite3.Connection]:
     # round 4), but call _ensure_foreign_tables as a belt-and-suspenders
     # in case _kb_connect's executescript failed silently.
     _ensure_foreign_tables(conn)
+    _attach_graph_db(conn, graph_dir)
     return conn
+
+
+_GRAPH_DB_ALIAS = "graph_db"
+
+
+def _attach_graph_db(conn: sqlite3.Connection, graph_dir: str) -> str:
+    """ATTACH B's graph db as graph_db; empty in-memory graph if none.
+
+    Returns the alias name. Idempotent per connection (re-ATTACH of an
+    existing alias raises, so check first).
+    """
+    try:
+        attached = {r[1] for r in conn.execute("PRAGMA database_list")}
+    except sqlite3.Error:
+        attached = set()
+    if _GRAPH_DB_ALIAS in attached:
+        return _GRAPH_DB_ALIAS
+    graph_db = os.path.join(graph_dir, "code2database.db")
+    if os.path.exists(graph_db):
+        conn.execute(
+            f"ATTACH DATABASE '{_escape_sql_path(graph_db)}' "
+            f"AS {_GRAPH_DB_ALIAS}")
+    else:
+        # No graph db (json-storage or knowledge-only store): attach an
+        # empty in-memory graph with the columns the cross-C2D flows
+        # reference, so graph reads return nothing instead of erroring.
+        conn.execute(
+            f"ATTACH DATABASE ':memory:' AS {_GRAPH_DB_ALIAS}")
+        conn.executescript(f"""
+            CREATE TABLE IF NOT EXISTS {_GRAPH_DB_ALIAS}.functions (
+                id TEXT PRIMARY KEY, name TEXT, domain TEXT,
+                source_file TEXT, line_number INTEGER, signature TEXT,
+                labels TEXT, body_text_compressed BLOB, extra_json TEXT
+            );
+            CREATE TABLE IF NOT EXISTS {_GRAPH_DB_ALIAS}.edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoker_id TEXT NOT NULL, invoked_id TEXT NOT NULL,
+                relation TEXT, call_order INTEGER, call_condition TEXT,
+                concurrency TEXT, confidence TEXT, confidence_score REAL,
+                source TEXT, evidence TEXT, invoked_arg_json TEXT,
+                reg_args_json TEXT, vtable_type TEXT, vtable_bound_module TEXT
+            );
+        """)
+    return _GRAPH_DB_ALIAS
+
+
+def foreign_store_connect(graph_dir: str) -> Optional[sqlite3.Connection]:
+    """Read connection to wherever foreign_refs/watched_c2ds live.
+
+    The tables are written through _connect into the kb store
+    (kb_index.db). A project from before that relocation still holds
+    them inside code2database.db until the first kb connect imports
+    them, so fall back to that file when the kb store doesn't exist
+    yet. Returns None when neither store exists. Callers only read;
+    use _connect for writes.
+    """
+    from _builder.kb.kb_index import _kb_connect, _kb_db_path, \
+        _legacy_kb_db_path
+    if os.path.exists(_kb_db_path(graph_dir)):
+        return _kb_connect(graph_dir, create_if_missing=False)
+    legacy = _legacy_kb_db_path(graph_dir)
+    if os.path.exists(legacy):
+        conn = sqlite3.connect(legacy)
+        conn.row_factory = sqlite3.Row
+        return conn
+    return None
 
 
 def _foreign_db_path(foreign_c2d_path: str) -> str:
@@ -368,9 +442,9 @@ def add_foreign(graph_dir: str, foreign_c2d_path: str,
             # Best-effort: extract function name from invoked_id if it
             # looks like a name (legacy id format: domain_name)
             "REPLACE(REPLACE(e.invoked_id, '*', ''), 'external_', '') AS invoked_name_guess "
-            "FROM edges e "
+            "FROM graph_db.edges e "
             "WHERE e.invoked_id = '' "
-            "   OR e.invoked_id NOT IN (SELECT id FROM functions) "
+            "   OR e.invoked_id NOT IN (SELECT id FROM graph_db.functions) "
             "   OR e.invoked_id LIKE 'external_%' "
             "LIMIT 10000"
         ).fetchall()

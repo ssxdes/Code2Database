@@ -699,14 +699,14 @@ def _tool_semantic_status(args: dict, graph_dir: str) -> dict:
 def _tool_foreign_refs(args: dict, graph_dir: str) -> dict:
     """List cross-C2D foreign refs for a node."""
     import sqlite3
+    from _builder.scanner_bridge.c2d_foreign import foreign_store_connect
     node_id = args.get("node", "")
     if not node_id:
         return {"error": "node is required"}
-    db_path = os.path.join(graph_dir, "code2database.db")
-    if not os.path.exists(db_path):
-        return {"error": "no db", "foreign_refs": []}
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = foreign_store_connect(graph_dir)
+    if conn is None:
+        return {"node": node_id, "foreign_refs_count": 0,
+                "foreign_refs": []}
     try:
         rows = conn.execute(
             "SELECT foreign_c2d_path, foreign_node_id, foreign_name, "

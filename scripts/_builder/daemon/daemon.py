@@ -1693,11 +1693,11 @@ class Daemon:
         """
         try:
             import sqlite3
-            db_path = os.path.join(self.graph_dir, "code2database.db")
-            if not os.path.exists(db_path):
+            from _builder.scanner_bridge.c2d_foreign import \
+                foreign_store_connect
+            conn = foreign_store_connect(self.graph_dir)
+            if conn is None:
                 return
-            conn = sqlite3.connect(db_path)
-            conn.row_factory = sqlite3.Row
             try:
                 try:
                     watched = conn.execute(

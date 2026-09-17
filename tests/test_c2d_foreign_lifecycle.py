@@ -108,8 +108,12 @@ class _ForeignFixture(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _make_b_db(self):
-        from _builder.kb.kb_index import _kb_connect
-        conn = _kb_connect(self.b_dir, create_if_missing=True)
+        # B's graph lives in code2database.db; the kb store (kb_index.db)
+        # holds the foreign tables. _connect ATTACHes the graph db as
+        # graph_db, so the fixture mirrors production layout.
+        conn = sqlite3.connect(
+            os.path.join(self.b_dir, "code2database.db"))
+        conn.execute("PRAGMA journal_mode=DELETE")
         conn.execute(
             "CREATE TABLE IF NOT EXISTS functions "
             "(id TEXT PRIMARY KEY, name TEXT, domain TEXT, "
@@ -132,10 +136,6 @@ class _ForeignFixture(unittest.TestCase):
                 "INSERT INTO edges (invoker_id, invoked_id, relation, "
                 "call_order) VALUES (?, ?, ?, ?)",
                 (e["invoker"], e["invoked"], "CALL", 0))
-        try:
-            conn.execute("PRAGMA journal_mode=DELETE")
-        except sqlite3.Error:
-            pass
         conn.commit()
         conn.close()
 

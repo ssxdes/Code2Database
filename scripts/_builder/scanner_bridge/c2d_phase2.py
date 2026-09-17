@@ -126,9 +126,9 @@ def _find_callers(conn: sqlite3.Connection, callee_name: str,
             "f_invoker.name AS invoker_name, "
             "f_invoker.domain AS invoker_domain, "
             "f_invoker.source_file AS invoker_source "
-            "FROM edges e "
-            "JOIN functions f_invoker ON e.invoker_id = f_invoker.id "
-            "WHERE e.invoked_id IN (SELECT id FROM functions WHERE name = ?) "
+            "FROM graph_db.edges e "
+            "JOIN graph_db.functions f_invoker ON e.invoker_id = f_invoker.id "
+            "WHERE e.invoked_id IN (SELECT id FROM graph_db.functions WHERE name = ?) "
             "OR e.invoked_id LIKE ? "
             "ORDER BY e.call_order "
             "LIMIT ?",
@@ -188,9 +188,9 @@ def _find_callees(conn: sqlite3.Connection, caller_name: str,
             "f_callee.name AS callee_name, "
             "f_callee.domain AS callee_domain, "
             "f_callee.source_file AS callee_source "
-            "FROM edges e "
-            "JOIN functions f_callee ON e.invoked_id = f_callee.id "
-            "WHERE e.invoker_id IN (SELECT id FROM functions WHERE name = ?) "
+            "FROM graph_db.edges e "
+            "JOIN graph_db.functions f_callee ON e.invoked_id = f_callee.id "
+            "WHERE e.invoker_id IN (SELECT id FROM graph_db.functions WHERE name = ?) "
             "ORDER BY e.call_order "
             "LIMIT ?",
             (caller_name, top_n)
@@ -217,7 +217,7 @@ def _fts_search_all(conn: sqlite3.Connection, query: str,
     results: List[Dict[str, Any]] = []
     try:
         rows = conn.execute(
-            "SELECT id, name, domain, source_file FROM functions "
+            "SELECT id, name, domain, source_file FROM graph_db.functions "
             "WHERE name LIKE ? LIMIT ?",
             (f"%{query}%", top_n)
         ).fetchall()
@@ -390,7 +390,7 @@ def coverage_cross_c2d(test_c2d: str, target_c2d: str,
             name_match_rows = conn.execute(
                 "SELECT DISTINCT t.id FROM target.functions t "
                 "WHERE t.name IN ("
-                "  SELECT f.name FROM functions f "
+                "  SELECT f.name FROM graph_db.functions f "
                 "  INNER JOIN edges e ON e.invoked_id = f.id"
                 ")"
             ).fetchall()

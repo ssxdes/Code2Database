@@ -228,5 +228,95 @@ class TestForeignKbAttach(_KbOnlyBase):
         self.assertEqual(results, [])
 
 
+class TestForeignTablesHome(_KbOnlyBase):
+    """foreign_refs / watched_c2ds are written to the kb store; every
+    reader follows them there, with the pre-relocation graph db as a
+    fallback."""
+
+    NODE = "src_main"
+
+    def _write_ref(self, conn, status="resolved"):
+        conn.execute(
+            "INSERT OR REPLACE INTO foreign_refs (local_node_id, "
+            "invoked_name, foreign_c2d_path, foreign_project_name, "
+            "foreign_node_id, foreign_name, status, last_resolved_at) "
+            "VALUES (?, 'util_sum', '/other-out', 'other', "
+            "'other_util_sum', 'util_sum', ?, "
+            "'2026-01-01T00:00:00')", (self.NODE, status))
+        conn.commit()
+
+    def test_reader_finds_refs_in_kb_store(self):
+        # Cross-C2D refs in a dir with no graph db at all.
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.graph_dir)
+        try:
+            self._write_ref(conn)
+        finally:
+            conn.close()
+        from _builder.query.query_helpers import _fetch_foreign_refs_for_node
+        refs = _fetch_foreign_refs_for_node(self.graph_dir, self.NODE)
+        self.assertEqual(len(refs), 1)
+        self.assertEqual(refs[0]["foreign_name"], "util_sum")
+        self._assert_no_graph_artifacts()
+
+    def test_mcp_tool_reads_kb_store(self):
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.graph_dir)
+        try:
+            self._write_ref(conn)
+        finally:
+            conn.close()
+        from _builder.mcp.mcp_c2d_tools import _tool_foreign_refs
+        out = _tool_foreign_refs({"node": self.NODE}, self.graph_dir)
+        self.assertEqual(out["foreign_refs_count"], 1)
+        self.assertEqual(out["foreign_refs"][0]["foreign_c2d_path"],
+                         "/other-out")
+
+    def test_reader_falls_back_to_legacy_home(self):
+        # Pre-relocation layout: refs inside code2database.db, no
+        # kb_index.db yet — the reader must still see them.
+        conn = sqlite3.connect(
+            os.path.join(self.graph_dir, "code2database.db"))
+        conn.executescript("""
+            CREATE TABLE foreign_refs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                local_node_id TEXT NOT NULL,
+                invoked_name TEXT NOT NULL,
+                invoked_signature TEXT,
+                foreign_c2d_path TEXT NOT NULL,
+                foreign_project_name TEXT,
+                foreign_node_id TEXT,
+                foreign_name TEXT,
+                foreign_domain TEXT,
+                foreign_source_file TEXT,
+                foreign_signature TEXT,
+                status TEXT NOT NULL DEFAULT 'unresolved',
+                resolution_strategy TEXT,
+                last_resolved_at TEXT,
+                call_order INTEGER,
+                call_condition TEXT
+            );
+            CREATE TABLE watched_c2ds (
+                c2d_path TEXT PRIMARY KEY,
+                project_name TEXT,
+                db_mtime_at_sync TEXT,
+                db_size_at_sync INTEGER,
+                functions_count_at_sync INTEGER,
+                last_synced_at TEXT NOT NULL,
+                sync_status TEXT NOT NULL DEFAULT 'unknown'
+            );
+        """)
+        self._write_ref(conn)
+        conn.close()
+        from _builder.query.query_helpers import _fetch_foreign_refs_for_node
+        refs = _fetch_foreign_refs_for_node(self.graph_dir, self.NODE)
+        self.assertEqual(len(refs), 1)
+
+    def test_reader_returns_empty_without_any_store(self):
+        from _builder.query.query_helpers import _fetch_foreign_refs_for_node
+        self.assertEqual(
+            _fetch_foreign_refs_for_node(self.graph_dir, self.NODE), [])
+
+
 if __name__ == "__main__":
     unittest.main()

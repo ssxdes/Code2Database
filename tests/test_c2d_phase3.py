@@ -77,13 +77,12 @@ class TestAddForeignStub(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp(prefix="stub_test_")
         self.b_dir = os.path.join(self.tmpdir, "B")
         os.makedirs(self.b_dir, exist_ok=True)
-        # Use _kb_connect to create full schema (including FTS5 tables,
-        # foreign_refs, watched_c2ds) — then insert test data.
-        # This avoids the "database is locked" error that occurs when
-        # add_foreign_stub tries to ATTACH while _kb_connect's
-        # executescript hasn't fully committed FTS5 shadow tables.
-        from _builder.kb.kb_index import _kb_connect
-        conn = _kb_connect(self.b_dir, create_if_missing=True)
+        # B's graph (functions/edges) lives in code2database.db; the kb
+        # store holds foreign_refs/watched_c2ds. _connect ATTACHes the
+        # graph db as graph_db — mirror the production layout.
+        b_graph_db = os.path.join(self.b_dir, "code2database.db")
+        conn = sqlite3.connect(b_graph_db)
+        conn.execute("PRAGMA journal_mode=DELETE")
         conn.execute(
             "CREATE TABLE IF NOT EXISTS functions "
             "(id TEXT PRIMARY KEY, name TEXT, domain TEXT, "
@@ -109,14 +108,6 @@ class TestAddForeignStub(unittest.TestCase):
             "INSERT INTO edges (invoker_id, invoked_id, relation) "
             "VALUES (?, ?, ?)", ("B_main", "external_free", "CALL"))
         conn.commit()
-        # Switch B's journal mode to DELETE before closing. This avoids
-        # "database is locked" when add_foreign_stub opens a new
-        # connection and tries to ATTACH the stub db — WAL-mode
-        # connections carry WAL state that conflicts with ATTACH.
-        try:
-            conn.execute("PRAGMA journal_mode=DELETE")
-        except Exception:
-            pass
         conn.close()
         # Create stub C2D for "glibc" SDK
         self.stub_dir = os.path.join(self.tmpdir, "glibc_stub")
@@ -138,8 +129,9 @@ class TestAddForeignStub(unittest.TestCase):
                                     "glibc", verbose=False)
         self.assertTrue(summary.get("added"))
         self.assertGreater(summary.get("resolved_count", 0), 0)
-        # Verify in db
-        conn = sqlite3.connect(os.path.join(self.b_dir, "code2database.db"))
+        # Verify in the kb store (where foreign_refs live now)
+        from _builder.kb.kb_index import _kb_db_path
+        conn = sqlite3.connect(_kb_db_path(self.b_dir))
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT status, foreign_name FROM foreign_refs "

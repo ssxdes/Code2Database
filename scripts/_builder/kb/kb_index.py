@@ -1078,6 +1078,20 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
         conn.close()
 
 
+def _foreign_kb_db_path(c2d_path: str) -> Optional[str]:
+    """Locate a watched C2D's kb index, new home first.
+
+    The kb index lives in kb_index.db; projects from before the
+    relocation keep it inside code2database.db. Returns None when
+    neither exists.
+    """
+    for name in ("kb_index.db", "code2database.db"):
+        path = os.path.join(c2d_path, name)
+        if os.path.exists(path):
+            return path
+    return None
+
+
 def _query_foreign_kb(conn: sqlite3.Connection, query: str, top_n: int,
                       min_weight: float, max_tokens: int) -> List[Dict[str, Any]]:
     """Search kb_paragraphs in all watched foreign C2Ds.
@@ -1098,8 +1112,8 @@ def _query_foreign_kb(conn: sqlite3.Connection, query: str, top_n: int,
     for w in watched:
         c2d_path = w["c2d_path"]
         project_name = w["project_name"] or ""
-        fdb_path = os.path.join(c2d_path, "code2database.db")
-        if not os.path.exists(fdb_path):
+        fdb_path = _foreign_kb_db_path(c2d_path)
+        if fdb_path is None:
             continue
         alias = f"fkb_{abs(hash(c2d_path)) % 100000}"
         try:
@@ -1107,12 +1121,17 @@ def _query_foreign_kb(conn: sqlite3.Connection, query: str, top_n: int,
                 f"ATTACH DATABASE 'file:{_escape_sql_path(fdb_path)}?mode=ro' AS {alias}"
             )
             rows = conn.execute(
+                # MATCH and bm25() take the FTS table name unqualified:
+                # an alias-qualified operand ("<alias>.kb_paragraphs_fts
+                # MATCH ...") is rejected by SQLite as an unknown column,
+                # and the one FTS table in this FROM clause is the
+                # attached one, so resolution is unambiguous.
                 f"SELECT p.id, p.source_kind, p.source_file, p.title, "
                 f"p.body, p.tags, p.weight, p.kind, "
-                f"-bm25({alias}.kb_paragraphs_fts) AS score "
+                f"-bm25(kb_paragraphs_fts) AS score "
                 f"FROM {alias}.kb_paragraphs_fts "
                 f"JOIN {alias}.kb_paragraphs p ON p.id = {alias}.kb_paragraphs_fts.rowid "
-                f"WHERE {alias}.kb_paragraphs_fts MATCH ? "
+                f"WHERE kb_paragraphs_fts MATCH ? "
                 f"AND p.weight >= ? "
                 f"ORDER BY score DESC LIMIT ?",
                 (match_expr, min_weight, top_n)

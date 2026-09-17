@@ -164,5 +164,69 @@ class TestLegacyStoreStillReadable(_KbOnlyBase):
         self.assertIn("known_unknowns", ctx)
 
 
+class TestForeignKbAttach(_KbOnlyBase):
+    """A watched foreign C2D is searched through its kb index, new
+    home first, pre-isolation home as fallback."""
+
+    def _watch(self, foreign_dir, status="ok"):
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.graph_dir)
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO watched_c2ds "
+                "(c2d_path, project_name, last_synced_at, sync_status) "
+                "VALUES (?, 'foreign', '2026-01-01T00:00:00', ?)",
+                (foreign_dir, status))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _foreign_with_new_home(self):
+        foreign = os.path.join(self.tmp.name, "other-out")
+        os.makedirs(foreign, exist_ok=True)
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(foreign)
+        try:
+            conn.execute(
+                "INSERT INTO kb_paragraphs (source_kind, source_file, "
+                "para_index, title, body, weight, confidence, kind, "
+                "created_at) VALUES ('knowledge', 'brief.json', 0, "
+                "'foreign rule', 'always drain the completion queue "
+                "before freeing the ring', 1.0, 1.0, "
+                "'hard_rule', '2026-01-01T00:00:00')")
+            conn.commit()
+        finally:
+            conn.close()
+        return foreign
+
+    def test_foreign_hits_via_new_home(self):
+        foreign = self._foreign_with_new_home()
+        self._watch(foreign)
+        results = query_kb(self.graph_dir, "completion queue ring",
+                           top_n=5)
+        self.assertTrue(any(r.get("source_db") == foreign
+                            for r in results), results)
+        self._assert_no_graph_artifacts()
+
+    def test_foreign_hits_via_legacy_home(self):
+        foreign = self._foreign_with_new_home()
+        # Relocate the populated store to the pre-isolation layout.
+        os.rename(os.path.join(foreign, "kb_index.db"),
+                  os.path.join(foreign, "code2database.db"))
+        self._watch(foreign)
+        results = query_kb(self.graph_dir, "completion queue ring",
+                           top_n=5)
+        self.assertTrue(any(r.get("source_db") == foreign
+                            for r in results), results)
+
+    def test_foreign_without_any_kb_home_is_skipped(self):
+        foreign = os.path.join(self.tmp.name, "empty-out")
+        os.makedirs(foreign, exist_ok=True)
+        self._watch(foreign)
+        results = query_kb(self.graph_dir, "completion queue ring",
+                           top_n=5)
+        self.assertEqual(results, [])
+
+
 if __name__ == "__main__":
     unittest.main()

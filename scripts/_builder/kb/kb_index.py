@@ -252,7 +252,91 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
     except sqlite3.OperationalError:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
+    if conn is not None:
+        _import_legacy_kb(conn, graph_dir)
     return conn
+
+
+_LEGACY_COPY_TABLES = ("kb_paragraphs", "kb_items", "kb_query_log",
+                      "kb_meta", "watched_c2ds", "foreign_refs")
+
+
+def _import_legacy_kb(conn: sqlite3.Connection, graph_dir: str) -> None:
+    """One-time copy of kb tables from the pre-isolation home.
+
+    Older releases kept the kb_* tables inside the graph's
+    code2database.db. The first _kb_connect after the move copies each
+    table's rows into kb_index.db (only into empty targets, so a
+    partially imported store is never duplicated) and records a marker
+    in kb_meta so the pass never repeats. Graph tables are never
+    touched; a legacy db without kb tables simply sets the marker.
+    """
+    _log = logging.getLogger(__name__)
+    try:
+        done = conn.execute(
+            "SELECT value FROM kb_meta WHERE key = 'legacy_import_done'"
+        ).fetchone()
+    except sqlite3.Error:
+        return
+    if done is not None:
+        return
+    legacy = _legacy_kb_db_path(graph_dir)
+    copied: Dict[str, int] = {}
+    if os.path.exists(legacy):
+        alias = "kb_legacy_src"
+        try:
+            conn.execute(
+                f"ATTACH DATABASE "
+                f"'file:{_escape_sql_path(legacy)}?mode=ro' AS {alias}")
+            try:
+                legacy_tables = {r[0] for r in conn.execute(
+                    f"SELECT name FROM {alias}.sqlite_master "
+                    "WHERE type='table'")}
+                for table in _LEGACY_COPY_TABLES:
+                    if table not in legacy_tables:
+                        continue
+                    try:
+                        target_cols = [r[1] for r in conn.execute(
+                            f"PRAGMA table_info({table})")]
+                        legacy_cols = {r[1] for r in conn.execute(
+                            f"PRAGMA {alias}.table_info({table})")}
+                        shared = [c for c in target_cols if c in legacy_cols]
+                        if not shared:
+                            continue
+                        target_count = conn.execute(
+                            f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                        if target_count:
+                            continue
+                        col_list = ", ".join(shared)
+                        cur = conn.execute(
+                            f"INSERT OR REPLACE INTO {table} ({col_list}) "
+                            f"SELECT {col_list} FROM {alias}.{table}")
+                        if cur.rowcount and cur.rowcount > 0:
+                            copied[table] = cur.rowcount
+                    except sqlite3.Error:
+                        # Schema drift between releases for this table —
+                        # skip it; kb_paragraphs is rebuildable anyway.
+                        _log.debug("legacy copy of %s skipped", table,
+                                   exc_info=True)
+            finally:
+                try:
+                    conn.execute(f"DETACH DATABASE {alias}")
+                except sqlite3.Error:
+                    _log.debug("silent exception", exc_info=True)
+        except sqlite3.Error:
+            # ATTACH failed (locked / unreadable) — retry on a later
+            # connect rather than recording a half-done marker.
+            _log.debug("legacy kb import deferred", exc_info=True)
+            return
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO kb_meta (key, value) "
+            "VALUES ('legacy_import_done', '1')")
+        conn.commit()
+    except sqlite3.Error:
+        _log.debug("silent exception", exc_info=True)
+    if copied:
+        _log.info("imported legacy kb tables from %s: %s", legacy, copied)
 
 
 def _record_query_log(conn: sqlite3.Connection, query: str,

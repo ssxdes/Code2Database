@@ -318,5 +318,28 @@ class TestForeignTablesHome(_KbOnlyBase):
             _fetch_foreign_refs_for_node(self.graph_dir, self.NODE), [])
 
 
+    def test_fresh_graph_db_has_no_kb_tables(self):
+        # A newly built graph db hosts only graph tables; the kb and
+        # cross-C2D tables belong to the kb store.
+        from _builder.graph.sqlite_store import SQLiteStore
+        db_path = os.path.join(self.tmp.name, "graph",
+                               "code2database.db")
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        with SQLiteStore(db_path) as store:
+            store.store_functions([
+                {"id": "src_main", "name": "main", "domain": "root",
+                 "source_file": "src/main.c", "line_number": 1}])
+        conn = sqlite3.connect(db_path)
+        try:
+            tables = {r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
+        finally:
+            conn.close()
+        for t in ("kb_paragraphs", "kb_items", "kb_query_log",
+                  "foreign_refs", "watched_c2ds"):
+            self.assertNotIn(t, tables)
+        self.assertIn("functions", tables)
+
+
 if __name__ == "__main__":
     unittest.main()

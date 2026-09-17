@@ -115,7 +115,8 @@ class TestMakeEndToEnd(unittest.TestCase):
         self.assertGreater(len(mds), 0, "obsidian vault has no notes")
 
     def test_kb_index_tables_created(self):
-        # The kb index lives in its own store, separate from the graph db.
+        # The kb index lives in its own store, and the graph db must
+        # not carry kb tables at all.
         conn = sqlite3.connect(os.path.join(self.graph, "kb_index.db"))
         try:
             tables = [r[0] for r in conn.execute(
@@ -123,6 +124,16 @@ class TestMakeEndToEnd(unittest.TestCase):
             self.assertIn("kb_paragraphs", tables)
         finally:
             conn.close()
+        graph_db = os.path.join(self.graph, "code2database.db")
+        if os.path.isfile(graph_db):
+            graph_conn = sqlite3.connect(graph_db)
+            try:
+                graph_tables = [r[0] for r in graph_conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'")]
+            finally:
+                graph_conn.close()
+            self.assertNotIn("kb_paragraphs", graph_tables,
+                             "kb tables must not live in the graph db")
 
     def test_built_graph_is_queryable(self):
         proc = subprocess.run(

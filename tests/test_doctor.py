@@ -126,6 +126,51 @@ class TestDoctor(unittest.TestCase):
         self.assertEqual(doc["summary"]["warn"] >= 1, True)
 
 
+class TestKbOnlyStoreDiagnosis(unittest.TestCase):
+    """A knowledge/memory-only store dir is a supported layout: the kb
+    index lives in kb_index.db and no graph was ever built. The graph
+    checks must report an informational verdict, not failures."""
+
+    def _kb_only_store_dir(self, with_memory=True):
+        import shutil
+        tmp = tempfile.mkdtemp(prefix="c2d_doctor_kbonly_")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        graph_dir = os.path.join(tmp, "code2db-out")
+        os.makedirs(graph_dir)
+        if with_memory:
+            from _builder.memory.memory_store import MemoryStore
+            MemoryStore(graph_dir).add("how does the queue work",
+                                       "see the doorbell write",
+                                       no_merge=True)
+        return graph_dir
+
+    def test_graph_checks_report_informational_state(self):
+        report = run_doctor(self._kb_only_store_dir())
+        by = _by_name(report)
+        for name in ("database", "schema", "graph_content", "freshness"):
+            self.assertEqual(by[name]["status"], "ok", name)
+            self.assertIn("no graph", by[name]["detail"])
+        self.assertEqual(by["memory_store"]["status"], "ok")
+        self.assertNotEqual(report["exit_code"], 2)
+
+    def test_empty_directory_still_fails(self):
+        # Without any kb store the same absence is a real failure.
+        with tempfile.TemporaryDirectory() as tmp:
+            report = run_doctor(tmp)
+        by = _by_name(report)
+        self.assertEqual(by["database"]["status"], "fail")
+        self.assertEqual(report["exit_code"], 2)
+
+    def test_kb_index_db_alone_counts(self):
+        graph_dir = self._kb_only_store_dir(with_memory=False)
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(graph_dir)
+        conn.close()
+        report = run_doctor(graph_dir)
+        by = _by_name(report)
+        self.assertEqual(by["database"]["status"], "ok")
+
+
 if __name__ == "__main__":
     unittest.main()
 

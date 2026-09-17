@@ -62,9 +62,33 @@ def _kb_only_db_hint(conn) -> Optional[str]:
     return None
 
 
+def _kb_only_store(graph_dir: str) -> bool:
+    """True when the dir is a knowledge/memory store with no graph.
+
+    A valid layout since the kb index moved to its own kb_index.db:
+    memory/, knowledge/ and kb_index.db work without a built graph.
+    Distinguish it from an empty dir (still a failure) and from the
+    legacy kb-only code2database.db (a separate diagnosis).
+    """
+    if os.path.isfile(os.path.join(graph_dir, "code2database.db")) or \
+            os.path.isfile(os.path.join(graph_dir,
+                                        "code2database_master.json")):
+        return False
+    return any(os.path.exists(os.path.join(graph_dir, rel)) for rel in (
+        "kb_index.db", os.path.join("memory", "memory.db"),
+        os.path.join("knowledge", "brief.json"),
+    ))
+
+
 def _check_database(graph_dir: str) -> Dict:
     db_path = os.path.join(graph_dir, "code2database.db")
     if not os.path.isfile(db_path):
+        if _kb_only_store(graph_dir):
+            return _check("database", _OK,
+                          "no graph database — knowledge/memory-only "
+                          "store",
+                          "run: make (or c2d setup --source DIR) later "
+                          "if a graph is wanted")
         return _check("database", _FAIL,
                       "code2database.db not found",
                       "run: make (or c2d setup --source DIR) to build the graph")
@@ -114,6 +138,10 @@ def _check_schema(graph_dir: str) -> Dict:
     from _builder.graph.sqlite_store import SQLiteStore
     db_path = os.path.join(graph_dir, "code2database.db")
     if not os.path.isfile(db_path):
+        if _kb_only_store(graph_dir):
+            return _check("schema", _OK,
+                          "skipped — no graph in a knowledge/memory-only "
+                          "store")
         return _check("schema", _FAIL, "database absent")
     conn = None
     try:
@@ -162,6 +190,10 @@ def _check_schema(graph_dir: str) -> Dict:
 def _check_graph_content(graph_dir: str) -> Dict:
     db_path = os.path.join(graph_dir, "code2database.db")
     if not os.path.isfile(db_path):
+        if _kb_only_store(graph_dir):
+            return _check("graph_content", _OK,
+                          "skipped — no graph in a knowledge/memory-only "
+                          "store")
         return _check("graph_content", _FAIL, "database absent")
     conn = None
     try:
@@ -192,6 +224,9 @@ def _check_graph_content(graph_dir: str) -> Dict:
 
 
 def _check_freshness(graph_dir: str) -> Dict:
+    if _kb_only_store(graph_dir):
+        return _check("freshness", _OK,
+                      "skipped — no graph to compare against source")
     try:
         from _builder.cgdb.cgdb_freshness import check_freshness
         result = check_freshness(graph_dir)

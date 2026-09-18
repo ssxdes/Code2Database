@@ -194,10 +194,13 @@ def _make_foreign_db(db_path, functions):
 
 
 def _make_b_graph(graph_dir, ffi_edges):
-    """B graph: functions + FFI edges + foreign/watched tables."""
+    """B graph: functions + FFI edges in the graph db; foreign/watched
+    tables in the kb store (_connect provisions them)."""
     from _builder.scanner_bridge.c2d_foreign import _connect
     os.makedirs(graph_dir, exist_ok=True)
-    conn = _connect(graph_dir)
+    conn = sqlite3.connect(os.path.join(graph_dir,
+                                        "code2database.db"))
+    conn.execute("PRAGMA journal_mode=DELETE")
     conn.execute(
         "CREATE TABLE IF NOT EXISTS functions ("
         "id TEXT PRIMARY KEY, name TEXT, domain TEXT, source_file TEXT, "
@@ -217,6 +220,9 @@ def _make_b_graph(graph_dir, ffi_edges):
             "VALUES (?, ?, 'FFI_BIND')", ("B_py_main", invoked))
     conn.commit()
     conn.close()
+    # Provision the kb store's foreign/watched tables.
+    kb_conn = _connect(graph_dir)
+    kb_conn.close()
 
 
 class TestFfiAutoLink(unittest.TestCase):

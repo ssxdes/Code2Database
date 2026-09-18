@@ -114,7 +114,7 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 
 ### 为什么 cgdb 批量加载期间延迟建索引
 
-全图重建是纯追加流程：构建先清空 cgdb 各表，再在单个事务里流式写入数百万行。若期间所有二级索引保持在线，每条 INSERT 都会带来数十次随机 B-tree 页触碰——在 61K 文件的内核构建上，仅此一项就让写入阶段停滞 18 小时以上（每秒写入 0 行）。因此 `begin_bulk_load()` 会在加载期间删除非唯一二级索引和 `cgdb_nodes` 的 FTS5 同步触发器；`finalize()` 用每索引一次有序批量扫描重建，并一次性重建 `nodes_fts`。UNIQUE 索引全程保持在线——加载期间的 `INSERT OR IGNORE` 去重依赖它们。L1 token 摄入特意保留索引：它按文件 `DELETE ... WHERE file_id = ?` 的重摄入模式离不开索引。构建中途终止时，已提交的删除会留存；下次打开存储（`apply_cgdb_schema`）或 `finalize()` 会以幂等方式重建。
+全图重建是纯追加流程：构建先清空 cgdb 各表，再在单个事务里流式写入数百万行。若期间所有二级索引保持在线，每条 INSERT 都会带来数十次随机 B-tree 页触碰——在 61K 文件的内核构建上，仅此一项就让写入阶段停滞 18 小时以上（每秒写入 0 行）。因此 `begin_bulk_load()` 会在加载期间删除非唯一二级索引和 `cgdb_nodes` 的 FTS5 同步触发器；`finalize()` 用每索引一次有序批量扫描重建，并一次性重建 `nodes_fts`。UNIQUE 索引全程保持在线——加载期间的 `INSERT OR IGNORE` 去重依赖它们。L1 token 摄入特意保留索引：它按文件 `DELETE ... WHERE file_id = ?` 的重摄入模式离不开索引。构建中途终止时，已提交的删除会留存；此后任何一次读取侧的存储打开都能识别该状态（cgdb_nodes 表存在而其 INSERT 触发器缺失），并自动恢复索引、触发器和 `nodes_fts` 内容。
 
 ### 为什么需要事务性更新
 

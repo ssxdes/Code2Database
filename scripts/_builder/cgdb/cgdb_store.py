@@ -22,6 +22,22 @@ from _builder.cgdb.cgdb_records import (
     FileRecord, IncludeRecord,
     DocCommentRecord, MetadataRecord,
 )
+from _builder.cgdb.cgdb_schema import (
+    bulk_index_registry, nodes_fts_trigger_registry,
+)
+
+
+# Tables written by write_batch(). During a bulk load the non-unique
+# secondary indexes on exactly these tables are dropped (see
+# cgdb_schema.bulk_index_registry) — indexes on tables the bulk load never
+# touches stay live so concurrent readers keep their query plans.
+_BULK_WRITTEN_TABLES = frozenset({
+    "cgdb_files", "cgdb_types", "config_predicates", "conditions",
+    "cgdb_nodes", "cgdb_edges", "basic_blocks", "cfg_edges",
+    "data_flow", "alias_sets", "invoke_sites", "ops_bindings",
+    "sync_primitives", "happens_before", "cgdb_includes",
+    "doc_comments", "node_metadata", "edge_metadata",
+})
 
 
 # ============================================================================
@@ -53,7 +69,7 @@ class CGDBWriter(ABC):
 
     @abstractmethod
     def finalize(self) -> None:
-        """Rebuild indexes, run VACUUM, commit bulk-load transaction."""
+        """Commit bulk-load transaction, re-create deferred indexes, rebuild FTS."""
         ...
 
     @abstractmethod
@@ -249,8 +265,31 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         conn = self._ensure_conn()
         # Defer index rebuilds and bump cache for bulk load
         conn.execute("PRAGMA synchronous = OFF")
-        conn.execute("PRAGMA cache_size = -64000")  # 64MB
+        # A whole-graph rebuild appends millions of rows to a db whose
+        # secondary indexes can span a multi-GB B-tree. Keeping them live
+        # costs dozens of random page touches per INSERT (measured: an
+        # 18h+ stall in index maintenance on a 61K-file kernel build).
+        # Drop them for the load; finalize()/abort_bulk_load() rebuild
+        # each one with a single sorted pass via CREATE INDEX.
+        # 512MB page cache — the index-free appends plus a cache this
+        # large keep the (unique-key) dedup probes hot. Restored on
+        # finalize/abort.
+        conn.execute("PRAGMA cache_size = -524288")  # 512MB
+        # Checkpoints are issued explicitly by commit_bulk_checkpoint();
+        # the default autocheckpoint (every 1000 pages) adds nothing but
+        # surprises on this connection.
+        conn.execute("PRAGMA wal_autocheckpoint = 0")
         conn.execute("BEGIN")
+        # Deferred inside the transaction: a ROLLBACK (abort path) then
+        # restores them without any bookkeeping. Segments committed by
+        # commit_bulk_checkpoint keep the drops; abort_bulk_load recreates.
+        for _name, _sql in bulk_index_registry(_BULK_WRITTEN_TABLES):
+            conn.execute(f"DROP INDEX IF EXISTS {_name}")
+        # The cgdb_nodes FTS5 sync triggers cost one FTS index maintenance
+        # per inserted node; finalize() rebuilds nodes_fts from the external
+        # content table in one bulk pass instead.
+        for _name, _sql in nodes_fts_trigger_registry():
+            conn.execute(f"DROP TRIGGER IF EXISTS {_name}")
         # Defer FK enforcement to COMMIT. cgdb_nodes is written with
         # INSERT OR IGNORE, but child tables (cgdb_edges, basic_blocks,
         # data_flow, alias_sets, invoke_sites, ops_bindings, sync_primitives,
@@ -262,6 +301,30 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         # after every BEGIN (see commit_bulk_checkpoint).
         conn.execute("PRAGMA defer_foreign_keys = ON")
         self._bulk_load_active = True
+
+    def _recreate_bulk_indexes(self, conn: sqlite3.Connection) -> None:
+        """Re-create the secondary indexes and FTS triggers dropped by
+        begin_bulk_load. Idempotent (CREATE ... IF NOT EXISTS) and safe on
+        databases without the cgdb schema (per-table existence check), so it
+        doubles as the recovery path for a bulk load that crashed after a
+        committed checkpoint segment left the drops in place."""
+        for _name, sql in bulk_index_registry(_BULK_WRITTEN_TABLES):
+            try:
+                conn.execute(sql)
+            except sqlite3.OperationalError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        for _name, sql in nodes_fts_trigger_registry():
+            try:
+                conn.execute(sql)
+            except sqlite3.OperationalError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        conn.commit()
+
+    def _restore_bulk_pragmas(self, conn: sqlite3.Connection) -> None:
+        """Return the per-connection PRAGMAs changed by begin_bulk_load to
+        their steady-state values (see _ensure_conn)."""
+        conn.execute("PRAGMA cache_size = -65536")
+        conn.execute("PRAGMA wal_autocheckpoint = 1000")
 
     def commit_bulk_checkpoint(self) -> None:
         """During bulk load, commit the current transaction, checkpoint the
@@ -308,6 +371,12 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                 # commit_bulk_checkpoint) — nothing to roll back.
                 pass
             self._bulk_load_active = False
+            # The ROLLBACK only undoes drops made since the last BEGIN.
+            # Segments committed by commit_bulk_checkpoint left the
+            # indexes dropped IN the database — recreate them so the
+            # db stays fully query-capable after the abort.
+            self._recreate_bulk_indexes(conn)
+            self._restore_bulk_pragmas(conn)
         conn.execute("PRAGMA synchronous = NORMAL")
 
     def write_batch(self, batch: IngestBatch) -> None:
@@ -546,16 +615,44 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
     def finalize(self) -> None:
         conn = self._ensure_conn()
         if self._bulk_load_active:
-            conn.execute("COMMIT")
+            try:
+                conn.execute("COMMIT")
+            except sqlite3.OperationalError:
+                # No active transaction (e.g. the connection the bulk load
+                # ran on was replaced after a hard close) — nothing to
+                # commit; index restoration below still applies.
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
             self._bulk_load_active = False
         conn.execute("PRAGMA synchronous = NORMAL")
-        # Rebuild FTS5 index to ensure consistency
+        # Rebuild the secondary indexes dropped by begin_bulk_load. Each
+        # CREATE INDEX sorts the table once — bulk-building every B-tree
+        # is dramatically cheaper than maintaining it per-row across
+        # millions of INSERTs. Also runs when no bulk load was active:
+        # idempotent, and it heals a db left with dropped indexes by a
+        # build that crashed mid-load.
+        self._recreate_bulk_indexes(conn)
+        # Rebuild FTS5 index to ensure consistency (the sync triggers were
+        # dropped for the load; this single pass repopulates nodes_fts from
+        # the external-content cgdb_nodes table).
         try:
             conn.execute("INSERT INTO nodes_fts(nodes_fts) VALUES ('rebuild')")
         except sqlite3.OperationalError:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
         conn.commit()
+        self._restore_bulk_pragmas(conn)
+        # Shrink the WAL back to zero now that this connection's bulk
+        # transaction has committed. TRUNCATE needs exclusive access; if
+        # an external reader holds the WAL, fall back to PASSIVE (same
+        # merge, without the file truncation).
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.OperationalError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+            try:
+                conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+            except sqlite3.OperationalError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
 
     def record_version(self, commit_hash: str, commit_subject: str = "",
                        parent_version_id: Optional[int] = None) -> int:

@@ -1205,3 +1205,76 @@ def get_cgdb_schema_version(conn: sqlite3.Connection) -> int:
 def needs_cgdb_migration(conn: sqlite3.Connection) -> bool:
     """Return True if cgdb schema is missing or older than current version."""
     return get_cgdb_schema_version(conn) < CGDB_SCHEMA_VERSION
+
+
+# ============================================================================
+# Bulk-load index registry (single source of truth: the DDL above)
+# ============================================================================
+# A whole-graph rebuild writes millions of rows through write_batch(). Keeping
+# every secondary index live during that append-only stream turns each INSERT
+# into dozens of random B-tree page touches (observed: >18h stalled in index
+# maintenance on a 61K-file kernel build). begin_bulk_load() therefore drops
+# the non-unique secondary indexes plus the cgdb_nodes FTS5 sync triggers for
+# the load, and finalize()/abort_bulk_load() re-create them afterwards with
+# one sorted bulk pass per index.
+#
+# The registry is derived from the DDL text at import time so it can never
+# drift from the schema: adding a CREATE INDEX line above automatically adds
+# it to the bulk drop/recreate set. UNIQUE indexes are excluded on purpose —
+# INSERT OR IGNORE / OR REPLACE dedup semantics during the load depend on
+# them staying live. Indexes on tables the bulk load does not write (L1 token
+# tables, report L3/L4, routing) are also excluded: their tables are written
+# per-file by L1 ingest workers whose per-file DELETE ... WHERE file_id = ?
+# requires those indexes to stay live.
+import re as _re
+
+_INDEX_STMT_RE = _re.compile(
+    r"CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+(\w+)\s+ON\s+(\w+)[^;]*;",
+    _re.IGNORECASE,
+)
+_NODES_FTS_TRIGGER_RE = _re.compile(
+    r"CREATE\s+TRIGGER\s+IF\s+NOT\s+EXISTS\s+(cgdb_nodes_\w+)\s+"
+    r"AFTER\s+\w+\s+ON\s+cgdb_nodes\s+BEGIN.*?END;",
+    _re.IGNORECASE | _re.DOTALL,
+)
+
+
+def _parse_index_registry() -> "list[tuple[str, str, str]]":
+    """(index_name, table_name, create_sql) for every non-unique index in
+    _CGDB_DDL + _CGDB_DDL_V4."""
+    out = []
+    for ddl in (_CGDB_DDL, _CGDB_DDL_V4):
+        for m in _INDEX_STMT_RE.finditer(ddl):
+            name, table, sql = m.group(1), m.group(2), m.group(0)
+            out.append((name, table, sql))
+    return out
+
+
+_CGDB_INDEX_REGISTRY: "list[tuple[str, str, str]]" = _parse_index_registry()
+_CGDB_NODES_FTS_TRIGGERS: "list[tuple[str, str]]" = [
+    (m.group(1), m.group(0))
+    for m in _NODES_FTS_TRIGGER_RE.finditer(_CGDB_DDL)
+]
+
+
+def bulk_index_registry(tables=None) -> "list[tuple[str, str]]":
+    """(index_name, create_sql) pairs for non-unique secondary indexes,
+    optionally restricted to the given table names.
+
+    Used by SQLiteCGDBStore to drop/recreate indexes around a bulk load.
+    """
+    return [
+        (name, sql)
+        for name, table, sql in _CGDB_INDEX_REGISTRY
+        if tables is None or table in tables
+    ]
+
+
+def nodes_fts_trigger_registry() -> "list[tuple[str, str]]":
+    """(trigger_name, create_sql) pairs for the cgdb_nodes FTS5 sync triggers.
+
+    The triggers are dropped during bulk load (finalize() rebuilds nodes_fts
+    from the external-content table in one pass instead) and re-created from
+    these verbatim statements afterwards.
+    """
+    return list(_CGDB_NODES_FTS_TRIGGERS)

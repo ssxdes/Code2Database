@@ -283,9 +283,9 @@ CREATE INDEX idx_vtable_struct ON vtable_dispatch(struct_type);
 CREATE INDEX idx_field_struct ON field_access(struct_name);
 ```
 
-## cgdb（代码图数据库）层 —— 强类型语义表（53 张表 + 2 个 FTS5 索引，Schema v5）
+## cgdb（代码图数据库）层 —— 强类型语义表（53 张表 + 2 个 FTS5 索引，Schema v6）
 
-启用 clang 提取后端（`--extraction-backend clang` 或装了 libclang 的 `auto`）时，Code2Database 会在同一个 `code2database.db` 中填充额外的强类型语义 schema。这些表由 19 个 `cgdb_*` MCP 工具查询，支撑强类型 vtable 分发、CFG 路径查找、def-use 链、Z3 可判定的 config 谓词等功能。Schema 版本：`CGDB_SCHEMA_VERSION = 5`。
+启用 clang 提取后端（`--extraction-backend clang` 或装了 libclang 的 `auto`）时，Code2Database 会在同一个 `code2database.db` 中填充额外的强类型语义 schema。这些表由 19 个 `cgdb_*` MCP 工具查询，支撑强类型 vtable 分发、CFG 路径查找、def-use 链、Z3 可判定的 config 谓词等功能。Schema 版本：`CGDB_SCHEMA_VERSION = 6`（v6 删除了 cgdb_files 上冗余的 path 索引——内联 UNIQUE 约束本身已在同一列上维护自动索引）。
 
 | 层 | 表 | 用途 | 关键列 |
 |----|----|------|--------|
@@ -317,11 +317,11 @@ CREATE INDEX idx_field_struct ON field_access(struct_name);
 
 ### Schema 迁移
 
-`cgdb_migrations.run_migrations` 在 schema 版本升级时原地 ALTER 表，保留数据。Schema 版本：4。检查方式：`cgdb_index_status` MCP 工具报告每文件每层行数。
+`cgdb_migrations.run_migrations` 在 schema 版本升级时原地 ALTER 表，保留数据。Schema 版本：6。检查方式：`cgdb_index_status` MCP 工具报告每文件每层行数。
 
-`SQLiteStore.SCHEMA_VERSION`（当前 **12**，在同一 db 的遗留表侧）跟踪非-cgdb schema。v9-v12 新增：
+`SQLiteStore.SCHEMA_VERSION`（当前 **13**，在同一 db 的遗留表侧）跟踪非-cgdb schema。v9-v13 新增：
 
-- **kb_paragraphs**— 跨 `memory.db` + `knowledge/brief.json` 的统一 FTS5+BM25 索引；替代逐存储的 Jaccard / 子串搜索。可通过 `kb-rebuild-index` 重建。
+- **kb_paragraphs**— 跨 `memory/memory.db` + 知识库的统一 FTS5+BM25 索引（`knowledge/knowledge.db` 为事实源，`knowledge/brief.json` 为派生提示视图）；替代逐存储的 Jaccard / 子串搜索。可通过 `kb-rebuild-index` 重建。
 - **kb_paragraphs_fts** — title/body/tags 的 FTS5 虚拟表（porter + unicode61 分词器），带 AI/AD/AU 触发器。
 - **scope_id / canonical_id / principle_ref** 列— 聚类 + 跨类型链接。
 - **embedding BLOB** 列— 可选的 384 维 float32 语义搜索；sentence-transformers 不可用时为 NULL。

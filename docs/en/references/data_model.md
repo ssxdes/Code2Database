@@ -293,9 +293,9 @@ CREATE INDEX idx_vtable_struct ON vtable_dispatch(struct_type);
 CREATE INDEX idx_field_struct ON field_access(struct_name);
 ```
 
-## cgdb (Code Graph Database) Layer — Typed Semantic Tables (53 tables + 2 FTS5 indexes, Schema v5)
+## cgdb (Code Graph Database) Layer — Typed Semantic Tables (53 tables + 2 FTS5 indexes, Schema v6)
 
-When the clang extraction backend is enabled (`--extraction-backend clang` or `auto` with libclang installed), Code2Database populates an additional typed semantic schema in the same `code2database.db`. These tables are queried by the 19 `cgdb_*` MCP tools and power features like typed vtable dispatch, CFG path finding, def-use chains, and Z3-reasonable config predicates. Schema version: `CGDB_SCHEMA_VERSION = 5`.
+When the clang extraction backend is enabled (`--extraction-backend clang` or `auto` with libclang installed), Code2Database populates an additional typed semantic schema in the same `code2database.db`. These tables are queried by the 19 `cgdb_*` MCP tools and power features like typed vtable dispatch, CFG path finding, def-use chains, and Z3-reasonable config predicates. Schema version: `CGDB_SCHEMA_VERSION = 6` (v6 dropped the duplicate path index on cgdb_files — the inline UNIQUE constraint already maintains an automatic index over the same column).
 
 | Layer | Table(s) | Purpose | Key Columns |
 |-------|----------|---------|-------------|
@@ -327,11 +327,11 @@ Each predicate carries a `status` field:
 
 ### Schema Migrations
 
-`cgdb_migrations.run_migrations` ALTERs tables in-place when schema version bumps, preserving data. Current schema version: 4. To check: `cgdb_index_status` MCP tool reports per-file row counts per layer.
+`cgdb_migrations.run_migrations` ALTERs tables in-place when schema version bumps, preserving data. Current schema version: 6. To check: `cgdb_index_status` MCP tool reports per-file row counts per layer.
 
-`SQLiteStore.SCHEMA_VERSION` (currently **12**, on the legacy tables side of the same db) tracks the non-cgdb schema. v9-v12 added:
+`SQLiteStore.SCHEMA_VERSION` (currently **13**, on the legacy tables side of the same db) tracks the non-cgdb schema. v9-v13 added:
 
-- **kb_paragraphs**  — unified FTS5+BM25 index across `memory.db` + `knowledge/brief.json`; replaces per-store Jaccard / substring search. Rebuildable via `kb-rebuild-index`.
+- **kb_paragraphs**  — unified FTS5+BM25 index across `memory/memory.db` + the knowledge store (`knowledge/knowledge.db` is the fact source; `knowledge/brief.json` is the derived prompt view); replaces per-store Jaccard / substring search. Rebuildable via `kb-rebuild-index`.
 - **kb_paragraphs_fts** — FTS5 virtual table (porter + unicode61 tokenizer) over title/body/tags with AI/AD/AU triggers.
 - **scope_id / canonical_id / principle_ref** columns  — clustering + cross-kind linking.
 - **embedding BLOB** column  — optional 384-dim float32 for semantic search; NULL when sentence-transformers unavailable.

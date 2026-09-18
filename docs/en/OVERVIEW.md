@@ -112,6 +112,10 @@ Plus the design-report v4 layers (additive, populated by `source_renderer.py` wh
 
 These tables are populated by the clang backend (for legacy cgdb layers) and the IR/L1/L4 pipelines (for report layers). They are queried by 19 `cgdb_*` MCP tools (legacy) plus 28 design-report MCP tools (`render_source` / `verify_consistency` / `edit_token` / `find_symbol` / `callers_of` / `indirect_targets` / `commit_db_transaction` / etc.). All tables coexist in the same SQLite database (`code2database.db`).
 
+### Why Deferred Indexes During cgdb Bulk Load
+
+A whole-graph rebuild is append-only: the build wipes the cgdb tables, then streams millions of rows through one transaction. Keeping every secondary index live during that stream turns each INSERT into dozens of random B-tree page touches — on a 61K-file kernel build that alone stalled the write stage for 18+ hours with zero rows per second. So `begin_bulk_load()` drops the non-unique secondary indexes and the `cgdb_nodes` FTS5 sync triggers for the load; `finalize()` re-creates each index with one sorted bulk pass and rebuilds `nodes_fts` in one step. UNIQUE indexes stay live throughout — `INSERT OR IGNORE` dedup during the load depends on them. The L1 token ingest deliberately keeps its indexes: its per-file `DELETE ... WHERE file_id = ?` re-ingest pattern needs them. A build that dies mid-load leaves the drops committed; the next store open (`apply_cgdb_schema`) or `finalize()` recreates them idempotently.
+
 ### Why Transactional Updates
 
 Graph modifications (LLM auto-enhance, patch-from-diff, daemon sync) need ACID-like guarantees:
@@ -180,7 +184,7 @@ The daemon coordinates with manual updates via `pause`/`resume` socket commands 
 │                  classification, entry scoring, data race detection, │
 │                  lock-coverage, invariants, FFI, doc-code,           │
 │                  commit-provenance binding to git/svn HEAD           │
-│  Files: scripts/_builder/graph/graph_build.py (core, 7447 lines),         │
+│  Files: scripts/_builder/graph/graph_build.py (core, 5648 lines),         │
 │         streaming_graph.py, index_pack.py, query.py,                │
 │         entry_scoring.py, concurrency_analysis.py,                  │
 │         import_resolve.py, lock_coverage.py, invariants.py,         │
@@ -195,7 +199,7 @@ The daemon coordinates with manual updates via `pause`/`resume` socket commands 
 │         cgdb_sync.py, sqlite_store.py, sqlite_postprocess.py,       │
 │         memory_manager.py, semantics.py,                            │
 │         auto_enhance.py, web_ui.py, bug_benchmark.py, etc.          │
-│  CLI: scripts/code2database_builder.py (253 CLI commands, 261 total with 8 scanner) │
+│  CLI: scripts/code2database_builder.py (258 CLI commands, 266 total with 8 scanner) │
 └──────────────────────────────┬───────────────────────────────────────┘
                                │
                                ▼  (optional)
@@ -388,7 +392,7 @@ Code2Database is organized into 5 packages under `scripts/`, plus a CLI entry la
 
 ```
 scripts/
-├── code2database_builder.py      ← CLI entry point (253 CLI commands, argparse routing)
+├── code2database_builder.py      ← CLI entry point (258 CLI commands, argparse routing)
 ├── code2database_scanner.py      ← Scanner CLI entry point (8 subcommands)
 ├── setup.sh                      ← Dependency installer (per-language option)
 ├── requirements.txt              ← Pinned dependencies
@@ -448,7 +452,7 @@ scripts/
 │
 ├── _builder/                     ← Graph building and query modules (85K lines, 139 files, 14 subdirs)
 │   ├── __init__.py               ← Lazy import mechanism (delays module load until first access)
-│   ├── graph_build.py (graph/)  ← Core graph construction (5496 lines): build_graph, cmd_build,
+│   ├── graph_build.py (graph/)  ← Core graph construction (5648 lines): build_graph, cmd_build,
 │   │                                domain split, commit hash detection, test domain detection,
 │   │                                cgdb wipe-and-rebuild
 │   ├── build_phases.py           ← Extracted build stages (1399 lines): 23 testable stage

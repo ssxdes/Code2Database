@@ -112,6 +112,10 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 
 这些表由 clang 后端填充（遗留 cgdb 层）和 IR/L1/L4 流水线填充（报告层）。它们由 19 个 `cgdb_*` MCP 工具（遗留）+ 28 个设计报告 MCP 工具（`render_source` / `verify_consistency` / `edit_token` / `find_symbol` / `callers_of` / `indirect_targets` / `commit_db_transaction` / 等）查询。所有表共存于同一个 SQLite 数据库（`code2database.db`）。
 
+### 为什么 cgdb 批量加载期间延迟建索引
+
+全图重建是纯追加流程：构建先清空 cgdb 各表，再在单个事务里流式写入数百万行。若期间所有二级索引保持在线，每条 INSERT 都会带来数十次随机 B-tree 页触碰——在 61K 文件的内核构建上，仅此一项就让写入阶段停滞 18 小时以上（每秒写入 0 行）。因此 `begin_bulk_load()` 会在加载期间删除非唯一二级索引和 `cgdb_nodes` 的 FTS5 同步触发器；`finalize()` 用每索引一次有序批量扫描重建，并一次性重建 `nodes_fts`。UNIQUE 索引全程保持在线——加载期间的 `INSERT OR IGNORE` 去重依赖它们。L1 token 摄入特意保留索引：它按文件 `DELETE ... WHERE file_id = ?` 的重摄入模式离不开索引。构建中途终止时，已提交的删除会留存；下次打开存储（`apply_cgdb_schema`）或 `finalize()` 会以幂等方式重建。
+
 ### 为什么需要事务性更新
 
 图修改（LLM auto-enhance、patch-from-diff、守护进程同步）需要 ACID 类保证：
@@ -178,7 +182,7 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 │        社区检测、端点分类、入口评分、数据竞争检测、                    │
 │        lock-coverage、不变量、FFI、文档-代码、                        │
 │        提交来源绑定到 git/svn HEAD                                    │
-│  文件：scripts/_builder/graph/graph_build.py（核心，7447 行），            │
+│  文件：scripts/_builder/graph/graph_build.py（核心，5648 行），            │
 │        streaming_graph.py, index_pack.py, query.py,                 │
 │        entry_scoring.py, concurrency_analysis.py,                   │
 │        import_resolve.py, lock_coverage.py, invariants.py,          │
@@ -193,7 +197,7 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 │        cgdb_sync.py, sqlite_store.py, sqlite_postprocess.py,        │
 │        memory_manager.py, semantics.py,                             │
 │        auto_enhance.py, web_ui.py, bug_benchmark.py 等              │
-│  CLI：scripts/code2database_builder.py（253 个 CLI 命令）                │
+│  CLI：scripts/code2database_builder.py（258 个 CLI 命令，含 8 个 scanner 命令共 266）│
 └──────────────────────────────┬───────────────────────────────────────┘
                                │
                                ▼  （可选）
@@ -386,7 +390,7 @@ Code2Database 在 `scripts/` 下组织成 5 个包，外加 CLI 入口层。总�
 
 ```
 scripts/
-├── code2database_builder.py      ← CLI 入口（253 个 CLI 命令，argparse 路由）
+├── code2database_builder.py      ← CLI 入口（258 个 CLI 命令，argparse 路由）
 ├── code2database_scanner.py      ← 扫描器 CLI 入口（8 个子命令）
 ├── setup.sh                      ← 依赖安装器（支持按语言安装）
 ├── requirements.txt              ← 锁定依赖
@@ -828,7 +832,7 @@ Code2Database 当前能力，按类别组织：
 - 值流（DATA_FLOW 边）+ 跨函数数据依赖（DATA_DEP 边）
 
 ### 查询与分析
-- 261 个 CLI 命令（3 个子 skill：核心 25、分析 13、运维 23 个 Tier-1）
+- 266 个 CLI 命令（4 个子 skill：核心 27、分析 13、运维 23、知识库 8 个 Tier-1）
 - 83 个 MCP (55 base + 28 design-report) 工具（36 code2database_* + 19 cgdb_*）
 - Cypher 子集查询语言（MATCH/WHERE/RETURN）
 - Z3 SMT 路径可行性（启发式回退）

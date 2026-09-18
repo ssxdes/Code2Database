@@ -248,23 +248,51 @@ class TestAbortRestores(_TempStoreTestCase):
 
 
 class TestCrashedBulkHeals(_TempStoreTestCase):
-    def test_finalize_on_fresh_store_recreates_committed_drops(self):
+    def test_reopen_auto_heals_interrupted_bulk(self):
         """Simulate a build killed after a committed checkpoint segment: the
-        drops are persisted in the db, the last open segment rolled back by
-        connection close. A later finalize() (no begin) must heal the db."""
+        drops + data are persisted, the last open segment rolled back by
+        connection close. A new store's first _ensure_conn must detect the
+        state (cgdb_nodes present, INSERT trigger absent) and restore the
+        indexes, triggers and FTS content automatically."""
         before_idx = self._index_names(self._conn())
         self.store.begin_bulk_load()
-        self.store.write_batch(_make_node_batch(7008))
+        self.store.write_batch(_make_node_batch(7008, name='crash_survivor'))
         self.store.commit_bulk_checkpoint()  # drops + data committed
         # Hard-close without abort/finalize (last segment rolls back).
-        self.store._conn.close()
-        self.store._conn = None
-        # Reopen on the same db file: the committed drops are still there.
-        reopened = self._conn()
-        self.assertTrue(before_idx - self._index_names(reopened))
-        # finalize() with no active bulk load heals the schema.
-        self.store.finalize()
-        self.assertEqual(self._index_names(reopened), before_idx)
+        self.store.close()
+        # Reopen on the same db file: _ensure_conn heals the schema.
+        conn = self._conn()
+        self.assertEqual(self._index_names(conn), before_idx)
+        for t in ("cgdb_nodes_ai", "cgdb_nodes_ad", "cgdb_nodes_au"):
+            self.assertIn(t, self._trigger_names(conn))
+        # FTS was rebuilt too — the surviving row is searchable via a
+        # FRESH store (same process would share the healed db).
+        healed = SQLiteCGDBStore(self.db_path)
+        hits = healed.search_symbols('crash_survivor')
+        self.assertTrue(any(h['id'] == 7008 for h in hits))
+        healed.close()
+
+    def test_finalize_on_fresh_store_still_recreates(self):
+        """finalize() with no active bulk load remains a valid heal path
+        (idempotent even after _ensure_conn already healed)."""
+        before_idx = self._index_names(self._conn())
+        self.store.begin_bulk_load()
+        self.store.commit_bulk_checkpoint()
+        self.store.close()
+        conn = self._conn()  # auto-heal happens here
+        self.store.finalize()  # no-op heal — must not raise
+        self.assertEqual(self._index_names(conn), before_idx)
+
+    def test_healthy_db_check_runs_once_per_connection(self):
+        """The recovery probe is one cheap catalog query pair per
+        connection; close() re-arms it, and a healthy db is unchanged."""
+        self.assertTrue(self.store._interrupted_bulk_checked)  # setUp opened
+        before_idx = self._index_names(self._conn())
+        self.store.close()
+        self.assertFalse(self.store._interrupted_bulk_checked)  # re-armed
+        conn = self._conn()  # recheck runs against the healthy db
+        self.assertTrue(self.store._interrupted_bulk_checked)
+        self.assertEqual(self._index_names(conn), before_idx)
 
 
 class TestBulkDedupSemantics(_TempStoreTestCase):

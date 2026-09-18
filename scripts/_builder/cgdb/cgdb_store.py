@@ -8,6 +8,7 @@ the legacy SQLiteStore (side-by-side coexistence).
 """
 import logging
 import sqlite3
+import sys
 import threading
 import json
 from abc import ABC, abstractmethod
@@ -221,6 +222,54 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         # it was (shared connections may carry different cache sizes).
         self._bulk_prev_cache_size: Optional[int] = None
         self._bulk_prev_autockpt: Optional[int] = None
+        # One-shot guard for the interrupted-bulk recovery check in
+        # _ensure_conn (see _check_interrupted_bulk).
+        self._interrupted_bulk_checked = False
+
+    def _check_interrupted_bulk(self, conn: sqlite3.Connection) -> None:
+        """Heal a db left mid-bulk-load by a killed build, once per store.
+
+        begin_bulk_load() drops the secondary indexes and the cgdb_nodes
+        FTS5 sync triggers inside its transaction; checkpoint-committed
+        segments persist those drops. If the build dies before
+        finalize()/abort_bulk_load(), the db is left query-degraded
+        (missing indexes, empty nodes_fts). Every reader-side store open
+        goes through _ensure_conn, so this is the single choke point to
+        detect the state — cgdb_nodes exists but its INSERT trigger does
+        not; apply_cgdb_schema always creates that trigger, and nothing
+        but a bulk load ever drops it — and restore the indexes, triggers
+        and FTS content. Best-effort: on a read-only or locked db the
+        queries still run, just slower.
+        """
+        if self._interrupted_bulk_checked or self._bulk_load_active:
+            return
+        self._interrupted_bulk_checked = True
+        try:
+            has_nodes = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='cgdb_nodes'").fetchone()
+            if not has_nodes:
+                return
+            has_trigger = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='trigger' "
+                "AND name='cgdb_nodes_ai'").fetchone()
+            if has_trigger:
+                return
+            print("[cgdb] interrupted bulk load detected — restoring "
+                  "deferred indexes and rebuilding nodes_fts "
+                  "(a previous build died mid-load)",
+                  file=sys.stderr)
+            self._recreate_bulk_indexes(conn)
+            try:
+                conn.execute(
+                    "INSERT INTO nodes_fts(nodes_fts) VALUES ('rebuild')")
+                conn.commit()
+            except sqlite3.OperationalError:
+                logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        except sqlite3.Error:
+            # Catalog probe failed (locked / read-only) — queries still
+            # work, degraded. The next build recreates everything anyway.
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
 
     def _ensure_conn(self) -> sqlite3.Connection:
         if self._conn is None:
@@ -241,12 +290,20 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                 self._conn.execute("PRAGMA foreign_keys = ON")
             except sqlite3.ProgrammingError:
                 pass  # closed connection — caller will see it on next use
+        self._check_interrupted_bulk(self._conn)
         return self._conn
 
     def close(self) -> None:
         if self._owns_conn and self._conn is not None:
             self._conn.close()
             self._conn = None
+        # The transaction (if a bulk load was mid-flight) died with the
+        # connection — its last open segment was rolled back by SQLite.
+        self._bulk_load_active = False
+        # The next _ensure_conn (re)connects to whatever db state is on
+        # disk now — re-arm the interrupted-bulk probe so a store that
+        # outlives its connection still heals a crashed bulk load.
+        self._interrupted_bulk_checked = False
 
     # ---- CGDBWriter ----
 

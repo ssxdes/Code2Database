@@ -168,7 +168,7 @@ class TestFindMacrosBatched(unittest.TestCase):
             self.assertEqual(len(entry["used_at"]), 3, entry)
 
 
-class TestSchemaV5AstNodeIndex(unittest.TestCase):
+class TestSchemaAstNodeIndexMigration(unittest.TestCase):
     def test_fresh_db_has_index(self):
         d, db, conn = _make_db()
         idx = conn.execute(
@@ -179,9 +179,9 @@ class TestSchemaV5AstNodeIndex(unittest.TestCase):
         ).fetchone()[0]
         conn.close()
         self.assertIsNotNone(idx)
-        self.assertEqual(ver, "5")
+        self.assertEqual(ver, str(cgdb_schema.CGDB_SCHEMA_VERSION))
 
-    def test_v4_db_migrates_to_v5(self):
+    def test_v4_db_migrates_to_current(self):
         d, db, conn = _make_db()
         # simulate a v4 db: version marker + index absent
         conn.execute(
@@ -200,7 +200,7 @@ class TestSchemaV5AstNodeIndex(unittest.TestCase):
         ).fetchone()[0]
         conn.close()
         self.assertIsNotNone(idx)
-        self.assertEqual(ver, "5")
+        self.assertEqual(ver, str(cgdb_schema.CGDB_SCHEMA_VERSION))
 
 
 if __name__ == "__main__":

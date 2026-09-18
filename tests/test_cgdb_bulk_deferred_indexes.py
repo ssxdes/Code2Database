@@ -183,6 +183,23 @@ class TestFinalizeRestores(_TempStoreTestCase):
             conn.execute("PRAGMA synchronous").fetchone()[0], 1)
         self.assertFalse(self.store._bulk_load_active)
 
+    def test_shared_connection_keeps_its_own_cache_size(self):
+        """The build shares its SQLiteStore connection with the cgdb store;
+        that connection runs its own cache size. A bulk roundtrip must put
+        the PRAGMA back exactly as it found it, not to the own-conn
+        default."""
+        import sqlite3 as _s3
+        conn = _s3.connect(self.db_path)
+        conn.execute("PRAGMA cache_size = -32000")  # 32MB, like SQLiteStore's -64000
+        shared = SQLiteCGDBStore(self.db_path, conn=conn)
+        shared.begin_bulk_load()
+        self.assertEqual(
+            conn.execute("PRAGMA cache_size").fetchone()[0], -524288)
+        shared.finalize()
+        self.assertEqual(
+            conn.execute("PRAGMA cache_size").fetchone()[0], -32000)
+        conn.close()
+
     def test_bulk_roundtrip_data_and_fts(self):
         """Nodes written with triggers dropped must land in cgdb_nodes AND
         be findable via nodes_fts after the finalize rebuild."""

@@ -216,6 +216,11 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         self._conn = conn  # may be shared with SQLiteStore
         self._owns_conn = (conn is None)
         self._bulk_load_active = False
+        # Per-connection PRAGMA values captured at begin_bulk_load() so
+        # _restore_bulk_pragmas() can put the connection back exactly as
+        # it was (shared connections may carry different cache sizes).
+        self._bulk_prev_cache_size: Optional[int] = None
+        self._bulk_prev_autockpt: Optional[int] = None
 
     def _ensure_conn(self) -> sqlite3.Connection:
         if self._conn is None:
@@ -274,10 +279,14 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         # 512MB page cache — the index-free appends plus a cache this
         # large keep the (unique-key) dedup probes hot. Restored on
         # finalize/abort.
+        self._bulk_prev_cache_size = conn.execute(
+            "PRAGMA cache_size").fetchone()[0]
         conn.execute("PRAGMA cache_size = -524288")  # 512MB
         # Checkpoints are issued explicitly by commit_bulk_checkpoint();
         # the default autocheckpoint (every 1000 pages) adds nothing but
         # surprises on this connection.
+        self._bulk_prev_autockpt = conn.execute(
+            "PRAGMA wal_autocheckpoint").fetchone()[0]
         conn.execute("PRAGMA wal_autocheckpoint = 0")
         conn.execute("BEGIN")
         # Deferred inside the transaction: a ROLLBACK (abort path) then
@@ -322,9 +331,13 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
 
     def _restore_bulk_pragmas(self, conn: sqlite3.Connection) -> None:
         """Return the per-connection PRAGMAs changed by begin_bulk_load to
-        their steady-state values (see _ensure_conn)."""
-        conn.execute("PRAGMA cache_size = -65536")
-        conn.execute("PRAGMA wal_autocheckpoint = 1000")
+        the values they had before the load started."""
+        if self._bulk_prev_cache_size is not None:
+            conn.execute(f"PRAGMA cache_size = {self._bulk_prev_cache_size}")
+            self._bulk_prev_cache_size = None
+        if self._bulk_prev_autockpt is not None:
+            conn.execute(f"PRAGMA wal_autocheckpoint = {self._bulk_prev_autockpt}")
+            self._bulk_prev_autockpt = None
 
     def commit_bulk_checkpoint(self) -> None:
         """During bulk load, commit the current transaction, checkpoint the

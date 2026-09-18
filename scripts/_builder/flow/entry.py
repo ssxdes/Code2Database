@@ -400,6 +400,18 @@ def _action_freshen(args) -> int:
         print("[graph] --graph not given; using %s" % graph,
               file=sys.stderr)
     if not os.path.isfile(os.path.join(graph, "code2database_master.json")):
+        kb_present = any(os.path.exists(os.path.join(graph, rel))
+                         for rel in ("kb_index.db",
+                                     os.path.join("memory", "memory.db"),
+                                     os.path.join("knowledge",
+                                                  "brief.json")))
+        if kb_present:
+            # A knowledge/memory-only store: nothing graph-shaped to
+            # freshen, and the kb stores never go stale against source.
+            print("[c2d] no graph in %s — knowledge/memory store only; "
+                  "nothing to freshen (run `c2d setup --source <dir>` "
+                  "if a graph is wanted)" % graph)
+            return 0
         print("[c2d] no graph found at %s" % graph, file=sys.stderr)
         print("[c2d] build one first: c2d setup --source <dir>",
               file=sys.stderr)

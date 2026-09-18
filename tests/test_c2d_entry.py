@@ -578,6 +578,20 @@ class TestFreshenVerb(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("c2d setup --source", buf.getvalue())
 
+    def test_kb_only_store_exits_clean(self):
+        """A knowledge/memory-only store has nothing graph-shaped to
+        freshen — report and succeed instead of demanding a build."""
+        with tempfile.TemporaryDirectory() as tmp:
+            g = os.path.join(tmp, "store")
+            os.makedirs(os.path.join(g, "memory"), exist_ok=True)
+            open(os.path.join(g, "memory", "memory.db"), "w").close()
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = entry._action_freshen(
+                    _ns(action="freshen", graph=g))
+        self.assertEqual(rc, 0)
+        self.assertIn("knowledge/memory store only", buf.getvalue())
+
     def test_daemon_active_delegates_status(self):
         with tempfile.TemporaryDirectory() as tmp:
             g = self._graph_with_master(tmp)

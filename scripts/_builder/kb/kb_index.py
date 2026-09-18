@@ -251,6 +251,15 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
                 last_synced_at TEXT NOT NULL,
                 sync_status TEXT NOT NULL DEFAULT 'unknown'
             );
+            -- Cross-KB domains: other knowledge bases this store may
+            -- query. Each kb store views itself as one domain; every
+            -- watched .db is another domain.
+            CREATE TABLE IF NOT EXISTS watched_kbs (
+                kb_path TEXT PRIMARY KEY,
+                domain_name TEXT,
+                db_mtime_at_sync TEXT,
+                last_synced_at TEXT NOT NULL
+            );
         """)
     except sqlite3.OperationalError:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
@@ -923,7 +932,8 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
              semantic: bool = False,
              log_query: bool = True,
              update_access: bool = True,
-             version_scope: str = None) -> List[Dict[str, Any]]:
+             version_scope: str = None,
+             cross: bool = False) -> List[Dict[str, Any]]:
     """Unified FTS5 + BM25 search across all kb_paragraphs.
 
     Args:
@@ -943,6 +953,9 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
                    that version rank ahead of the rest (ordering only —
                    other-version entries are still returned, labeled
                    via is_current_scope on each result).
+        cross: also search every watched kb store (cross-domain
+                   query). Hits from other domains carry source_domain
+                   and source_kb.
 
     Returns:
         List of dicts with id, source_kind, source_file, title, body,
@@ -1154,6 +1167,17 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
             except Exception:
                 logging.getLogger(__name__).debug("silent exception", exc_info=True)
                 pass
+        if cross:
+            # Cross-domain: search every watched kb store's index and
+            # label the hits with their source domain.
+            try:
+                domain_hits = _query_watched_kbs(
+                    conn, query, top_n, min_weight, max_tokens,
+                    version_scope=version_scope)
+                results.extend(domain_hits)
+            except Exception:
+                logging.getLogger(__name__).debug(
+                    "silent exception", exc_info=True)
         return results
     finally:
         conn.close()
@@ -1250,3 +1274,178 @@ def _query_foreign_kb(conn: sqlite3.Connection, query: str, top_n: int,
                 pass
             continue
     return foreign_results
+
+
+# ---------------------------------------------------------------------------
+# Cross-KB domains
+# ---------------------------------------------------------------------------
+
+def _default_domain_name(graph_dir: str) -> str:
+    """Domain name fallback: the store directory's parent name."""
+    parent = os.path.basename(os.path.dirname(os.path.abspath(graph_dir)))
+    return parent or os.path.basename(os.path.abspath(graph_dir)) or "local"
+
+
+def get_domain_name(graph_dir: str) -> str:
+    """This store's domain identity (kb_meta domain_name, or the
+    directory-derived fallback)."""
+    conn = _kb_connect(graph_dir, create_if_missing=False)
+    if conn is None:
+        return _default_domain_name(graph_dir)
+    try:
+        row = conn.execute(
+            "SELECT value FROM kb_meta WHERE key = 'domain_name'"
+        ).fetchone()
+        if row is not None and str(row[0]).strip():
+            return str(row[0]).strip()
+    except sqlite3.Error:
+        pass
+    finally:
+        conn.close()
+    return _default_domain_name(graph_dir)
+
+
+def set_domain_name(graph_dir: str, name: str) -> str:
+    """Record this store's domain identity."""
+    clean = (name or "").strip()
+    if not clean:
+        raise ValueError("domain name must be non-empty")
+    conn = _kb_connect(graph_dir)
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO kb_meta (key, value) "
+            "VALUES ('domain_name', ?)", (clean,))
+        conn.commit()
+    finally:
+        conn.close()
+    return clean
+
+
+def watch_kb(graph_dir: str, kb_path: str, domain_name: str = "") -> dict:
+    """Register another knowledge base as a queryable domain."""
+    kb_path = os.path.abspath(kb_path)
+    if not os.path.isfile(_kb_db_path(kb_path)):
+        return {"error": f"no kb store at {kb_path} "
+                         f"(expected kb_index.db)"}
+    if not domain_name:
+        domain_name = get_domain_name(kb_path)
+    conn = _kb_connect(graph_dir)
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO watched_kbs "
+            "(kb_path, domain_name, db_mtime_at_sync, last_synced_at) "
+            "VALUES (?, ?, ?, ?)",
+            (kb_path, domain_name,
+             str(os.path.getmtime(_kb_db_path(kb_path))),
+             datetime.now().isoformat()))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"watched": True, "kb_path": kb_path,
+            "domain_name": domain_name}
+
+
+def unwatch_kb(graph_dir: str, kb_path: str) -> dict:
+    conn = _kb_connect(graph_dir)
+    try:
+        cur = conn.execute("DELETE FROM watched_kbs WHERE kb_path = ?",
+                           (os.path.abspath(kb_path),))
+        conn.commit()
+        removed = bool(cur.rowcount)
+    finally:
+        conn.close()
+    return {"removed": removed,
+            "kb_path": os.path.abspath(kb_path)}
+
+
+def list_watched_kbs(graph_dir: str) -> List[Dict[str, Any]]:
+    conn = _kb_connect(graph_dir, create_if_missing=False)
+    if conn is None:
+        return []
+    try:
+        rows = conn.execute(
+            "SELECT kb_path, domain_name, db_mtime_at_sync, "
+            "last_synced_at FROM watched_kbs ORDER BY domain_name"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+
+
+def _query_watched_kbs(conn: sqlite3.Connection, query: str, top_n: int,
+                       min_weight: float, max_tokens: int,
+                       version_scope: str = None
+                       ) -> List[Dict[str, Any]]:
+    """Search the FTS index of every watched kb store, read-only.
+
+    Results are tagged with source_domain / source_kb so consumers can
+    tell which domain each hit came from. MATCH and bm25() stay
+    unqualified (an alias-qualified operand is rejected by SQLite).
+    """
+    match_expr = _fts5_escape(query)
+    out: List[Dict[str, Any]] = []
+    try:
+        watched = conn.execute(
+            "SELECT kb_path, domain_name FROM watched_kbs"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return out
+    for w in watched:
+        kb_path = w["kb_path"]
+        domain = w["domain_name"] or _default_domain_name(kb_path)
+        fdb = _kb_db_path(kb_path)
+        if not os.path.exists(fdb):
+            continue
+        alias = f"kkb_{abs(hash(kb_path)) % 100000}"
+        try:
+            conn.execute(
+                f"ATTACH DATABASE "
+                f"'file:{_escape_sql_path(fdb)}?mode=ro' AS {alias}")
+            sql = (
+                f"SELECT p.id, p.source_kind, p.source_file, p.title, "
+                f"p.body, p.tags, p.weight, p.kind, p.version_scope, "
+                f"-bm25(kb_paragraphs_fts) AS score "
+                f"FROM {alias}.kb_paragraphs_fts "
+                f"JOIN {alias}.kb_paragraphs p "
+                f"ON p.id = {alias}.kb_paragraphs_fts.rowid "
+                f"WHERE kb_paragraphs_fts MATCH ? "
+                f"AND p.weight >= ? "
+                f"ORDER BY score DESC LIMIT ?"
+            )
+            rows = conn.execute(sql, (match_expr, min_weight, top_n)
+                                ).fetchall()
+            max_chars = max_tokens * 4
+            for r in rows:
+                body = r["body"] or ""
+                if len(body) > max_chars:
+                    body = body[:max_chars] + "\n... (truncated)"
+                out.append({
+                    "id": r["id"],
+                    "source_kind": r["source_kind"],
+                    "source_file": r["source_file"],
+                    "title": r["title"] or "",
+                    "body": body,
+                    "tags": r["tags"] or [],
+                    "weight": round(r["weight"], 4),
+                    "kind": r["kind"],
+                    "score": round(r["score"], 4),
+                    "version_scope": r["version_scope"] or "default",
+                    "source_domain": domain,
+                    "source_kb": kb_path,
+                })
+            conn.execute(f"DETACH DATABASE {alias}")
+        except sqlite3.Error:
+            try:
+                conn.execute(f"DETACH DATABASE {alias}")
+            except sqlite3.Error:
+                logging.getLogger(__name__).debug(
+                    "silent exception", exc_info=True)
+            continue
+    if version_scope:
+        # Within each domain, prefer entries learned on the caller's
+        # version (ordering only, same rule as the local store).
+        out.sort(key=lambda r: (0 if r.get("version_scope")
+                                == version_scope else 1, -r["score"]))
+    return out

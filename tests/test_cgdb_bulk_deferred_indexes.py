@@ -250,5 +250,80 @@ class TestCrashedBulkHeals(_TempStoreTestCase):
         self.assertEqual(self._index_names(reopened), before_idx)
 
 
+class TestBulkDedupSemantics(_TempStoreTestCase):
+    """write_batch dedups re-derived rows via INSERT OR IGNORE: the build
+    re-emits global records (types, predicates, metadata) plus per-file lazy
+    backfill with identical hash-derived ids, and a re-derived duplicate
+    must collapse to one row — not replace it, and never duplicate it."""
+
+    def _two_identical_batches(self):
+        b = _make_node_batch(7101, name='dedup_fn')
+        b2 = _make_node_batch(7101, name='dedup_fn')
+        return b, b2
+
+    def test_duplicate_batch_in_bulk_keeps_one_row(self):
+        b, b2 = self._two_identical_batches()
+        self.store.begin_bulk_load()
+        self.store.write_batch(b)
+        self.store.write_batch(b2)
+        self.store.finalize()
+        n = self._conn().execute(
+            "SELECT COUNT(*) FROM cgdb_nodes WHERE id = 7101").fetchone()[0]
+        f = self._conn().execute(
+            "SELECT COUNT(*) FROM cgdb_files WHERE id = 7101").fetchone()[0]
+        self.assertEqual(n, 1)
+        self.assertEqual(f, 1)
+
+    def test_duplicate_batch_without_bulk_keeps_one_row(self):
+        b, b2 = self._two_identical_batches()
+        self.store.write_batch(b)
+        self.store.write_batch(b2)
+        n = self._conn().execute(
+            "SELECT COUNT(*) FROM cgdb_nodes WHERE id = 7101").fetchone()[0]
+        self.assertEqual(n, 1)
+
+    def test_reingest_same_file_replaces_content(self):
+        """The production re-derive pattern: same file id + path, updated
+        node attributes. First writer wins, so the original row survives
+        (all writers derive from the same source, so identical content)."""
+        b1 = _make_node_batch(7102, name='orig_fn')
+        b2 = _make_node_batch(7102, name='orig_fn')
+        self.store.begin_bulk_load()
+        self.store.write_batch(b1)
+        self.store.commit_bulk_checkpoint()
+        self.store.write_batch(b2)
+        self.store.finalize()
+        node = self.store.get_node(7102)
+        self.assertIsNotNone(node)
+        self.assertEqual(node['name'], 'orig_fn')
+        n = self._conn().execute(
+            "SELECT COUNT(*) FROM cgdb_nodes WHERE id = 7102").fetchone()[0]
+        self.assertEqual(n, 1)
+
+
+    def test_null_commit_hash_lands_as_unknown(self):
+        """FileRecord/EdgeRecord default commit_hash to None but the schema
+        column is NOT NULL — under OR IGNORE the row would be silently
+        dropped (REPLACE used to substitute the default). The writer must
+        coerce None → 'unknown' so files and edges always land."""
+        b = _make_node_batch(7103, name='no_hash_fn')
+        b.edges = [__import__('_builder.cgdb.cgdb_records',
+                              fromlist=['EdgeRecord']).EdgeRecord(
+            src_id=7103, dst_id=7103, kind='INVOKES', file_id=7103)]
+        self.store.begin_bulk_load()
+        self.store.write_batch(b)
+        self.store.finalize()
+        conn = self._conn()
+        fh = conn.execute(
+            "SELECT commit_hash FROM cgdb_files WHERE id = 7103").fetchone()
+        eh = conn.execute(
+            "SELECT commit_hash FROM cgdb_edges WHERE src_id = 7103").fetchone()
+        nh = conn.execute(
+            "SELECT commit_hash FROM cgdb_nodes WHERE id = 7103").fetchone()
+        self.assertEqual(fh[0], 'unknown')
+        self.assertEqual(eh[0], 'unknown')
+        self.assertEqual(nh[0], 'unknown')
+
+
 if __name__ == "__main__":
     unittest.main()

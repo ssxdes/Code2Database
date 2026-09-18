@@ -1636,14 +1636,23 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
     def _write_file(self, conn: sqlite3.Connection, file_record: Optional[FileRecord]) -> None:
         if file_record is None:
             return
+        # OR IGNORE, not OR REPLACE: ids are path-hash-derived (same id ⟺
+        # same path ⟹ same row), so a conflict always means a re-derived
+        # duplicate. REPLACE would pay a DELETE pass per row — including a
+        # cascade delete on the UNIQUE(path) conflict that silently orphans
+        # the file's nodes — for zero data difference.
+        # commit_hash is NOT NULL DEFAULT 'unknown' but the dataclass
+        # defaults to None — coerce it, or OR IGNORE silently drops the
+        # whole row (REPLACE used to substitute the column default).
+        commit_hash = file_record.commit_hash if file_record.commit_hash else "unknown"
         conn.execute(
-            "INSERT OR REPLACE INTO cgdb_files "
+            "INSERT OR IGNORE INTO cgdb_files "
             "(id, path, is_system, language, sha256, line_count, byte_count, "
             " commit_hash, last_modified, content_hash) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (file_record.id, file_record.path, int(file_record.is_system), file_record.language,
              file_record.sha256, file_record.line_count, file_record.byte_count,
-             file_record.commit_hash, file_record.last_modified, file_record.content_hash)
+             commit_hash, file_record.last_modified, file_record.content_hash)
         )
 
     def _write_types(self, conn: sqlite3.Connection, types: List[TypeRecord]) -> None:
@@ -1656,8 +1665,12 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
              json.dumps(t.attrs, ensure_ascii=False))
             for t in types
         ]
+        # OR IGNORE: type ids are content-derived and re-emitted both by the
+        # first-batch global dump and by per-file lazy backfill — a conflict
+        # is always the same row twice. REPLACE's DELETE pass would double
+        # the B-tree work per row.
         conn.executemany(
-            "INSERT OR REPLACE INTO cgdb_types "
+            "INSERT OR IGNORE INTO cgdb_types "
             "(id, spelling, canonical_spelling, kind, size_bytes, alignment, "
             " is_const, is_volatile, pointee_type_id, element_type_id, "
             " record_id, attrs) "
@@ -1675,8 +1688,10 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
              int(p.is_unconditional), int(p.is_contradictory))
             for p in preds
         ]
+        # OR IGNORE: predicate ids are expression-hash-derived and re-emitted
+        # by the first-batch global dump; conflicts are re-derived duplicates.
         conn.executemany(
-            "INSERT OR REPLACE INTO config_predicates "
+            "INSERT OR IGNORE INTO config_predicates "
             "(id, root_expr_id, text_form, z3_form, bdd_serialized, "
             " config_macros, is_unconditional, is_contradictory) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1694,7 +1709,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             for c in conds
         ]
         conn.executemany(
-            "INSERT OR REPLACE INTO conditions "
+            "INSERT OR IGNORE INTO conditions "
             "(id, root_expr_id, kind, operator, left_expr_id, right_expr_id, "
             " text_form, z3_form, attrs) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1746,13 +1761,17 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         without_id = []
         for e in edges:
             attrs_json = json.dumps(e.attrs, ensure_ascii=False, default=str)
+            # commit_hash is NOT NULL DEFAULT 'unknown' but the dataclass
+            # defaults to None — coerce (OR IGNORE would drop the row,
+            # where REPLACE used to substitute the column default).
+            commit_hash = e.commit_hash if e.commit_hash else "unknown"
             if e.edge_id is not None:
                 with_id.append((
                     e.edge_id, e.src_id, e.dst_id, e.kind, e.file_id, e.line, e.col,
                     e.byte_start, e.byte_end, e.condition_id,
                     e.config_predicate_id, e.enclosing_symbol_id, attrs_json,
                     e.source_layer, e.confidence,
-                    e.first_seen_version, e.last_seen_version, e.commit_hash,
+                    e.first_seen_version, e.last_seen_version, commit_hash,
                 ))
             else:
                 without_id.append((
@@ -1760,11 +1779,14 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                     e.byte_start, e.byte_end, e.condition_id,
                     e.config_predicate_id, e.enclosing_symbol_id, attrs_json,
                     e.source_layer, e.confidence,
-                    e.first_seen_version, e.last_seen_version, e.commit_hash,
+                    e.first_seen_version, e.last_seen_version, commit_hash,
                 ))
+        # OR IGNORE on both edge paths: explicit edge ids are hash-derived
+        # (a conflict is the same edge re-derived); the without-id path uses
+        # AUTOINCREMENT so conflicts cannot arise at all.
         if with_id:
             conn.executemany(
-                "INSERT OR REPLACE INTO cgdb_edges "
+                "INSERT OR IGNORE INTO cgdb_edges "
                 "(id, src_id, dst_id, kind, file_id, line, col, byte_start, byte_end, "
                 " condition_id, config_predicate_id, enclosing_symbol_id, attrs, "
                 " source_layer, confidence, first_seen_version, "
@@ -1774,7 +1796,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             )
         if without_id:
             conn.executemany(
-                "INSERT OR REPLACE INTO cgdb_edges "
+                "INSERT OR IGNORE INTO cgdb_edges "
                 "(src_id, dst_id, kind, file_id, line, col, byte_start, byte_end, "
                 " condition_id, config_predicate_id, enclosing_symbol_id, attrs, "
                 " source_layer, confidence, first_seen_version, "
@@ -1794,7 +1816,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             for b in blocks
         ]
         conn.executemany(
-            "INSERT OR REPLACE INTO basic_blocks "
+            "INSERT OR IGNORE INTO basic_blocks "
             "(id, function_id, block_index, is_entry, is_exit, "
             " stmt_ids, byte_start, byte_end) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1878,8 +1900,10 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
              b.impl_function_id, int(b.signature_match))
             for b in bindings
         ]
+        # OR IGNORE: edge_id is the primary key — ops bindings are deduped
+        # per edge (first writer wins, and all writers derive identical rows).
         conn.executemany(
-            "INSERT OR REPLACE INTO ops_bindings "
+            "INSERT OR IGNORE INTO ops_bindings "
             "(edge_id, ops_table_id, field_node_id, impl_function_id, "
             " signature_match) "
             "VALUES (?, ?, ?, ?, ?)",
@@ -1970,16 +1994,18 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             else:
                 # Default to node_metadata for 'node', 'file', 'type'
                 node_rows.append(row)
+        # OR IGNORE: metadata is keyed by (target, key) with a UNIQUE index;
+        # rows are emitted once per build, so conflicts are exact duplicates.
         if edge_rows:
             conn.executemany(
-                "INSERT OR REPLACE INTO edge_metadata "
+                "INSERT OR IGNORE INTO edge_metadata "
                 "(edge_id, key, value, value_type, source) "
                 "VALUES (?, ?, ?, ?, ?)",
                 edge_rows
             )
         if node_rows:
             conn.executemany(
-                "INSERT OR REPLACE INTO node_metadata "
+                "INSERT OR IGNORE INTO node_metadata "
                 "(node_id, key, value, value_type, source) "
                 "VALUES (?, ?, ?, ?, ?)",
                 node_rows

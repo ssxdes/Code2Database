@@ -18,6 +18,7 @@ from types import SimpleNamespace
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 import _version
+from _builder.cgdb.cgdb_schema import CGDB_SCHEMA_VERSION
 from _builder.graph.sqlite_store import SQLiteStore
 from _builder.misc.doctor import run_doctor, cmd_doctor
 
@@ -71,7 +72,7 @@ class TestDoctor(unittest.TestCase):
         self.assertEqual(by["schema"]["status"], "ok")
         self.assertEqual(by["schema"]["detail"],
                          f"graph schema {SQLiteStore.SCHEMA_VERSION}, "
-                         f"cgdb schema 5")
+                         f"cgdb schema {CGDB_SCHEMA_VERSION}")
         self.assertEqual(by["graph_content"]["status"], "ok")
         self.assertIn("2 functions", by["graph_content"]["detail"])
         # brief is intentionally a warning until brief-extract runs

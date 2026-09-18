@@ -101,13 +101,21 @@ class TestKbOnlyStore(_KbOnlyBase):
 
 class TestSessionInitOnKbOnly(_KbOnlyBase):
     def test_session_context_renders_without_graph(self):
-        from _builder.mcp.session_init import build_session_context
+        from _builder.mcp.session_init import build_session_context, \
+            render_session_context
         self.store.add("how does the nvme queue doorbell work",
                        "write to the submission tail", no_merge=True)
         ctx = build_session_context(self.graph_dir)
         self.assertEqual(ctx["graph"].get("nodes"), 0)
+        self.assertFalse(ctx["graph_present"])
+        self.assertTrue(ctx["kb_present"])
+        self.assertIsNone(ctx["freshness"])  # nothing to be stale
         self.assertEqual(ctx["memory"]["stats"]["active_entries"], 1)
         self.assertEqual(ctx["known_unknowns"], [])
+        rendered = render_session_context(ctx)
+        self.assertIn("knowledge/memory-only store", rendered)
+        self.assertNotIn("STALE", rendered)
+        self.assertTrue(any("fully usable" in h for h in ctx["hints"]))
         self._assert_no_graph_artifacts()
 
     def test_known_unknowns_surface_via_kb_store(self):

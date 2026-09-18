@@ -55,6 +55,14 @@ def build_session_context(graph_dir: str, memory_top: int = 10) -> dict:
         memory["error"] = str(e)
 
     # --- Layer 3: graph state ---
+    graph_present = any(os.path.exists(os.path.join(graph_dir, name))
+                        for name in ("code2database_master.json",
+                                     "code2database.db",
+                                     ".code2database_manifest.json"))
+    kb_present = any(os.path.exists(os.path.join(graph_dir, rel))
+                     for rel in ("kb_index.db",
+                                 os.path.join("memory", "memory.db"),
+                                 os.path.join("knowledge", "brief.json")))
     try:
         graph = compute_graph_stats(graph_dir)
     except Exception as exc:
@@ -73,41 +81,46 @@ def build_session_context(graph_dir: str, memory_top: int = 10) -> dict:
     # --- Layer 3b: source-vs-graph freshness ---
     # A stale graph silently produces wrong answers (and wrong saved
     # memories) — surface it at session start so the agent rebuilds
-    # before trusting the graph.
+    # before trusting the graph. Skipped on a knowledge-only store (no
+    # graph to be stale); an empty dir keeps the build-first signal.
     freshness: Optional[Dict[str, Any]] = None
-    try:
-        from _builder.cgdb.cgdb_freshness import check_freshness
-        # derive source_root from code2database_master.json
-        # (which the build wrote with the actual source path), not from
-        # os.path.dirname(graph_dir). The parent of graph_dir is only the
-        # source root by convention (.code2database subdir layout) — a graph
-        # built from /home/user/proj stored at /tmp/graphs/proj would derive
-        # /tmp/graphs as source_root, marking every manifest file as 'deleted'.
-        src_root = ""
-        master_path = os.path.join(graph_dir, "code2database_master.json")
-        if os.path.exists(master_path):
-            try:
-                _master = json.loads(Path(master_path).read_text(encoding="utf-8"))
-                src_root = _master.get("source_root", "") or ""
-            except Exception:
-                pass
-        if not src_root:
-            # Fallback: parent dir (the legacy convention).
-            src_root = os.path.dirname(os.path.abspath(graph_dir))
-        fr = check_freshness(graph_dir, src_root)
-        freshness = {
-            "is_fresh": fr.get("is_fresh", True),
-            "staleness_ratio": fr.get("staleness_ratio", 0.0),
-            "changed_files": fr.get("changed_count", 0),
-            "new_files": fr.get("new_count", 0),
-            "deleted_files": fr.get("deleted_count", 0),
-            "git_head_changed": fr.get("git_head_changed", False),
-            "recommendation": fr.get("recommendation", ""),
-            "samples": (fr.get("changed_files") or [])[:3],
-        }
-    except Exception:
-        logging.getLogger(__name__).debug("silent exception", exc_info=True)
-        freshness = None
+    if graph_present or not kb_present:
+        try:
+            from _builder.cgdb.cgdb_freshness import check_freshness
+            # derive source_root from code2database_master.json
+            # (which the build wrote with the actual source path), not from
+            # os.path.dirname(graph_dir). The parent of graph_dir is only the
+            # source root by convention (.code2database subdir layout) — a graph
+            # built from /home/user/proj stored at /tmp/graphs/proj would derive
+            # /tmp/graphs as source_root, marking every manifest file as 'deleted'.
+            src_root = ""
+            master_path = os.path.join(graph_dir,
+                                       "code2database_master.json")
+            if os.path.exists(master_path):
+                try:
+                    _master = json.loads(Path(master_path).read_text(
+                        encoding="utf-8"))
+                    src_root = _master.get("source_root", "") or ""
+                except Exception:
+                    pass
+            if not src_root:
+                # Fallback: parent dir (the legacy convention).
+                src_root = os.path.dirname(os.path.abspath(graph_dir))
+            fr = check_freshness(graph_dir, src_root)
+            freshness = {
+                "is_fresh": fr.get("is_fresh", True),
+                "staleness_ratio": fr.get("staleness_ratio", 0.0),
+                "changed_files": fr.get("changed_count", 0),
+                "new_files": fr.get("new_count", 0),
+                "deleted_files": fr.get("deleted_count", 0),
+                "git_head_changed": fr.get("git_head_changed", False),
+                "recommendation": fr.get("recommendation", ""),
+                "samples": (fr.get("changed_files") or [])[:3],
+            }
+        except Exception:
+            logging.getLogger(__name__).debug("silent exception",
+                                              exc_info=True)
+            freshness = None
 
     # --- Layer 4: known unknowns (unanswered recurring queries) ---
     known_unknowns: List[dict] = []
@@ -148,6 +161,11 @@ def build_session_context(graph_dir: str, memory_top: int = 10) -> dict:
     if drift:
         hints.append(drift + " — run `brief-update --refresh-stats` "
                      "after reviewing")
+    if not graph_present and kb_present:
+        hints.append("No graph in this store — knowledge/memory "
+                     "features (kb-query, save-memory, search-memory, "
+                     "brief-*) are fully usable; build one later with "
+                     "`make --source DIR` if graph queries are needed")
     if freshness is not None and not freshness.get("is_fresh", True):
         detail = (f"{freshness['changed_files']} changed / "
                   f"{freshness['new_files']} new / "
@@ -167,6 +185,8 @@ def build_session_context(graph_dir: str, memory_top: int = 10) -> dict:
         "brief_rendered": brief_rendered,
         "memory": memory,
         "graph": graph,
+        "graph_present": graph_present,
+        "kb_present": kb_present,
         "brief_drift": drift,
         "freshness": freshness,
         "known_unknowns": known_unknowns,
@@ -215,8 +235,13 @@ def render_session_context(ctx: dict) -> str:
     # Graph
     g = ctx["graph"]
     lines.append("\n--- Graph ---")
-    lines.append(f"{g.get('nodes', 0)} nodes | {g.get('edges', 0)} edges | "
-                 f"{g.get('domains', 0)} domains")
+    if ctx.get("graph_present", True):
+        lines.append(f"{g.get('nodes', 0)} nodes | "
+                     f"{g.get('edges', 0)} edges | "
+                     f"{g.get('domains', 0)} domains")
+    else:
+        lines.append("(no graph — knowledge/memory-only store; "
+                     "kb features unaffected)")
     if ctx.get("brief_drift"):
         lines.append(f"⚠ {ctx['brief_drift']}")
     fr = ctx.get("freshness")

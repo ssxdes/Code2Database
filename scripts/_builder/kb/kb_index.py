@@ -534,18 +534,38 @@ def _brief_sections_as_paragraphs(brief: dict, source_file: str,
 
 
 def _load_knowledge_paragraphs(graph_dir: str) -> List[dict]:
-    """Load knowledge paragraphs from the project brief (+ foreign briefs).
+    """Load knowledge paragraphs from the knowledge store (+ foreign
+    briefs).
 
-    The knowledge store is knowledge/brief.json (lean curated prompt
-    content). Foreign briefs shared via import-foreign-knowledge land
+    The knowledge store (knowledge/knowledge.db) is the source of
+    truth when present — its rows are flattened through the same
+    brief-section mapping, so paragraphs match sync_brief_to_kb
+    exactly. Foreign briefs shared via import-foreign-knowledge land
     as knowledge/foreign_<project>_brief.json and are indexed too.
+    Legacy stores without the database fall back to brief.json.
     """
+    from _builder.kb.knowledge_store import open_knowledge
     knowledge_dir = os.path.join(graph_dir, "knowledge")
     paragraphs: List[dict] = []
+    store = open_knowledge(graph_dir)  # read path: never creates
+    store_brief = None
+    if store is not None:
+        try:
+            store_brief = store.to_brief()
+        finally:
+            store.close()
+    if store_brief is not None:
+        project = store_brief.get("project", "") or "this project"
+        paragraphs.extend(_brief_sections_as_paragraphs(
+            store_brief, "brief.json", project))
     if not os.path.isdir(knowledge_dir):
         return paragraphs
     for fname in sorted(os.listdir(knowledge_dir)):
         if not fname.endswith(".json"):
+            continue
+        if store_brief is not None and fname == "brief.json":
+            # Already indexed from the store rows — scanning the
+            # derived file would double every paragraph.
             continue
         fpath = os.path.join(knowledge_dir, fname)
         if not os.path.isfile(fpath):

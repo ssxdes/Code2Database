@@ -413,11 +413,19 @@ class TestExtractAndValidate(unittest.TestCase):
         self.assertEqual(result["errors"], [])
 
     def test_validate_schema_errors(self):
-        brief_extract(self.graph_dir)
-        brief = load_brief(self.graph_dir)
-        brief["hard_rules"] = [{"type": "macro"}]  # missing 'rule'
-        brief["modes"] = [{"when": "x"}]           # missing 'name'
-        save_brief(self.graph_dir, brief)
+        # Malformed items cannot enter the knowledge store (rows are
+        # written through the typed mapping, which skips them), so the
+        # validator's error path is pinned through the legacy file
+        # layout: a hand-written brief.json without a store.
+        know = os.path.join(self.graph_dir, "knowledge")
+        os.makedirs(know, exist_ok=True)
+        with open(os.path.join(know, "brief.json"), "w") as f:
+            json.dump({
+                "project": "P",
+                "description": "d",
+                "hard_rules": [{"type": "macro"}],  # missing 'rule'
+                "modes": [{"when": "x"}],           # missing 'name'
+            }, f)
         result = validate_brief(self.graph_dir)
         self.assertFalse(result["ok"])
         self.assertTrue(any("hard_rules[0]" in e for e in result["errors"]))

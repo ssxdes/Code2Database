@@ -69,7 +69,41 @@ def brief_path(graph_dir: str) -> str:
 
 
 def load_brief(graph_dir: str) -> Optional[dict]:
-    """Load the brief; None when absent, default-shape on corruption."""
+    """Load the brief; None when absent, default-shape on corruption.
+
+    The knowledge store (knowledge/knowledge.db) is the source of
+    truth when it exists; knowledge/brief.json is its derived view
+    and the fallback for stores from before the database.
+    """
+    from _builder.kb.knowledge_store import open_knowledge
+    store = open_knowledge(graph_dir)  # read path: never creates
+    if store is not None:
+        try:
+            brief = store.to_brief()
+        finally:
+            store.close()
+        has_content = any(brief.get(k) for k in (
+            "project", "one_liner", "description", "must_know",
+            "hard_rules", "modes", "key_abstractions", "conventions",
+            "pitfalls", "query_paths"))
+        if has_content:
+            # View-level metadata (graph_stats, updated_at) lives in the
+            # derived brief.json, not in rows — overlay it when present.
+            path = brief_path(graph_dir)
+            if os.path.exists(path):
+                try:
+                    data = json.loads(Path(path).read_text(
+                        encoding="utf-8"))
+                    if isinstance(data, dict):
+                        brief["graph_stats"] = \
+                            data.get("graph_stats", {}) or {}
+                        if data.get("updated_at"):
+                            brief["updated_at"] = data["updated_at"]
+                except (json.JSONDecodeError, OSError):
+                    pass
+            return brief
+        # An empty store falls through to the file — a legacy brief
+        # that predates the store may still live there.
     path = brief_path(graph_dir)
     if not os.path.exists(path):
         return None
@@ -94,12 +128,19 @@ def load_brief(graph_dir: str) -> Optional[dict]:
 
 
 def save_brief(graph_dir: str, brief: dict) -> str:
-    """Atomically write the brief (tmp + rename, like the old store).
-
-    also sync the brief content to kb_paragraphs
-    so kb-query / describe-node see the new knowledge immediately,
-    without waiting for a manual kb-rebuild-index.
+    """Persist the brief: rows into the knowledge store, then the
+    derived, size-budgeted brief.json view (tmp + rename), then the
+    best-effort kb index sync so kb-query / describe-node see the new
+    knowledge immediately, without waiting for a manual
+    kb-rebuild-index.
     """
+    from _builder.kb.knowledge_store import open_knowledge
+    store = open_knowledge(graph_dir, create_if_missing=True)
+    if store is not None:
+        try:
+            store.replace_from_brief(brief)
+        finally:
+            store.close()
     path = brief_path(graph_dir)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     brief["schema_version"] = BRIEF_SCHEMA_VERSION

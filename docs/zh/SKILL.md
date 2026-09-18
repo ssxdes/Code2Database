@@ -34,7 +34,7 @@ python3 scripts/code2database_builder.py session-init   # --graph 自动发现 c
 # 总入口形式：c2d session
 ```
 
-此命令加载完整的项目知识底蕴（brief — 架构规则、hard_rules、陷阱、query_paths）+ 前辈记忆摘要 + 图状态 + 已知未知。**如果不执行此步骤，项目的知识底蕴完全不可见** — 后续所有查询都在无视强制规则和前辈经验的情况下盲操作。session-init 是唯一返回完整 brief 的命令；`query` 和 `describe` 只显示 FTS5 匹配的片段。
+此命令加载完整的项目知识底蕴（brief — 架构规则、hard_rules、陷阱、query_paths）+ 前辈记忆摘要 + 图状态 + 已知未知。**如果不执行此步骤，项目的知识底蕴完全不可见** — 后续所有查询都在无视强制规则和前辈经验的情况下盲操作。session-init 是唯一返回完整 brief 的命令；`query` 和 `describe` 只显示 FTS5 匹配的片段。它在纯知识/记忆存储上同样可用——没有图谱的目录先运行一次 `kb-init`，之后所有知识库命令均可独立运行（见 `/Code2Database-kb`）。
 
 ## 查询优先级链
 

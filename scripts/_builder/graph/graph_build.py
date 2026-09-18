@@ -4796,9 +4796,8 @@ def cmd_build(args):
                 try:
                     from _builder.cgdb.cgdb_versions import VersionController
                     vc_pre = VersionController(db_path, conn=store._conn)
-                    _initial_hash = _detect_commit_hash(source_root) or "unknown"
                     vc_pre.record_version(
-                        commit_hash=_initial_hash,
+                        commit_hash=_build_commit_hash,
                         commit_subject="initial empty graph (pre-build)",
                         force_insert=True,
                     )

@@ -5393,6 +5393,23 @@ def cmd_build(args):
                     _cgdb_export_error = ""
                     _clear_cgdb_export_failed(outdir)
 
+                # Final WAL truncate: the cgdb bulk load checkpointed
+                # PASSIVE at intervals and the L1 ingest workers each left
+                # their own committed frames behind, so the WAL file can
+                # still be large here. Fold it back into the main db and
+                # zero the file before the doc generators open their read
+                # connections (they would otherwise pin the WAL for the
+                # rest of the build). Best-effort: if something else holds
+                # a read lock, PASSIVE is the fallback and the next
+                # connection's auto-checkpoint finishes the job.
+                try:
+                    store._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                except Exception:
+                    try:
+                        store._conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                    except Exception:
+                        pass
+
         print(f"[SQLite] Export complete: {db_path} ({time.time()-_sqlite_start:.0f}s)", file=sys.stderr)
 
         # CRITICAL: Free NetworkX graph after SQLite export to reclaim ~16GB+

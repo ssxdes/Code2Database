@@ -664,24 +664,15 @@ def cmd_install_hook(args):
 
 
 def _resolve_graph_dir() -> str:
-    """Locate the graph directory when --graph is omitted.
+    """Locate the store directory when --graph is omitted.
 
-    Walks up from the working directory: prefers a code2db-out/ containing
-    code2database.db, then a directory that is itself a graph dir. Falls
-    back to the conventional code2db-out so the command reports its normal
-    not-found error.
+    Delegates to utils.resolve_store_dir: a directory counts when it
+    holds graph artifacts (code2database.db / master.json) or kb
+    artifacts (kb_index.db, memory/memory.db, knowledge/brief.json),
+    so knowledge-only stores are discovered like built graphs.
     """
-    d = os.getcwd()
-    while True:
-        cand = os.path.join(d, "code2db-out")
-        if os.path.isfile(os.path.join(cand, "code2database.db")):
-            return cand
-        if os.path.isfile(os.path.join(d, "code2database.db")):
-            return d
-        parent = os.path.dirname(d)
-        if parent == d:
-            return "code2db-out"
-        d = parent
+    from _builder.utils import resolve_store_dir
+    return resolve_store_dir()
 
 
 def main():

@@ -80,25 +80,18 @@ WRITE_FLAGS = frozenset({"--apply", "--correct"})
 
 
 def _resolve_graph_dir() -> str:
-    """Locate the graph directory when --graph is omitted.
+    """Locate the store directory when --graph is omitted.
 
-    Mirrors the builder's own auto-discovery (code2database_builder.py
-    _resolve_graph_dir). The umbrella resolves the graph lazily — only
-    inside verbs that need one (ask) — so non-graph verbs (verbs,
-    recipes, setup) stay noise-free and setup can forward the user's
-    explicit --graph (or none) to make untouched.
+    Delegates to utils.resolve_store_dir (shared with the builder):
+    a directory counts when it holds graph artifacts or kb artifacts,
+    so knowledge-only stores resolve too. The umbrella resolves the
+    store lazily — only inside verbs that need one (ask) — so
+    non-graph verbs (verbs, recipes, setup) stay noise-free and setup
+    can forward the user's explicit --graph (or none) to make
+    untouched.
     """
-    d = os.getcwd()
-    while True:
-        cand = os.path.join(d, "code2db-out")
-        if os.path.isfile(os.path.join(cand, "code2database.db")):
-            return cand
-        if os.path.isfile(os.path.join(d, "code2database.db")):
-            return d
-        parent = os.path.dirname(d)
-        if parent == d:
-            return "code2db-out"
-        d = parent
+    from _builder.utils import resolve_store_dir
+    return resolve_store_dir()
 
 
 def _builder_argv(*extra: str) -> List[str]:

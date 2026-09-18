@@ -8,6 +8,7 @@ from pathlib import Path
 from collections import defaultdict
 import networkx as nx
 import logging
+from typing import Optional
 
 
 # Cache source_root per graph_dir to avoid re-reading master.json on every
@@ -1082,3 +1083,52 @@ from _builder.line_utils import (  # noqa: E402
 )
 
 
+
+
+# ---------------------------------------------------------------------------
+# Store-dir discovery (graph or knowledge/memory only)
+# ---------------------------------------------------------------------------
+
+_STORE_DIR_NAME = "code2db-out"
+_GRAPH_STORE_MARKERS = ("code2database.db", "code2database_master.json")
+_KB_STORE_MARKERS = (
+    "kb_index.db",
+    os.path.join("memory", "memory.db"),
+    os.path.join("knowledge", "brief.json"),
+)
+
+
+def _dir_with_marker(base: str, markers) -> Optional[str]:
+    for marker in markers:
+        if os.path.isfile(os.path.join(base, marker)):
+            return base
+    return None
+
+
+def resolve_store_dir() -> str:
+    """Locate the store directory when --graph is omitted.
+
+    Walks up from the working directory. A directory counts as a store
+    when it holds graph artifacts (code2database.db / master.json —
+    either storage backend) or knowledge-base artifacts (kb_index.db,
+    memory/memory.db, knowledge/brief.json), so a knowledge-only store
+    is discovered exactly like a built graph. Graph markers win over
+    kb markers within the same directory. Falls back to the
+    conventional code2db-out name so the command reports its normal
+    not-found error.
+    """
+    d = os.getcwd()
+    while True:
+        cand = os.path.join(d, _STORE_DIR_NAME)
+        found = (_dir_with_marker(cand, _GRAPH_STORE_MARKERS)
+                 or _dir_with_marker(cand, _KB_STORE_MARKERS))
+        if found:
+            return found
+        found = (_dir_with_marker(d, _GRAPH_STORE_MARKERS)
+                 or _dir_with_marker(d, _KB_STORE_MARKERS))
+        if found:
+            return found
+        parent = os.path.dirname(d)
+        if parent == d:
+            return _STORE_DIR_NAME
+        d = parent

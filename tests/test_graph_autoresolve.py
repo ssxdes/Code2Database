@@ -55,6 +55,47 @@ class TestResolveGraphDir(_Chdir):
             # the walk checks code2db-out/ under cwd first, then cwd itself.
             self.assertEqual(_resolve_graph_dir(), plain)
 
+    def test_finds_kb_only_code2db_out_upward(self):
+        """A knowledge/memory-only store is discovered like a graph."""
+        with tempfile.TemporaryDirectory() as root:
+            g = os.path.join(root, "code2db-out")
+            os.makedirs(os.path.join(g, "memory"))
+            open(os.path.join(g, "memory", "memory.db"), "w").close()
+            deep = os.path.join(root, "a", "b", "c")
+            os.makedirs(deep)
+            os.chdir(deep)
+            self.assertEqual(_resolve_graph_dir(), g)
+
+    def test_kb_markers_discover_cwd_store(self):
+        with tempfile.TemporaryDirectory() as root:
+            g = os.path.join(root, "store")
+            os.makedirs(os.path.join(g, "knowledge"))
+            open(os.path.join(g, "knowledge", "brief.json"), "w").close()
+            os.chdir(g)
+            self.assertEqual(_resolve_graph_dir(), g)
+
+    def test_graph_marker_wins_over_kb_marker(self):
+        with tempfile.TemporaryDirectory() as root:
+            graph_dir = os.path.join(root, "graph-out")
+            kb_dir = os.path.join(root, "kb-out")
+            for d, marker in ((graph_dir, "code2database.db"),
+                              (kb_dir, os.path.join("memory",
+                                                    "memory.db"))):
+                os.makedirs(os.path.dirname(os.path.join(d, marker)),
+                            exist_ok=True)
+                open(os.path.join(d, marker), "w").close()
+            # Both are code2db-out-shaped siblings? No — the walk looks
+            # for code2db-out by name first; craft that shape instead.
+            g = os.path.join(root, "code2db-out")
+            os.makedirs(os.path.join(g, "memory"))
+            open(os.path.join(g, "memory", "memory.db"), "w").close()
+            plain_graph = os.path.join(root, "plain")
+            os.makedirs(plain_graph)
+            open(os.path.join(plain_graph, "code2database.db"), "w").close()
+            os.chdir(root)
+            # code2db-out/ (kb-only) is checked before cwd itself.
+            self.assertEqual(_resolve_graph_dir(), g)
+
     def test_fallback_is_conventional_name(self):
         with tempfile.TemporaryDirectory() as root:
             os.chdir(root)

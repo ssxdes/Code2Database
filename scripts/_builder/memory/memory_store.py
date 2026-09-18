@@ -546,6 +546,33 @@ class MemoryStore:
         """Find the cluster root for a similar question. 0 = no match."""
         return self._best_match(conn, question)[0]
 
+    def _match_candidates(self, conn: sqlite3.Connection,
+                          question: str) -> list:
+        """Candidate rows for similarity matching, bounded.
+
+        The FTS5 top-K by BM25 covers Latin-tokenized questions (a
+        duplicate shares most tokens, so BM25 ranks it first); CJK
+        queries and FTS misses fall back to a weight-ordered sample.
+        Both channels are capped so a large store never turns every
+        save into a full scan.
+        """
+        try:
+            rows = conn.execute(
+                "SELECT m.id, m.root_id, m.question, m.tags "
+                "FROM memories_fts "
+                "JOIN memories m ON m.id = memories_fts.rowid "
+                "WHERE memories_fts MATCH ? AND m.status = 'active' "
+                "ORDER BY -bm25(memories_fts) LIMIT 50",
+                (_fts5_escape(question),)).fetchall()
+        except sqlite3.Error:
+            rows = []
+        if rows and not _has_cjk(question):
+            return rows
+        return conn.execute(
+            "SELECT id, root_id, question, tags FROM memories "
+            "WHERE status = 'active' "
+            "ORDER BY weight DESC LIMIT 500").fetchall()
+
     def _best_match(self, conn: sqlite3.Connection,
                     question: str) -> tuple:
         """Best active match for a question.
@@ -558,9 +585,7 @@ class MemoryStore:
         q_tokens = _simple_tokenize(question)
         if not q_tokens:
             return 0, 0.0, None
-        rows = conn.execute(
-            "SELECT id, root_id, question, tags FROM memories "
-            "WHERE status = 'active'").fetchall()
+        rows = self._match_candidates(conn, question)
         best_id = 0
         best_score = 0.0
         best_q = None
@@ -720,12 +745,15 @@ class MemoryStore:
         if not fts_rows or _has_cjk(query):
             # --- similarity pass (fallback for pure-Latin queries,
             # always-on merge channel for CJK queries: the FTS5 pass
-            # above only ranks the Latin tokens of a mixed query) ---
+            # above only ranks the Latin tokens of a mixed query).
+            # Bounded to a weight-ordered sample so a large store
+            # never turns every CJK search into a full scan. ---
             params2: list = []
             cat_sql2 = self._category_filter_sql(category, params2)
             sql = (
                 "SELECT * FROM memories m WHERE m.status IN "
-                f"({ph}) AND m.weight >= ? " + cat_sql2 + author_sql
+                f"({ph}) AND m.weight >= ? " + cat_sql2 + author_sql +
+                "ORDER BY m.weight DESC LIMIT 500"
             )
             q_params = list(statuses) + [min_weight] + params2
             if author_needs_param:
@@ -1459,6 +1487,11 @@ class MemoryStore:
             conn = self._connect()
             try:
                 # --- 1. group duplicate roots (greedy, weight-desc) ---
+                # Candidates for each canonical come from the FTS top-K
+                # (a duplicate shares most tokens, so BM25 ranks it
+                # first) with a bounded weight-ordered fallback for CJK
+                # questions and FTS misses — the pairwise scan of every
+                # root against every other root does not scale.
                 rows = conn.execute(
                     "SELECT id, question, tags, weight FROM memories "
                     "WHERE status = 'active' AND root_id = id "
@@ -1477,21 +1510,44 @@ class MemoryStore:
                         tokens_cache[mid] = t
                     return tokens_cache[mid]
 
-                remaining = list(rows)
-                while remaining:
-                    canon_row, rest = remaining[0], remaining[1:]
+                def _candidates(canon_id: int, question: str) -> list:
+                    try:
+                        cands = conn.execute(
+                            "SELECT m.id, m.question, m.tags, m.weight "
+                            "FROM memories_fts "
+                            "JOIN memories m ON m.id = memories_fts.rowid "
+                            "WHERE memories_fts MATCH ? "
+                            "AND m.status = 'active' AND m.root_id = m.id "
+                            "AND m.id != ? "
+                            "ORDER BY -bm25(memories_fts) LIMIT 30",
+                            (_fts5_escape(question), canon_id)).fetchall()
+                    except sqlite3.Error:
+                        cands = []
+                    if cands and not _has_cjk(question):
+                        return cands
+                    return conn.execute(
+                        "SELECT id, question, tags, weight FROM memories "
+                        "WHERE status = 'active' AND root_id = id "
+                        "AND id != ? ORDER BY weight DESC LIMIT 500",
+                        (canon_id,)).fetchall()
+
+                consumed = set()
+                for canon_row in rows:
+                    canon_id = canon_row["id"]
+                    if canon_id in consumed:
+                        continue
+                    consumed.add(canon_id)
                     group = [canon_row]
-                    new_rest = []
-                    for r in rest:
-                        if (_similarity_score(_tokens(canon_row), _tokens(r))
+                    for r in _candidates(canon_id,
+                                         canon_row["question"]):
+                        if r["id"] in consumed:
+                            continue
+                        if (_similarity_score(_tokens(canon_row),
+                                              _tokens(r))
                                 >= similarity_threshold):
                             group.append(r)
-                        else:
-                            new_rest.append(r)
-                    remaining = new_rest
                     if len(group) < 2:
                         continue
-                    canon_id = group[0]["id"]
                     entries = {}
                     for r in group:
                         e = self._get_row(conn, r["id"])
@@ -1503,7 +1559,11 @@ class MemoryStore:
                     self._merge_entries_locked(conn, entries, canon_id)
                     merged_groups += 1
                     canonical_ids.append(canon_id)
-                    merged_ids.extend(mid for mid in entries if mid != canon_id)
+                    merged_ids.extend(mid for mid in entries
+                                      if mid != canon_id)
+                    for mid in entries:
+                        if mid != canon_id:
+                            consumed.add(mid)
 
                 # --- 2. re-point orphaned variants ---
                 live_roots = {r["id"] for r in conn.execute(

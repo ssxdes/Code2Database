@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. C/C++/Go/Python/Java/Rust/ASM invocation graphs: conditional paths, concurrency analysis, data flow, FFI tracing, a 13-layer typed cgdb semantic store. One-shot lifecycle via the c2d umbrella (setup → session → ask → capture). 83 MCP tools + 261 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
+description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. C/C++/Go/Python/Java/Rust/ASM invocation graphs: conditional paths, concurrency analysis, data flow, FFI tracing, a 13-layer typed cgdb semantic store. One-shot lifecycle via the c2d umbrella (setup → session → ask → capture). 83 MCP tools + 266 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
 trigger: /Code2Database
 ---
 
@@ -10,7 +10,7 @@ trigger: /Code2Database
 
 ## One-Click Lifecycle — the `c2d` Umbrella
 
-You do not need to memorize the 261-command surface. One command covers the whole workflow — learn 4 verbs:
+You do not need to memorize the 266-command surface. One command covers the whole workflow — learn 4 verbs:
 
 | Verb | Purpose | Example |
 |------|---------|---------|
@@ -91,7 +91,7 @@ The 27 Tier-1 commands cover ~95% of agent workflows. Task→command navigation:
 
 Aliases: `describe`/`context` → describe-node, `trace` → trace-chain, `find` → find-invariants, `flow` → value-flow, `concurrency` → concurrency-risks, `save` → save-memory, `recall` → search-memory, `brief` → knowledge-brief, `health` → profile-health, `daemon` → daemon-status, `export` → export-mermaid.
 
-All 261 CLI commands remain accessible.
+All 266 CLI commands remain accessible.
 
 ## Supported Languages
 

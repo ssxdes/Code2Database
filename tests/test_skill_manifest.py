@@ -72,6 +72,7 @@ class TestSkillManifest(unittest.TestCase):
         cls.skill = json.loads((REPO / "skill.json").read_text())
         cls.analysis = json.loads((REPO / "skill_analysis.json").read_text())
         cls.ops = json.loads((REPO / "skill_ops.json").read_text())
+        cls.kb = json.loads((REPO / "skill_kb.json").read_text())
         cls.builder = _builder_commands()
         cls.scanner = _scanner_commands()
         cls.runnable = cls.builder | cls.scanner
@@ -172,10 +173,10 @@ class TestSkillManifest(unittest.TestCase):
         self.assertEqual(ghosts, set(),
                          f"on_demand ghosts: {sorted(ghosts)}")
 
-    def test_builder_command_count_is_253(self):
+    def test_builder_command_count_is_258(self):
         """Pin the builder subcommand count — docs reference this number."""
-        self.assertEqual(len(self.builder), 253,
-                         "Builder subcommand count drifted from 253; "
+        self.assertEqual(len(self.builder), 258,
+                         "Builder subcommand count drifted from 258; "
                          "update SKILL.md/AGENTS.md to match: %d"
                          % len(self.builder))
 
@@ -246,6 +247,23 @@ class TestSkillManifest(unittest.TestCase):
                   "rollback-db-transaction", "commit-db-transaction"]:
             self.assertIn(c, ops_cmds,
                           f"ops missing {c}")
+
+    # ---- kb sub-skill manifest sync ----
+    def test_kb_manifest_commands_runnable(self):
+        ghosts = set(self.kb["commands"]) - self.runnable
+        self.assertEqual(ghosts, set(), f"kb ghosts: {sorted(ghosts)}")
+
+    def test_kb_tier_1_subset_of_commands(self):
+        ghosts = set(self.kb["tier_1_commands"]) - set(self.kb["commands"])
+        self.assertEqual(ghosts, set(),
+                         f"kb tier_1 not in commands: {sorted(ghosts)}")
+
+    def test_kb_manifest_covers_init_and_domain_commands(self):
+        cmds = set(self.kb["commands"])
+        for c in ["kb-init", "kb-domain-add", "kb-domain-list",
+                  "kb-domain-remove", "kb-domain-name", "save-memory",
+                  "search-memory", "kb-query", "session-init"]:
+            self.assertIn(c, cmds, f"kb manifest missing {c}")
 
     def test_ops_routing_table_has_kb_global_share(self):
         """kb-global-share must be in routing_table (symmetry with kb-global-share-memory)."""

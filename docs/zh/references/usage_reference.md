@@ -1043,6 +1043,11 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `kb-migrate` | Migrate kb_paragraphs rows into kb_items (fact-level) |
 | `kb-query` | Unified FTS5+BM25 query across memory and knowledge |
 | `kb-rebuild-index` | Rebuild the unified kb_paragraphs FTS5 index  |
+| `kb-init` | 初始化独立的知识/记忆存储（无需图谱；可设置域名） |
+| `kb-domain-add` | 注册另一个知识库为可查询的域 |
+| `kb-domain-list` | 列出已关注的知识库域 |
+| `kb-domain-name` | 读取或设置本知识库的域标识 |
+| `kb-domain-remove` | 停止查询另一个知识库域 |
 | `kb-rollback` | Restore a kb_item to a prior version |
 | `key-paths` | Extract key execution paths from entry points automatically |
 | `knowledge-brief` | 渲染项目简报（会话启动加载） |

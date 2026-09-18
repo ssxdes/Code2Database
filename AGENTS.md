@@ -21,19 +21,20 @@ Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/
 
 - **Dual extraction backend** — `auto` (default: clang when libclang is installed, tree-sitter fallback), `clang` (forces clang, populates the cgdb layer; libclang 17+), `tree-sitter` (no libclang dep). Selected via `--extraction-backend` at scan time. libclang is recommended, NOT required — tree-sitter-only mode is fully functional.
 - **cgdb layer** (clang backend only) — typed semantic tables alongside the legacy `functions`/`edges`: AST nodes, types, config predicates, CFG, data flow, alias (stub), ops_bindings (typed vtable dispatch), sync_primitives + happens_before, provenance + time-travel versions. Queried via 19 `cgdb_*` MCP tools or the `cgdb-*` CLI family.
-- **Dual knowledge/memory stores** — knowledge = lean per-project brief (`knowledge/brief.json`, size-budgeted); memory = shared accumulating SQLite store (`memory/memory.db`, hierarchical categories, FTS5 BM25 retrieval, split/merge/move/compact governance; compact merges near-duplicate roots after every build). `session-init` is the one-shot entry (brief + memory digest + graph state incl. freshness + known-unknowns); `save-memory --correct` is the correct-first save; `brief-suggest` mines graduation candidates (no auto-write).
+- **Dual knowledge/memory stores** — knowledge = typed rows in `knowledge/knowledge.db` (source of truth; `knowledge/brief.json` is the derived size-budgeted prompt view); memory = shared accumulating SQLite store (`memory/memory.db`, hierarchical categories, FTS5 BM25 retrieval, split/merge/move/compact governance; compact merges near-duplicate roots after every build). `session-init` is the one-shot entry (brief + memory digest + graph state incl. freshness + known-unknowns); `save-memory --correct` is the correct-first save; `brief-suggest` mines graduation candidates (no auto-write). Both stores run with or without a built graph (`kb-init` provisions a standalone store); every entry carries a version scope (branch/release tag) that queries use for current-version-first ranking, and `kb-query --cross` searches other watched kb domains.
 
-Full capability catalog with per-command detail: `docs/en/references/usage_reference.md` (intent index → pipeline walkthrough → complete 261-command reference). Do not duplicate it here.
+Full capability catalog with per-command detail: `docs/en/references/usage_reference.md` (intent index → pipeline walkthrough → complete 266-command reference). Do not duplicate it here.
 
 ## Skill Structure (3 sub-skills)
 
-The skill is split into 3 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 253 subcommands + 8 scanner subcommands) is shared — all commands are accessible regardless of sub-skill activation.
+The skill is split into 4 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 258 subcommands + 8 scanner subcommands) is shared — all commands are accessible regardless of sub-skill activation.
 
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|
 | `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded. 27 Tier-1 commands + the `c2d` umbrella. |
 | `Code2Database-analysis` | `/Code2Database-analysis` | Deep semantic analysis (concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb tables). 13 Tier-1 commands + 19 `cgdb_*` MCP tools. |
 | `Code2Database-ops` | `/Code2Database-ops` | Graph editing + ops (transactions, daemon, profile/doc-code, exports, plugins, memory, embeddings). 23 Tier-1 commands. |
+| `Code2Database-kb` | `/Code2Database-kb` | Standalone knowledge/memory base (own SQLite stores, FTS5 retrieval, version-scoped recall, cross-domain queries; no graph required). 8 Tier-1 commands. |
 
 ## Pipeline Architecture
 

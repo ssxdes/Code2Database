@@ -1044,6 +1044,11 @@ All 261 CLI subparsers across `code2database_builder.py` (253) and `code2databas
 | `kb-migrate` | Migrate kb_paragraphs rows into kb_items (fact-level) |
 | `kb-query` | Unified FTS5+BM25 query across memory and knowledge |
 | `kb-rebuild-index` | Rebuild the unified kb_paragraphs FTS5 index  |
+| `kb-init` | Provision a standalone knowledge/memory store (no graph required; sets the domain name) |
+| `kb-domain-add` | Register another knowledge base as a queryable domain |
+| `kb-domain-list` | List watched knowledge-base domains |
+| `kb-domain-name` | Get or set this knowledge base's domain identity |
+| `kb-domain-remove` | Stop querying another knowledge-base domain |
 | `kb-rollback` | Restore a kb_item to a prior version |
 | `key-paths` | Extract key execution paths from entry points automatically |
 | `knowledge-brief` | Render the project brief (session-start load) |

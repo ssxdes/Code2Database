@@ -1,0 +1,92 @@
+{
+  "name": "Code2Database-kb",
+  "version": "1.0.0",
+  "description": "Knowledge and memory sub-skill for Code2Database: a standalone project knowledge base (curated knowledge + accumulated veteran experience) on its own SQLite stores with FTS5 retrieval, version-scoped recall, and cross-domain queries. Deploys independently of the code graph or alongside it — the kb uses its own .db files and never requires graph artifacts. Use when the task is capturing, refining, searching, or graduating project knowledge and experience rather than querying code structure.",
+  "trigger": "/Code2Database-kb",
+  "parent_skill": "Code2Database",
+  "tier_1_commands": [
+    "kb-init",
+    "session-init",
+    "save-memory",
+    "search-memory",
+    "kb-query",
+    "knowledge-brief",
+    "kb-rebuild-index",
+    "kb-known-unknowns"
+  ],
+  "commands": [
+    "kb-init",
+    "kb-domain-name",
+    "kb-domain-add",
+    "kb-domain-list",
+    "kb-domain-remove",
+    "session-init",
+    "save-memory",
+    "search-memory",
+    "kb-query",
+    "kb-rebuild-index",
+    "knowledge-brief",
+    "brief-extract",
+    "brief-update",
+    "brief-validate",
+    "brief-suggest",
+    "manage-memory",
+    "memory-health",
+    "kb-known-unknowns",
+    "kb-cluster",
+    "validate-memory",
+    "semantic-search"
+  ],
+  "routing_table": {
+    "init_knowledge_store": [
+      "kb-init"
+    ],
+    "load_session_context": [
+      "session-init"
+    ],
+    "save_learned_experience": [
+      "save-memory"
+    ],
+    "correct_a_wrong_answer": [
+      "save-memory --correct"
+    ],
+    "search_veteran_experience": [
+      "search-memory",
+      "kb-query"
+    ],
+    "search_curated_knowledge": [
+      "kb-query --kinds ...",
+      "knowledge-brief"
+    ],
+    "version_aware_recall": [
+      "kb-query --version-scope ..."
+    ],
+    "cross_domain_recall": [
+      "kb-query --cross"
+    ],
+    "graduate_memory_to_knowledge": [
+      "brief-suggest",
+      "brief-update"
+    ],
+    "govern_memory": [
+      "manage-memory",
+      "kb-cluster",
+      "memory-health"
+    ],
+    "link_another_kb": [
+      "kb-domain-add",
+      "kb-domain-list"
+    ]
+  },
+  "storage": {
+    "memory": "memory/memory.db — episodic Q&A experience (decays, merges, version-scoped)",
+    "knowledge": "knowledge/knowledge.db — curated project facts (typed rows, no decay)",
+    "index": "kb_index.db — derived unified FTS5/BM25 index over both stores",
+    "brief_view": "knowledge/brief.json — derived size-budgeted prompt view of the knowledge store",
+    "graph_isolation": "code2database.db / master.json belong to the graph skill; kb commands never create or require them"
+  },
+  "shared_resources": {
+    "scripts": "scripts/ (shared with the parent skill family — single CLI)",
+    "mcp_server": "kb tools (session_init, save_memory, kb_query, knowledge_query, memory_search) work over the same stores regardless of sub-skill activation"
+  }
+}

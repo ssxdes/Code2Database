@@ -132,6 +132,7 @@ def cmd_kb_query(args):
         max_tokens=args.max_tokens,
         semantic=getattr(args, 'semantic', False),
         version_scope=getattr(args, 'version_scope', '') or None,
+        cross=bool(getattr(args, 'cross', False)),
     )
     # fall back to global KB if no project matches
     if not results and getattr(args, 'global', False):
@@ -1446,6 +1447,8 @@ def main():
     p_kq2.add_argument("--version-scope", "--branch", dest="version_scope",
                        default="", metavar="SCOPE",
                        help="Code version being worked on (branch/release tag): its memories rank first, others are labeled non-current")
+    p_kq2.add_argument("--cross", action="store_true",
+                       help="Also search watched knowledge-base domains (hits carry source_domain)")
 
     # kb-cluster (union-find clustering + principle_ref)
     p_kc = sub.add_parser("kb-cluster",
@@ -1492,6 +1495,38 @@ def main():
     p_kf.add_argument("--graph", required=True, help="Call graph output directory")
     p_kf.add_argument("--id", required=True, type=int, help="kb_paragraph id to forget")
     p_kf.add_argument("--reason", default="", help="Reason for forgetting (audit log)")
+
+    # kb-init (provision a knowledge/memory store, no graph required)
+    p_kbi = sub.add_parser("kb-init",
+                           help="Provision a knowledge/memory store (no graph required)")
+    p_kbi.add_argument("--graph", required=True, help="Store directory (auto-discovered)")
+    p_kbi.add_argument("--name", default="",
+                       help="Domain name for this knowledge base (defaults to the store directory's parent name)")
+    p_kbi.add_argument("--json", action="store_true", help="Machine-readable summary")
+
+    # kb-domain-* (cross-KB domain registry)
+    p_kdn = sub.add_parser("kb-domain-name",
+                           help="Get or set this knowledge base's domain identity")
+    p_kdn.add_argument("--graph", required=True, help="Store directory (auto-discovered)")
+    p_kdn.add_argument("--name", default="", help="New domain name (omit to read)")
+
+    p_kda = sub.add_parser("kb-domain-add",
+                           help="Register another knowledge base as a queryable domain")
+    p_kda.add_argument("--graph", required=True, help="Store directory (auto-discovered)")
+    p_kda.add_argument("--path", required=True,
+                       help="Path to the other knowledge base's store directory")
+    p_kda.add_argument("--name", default="",
+                       help="Domain name override (defaults to the other store's identity)")
+
+    p_kdl = sub.add_parser("kb-domain-list",
+                           help="List watched knowledge-base domains")
+    p_kdl.add_argument("--graph", required=True, help="Store directory (auto-discovered)")
+
+    p_kdr = sub.add_parser("kb-domain-remove",
+                           help="Stop querying another knowledge-base domain")
+    p_kdr.add_argument("--graph", required=True, help="Store directory (auto-discovered)")
+    p_kdr.add_argument("--path", required=True,
+                       help="Path to the knowledge base to stop querying")
 
     # kb-global-* (cross-project global KB)
     p_kga = sub.add_parser("kb-global-add",
@@ -3081,7 +3116,9 @@ def main():
         "session-init", "save-memory", "search-memory", "knowledge-brief",
         "kb-rebuild-index", "kb-cluster", "kb-known-unknowns", "kb-audit",
         "kb-forget", "serve", "web-ui", "tx-begin", "daemon-status",
-        "profile-health", "validate-memory",
+        "profile-health", "validate-memory", "kb-init",
+        "kb-domain-name", "kb-domain-add", "kb-domain-list",
+        "kb-domain-remove",
     )
     for _name in _GRAPH_AUTO_COMMANDS:
         _sp = sub.choices.get(_name)
@@ -3200,6 +3237,12 @@ def main():
         "kb-conflict": cmd_kb_conflict,
         "kb-rollback": cmd_kb_rollback,
         "kb-forget": cmd_kb_forget,
+        "kb-init": _lazy("_builder.kb.kb_cmd", "cmd_kb_init"),
+        "kb-domain-name": _lazy("_builder.kb.kb_cmd", "cmd_kb_domain_name"),
+        "kb-domain-add": _lazy("_builder.kb.kb_cmd", "cmd_kb_domain_add"),
+        "kb-domain-list": _lazy("_builder.kb.kb_cmd", "cmd_kb_domain_list"),
+        "kb-domain-remove": _lazy("_builder.kb.kb_cmd",
+                                  "cmd_kb_domain_remove"),
         "kb-global-add": cmd_kb_global_add,
         "kb-global-search": cmd_kb_global_search,
         "kb-global-share": cmd_kb_global_share,

@@ -400,5 +400,58 @@ class TestSaveSearchableImmediately(_KbOnlyBase):
                       hits[0]["body"])
 
 
+class TestServeGateOnKbOnly(_KbOnlyBase):
+    def test_serve_starts_for_kb_only_store(self):
+        # The gate must pass for a kb-only store: monkeypatch the stdio
+        # serve loop so cmd_serve returns right after the gate.
+        import threading
+        from _builder.mcp import mcp_server
+
+        self.store.add("how does the nvme queue doorbell work",
+                       "write to the submission tail", no_merge=True)
+        reached = threading.Event()
+
+        class _Args:
+            graph = self.graph_dir
+            transport = "stdio"
+            read_only = False
+            host = "127.0.0.1"
+            port = 0
+            token = "secret"
+            allow_no_auth = False
+            max_clients = 5
+
+        orig = mcp_server.run_mcp_server
+        try:
+            def _fake_run(graph_dir, read_only=False):
+                reached.set()
+            mcp_server.run_mcp_server = _fake_run
+            mcp_server.cmd_serve(_Args())
+            self.assertTrue(reached.is_set(),
+                            "serve must reach the loop for a kb-only store")
+        finally:
+            mcp_server.run_mcp_server = orig
+
+    def test_serve_refuses_empty_dir(self):
+        import shutil, tempfile
+        from _builder.mcp import mcp_server
+        empty = tempfile.mkdtemp(prefix="c2d_empty_serve_")
+        self.addCleanup(shutil.rmtree, empty, ignore_errors=True)
+
+        class _Args:
+            graph = empty
+            transport = "stdio"
+            read_only = False
+            host = "127.0.0.1"
+            port = 0
+            token = None
+            allow_no_auth = False
+            max_clients = 5
+
+        with self.assertRaises(SystemExit) as cm:
+            mcp_server.cmd_serve(_Args())
+        self.assertEqual(cm.exception.code, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

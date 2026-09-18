@@ -1090,9 +1090,19 @@ def cmd_serve(args):
     graph_dir = args.graph
     has_master = os.path.exists(os.path.join(graph_dir, "code2database_master.json"))
     has_sqlite = os.path.exists(os.path.join(graph_dir, "code2database.db"))
-    if not has_master and not has_sqlite:
-        print(f"Error: No invocation graph found at {graph_dir} "
-              f"(need code2database_master.json or code2database.db)", file=sys.stderr)
+    # A knowledge/memory-only store (no graph artifacts) is a valid
+    # serving target: the kb tools (session_init, save_memory, kb_query,
+    # knowledge_query, memory_search) work without a graph; graph tools
+    # degrade to per-call errors.
+    has_kb_store = any(os.path.exists(os.path.join(graph_dir, rel))
+                       for rel in ("kb_index.db",
+                                   os.path.join("memory", "memory.db"),
+                                   os.path.join("knowledge", "brief.json")))
+    if not has_master and not has_sqlite and not has_kb_store:
+        print(f"Error: No invocation graph or knowledge store found at "
+              f"{graph_dir} (need code2database_master.json, "
+              f"code2database.db, or kb artifacts: kb_index.db / "
+              f"memory/memory.db / knowledge/brief.json)", file=sys.stderr)
         sys.exit(1)
 
     transport = getattr(args, "transport", "stdio")

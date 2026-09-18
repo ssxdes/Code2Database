@@ -122,6 +122,68 @@ class TestSchemaCreation(unittest.TestCase):
         self.assertEqual(get_cgdb_schema_version(conn), CGDB_SCHEMA_VERSION)
         conn.close()
 
+    def test_fresh_schema_has_no_duplicate_path_index(self):
+        """cgdb_files.path is UNIQUE inline, which SQLite already backs with
+        an automatic unique index — the schema must not carry a second,
+        non-unique index over the same single column."""
+        conn = self._apply()
+        indexes = [r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='cgdb_files'"
+        ).fetchall()]
+        self.assertNotIn("idx_cgdb_files_path", indexes)
+        # Uniqueness on path still enforced by the automatic index.
+        conn.execute(
+            "INSERT INTO cgdb_files (id, path, language, sha256) "
+            "VALUES (1, 'a.c', 'c', 'h')")
+        with self.assertRaises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO cgdb_files (id, path, language, sha256) "
+                "VALUES (2, 'a.c', 'c', 'h')")
+        conn.close()
+
+    def test_v5_database_migrated_drops_duplicate_path_index(self):
+        """A v5 database (carrying the duplicate index) migrates to v6 and
+        loses it, while keeping path uniqueness via the automatic index."""
+        conn = sqlite3.connect(self.db_path)
+        conn.executescript("""
+            CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+            INSERT INTO meta (key, value) VALUES ('cgdb_schema_version', '5');
+            CREATE TABLE cgdb_files (
+              id INTEGER PRIMARY KEY,
+              path TEXT NOT NULL UNIQUE,
+              is_system INTEGER NOT NULL DEFAULT 0,
+              language TEXT NOT NULL,
+              sha256 TEXT NOT NULL,
+              line_count INTEGER,
+              byte_count INTEGER,
+              commit_hash TEXT NOT NULL DEFAULT 'unknown',
+              last_modified INTEGER,
+              content_hash TEXT,
+              ast_hash TEXT
+            );
+            CREATE INDEX idx_cgdb_files_path ON cgdb_files(path);
+            CREATE INDEX idx_cgdb_files_hash ON cgdb_files(content_hash);
+        """)
+        conn.execute(
+            "INSERT INTO cgdb_files (id, path, language, sha256) "
+            "VALUES (1, 'a.c', 'c', 'h')")
+        conn.commit()
+        apply_cgdb_schema(conn)
+        self.assertEqual(get_cgdb_schema_version(conn), 6)
+        indexes = [r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='cgdb_files'"
+        ).fetchall()]
+        self.assertNotIn("idx_cgdb_files_path", indexes)
+        self.assertIn("idx_cgdb_files_hash", indexes)
+        # Existing rows survived; uniqueness still enforced.
+        self.assertEqual(conn.execute(
+            "SELECT COUNT(*) FROM cgdb_files").fetchone()[0], 1)
+        with self.assertRaises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO cgdb_files (id, path, language, sha256) "
+                "VALUES (2, 'a.c', 'c', 'h')")
+        conn.close()
+
 
 class TestFTS5Search(unittest.TestCase):
     """Test FTS5 full-text search over cgdb_nodes."""

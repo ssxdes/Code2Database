@@ -44,7 +44,7 @@ data.
 """
 import sqlite3
 
-CGDB_SCHEMA_VERSION = 5
+CGDB_SCHEMA_VERSION = 6
 
 
 def apply_cgdb_schema(conn: sqlite3.Connection) -> None:
@@ -129,7 +129,10 @@ CREATE TABLE IF NOT EXISTS cgdb_files (
   content_hash TEXT,
   ast_hash TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_cgdb_files_path ON cgdb_files(path);
+-- No explicit index on path: the inline UNIQUE constraint already provides
+-- an automatic unique index over the same single column — a second,
+-- non-unique index over it would only double the per-row B-tree work.
+-- (v5 schemas carried that duplicate; migration v6 drops it.)
 CREATE INDEX IF NOT EXISTS idx_cgdb_files_hash ON cgdb_files(content_hash);
 
 -- ============================================================================

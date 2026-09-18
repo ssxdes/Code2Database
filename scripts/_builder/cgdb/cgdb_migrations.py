@@ -159,12 +159,26 @@ def _migrate_v4_to_v5(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_v5_to_v6(conn: sqlite3.Connection) -> None:
+    """v5 → v6: Drop the redundant idx_cgdb_files_path.
+
+    cgdb_files.path carries an inline UNIQUE constraint, which SQLite backs
+    with an automatic unique index over the same single column. The explicit
+    non-unique index over path therefore duplicated an existing B-tree —
+    every file-row INSERT paid for both while no query could ever prefer
+    the duplicate. Purely subtractive (DROP INDEX IF EXISTS); uniqueness
+    on path keeps being enforced by the automatic index.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_cgdb_files_path")
+
+
 # Registry of migrations: (target_version, migration_function)
 MIGRATIONS: List[Tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (2, _migrate_v1_to_v2),
     (3, _migrate_v2_to_v3),
     (4, _migrate_v3_to_v4),
     (5, _migrate_v4_to_v5),
+    (6, _migrate_v5_to_v6),
 ]
 
 

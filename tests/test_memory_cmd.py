@@ -298,6 +298,22 @@ class TestValidateMemory(unittest.TestCase):
         rows = {r["question"]: r for r in _db_rows(self.graph_dir)}
         self.assertEqual(rows["q2"]["status"], "experience")
 
+    def test_validate_without_graph_skips_gracefully(self):
+        # A knowledge-only store: no master.json, no code2database.db.
+        # Validation is a graph cross-check — it must report and
+        # succeed instead of failing on the missing graph.
+        import shutil
+        kb_dir = tempfile.mkdtemp(prefix="c2d_memcmd_kbonly_")
+        self.addCleanup(shutil.rmtree, kb_dir, ignore_errors=True)
+        _run(cmd_save_memory, _ns(
+            graph=kb_dir, question="q1", answer="a",
+            chains="", tags="", node_ids="", category="",
+            author="", no_merge=False))
+        _, out, _ = _run(cmd_validate_memory, _ns(graph=kb_dir))
+        self.assertIn("skipped", out)
+        rows = {r["question"]: r for r in _db_rows(kb_dir)}
+        self.assertEqual(rows["q1"]["status"], "active")
+
 
 class TestMemoryHealth(unittest.TestCase):
     def test_health_stats_structure(self):

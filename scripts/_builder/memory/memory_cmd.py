@@ -1,12 +1,12 @@
 """callgraph builder module: memory_cmd (SQLite memory store commands)."""
 
 import json
+import os
 import sqlite3
 import sys
 from datetime import datetime
 
 from _builder.utils import _extract_chain_node_ids
-from _builder.graph.graph_build import _load_full_graph
 import logging
 
 
@@ -131,9 +131,21 @@ def cmd_validate_memory(args):
     """Validate memory entries against current graph.
 
     Entries referencing removed nodes are demoted to experience.
+    Without a graph (knowledge-only store) there is nothing to
+    validate against — report and succeed rather than failing.
     """
     graph_dir = args.graph
 
+    has_graph = any(os.path.exists(os.path.join(graph_dir, name))
+                    for name in ("code2database_master.json",
+                                 "code2database.db"))
+    if not has_graph:
+        print("No graph in this store — memory validation is a graph "
+              "cross-check and is skipped. Memories remain valid for "
+              "knowledge-only use.")
+        return
+
+    from _builder.graph.graph_build import _load_full_graph
     G = _load_full_graph(graph_dir)
     current_nodes = set(G.nodes())
 

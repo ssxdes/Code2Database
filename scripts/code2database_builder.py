@@ -3071,7 +3071,7 @@ def main():
         "session-init", "save-memory", "search-memory", "knowledge-brief",
         "kb-rebuild-index", "kb-cluster", "kb-known-unknowns", "kb-audit",
         "kb-forget", "serve", "web-ui", "tx-begin", "daemon-status",
-        "profile-health",
+        "profile-health", "validate-memory",
     )
     for _name in _GRAPH_AUTO_COMMANDS:
         _sp = sub.choices.get(_name)

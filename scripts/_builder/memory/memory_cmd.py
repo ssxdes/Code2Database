@@ -84,6 +84,7 @@ def cmd_save_memory(args):
         author=getattr(args, "author", ""),
         no_merge=(args.no_merge is True),
         symbols=getattr(args, "symbol", None),
+        version_scope=getattr(args, "version_scope", "") or "",
     )
     # Keep the unified index in step: the new entry, plus the cluster
     # root when it merged into one (the root absorbed tags/answer).
@@ -119,6 +120,7 @@ def cmd_search_memory(args):
         author=getattr(args, "author", "") or None,
         include_experience=bool(getattr(args, "include_experience", False)),
         symbol=getattr(args, "symbol", "") or None,
+        version_scope=getattr(args, "version_scope", "") or None,
     )
 
     if not results:

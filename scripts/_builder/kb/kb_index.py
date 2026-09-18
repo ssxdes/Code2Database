@@ -90,10 +90,13 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
                 scope_id INTEGER,
                 canonical_id INTEGER,
                 principle_ref INTEGER,
-                embedding BLOB
+                embedding BLOB,
+                version_scope TEXT NOT NULL DEFAULT 'default'
             );
             CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_kind
                 ON kb_paragraphs(kind);
+            CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_version_scope
+                ON kb_paragraphs(version_scope);
             CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_source
                 ON kb_paragraphs(source_kind, source_file);
             CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_weight
@@ -252,6 +255,18 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
     except sqlite3.OperationalError:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
+    try:
+        cols = {r[1] for r in conn.execute(
+            "PRAGMA table_info(kb_paragraphs)")}
+        if "version_scope" not in cols:
+            # Version identity for indexed paragraphs (branch / release
+            # tag of the memory or knowledge item they mirror).
+            conn.execute(
+                "ALTER TABLE kb_paragraphs ADD COLUMN version_scope "
+                "TEXT NOT NULL DEFAULT 'default'")
+            conn.commit()
+    except sqlite3.Error:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
     if conn is not None:
         _import_legacy_kb(conn, graph_dir)
     return conn
@@ -649,6 +664,7 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
                 "memory", source_file, 0,
                 q[:500], a, tags_json, node_ids_json,
                 weight, 1.0, kind, None, created, None, 0,
+                entry.get("version_scope") or "default",
             ))
         # Knowledge paragraphs → one row per paragraph
         for para in _load_knowledge_paragraphs(graph_dir):
@@ -658,6 +674,7 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
                 para["weight"], para["confidence"], para["kind"],
                 para["graph_version"], para["created_at"],
                 para.get("accessed_at"), para.get("access_count", 0),
+                para.get("version_scope") or "default",
             ))
         # Bulk insert
         if rows:
@@ -665,8 +682,9 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
                 "INSERT INTO kb_paragraphs "
                 "(source_kind, source_file, para_index, title, body, "
                 " tags, node_ids, weight, confidence, kind, "
-                " graph_version, created_at, accessed_at, access_count) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " graph_version, created_at, accessed_at, access_count, "
+                " version_scope) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 rows,
             )
         conn.commit()
@@ -860,12 +878,16 @@ def sync_memory_entries(graph_dir: str, mem_ids: List[int]) -> int:
                 "INSERT INTO kb_paragraphs "
                 "(source_kind, source_file, para_index, title, body, "
                 " tags, node_ids, weight, confidence, kind, "
-                " graph_version, created_at, accessed_at, access_count) "
-                "VALUES (?, ?, 0, ?, ?, ?, ?, ?, 1.0, ?, NULL, ?, NULL, 0)",
+                " graph_version, created_at, accessed_at, access_count, "
+                " version_scope) "
+                "VALUES (?, ?, 0, ?, ?, ?, ?, ?, 1.0, ?, NULL, ?, NULL, "
+                "0, ?)",
                 ("memory", source_file, q[:500], a,
                  json.dumps(tags, ensure_ascii=False) if tags else None,
                  json.dumps(node_ids, ensure_ascii=False) if node_ids else None,
-                 float(r["weight"] or 1.0), kind, created))
+                 float(r["weight"] or 1.0), kind, created,
+                 r["version_scope"] if "version_scope" in r.keys()
+                 else "default"))
             synced += 1
         conn.commit()
     finally:
@@ -880,7 +902,8 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
              max_tokens: int = 4000,
              semantic: bool = False,
              log_query: bool = True,
-             update_access: bool = True) -> List[Dict[str, Any]]:
+             update_access: bool = True,
+             version_scope: str = None) -> List[Dict[str, Any]]:
     """Unified FTS5 + BM25 search across all kb_paragraphs.
 
     Args:
@@ -895,11 +918,16 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
                   only FTS5 matches but the interface is in place.
         log_query: record this query in kb_query_log for
                    feedback loop analysis (set False for internal calls).
+        version_scope: the code version (branch / release tag) the
+                   caller is working on. When given, entries learned on
+                   that version rank ahead of the rest (ordering only —
+                   other-version entries are still returned, labeled
+                   via is_current_scope on each result).
 
     Returns:
         List of dicts with id, source_kind, source_file, title, body,
         tags, node_ids, weight, kind, score, see_also (items in the same
-        cluster).
+        cluster), version_scope, is_current_scope.
     """
     conn = _kb_connect(graph_dir)
     if conn is None:
@@ -917,6 +945,7 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
             "       kb_paragraphs.node_ids, kb_paragraphs.weight, "
             "       kb_paragraphs.kind, kb_paragraphs.scope_id, "
             "       kb_paragraphs.canonical_id, "
+            "       kb_paragraphs.version_scope, "
             "       -bm25(kb_paragraphs_fts) * "
             "       (0.5 + 0.5 * MIN(kb_paragraphs.weight / 2.0, 1.0)) AS score "
             "FROM kb_paragraphs_fts "
@@ -929,8 +958,16 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
             placeholders = ",".join("?" for _ in kinds)
             sql += f"  AND kb_paragraphs.kind IN ({placeholders}) "
             params.extend(kinds)
-        sql += "ORDER BY score DESC LIMIT ?"
-        params.append(top_n)
+        scope = (version_scope or "").strip() or None
+        if scope:
+            # Current-version entries first, then the rest — each group
+            # by score. Ordering only; other versions stay retrievable.
+            sql += "ORDER BY (kb_paragraphs.version_scope = ?) DESC, "
+            sql += "score DESC LIMIT ?"
+            params.extend([scope, top_n])
+        else:
+            sql += "ORDER BY score DESC LIMIT ?"
+            params.append(top_n)
         try:
             rows = conn.execute(sql, params).fetchall()
         except sqlite3.Error:
@@ -983,6 +1020,23 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
                     rows.append(r)
                     if len(rows) >= top_n:
                         break
+        if scope:
+            # The similarity channel appends after FTS rows without
+            # scope awareness — restore current-version-first ordering
+            # across the merged set before building results.
+            def _row_scope(r):
+                try:
+                    return r["version_scope"] or "default"
+                except (IndexError, KeyError):
+                    return "default"
+
+            def _row_score(r):
+                if "score" in r.keys():
+                    return r["score"]
+                return sim_scores.get(r["id"], 0.0)
+
+            rows.sort(key=lambda r: (0 if _row_scope(r) == scope else 1,
+                                     -_row_score(r)))
         max_chars = max_tokens * 4
         results = []
         for r in rows:
@@ -1005,6 +1059,10 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
             body = r["body"] or ""
             if len(body) > max_chars:
                 body = body[:max_chars] + "\n... (truncated)"
+            try:
+                entry_scope = r["version_scope"] or "default"
+            except (IndexError, KeyError):
+                entry_scope = "default"
             results.append({
                 "id": r["id"],
                 "source_kind": r["source_kind"],
@@ -1018,6 +1076,9 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
                 "score": round(score, 4),
                 "scope_id": r["scope_id"],
                 "canonical_id": r["canonical_id"],
+                "version_scope": entry_scope,
+                "is_current_scope": bool(scope)
+                and entry_scope == scope,
             })
         # attach see_also — items in the same cluster
         # (same scope_id) ranked by weight × confidence.

@@ -105,10 +105,13 @@ CREATE TABLE IF NOT EXISTS memories (
     validated_at TEXT NOT NULL,
     invalidated_reason TEXT DEFAULT '',
     invalidated_at TEXT DEFAULT '',
-    archived_at TEXT DEFAULT ''
+    archived_at TEXT DEFAULT '',
+    version_scope TEXT NOT NULL DEFAULT 'default'
 );
 CREATE INDEX IF NOT EXISTS idx_memories_category ON memories(category_id);
 CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
+CREATE INDEX IF NOT EXISTS idx_memories_version_scope
+    ON memories(version_scope);
 CREATE INDEX IF NOT EXISTS idx_memories_root ON memories(root_id)
     WHERE root_id != 0;
 CREATE INDEX IF NOT EXISTS idx_memories_merged_into ON memories(merged_into)
@@ -249,16 +252,28 @@ class MemoryStore:
         with _memory_lock(self.mem_dir):
             conn = self._connect()
             try:
-                conn.executescript(_SCHEMA)
-                # Migration: legacy stores lack the symbols
-                # column (memory↔symbol grounding). ALTER is cheap and
-                # idempotent-guarded via table_info.
+                # Column migrations run BEFORE the schema script: the
+                # script creates indexes over these columns, which
+                # fails on a legacy db that has the table but not the
+                # column yet.
                 cols = {r[1] for r in
                         conn.execute("PRAGMA table_info(memories)")}
-                if "symbols" not in cols:
-                    conn.execute(
-                        "ALTER TABLE memories "
-                        "ADD COLUMN symbols TEXT DEFAULT '[]'")
+                if cols:
+                    if "symbols" not in cols:
+                        conn.execute(
+                            "ALTER TABLE memories "
+                            "ADD COLUMN symbols TEXT DEFAULT '[]'")
+                    if "version_scope" not in cols:
+                        # Version identity (branch / release tag):
+                        # memories carry the code version they were
+                        # learned on, so queries can prefer the current
+                        # version and label the rest. Existing stores
+                        # default to 'default'.
+                        conn.execute(
+                            "ALTER TABLE memories "
+                            "ADD COLUMN version_scope TEXT NOT NULL "
+                            "DEFAULT 'default'")
+                conn.executescript(_SCHEMA)
                 conn.execute(f"PRAGMA user_version = {MEMORY_SCHEMA_VERSION}")
                 conn.commit()
             finally:
@@ -444,7 +459,8 @@ class MemoryStore:
     def add(self, question: str, answer: str = "", tags: list = None,
             node_ids: list = None, chains: list = None,
             category: str = None, author: str = "",
-            no_merge: bool = False, symbols: list = None) -> int:
+            no_merge: bool = False, symbols: list = None,
+            version_scope: str = "") -> int:
         """Add a memory entry. Returns the new entry id.
 
         Similarity merge: if an existing active memory's question is
@@ -457,6 +473,10 @@ class MemoryStore:
         symbols: graph symbol names this experience is about (e.g.
         ["nvme_submit_cmd"]) — grounds memories to code so the UI can
         show veteran Q&A on the symbol's page.
+
+        version_scope: the code version this experience was learned on
+        (branch name, release tag). Empty means the store default
+        ('default').
         """
         tags = sorted(set(tags or []))
         node_ids = list(node_ids or [])
@@ -470,6 +490,7 @@ class MemoryStore:
         # storing an empty string that's invisible in queries/UI).
         if not author or not author.strip():
             author = "anonymous"
+        scope = (version_scope or "").strip() or "default"
         now = datetime.now().isoformat()
 
         with _memory_lock(self.mem_dir):
@@ -493,15 +514,17 @@ class MemoryStore:
                     "status, tags, node_ids, chains, knowledge_refs, "
                     "symbols, author, "
                     "root_id, merged_count, access_count, weight, boost, "
-                    "versions_json, created, last_accessed, validated_at) "
+                    "versions_json, created, last_accessed, validated_at, "
+                    "version_scope) "
                     "VALUES (?, ?, ?, 'active', ?, ?, ?, '[]', ?, ?, "
-                    "?, 0, 0, ?, 0.0, '[]', ?, ?, ?)",
+                    "?, 0, 0, ?, 0.0, '[]', ?, ?, ?, ?)",
                     (question, answer, cat_id,
                      json.dumps(tags, ensure_ascii=False),
                      json.dumps(node_ids, ensure_ascii=False),
                      json.dumps(chains, ensure_ascii=False),
                      json.dumps(symbols, ensure_ascii=False),
-                     author, root_id, entry["weight"], now, now, now))
+                     author, root_id, entry["weight"], now, now, now,
+                     scope))
                 new_id = cur.lastrowid
 
                 if root_id:
@@ -622,7 +645,8 @@ class MemoryStore:
                category: str = None, tags: List[str] = None,
                author: str = None, include_experience: bool = False,
                min_weight: float = 0.0,
-               symbol: str = None) -> List[dict]:
+               symbol: str = None,
+               version_scope: str = None) -> List[dict]:
         """Search memories via FTS5 BM25 × weight, with filters.
 
         Results are grouped by similarity cluster (root_id): the
@@ -635,6 +659,13 @@ class MemoryStore:
         score wins); pure-Latin queries use FTS5 alone and fall back
         to similarity only when FTS5 has no token overlap. Access
         counters of returned rows are bumped.
+
+        version_scope: the code version (branch / release tag) the
+        caller is working on. When given, entries learned on that
+        version rank ahead of equally-scoring others (per-group
+        ordering, never a filter), and every result carries
+        version_scope + is_current_scope so non-current entries can be
+        labeled.
         """
         if not query or not query.strip():
             return []
@@ -750,7 +781,18 @@ class MemoryStore:
                                   for x in e.get("symbols") or []}
             ]
 
-        scored.sort(key=lambda x: -x[0])
+        # --- scope-aware ordering: entries learned on the caller's
+        # version first, then the rest (each group by score). Ordering
+        # only — other-version entries are still returned, labeled. ---
+        scope = (version_scope or "").strip() or None
+
+        def _scope_key(item):
+            score, entry = item
+            entry_scope = entry.get("version_scope") or "default"
+            is_current = bool(scope) and entry_scope == scope
+            return (0 if is_current else 1, -score)
+
+        scored.sort(key=_scope_key)
 
         # --- group by cluster root ---
         results: List[dict] = []
@@ -766,6 +808,7 @@ class MemoryStore:
                         break
                 continue
             seen_roots.add(root)
+            entry_scope = entry.get("version_scope") or "default"
             results.append({
                 "id": entry["id"],
                 "root_id": root,
@@ -778,6 +821,9 @@ class MemoryStore:
                 "category": cat_paths.get(entry.get("category_id"), ""),
                 "author": entry.get("author", ""),
                 "status": entry.get("status", "active"),
+                "version_scope": entry_scope,
+                "is_current_scope": bool(scope)
+                and entry_scope == scope,
                 "variant_count": 0,
             })
             if len(results) >= top_n:

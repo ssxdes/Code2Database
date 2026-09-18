@@ -604,6 +604,8 @@ def _tool_kb_query(args: dict, graph_dir: str) -> dict:
             max_tokens=_mcp_coerce_int(args.get("max_tokens", 4000), 4000, 100, 100000),
             update_access=not mcp_read_only(),
             log_query=not mcp_read_only(),
+            version_scope=_mcp_coerce_str(args.get("version_scope", ""))
+            or None,
         )
     except Exception as exc:
         return {"error": str(exc)}
@@ -651,6 +653,7 @@ def _tool_save_memory(args: dict, graph_dir: str) -> dict:
         return {"error": "question is required"}
     from _builder.memory.memory_store import MemoryStore
     store = MemoryStore(graph_dir)
+    version_scope = _mcp_coerce_str(args.get("version_scope", ""))
     if args.get("correct"):
         result = store.correct_similar(
             question=question, answer=answer, author=author,
@@ -659,7 +662,7 @@ def _tool_save_memory(args: dict, graph_dir: str) -> dict:
         new_id = store.add(
             question=question, answer=answer, tags=tags,
             category=category or None, author=author,
-            symbols=symbols)
+            symbols=symbols, version_scope=version_scope)
         result = {"action": "created", "id": new_id}
     result["question"] = question
     return result

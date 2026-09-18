@@ -131,6 +131,7 @@ def cmd_kb_query(args):
         min_weight=args.min_weight,
         max_tokens=args.max_tokens,
         semantic=getattr(args, 'semantic', False),
+        version_scope=getattr(args, 'version_scope', '') or None,
     )
     # fall back to global KB if no project matches
     if not results and getattr(args, 'global', False):
@@ -1285,6 +1286,9 @@ def main():
     p_save_mem.add_argument("--no-merge", action="store_true", help="Don't merge with similar existing entry")
     p_save_mem.add_argument("--correct", action="store_true",
                             help="Correct-first: reshape the most similar existing entry instead of creating a new variant (use when a previous answer was WRONG)")
+    p_save_mem.add_argument("--version-scope", "--branch", dest="version_scope",
+                            default="", metavar="SCOPE",
+                            help="Code version this experience was learned on (branch name or release tag); queries prefer the version they are asked for")
 
     # search-memory
     p_search_mem = sub.add_parser("search-memory", help="Search memory for similar questions (FTS5 + filters)")
@@ -1296,6 +1300,9 @@ def main():
     p_search_mem.add_argument("--author", default="", help="Filter by author")
     p_search_mem.add_argument("--symbol", default="", help="Filter by grounded symbol name (exact, case-insensitive)")
     p_search_mem.add_argument("--include-experience", action="store_true", help="Include archived experience entries")
+    p_search_mem.add_argument("--version-scope", "--branch", dest="version_scope",
+                              default="", metavar="SCOPE",
+                              help="Code version being worked on (branch/release tag): its memories rank first, others are labeled non-current")
 
     # validate-memory
     p_val_mem = sub.add_parser("validate-memory",
@@ -1436,6 +1443,9 @@ def main():
                        help="enable semantic search (requires embeddings)")
     p_kq2.add_argument("--global", action="store_true",
                        help="fall back to global KB if project KB has no match")
+    p_kq2.add_argument("--version-scope", "--branch", dest="version_scope",
+                       default="", metavar="SCOPE",
+                       help="Code version being worked on (branch/release tag): its memories rank first, others are labeled non-current")
 
     # kb-cluster (union-find clustering + principle_ref)
     p_kc = sub.add_parser("kb-cluster",

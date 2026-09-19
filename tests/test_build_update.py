@@ -234,6 +234,38 @@ class TestBuildUpdate(unittest.TestCase):
         )[0][0]
         self.assertEqual(cgdb_has, 0, "cgdb_files row must be removed")
 
+    def test_l1_meta_refreshed_on_update(self):
+        # The per-file delete drops the changed file's L1 rows (tokens,
+        # source_files_meta, …) — the sync pass must re-ingest them or
+        # the lossless layer silently goes empty for every edited file
+        # until the next full build.
+        math_c = os.path.join(self.source, "src/util/math.c")
+        with open(math_c, "w") as f:
+            f.write(_MATH_C_V2)
+        with open(math_c, "rb") as f:
+            expected_sha = __import__("hashlib").sha256(f.read()).hexdigest()
+        proc = self._run_update()
+        self.assertEqual(proc.returncode, 0,
+                         "build-update failed:\n%s\n%s"
+                         % (proc.stdout[-2000:], proc.stderr[-2000:]))
+        report = self._report(proc)
+        self.assertGreaterEqual(report.get("l1_reingested_files", 0), 1)
+        rows = self._query(
+            "SELECT m.disk_sha256 FROM source_files_meta m "
+            "JOIN cgdb_files f ON f.id = m.file_id "
+            "WHERE f.path LIKE '%math.c'")
+        self.assertGreaterEqual(len(rows), 1,
+                                "L1 meta row for the changed file must "
+                                "survive the sync")
+        self.assertIn(expected_sha, {r[0] for r in rows},
+                      "L1 meta row must reflect the new content")
+        # Restore the shared fixture (later tests expect the V1 symbol
+        # set) and resync.
+        with open(math_c, "w") as f:
+            f.write(_MATH_C)
+        proc = self._run_update()
+        self.assertEqual(proc.returncode, 0, proc.stderr[-1500:])
+
     def test_noop_when_unchanged(self):
         # First run may self-heal legacy rows (builds left content_hash
         # empty for CWD-relative paths); the second must be a no-op.

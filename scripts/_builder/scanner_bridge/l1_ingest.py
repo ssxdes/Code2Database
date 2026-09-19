@@ -427,8 +427,9 @@ def ingest_l1(
         # is_libclang_available() probes Index.create() so this also
         # catches the missing-libclang.so case (the Python binding
         # imports OK but the actual shared library can't be loaded).
-        return _ingest_l1_fallback(conn, file_path, file_id, commit_hash, stats,
-                                    source_root=source_root)
+        return _ingest_l1_fallback(conn, file_path, file_id, commit_hash,
+                                    stats, source_root=source_root,
+                                    commit=commit)
 
     # Resolve file path: cgdb_nodes.file_path may be relative or may point
     # to a renamed/relocated source tree. _resolve_source_path falls back
@@ -920,6 +921,7 @@ def _ingest_l1_fallback(
     commit_hash: str,
     stats: dict,
     source_root: str = "",
+    commit: bool = True,
 ) -> dict:
     """Fallback path when libclang is not available.
 
@@ -974,7 +976,8 @@ def _ingest_l1_fallback(
             "VALUES (?, ?, ?, ?, 0, '', ?)",
             (file_id, encoding, line_ending, int(has_bom), disk_sha)
         )
-    conn.commit()
+    if commit:
+        conn.commit()
 
     stats["error"] = (
         "libclang not installed — L1 tokens table not populated. "

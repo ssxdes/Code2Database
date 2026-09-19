@@ -34,6 +34,11 @@ import os
 import sqlite3
 import sys
 
+# Source extensions whose files carry an L1 layer (token stream /
+# preprocessing info) — mirrors the full build's L1 task collection.
+_L1_SOURCE_EXTS = ('.c', '.cc', '.cpp', '.cxx', '.h', '.hh',
+                   '.hpp', '.hxx', '.m', '.mm')
+
 def _manifest_exclude_dirs(graph_dir: str):
     """Exclude list recorded in the scan manifest living in graph_dir.
 
@@ -406,7 +411,7 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
     """Inner half of build_update — caller already holds write_lock."""
     from _builder.graph.sqlite_store import SQLiteStore
     from _builder.cgdb.cgdb_store import SQLiteCGDBStore
-    from _builder.cgdb.cgdb_ingest import extract_cgdb_batch
+    from _builder.cgdb.cgdb_ingest import extract_cgdb_batch, file_id_for
 
     store = SQLiteStore(db_path)
     # WAL recovery on WSL1 can briefly fail the journal-mode PRAGMA when
@@ -447,6 +452,18 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
               file=sys.stderr)
         _version_id = 1
     _written_ids_by_file = {}
+    # The L1 layer (tokens / macros / source_files_meta …) is deleted
+    # per changed file below; it is only re-created when the original
+    # build populated it (clang-backed builds of C/C++ trees). Without
+    # the gate, tree-sitter-only graphs would grow a partial L1 layer
+    # for just the incrementally-updated files.
+    try:
+        _l1_active = conn.execute(
+            "SELECT 1 FROM source_files_meta LIMIT 1"
+        ).fetchone() is not None
+    except sqlite3.OperationalError:
+        _l1_active = False
+    _l1_tasks = []
     bulk_ok = False
     cgdb_store.begin_bulk_load()
     try:
@@ -511,6 +528,9 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
                 conn.execute(
                     "UPDATE cgdb_files SET ast_hash = ? WHERE path = ?",
                     (new_ast, batch.file.path))
+                if _l1_active and fp.endswith(_L1_SOURCE_EXTS):
+                    _l1_tasks.append(
+                        (fp, file_id_for(batch.file.path)))
             report["updated_files"] += 1
         for fp in deleted:
             report["removed_functions"] += _delete_legacy_rows(
@@ -530,6 +550,29 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
         except Exception as exc:
             print(f"[build-update] change rows skipped: {exc}",
                   file=sys.stderr)
+        # Re-ingest the L1 layer for every rewritten C/C++ file — the
+        # per-file delete above dropped its old rows, so without this
+        # pass each incremental update stripped tokens / macros /
+        # source_files_meta for changed files until the next full
+        # build. Serial execution on the shared connection is right
+        # for incremental scope (the process pool only pays off past
+        # ~100 files).
+        if _l1_tasks:
+            from _builder.scanner_bridge.l1_ingest import ingest_l1
+            for _l1_fp, _l1_fid in _l1_tasks:
+                try:
+                    ingest_l1(conn, _l1_fp, _l1_fid, commit_hash=commit,
+                              source_root=source_root, commit=False)
+                    report["l1_reingested_files"] = \
+                        report.get("l1_reingested_files", 0) + 1
+                except Exception as exc:
+                    print(f"[build-update] L1 re-ingest skipped for "
+                          f"{os.path.basename(_l1_fp)}: {exc}",
+                          file=sys.stderr)
+            try:
+                conn.commit()
+            except sqlite3.Error:
+                pass
     finally:
         if not bulk_ok:
             try:

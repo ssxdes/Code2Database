@@ -265,10 +265,10 @@ class MetadataRecord:
 
 @dataclass
 class IngestBatch:
-    """13-layer batch: parser → storage transport unit (per cdb 5.4.4).
+    """cgdb batch: parser → storage transport unit (per cdb 5.4.4).
 
-    One batch per translation unit. Carries records for all 13 layers;
-    layers without data are empty lists.
+    One batch per translation unit. Carries records for every cgdb
+    layer; layers without data are empty lists.
     """
     file: Optional[FileRecord] = None
     tu_id: int = 0

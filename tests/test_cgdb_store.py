@@ -1,7 +1,7 @@
 """Tests for SQLiteCGDBStore.
 
 Verifies GraphWriter/GraphReader split (per cdb 5.4.3): write_batch persists
-all 13-layer records, reader queries return correct results, FTS5 search
+records for every cgdb layer, reader queries return correct results, FTS5 search
 works, recursive CTE callers/callees traversal works with cycle protection.
 """
 import os
@@ -22,7 +22,7 @@ from _builder.cgdb.cgdb_records import (
 
 
 def _make_batch() -> IngestBatch:
-    """Build a small test batch covering all 13 layers."""
+    """Build a small test batch covering every cgdb layer."""
     return IngestBatch(
         file=FileRecord(id=1, path='test.c', language='c', sha256='abc123',
                         content_hash='abc123'),

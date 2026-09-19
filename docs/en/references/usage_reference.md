@@ -921,7 +921,7 @@ All 261 CLI subparsers across `code2database_builder.py` (253) and `code2databas
 | `cgdb-function-body` | Return a function's body source text |
 | `cgdb-get-source` | Get source text for a node with byte-precise attribution |
 | `cgdb-index-status` | Overall cgdb index statistics: node/edge counts by kind, file count |
-| `cgdb-layer-summary` | Generate cgdb_layer_summary.md report for all 13 cgdb tables |
+| `cgdb-layer-summary` | Generate cgdb_layer_summary.md report for all cgdb tables |
 | `cgdb-merge-knowledge` | Merge knowledge/memory from another branch's graph  |
 | `cgdb-nodes-under-config` | Find all nodes gated by a given config predicate |
 | `cgdb-ops-impls` | Find ops_bind implementations for a given field name |

@@ -1071,7 +1071,8 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         except sqlite3.OperationalError:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-        # each discovered indirect invoker. This lets depth>1 reach
+        # When the caller asked for more than one hop, expand the reverse
+        # closure from each discovered indirect invoker so depth>1 reaches
         # callers-of-indirect-callers.
         if depth > 1 and indirect_invokers:
             placeholders = ",".join("?" * len(edge_types))
@@ -1231,8 +1232,9 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                 except (json.JSONDecodeError, TypeError):
                     logging.getLogger(__name__).debug("silent exception", exc_info=True)
                     pass
-                # up ops_bindings to find all impl functions for that
-                # field across all ops_tables.
+                # Beyond the scanner's candidates, look
+                # up ops_bindings to find all impl functions bound to
+                # that field across all ops_tables.
                 if invoked_id is not None:
                     impl_rows = conn.execute(
                         "SELECT DISTINCT impl_function_id FROM ops_bindings "

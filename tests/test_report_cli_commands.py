@@ -1,6 +1,6 @@
 """Smoke tests for the 13 report-layer CLI commands.
 
-Verifies that all 13 cmd_* handlers in _builder.misc.cmd_report_tools are
+Verifies that all cmd_* handlers in _builder.misc.cmd_report_tools are
 importable and callable, and that they are registered in the
 code2database_builder CLI parser. Smoke-test level — no DB setup, just
 import-time and registration checks.

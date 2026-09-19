@@ -1,6 +1,6 @@
 """Unit tests for cgdb_commands.py CLI command surfaces.
 
-Builds a real SQLiteCGDBStore (all 13 layers, reusing the canonical
+Builds a real SQLiteCGDBStore (every cgdb layer, reusing the canonical
 batch fixture) inside a temp graph dir, then drives each cmd_* handler
 and asserts expected outputs: symbol query, ops-bind lookup, data flow,
 race check, index status, read-only SQL guard + md format, predefined

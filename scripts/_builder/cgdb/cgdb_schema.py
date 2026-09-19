@@ -939,13 +939,6 @@ CREATE INDEX IF NOT EXISTS idx_path_block ON path_states(block_id);
 CREATE INDEX IF NOT EXISTS idx_path_pathid ON path_states(path_id);
 
 -- ============================================================================
--- report layer 3 (enhanced): alias_sets_v3_view — view exposing the v3 alias_sets
--- with the additional analysis/ssa_value columns expected by the report.
--- The underlying alias_sets table is left untouched for backward compatibility;
--- new columns are populated via ALTER TABLE (see cgdb_migrations v3→v4).
--- ============================================================================
-
--- ============================================================================
 -- report layer 4: call_graph_reachability — precomputed reachability matrix
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS call_graph_reachability (

@@ -31,13 +31,47 @@ def file_id_for(path: str) -> int:
     return int(h, 16) & 0x0FFF_FFFF_FFFF_FFFF
 
 
+def _node_file_id(n: dict, batch_fid: int, batch_path: str,
+                  known_file_ids: dict) -> int:
+    """Attribute a node to its own file when that file is already stored.
+
+    The full build partitions scan-result nodes by their own file_path
+    before extraction, so each NodeRecord lands under its definition's
+    file. Without the same attribution here, an incremental rescan of
+    file B stamps a callee defined in file A with B's id: the row is
+    then invisible to A's delete-then-rewrite (its data never refreshes
+    when A changes) and newly-created shared rows are misattributed.
+    Falls back to the batch's file id whenever the node's file is
+    absent, unstored, or the map isn't provided (full-build callers
+    rely on the partitioning instead).
+    """
+    if not known_file_ids:
+        return batch_fid
+    node_path = (n.get('file_path') or '').strip()
+    if not node_path or node_path == batch_path:
+        return batch_fid
+    mapped = known_file_ids.get(node_path)
+    return batch_fid if mapped is None else mapped
+
+
 def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
-                        version_id: int = 1) -> IngestBatch:
+                        version_id: int = 1,
+                        known_file_ids: dict = None) -> IngestBatch:
     """Convert a scan_file() result dict into an IngestBatch.
 
     Reads cgdb_nodes/cgdb_types/cgdb_edges/cgdb_invoke_sites from scan_result.
     Falls back to synthesizing NodeRecords from legacy functions/edges if
     cgdb_* lists are empty (e.g., when only tree-sitter ran).
+
+    known_file_ids maps stored cgdb_files.path → id. When provided, a
+    node whose own file_path is a DIFFERENT, already-stored file is
+    attributed to that file — matching the full build, which partitions
+    nodes by their own file_path before extraction. The incremental
+    update path passes this so a callee defined elsewhere lands under
+    its definition's file (delete-then-rewrite then refreshes it when
+    ITS file changes, not when an observer is rescanned). Nodes from
+    files not in the map (external headers never stored) keep this
+    batch's file id so the cgdb_files FK always resolves.
     """
     filepath = scan_result.get('file', '')
     if not filepath:
@@ -211,7 +245,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             kind=kind,
             name=n['name'],
             fqn=n['fqn'],
-            file_id=fid,
+            file_id=_node_file_id(n, fid, filepath, known_file_ids),
             line=int(n.get('line', 0)),
             col=int(n.get('col', 0)),
             byte_start=int(n.get('byte_start', 0)),

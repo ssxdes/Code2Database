@@ -479,6 +479,23 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
     except sqlite3.OperationalError:
         _l1_active = False
     _l1_tasks = []
+    # Stored file rows by path, for node attribution: a rescan of file B
+    # re-derives the callee nodes defined in OTHER files (USR-hashed ids
+    # are translation-unit-independent). Attributing them to their own
+    # file — the same thing the full build's pre-partition does — keeps
+    # the delete-then-rewrite below authoritative for them. Files this
+    # run rewrites or deletes are excluded: their old rows (and ids)
+    # are removed below, so a node must never be stamped with them;
+    # after each rewrite the fresh row joins the map for later
+    # iterations.
+    _rewrite_forms = set()
+    for _fp in list(affected) + list(deleted):
+        for _form in _stored_forms(_fp, source_root):
+            _rewrite_forms.add(_form)
+    _known_file_ids = {
+        row[0]: row[1] for row in conn.execute(
+            "SELECT path, id FROM cgdb_files")
+        if row[0] not in _rewrite_forms}
     bulk_ok = False
     cgdb_store.begin_bulk_load()
     try:
@@ -537,9 +554,14 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
             _write_file_node(conn, store,
                              os.path.relpath(fp, source_root), functions)
             batch = extract_cgdb_batch(result, commit_hash=commit,
-                                       version_id=_version_id)
+                                       version_id=_version_id,
+                                       known_file_ids=_known_file_ids)
             if batch.file and batch.file.path:
                 cgdb_store.write_batch(batch)
+                # Later iterations in this same run may reference this
+                # file's nodes — make the just-stored row visible to the
+                # attribution map.
+                _known_file_ids[batch.file.path] = batch.file.id
                 conn.execute(
                     "UPDATE cgdb_files SET ast_hash = ? WHERE path = ?",
                     (new_ast, batch.file.path))

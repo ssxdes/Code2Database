@@ -107,6 +107,44 @@ class TestCgdbIngest(unittest.TestCase):
         self.assertIn('validate', names)
         self.assertIn('main', names)
 
+    def test_node_attribution_uses_own_file_when_stored(self):
+        """A node whose own file_path is a different, already-stored file
+        is attributed to that file (mirroring the full build's
+        pre-partition); unknown or absent paths keep the batch's file."""
+        other_path = os.path.join(self.tmpdir, "other.c")
+        result = {
+            'file': self.c_path,
+            'cgdb_nodes': [
+                {'id': 5001, 'kind': 'function', 'name': 'helper',
+                 'fqn': 'helper',
+                 'file_path': other_path},
+                {'id': 5002, 'kind': 'function', 'name': 'local_fn',
+                 'fqn': 'local_fn',
+                 'file_path': self.c_path},
+                {'id': 5003, 'kind': 'function', 'name': 'external_fn',
+                 'fqn': 'external_fn',
+                 'file_path': '/usr/include/never/stored.h'},
+                {'id': 5004, 'kind': 'function', 'name': 'no_path_fn',
+                 'fqn': 'no_path_fn'},
+            ],
+        }
+        known = {other_path: 987654}
+        batch = extract_cgdb_batch(result, known_file_ids=known)
+        by_name = {n.name: n for n in batch.nodes}
+        self.assertEqual(by_name['helper'].file_id, 987654)
+        self.assertEqual(by_name['local_fn'].file_id,
+                         file_id_for(self.c_path))
+        self.assertEqual(by_name['external_fn'].file_id,
+                         file_id_for(self.c_path))
+        self.assertEqual(by_name['no_path_fn'].file_id,
+                         file_id_for(self.c_path))
+        # Without the map everything keeps the batch attribution
+        # (full-build callers rely on their own partitioning).
+        batch2 = extract_cgdb_batch(result)
+        self.assertEqual(
+            {n.file_id for n in batch2.nodes},
+            {file_id_for(self.c_path)})
+
     def test_extract_cgdb_batch_has_types(self):
         """Batch has TypeRecords converted from cgdb_types."""
         result = self._make_scan_result()

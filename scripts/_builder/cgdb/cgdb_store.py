@@ -57,6 +57,30 @@ def _pid_is_alive(pid: int) -> bool:
     return True
 
 
+def _fetch_nodes_by_ids(conn: sqlite3.Connection,
+                        ids: List[int]) -> Dict[int, tuple]:
+    """Batch point-lookup of node display fields.
+
+    The vtable-dispatch helpers used to run one
+    ``SELECT ... WHERE id = ?`` per discovered invoker/candidate/impl —
+    hundreds of round trips on a hot ops-bound function. Same data, one
+    IN (...) query per chunk (SQLite bounds host parameters).
+    """
+    out: Dict[int, tuple] = {}
+    ids = list(dict.fromkeys(ids))
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        ph = ",".join("?" * len(chunk))
+        try:
+            for row in conn.execute(
+                    f"SELECT id, kind, name, fqn, line FROM cgdb_nodes "
+                    f"WHERE id IN ({ph})", chunk):
+                out[row[0]] = (row[1], row[2], row[3], row[4])
+        except sqlite3.OperationalError:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+    return out
+
+
 def heal_interrupted_bulk_load(conn: sqlite3.Connection) -> bool:
     """Restore a db left mid-bulk-load by a killed build. Returns True
     when a restore ran.
@@ -1013,21 +1037,15 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                 "WHERE value = ?) OR invoked_id = ?)",
                 (node_id, node_id)
             ).fetchall()
-            for r in invoke_site_rows:
-                invoker_id = r[0]
-                if invoker_id in seen_ids:
-                    continue
-                node_row = conn.execute(
-                    "SELECT id, kind, name, fqn, line FROM cgdb_nodes WHERE id = ?",
-                    (invoker_id,)
-                ).fetchone()
-                if node_row:
-                    indirect_invokers.append({
-                        "id": node_row[0], "kind": node_row[1],
-                        "name": node_row[2], "fqn": node_row[3],
-                        "line": node_row[4],
-                    })
-                    seen_ids.add(invoker_id)
+            fresh = [r[0] for r in invoke_site_rows
+                     if r[0] not in seen_ids]
+            for invoker_id, fields in _fetch_nodes_by_ids(
+                    conn, fresh).items():
+                indirect_invokers.append({
+                    "id": invoker_id, "kind": fields[0],
+                    "name": fields[1], "fqn": fields[2], "line": fields[3],
+                })
+                seen_ids.add(invoker_id)
         except sqlite3.OperationalError:
             # invoke_sites table may not exist on older graphs
             pass
@@ -1041,6 +1059,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                 "WHERE impl_function_id = ?",
                 (node_id,)
             ).fetchall()
+            candidate_ids = []
             for ob_row in binding_rows:
                 ops_table_id, field_node_id = ob_row[0], ob_row[1]
                 # Find invoke_sites that target the field_node (the
@@ -1052,22 +1071,17 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                     "WHERE invoked_id = ?",
                     (field_node_id,)
                 ).fetchall()
-                for sr in site_rows:
-                    invoker_id = sr[0]
-                    if invoker_id in seen_ids:
-                        continue
-                    node_row = conn.execute(
-                        "SELECT id, kind, name, fqn, line FROM cgdb_nodes "
-                        "WHERE id = ?",
-                        (invoker_id,)
-                    ).fetchone()
-                    if node_row:
-                        indirect_invokers.append({
-                            "id": node_row[0], "kind": node_row[1],
-                            "name": node_row[2], "fqn": node_row[3],
-                            "line": node_row[4],
-                        })
-                        seen_ids.add(invoker_id)
+                candidate_ids.extend(
+                    sr[0] for sr in site_rows if sr[0] not in seen_ids)
+            for invoker_id, fields in _fetch_nodes_by_ids(
+                    conn, candidate_ids).items():
+                if invoker_id in seen_ids:
+                    continue
+                indirect_invokers.append({
+                    "id": invoker_id, "kind": fields[0],
+                    "name": fields[1], "fqn": fields[2], "line": fields[3],
+                })
+                seen_ids.add(invoker_id)
         except sqlite3.OperationalError:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
@@ -1191,72 +1205,56 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                 "WHERE invoker_id = ?",
                 (node_id,)
             ).fetchall()
+            # One ops_bindings sweep for every field this function
+            # dispatches through (was one query per site row).
+            field_ids = list({sr[0] for sr in site_rows
+                              if sr[0] is not None})
+            impl_map: Dict[int, List[int]] = {}
+            for i in range(0, len(field_ids), 500):
+                chunk = field_ids[i:i + 500]
+                ph = ",".join("?" * len(chunk))
+                for fid_v, impl_id in conn.execute(
+                        f"SELECT field_node_id, impl_function_id "
+                        f"FROM ops_bindings WHERE field_node_id IN ({ph})",
+                        chunk):
+                    impl_map.setdefault(fid_v, []).append(impl_id)
+            # Ordered plan: per site — the invoked field node (it
+            # represents what's being dispatched through), then the
+            # scanner's dispatch_candidates (its best guess at the
+            # possible impl functions), then every impl bound to that
+            # field across all ops_tables.
+            plan: List[tuple] = []
             for sr in site_rows:
                 invoked_id = sr[0]
-                dispatch_candidates_json = sr[1] or '[]'
-                # The invoked field node itself is also an indirect invoke target
-                # — it represents what's being dispatched through.
                 if invoked_id and invoked_id not in seen_ids:
-                    node_row = conn.execute(
-                        "SELECT id, kind, name, fqn, line FROM cgdb_nodes WHERE id = ?",
-                        (invoked_id,)
-                    ).fetchone()
-                    if node_row:
-                        indirect_invoked.append({
-                            "id": node_row[0], "kind": node_row[1],
-                            "name": node_row[2], "fqn": node_row[3],
-                            "line": node_row[4], "via_dispatch": True,
-                        })
-                        seen_ids.add(invoked_id)
-                # Next: if dispatch_candidates is populated, use it
-                # directly — it's the scanner's best guess at the
-                # possible impl functions.
+                    plan.append((invoked_id, True))
+                    seen_ids.add(invoked_id)
                 try:
-                    candidate_ids = json.loads(dispatch_candidates_json)
-                    if isinstance(candidate_ids, list):
-                        for cid in candidate_ids:
-                            if not isinstance(cid, int) or cid in seen_ids:
-                                continue
-                            node_row = conn.execute(
-                                "SELECT id, kind, name, fqn, line FROM cgdb_nodes "
-                                "WHERE id = ?",
-                                (cid,)
-                            ).fetchone()
-                            if node_row:
-                                indirect_invoked.append({
-                                    "id": node_row[0], "kind": node_row[1],
-                                    "name": node_row[2], "fqn": node_row[3],
-                                    "line": node_row[4],
-                                })
-                                seen_ids.add(cid)
+                    candidate_ids = json.loads(sr[1] or '[]')
                 except (json.JSONDecodeError, TypeError):
                     logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                    pass
-                # Beyond the scanner's candidates, look
-                # up ops_bindings to find all impl functions bound to
-                # that field across all ops_tables.
-                if invoked_id is not None:
-                    impl_rows = conn.execute(
-                        "SELECT DISTINCT impl_function_id FROM ops_bindings "
-                        "WHERE field_node_id = ?",
-                        (invoked_id,)
-                    ).fetchall()
-                    for ir in impl_rows:
-                        impl_id = ir[0]
-                        if impl_id in seen_ids:
-                            continue
-                        node_row = conn.execute(
-                            "SELECT id, kind, name, fqn, line FROM cgdb_nodes "
-                            "WHERE id = ?",
-                            (impl_id,)
-                        ).fetchone()
-                        if node_row:
-                            indirect_invoked.append({
-                                "id": node_row[0], "kind": node_row[1],
-                                "name": node_row[2], "fqn": node_row[3],
-                                "line": node_row[4],
-                            })
-                            seen_ids.add(impl_id)
+                    candidate_ids = []
+                if isinstance(candidate_ids, list):
+                    for cid in candidate_ids:
+                        if isinstance(cid, int) and cid not in seen_ids:
+                            plan.append((cid, False))
+                            seen_ids.add(cid)
+                for impl_id in impl_map.get(invoked_id, ()):
+                    if impl_id not in seen_ids:
+                        plan.append((impl_id, False))
+                        seen_ids.add(impl_id)
+            nodes = _fetch_nodes_by_ids(conn, [nid for nid, _ in plan])
+            for nid, via in plan:
+                fields = nodes.get(nid)
+                if fields is None:
+                    continue
+                entry = {
+                    "id": nid, "kind": fields[0], "name": fields[1],
+                    "fqn": fields[2], "line": fields[3],
+                }
+                if via:
+                    entry["via_dispatch"] = True
+                indirect_invoked.append(entry)
         except sqlite3.OperationalError:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass

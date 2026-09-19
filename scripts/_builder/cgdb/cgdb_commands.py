@@ -262,18 +262,24 @@ def cmd_cgdb_index_status(args):
 def cmd_cgdb_sql(args):
     """Run an arbitrary SQL query against the cgdb database.
 
-    Read-only — rejects any statement that isn't a SELECT, WITH, or EXPLAIN.
-    Results are returned as JSON (list of row dicts) or markdown table per
-    --format. Use for cross-table joins and ad-hoc analysis that the
+    Read-only — allows SELECT, WITH, EXPLAIN, VALUES, and a small
+    allow-list of read-only PRAGMAs (table_info/index_list/database_list);
+    RETURNING is rejected (it enables writes inside CTEs) and the
+    connection is additionally opened mode=ro as defense-in-depth.
+    Results are returned as JSON (list of row dicts) or markdown table
+    per --format. Use for cross-table joins and ad-hoc analysis that the
     Cypher-subset query language doesn't cover directly.
 
-    Tables: cgdb_nodes, cgdb_edges, cgdb_files, cgdb_types, cgdb_includes,
-    invoke_sites, config_predicates, ops_bindings, basic_blocks,
-    cfg_edges, data_flow, sync_primitives, happens_before, alias_sets,
-    doc_comments, conditions, config_predicates, graph_versions,
-    audit_log, change_log, communities, domain_stats, edge_metadata,
-    entry_scores, field_access, functions, global_access, nodes_fts,
-    node_metadata.
+    Core tables: cgdb_nodes, cgdb_edges, cgdb_files, cgdb_types,
+    config_predicates, conditions, basic_blocks, cfg_edges, data_flow,
+    alias_sets, invoke_sites, ops_bindings, sync_primitives,
+    happens_before, cgdb_includes, doc_comments, graph_versions,
+    node_metadata, edge_metadata, plus the L1 token/preprocessing tables
+    (tokens, literals, string_literals, macros, pp_branches, …), the
+    report tables (ir_functions, ssa_values, data_deps, path_states,
+    arch_metrics, module_deps, call_graph_reachability), the FTS5 virtual
+    table nodes_fts, and the legacy graph tables (functions, edges,
+    field_access, global_access, entry_scores, communities).
     """
     db_path = os.path.join(args.graph, "code2database.db")
     if not os.path.exists(db_path):

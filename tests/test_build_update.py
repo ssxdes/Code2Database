@@ -17,6 +17,8 @@ SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'scripts')
 BUILDER = os.path.join(SCRIPTS_DIR, 'code2database_builder.py')
 SCANNER = os.path.join(SCRIPTS_DIR, 'code2database_scanner.py')
 
+sys.path.insert(0, SCRIPTS_DIR)
+
 _SCAN_MEM_FLAGS = ["--memory-limit", "9999",
                    "--memory-warn-threshold", "0.99",
                    "--memory-crit-threshold", "0.999"]
@@ -428,6 +430,46 @@ class TestBuildUpdate(unittest.TestCase):
             self.assertIn("include_closure_failed", report)
             self.assertIn("sync unavailable",
                           report["include_closure_failed"])
+
+
+class TestAstHash(unittest.TestCase):
+    """The structural skip digest must ignore format-only movement but
+    react to semantic edits that keep the call graph identical."""
+
+    @staticmethod
+    def _result(body="return a + b;", type_spelling="int", line=10):
+        return {
+            "file": "x.c",
+            "functions": [{
+                "id": "f1", "name": "add",
+                "signature": "int add(int a, int b)", "body": body,
+            }],
+            "edges": [],
+            "cgdb_nodes": [{
+                "id": 1, "kind": "function", "fqn": "add",
+                "body_text": body, "type_spelling": type_spelling,
+                "line": line, "byte_start": 0, "byte_end": 42,
+            }],
+        }
+
+    def setUp(self):
+        import _builder.build.build_update as bu
+        self._hash = bu._compute_ast_hash
+
+    def test_body_edit_invalidates(self):
+        self.assertNotEqual(
+            self._hash(self._result(body="return a - b;")),
+            self._hash(self._result(body="return a + b;")))
+
+    def test_type_edit_invalidates(self):
+        self.assertNotEqual(
+            self._hash(self._result(type_spelling="long")),
+            self._hash(self._result(type_spelling="int")))
+
+    def test_position_shift_stays_format_only(self):
+        self.assertEqual(
+            self._hash(self._result(line=10)),
+            self._hash(self._result(line=99)))
 
 
 if __name__ == "__main__":

@@ -152,11 +152,17 @@ def _compute_ast_hash(result: dict) -> str:
     node/edge identity. Comment content is deliberately excluded
     (same policy as the daemon's format-only filter) — doc-comment
     rows refresh on the next structural change or full build.
+
+    Body text and type spellings ARE included: an edit that keeps the
+    call graph but rewrites a body (`x = 1` → `x = 2`, `int x` →
+    `long x`) would otherwise hash identical and the skip branch would
+    keep serving the stored body/type columns indefinitely.
     """
     import hashlib
     payload = {
         "functions": sorted(
-            (f.get("id", ""), f.get("name", ""), f.get("signature", ""))
+            (f.get("id", ""), f.get("name", ""), f.get("signature", ""),
+             f.get("body") or f.get("body_text") or "")
             for f in result.get("functions") or []),
         "edges": sorted(
             ((e.get("invoker") or e.get("caller") or e.get("source") or ""),
@@ -164,7 +170,8 @@ def _compute_ast_hash(result: dict) -> str:
              e.get("relation") or "INVOKES")
             for e in result.get("edges") or []),
         "cgdb_nodes": sorted(
-            (str(n.get("id", "")), n.get("kind", ""), n.get("fqn", ""))
+            (str(n.get("id", "")), n.get("kind", ""), n.get("fqn", ""),
+             n.get("body_text") or "", n.get("type_spelling") or "")
             for n in result.get("cgdb_nodes") or []),
         "cgdb_edges": sorted(
             (str(e.get("src_id", "")), str(e.get("dst_id", "")),

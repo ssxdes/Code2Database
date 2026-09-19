@@ -781,10 +781,12 @@ def _tool_get_module_view(args: dict, graph_dir: str) -> dict:
     conn = None
     try:
         conn = _get_conn(graph_dir)
-        # Files in module (by path match — domain concept)
+        # Files in module (by path match — domain concept). Capped like
+        # every other report tool: a one-character module matches every
+        # file on a kernel-sized graph (61K rows in one MCP response).
         files = conn.execute(
             "SELECT id, path, language, line_count, byte_count FROM cgdb_files "
-            "WHERE path LIKE ? ORDER BY path",
+            "WHERE path LIKE ? ORDER BY path LIMIT 1000",
             (f"%{module}%",)
         ).fetchall()
         # Symbols in module
@@ -946,7 +948,7 @@ def _tool_alias_set(args: dict, graph_dir: str) -> list:
 
 
 def _tool_trace_data_flow(args: dict, graph_dir: str) -> dict:
-    """trace_data_flow(from_var, to_var?) -> {path, deps, locs}"""
+    """trace_data_flow(from_var, to_var?) -> {path, reached}"""
     from_var = _mcp_coerce_str(args.get("from_var", ""))
     to_var = _mcp_coerce_str(args.get("to_var"))
     if not from_var:
@@ -1655,7 +1657,7 @@ TOOLS_REPORT = {
         "handler": _tool_alias_set,
     },
     "trace_data_flow": {
-        "description": "Trace data flow between two variables via SSA data_deps (recursive CTE). Returns path with deps and locs. (design-report L3)",
+        "description": "Trace data flow from a variable via SSA data_deps (recursive CTE). Returns the downstream path (bounded) and, when to_var is given, whether it was reached. (design-report L3)",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1741,7 +1743,7 @@ TOOLS_REPORT = {
     },
     # ---- 高级编辑 (3) ----
     "insert_node_after": {
-        "description": "Insert a new AST node after a given anchor node_id. Use commit_db_transaction to render and write to disk. (design-report B.5)",
+        "description": "Insert a new AST node after a given anchor node_id. DB-only: no tokens are created and source rendering is unchanged; use insert_token to change the source. (design-report B.5)",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1761,7 +1763,7 @@ TOOLS_REPORT = {
         "handler": _tool_insert_node_after,
     },
     "delete_node": {
-        "description": "Soft-delete an AST node by ID. Marks last_seen_version=0. Use commit_db_transaction to render and write to disk. (design-report B.5)",
+        "description": "Soft-delete an AST node by ID (tombstones its version range) and detach its tokens. Source rendering is unchanged; no commit step is needed. (design-report B.5)",
         "inputSchema": {
             "type": "object",
             "properties": {

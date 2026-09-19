@@ -273,7 +273,7 @@ def _tool_cgdb_find_aliases(args: dict, graph_dir: str) -> list:
 
 
 def _tool_cgdb_find_lock_held_calls(args: dict, graph_dir: str) -> list:
-    """Find calls made while a lock is held in a function."""
+    """List the lock/synchronization primitives a function uses."""
     func_id = args.get("function_id")
     if func_id is None:
         return [{"error": "function_id required"}]

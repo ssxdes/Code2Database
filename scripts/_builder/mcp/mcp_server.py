@@ -588,7 +588,7 @@ TOOLS = {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Search query (name or fqn fragment)"},
-                "kind": {"type": "string", "description": "Optional node kind filter (function/var/field/typedef/struct/union/enum/parm/decl_ref/call_expr/member_ref)"},
+                "kind": {"type": "string", "description": "Optional node kind filter (function/method/constructor/destructor/var/parm/field/enum_constant/typedef/struct/class/union/enum/stmt/expr/decl_ref/member_ref/label/namespace/template/concept/file/macro/include/vtable/ops_table)"},
                 "limit": {"type": "integer", "description": "Max results (default 50)"},
             },
             "required": ["query"],
@@ -732,7 +732,7 @@ TOOLS = {
         "handler": _tool_cgdb_find_aliases,
     },
     "cgdb_find_lock_held_calls": {
-        "description": "Find calls made while a lock is held in a function.",
+        "description": "List the lock/synchronization primitives a function acquires or releases (sync_var_id, kind, stmt ids).",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -754,7 +754,7 @@ TOOLS = {
         "handler": _tool_cgdb_check_race_condition,
     },
     "cgdb_find_configs_for": {
-        "description": "Return the config predicate(s) attached to a node (text_form + config_macros).",
+        "description": "Return the config predicate(s) attached to a node (their text_form strings).",
         "inputSchema": {
             "type": "object",
             "properties": {

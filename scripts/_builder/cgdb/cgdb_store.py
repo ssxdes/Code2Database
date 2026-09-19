@@ -1384,11 +1384,12 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                 for r in rows]
 
     def find_lock_held_calls(self, func_id: int) -> List[Dict[str, Any]]:
+        """Return the function's sync_primitives rows (lock/atomic
+        acquire-release events with their sync_var_id, kind and stmt ids).
+        Ordered by the acquiring statement's source line (via JOIN to
+        cgdb_nodes) — acquire_stmt_id is a USR-based hash whose
+        magnitude has no relation to source order."""
         conn = self._ensure_conn()
-        # Find calls made while a lock is held: lock_acquire before call,
-        # no intervening lock_release.
-        # Order by source line (via JOIN to cgdb_nodes) — acquire_stmt_id
-        # is a USR-based hash whose magnitude has no relation to source order.
         rows = conn.execute(
             "SELECT sp.id, sp.sync_var_id, sp.kind, sp.acquire_stmt_id, "
             "sp.release_stmt_id, sp.memory_order, "
@@ -1401,7 +1402,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         ).fetchall()
         return [{"id": r[0], "sync_var_id": r[1], "kind": r[2],
                  "acquire_stmt_id": r[3], "release_stmt_id": r[4],
-                 "memory_order": r[5]} for r in rows]
+                 "memory_order": r[5], "src_line": r[6]} for r in rows]
 
     def check_path_feasible(self, path: List[int]) -> Dict[str, Any]:
         """Check feasibility of a path through CFG blocks. Returns

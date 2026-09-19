@@ -515,9 +515,10 @@ class TestSQLiteCGDBStoreBulkLoad(unittest.TestCase):
         store2.close()
 
     def test_synchronous_reset_after_finalize(self):
-        """finalize() resets synchronous to NORMAL after bulk load."""
-        self.store.begin_bulk_load()
-        # During bulk load, synchronous should be OFF
+        """finalize() resets synchronous to NORMAL after an aggressive
+        bulk load."""
+        self.store.begin_bulk_load(aggressive=True)
+        # During the aggressive load, synchronous should be OFF
         sync = self.store._conn.execute("PRAGMA synchronous").fetchone()
         self.assertEqual(sync[0], 0)  # OFF
         self.store.finalize()
@@ -527,7 +528,7 @@ class TestSQLiteCGDBStoreBulkLoad(unittest.TestCase):
 
     def test_synchronous_reset_after_abort(self):
         """abort_bulk_load() resets synchronous to NORMAL after rollback."""
-        self.store.begin_bulk_load()
+        self.store.begin_bulk_load(aggressive=True)
         sync = self.store._conn.execute("PRAGMA synchronous").fetchone()
         self.assertEqual(sync[0], 0)  # OFF
         self.store.abort_bulk_load()

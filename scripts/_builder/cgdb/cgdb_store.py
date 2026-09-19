@@ -388,10 +388,23 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         except sqlite3.Error:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
 
-    def begin_bulk_load(self) -> None:
+    def begin_bulk_load(self, aggressive: bool = False) -> None:
+        """Defer secondary indexes + FTS triggers for a bulk write stretch.
+
+        aggressive=True (whole-graph rebuild) additionally relaxes
+        synchronous to OFF for the load's duration: process crashes are
+        still safe (WAL recovery + the interrupted-bulk heal), only
+        power loss mid-load is at risk, and the load that motivated the
+        bulk path measured this configuration. Small incremental loads
+        keep the default durability — their sync cost is negligible.
+        """
         conn = self._ensure_conn()
-        # Defer index rebuilds and bump cache for bulk load
-        conn.execute("PRAGMA synchronous = OFF")
+        if aggressive:
+            conn.execute("PRAGMA synchronous = OFF")
+        elif not self._bulk_load_active:
+            # Restore the default in case a previous aggressive load on
+            # this same store left it relaxed.
+            conn.execute("PRAGMA synchronous = NORMAL")
         # A whole-graph rebuild appends millions of rows to a db whose
         # secondary indexes can span a multi-GB B-tree. Keeping them live
         # costs dozens of random page touches per INSERT (measured: an

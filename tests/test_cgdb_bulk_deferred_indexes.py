@@ -159,8 +159,10 @@ class TestBeginBulkLoadDrops(_TempStoreTestCase):
                 conn.execute("PRAGMA cache_size").fetchone()[0], -524288)
             self.assertEqual(
                 conn.execute("PRAGMA wal_autocheckpoint").fetchone()[0], 0)
+            # Default (incremental) loads keep synchronous=NORMAL; only
+            # the aggressive whole-graph path relaxes it.
             self.assertEqual(
-                conn.execute("PRAGMA synchronous").fetchone()[0], 0)
+                conn.execute("PRAGMA synchronous").fetchone()[0], 1)
         finally:
             self.store.abort_bulk_load()
 
@@ -319,6 +321,37 @@ class TestCrashedBulkHeals(_TempStoreTestCase):
             "SELECT COUNT(*) FROM cgdb_bulk_state WHERE id = 1").fetchone()
         self.assertEqual(n[0], 0, "finalize clears the marker")
         writer.close()
+
+    def test_default_load_keeps_default_durability(self):
+        """Small incremental loads route through begin_bulk_load() too —
+        they must not inherit the whole-graph rebuild's relaxed
+        synchronous=OFF (a power-loss window), only its deferred
+        indexes."""
+        conn = self.store._ensure_conn()
+        self.store.begin_bulk_load()
+        mode = conn.execute("PRAGMA synchronous").fetchone()[0]
+        self.assertEqual(mode, 1, "default load must keep synchronous=NORMAL")
+        self.store.finalize()
+        mode = conn.execute("PRAGMA synchronous").fetchone()[0]
+        self.assertEqual(mode, 1)
+
+    def test_aggressive_load_relaxes_then_restores(self):
+        conn = self.store._ensure_conn()
+        self.store.begin_bulk_load(aggressive=True)
+        mode = conn.execute("PRAGMA synchronous").fetchone()[0]
+        self.assertEqual(mode, 0)
+        self.store.finalize()
+        mode = conn.execute("PRAGMA synchronous").fetchone()[0]
+        self.assertEqual(mode, 1)
+
+    def test_default_load_still_defers_indexes(self):
+        before_idx = self._index_names(self._conn())
+        self.store.begin_bulk_load()
+        self.store.commit_bulk_checkpoint()
+        after = self._index_names(self._conn())
+        self.assertNotEqual(after, before_idx)
+        self.store.finalize()
+        self.assertEqual(self._index_names(self._conn()), before_idx)
 
     def test_finalize_on_fresh_store_still_recreates(self):
         """finalize() with no active bulk load remains a valid heal path

@@ -4889,7 +4889,9 @@ def cmd_build(args):
                     # See cgdb_store.begin_bulk_load() for PRAGMA tuning.
                     _BULK_CHECKPOINT_INTERVAL = 1000
                     _bulk_file_count = 0
-                    cgdb_store.begin_bulk_load()
+                    # aggressive: the whole-graph rebuild accepts the
+                    # relaxed durability the bulk path was measured with.
+                    cgdb_store.begin_bulk_load(aggressive=True)
                     _bulk_ok = False
                     try:
                         for fp, nodes in _nodes_by_file.items():

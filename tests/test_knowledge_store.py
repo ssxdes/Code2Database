@@ -186,6 +186,71 @@ class TestKbIndexFromStore(_Base):
         self.assertTrue(any("doorbell" in (h.get("title") or "") + h["body"]
                             for h in hits))
 
+    def test_rebuild_carries_version_scope_through_brief(self):
+        # A scoped knowledge item must reach kb_paragraphs with its
+        # version_scope intact (both the full rebuild and the brief
+        # sync path), or --version-scope ranking silently degrades to
+        # memory-only.
+        from _builder.kb.kb_index import (
+            _kb_connect, rebuild_kb_index, query_kb, sync_brief_to_kb)
+        store = self._open()
+        store.add("hard_rule", "gasket rule for release two",
+                  version_scope="release/2.0")
+        store.add("hard_rule", "gasket rule that always applies")
+        store.close()
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        conn = _kb_connect(self.graph_dir)
+        try:
+            rows = conn.execute(
+                "SELECT body, version_scope FROM kb_paragraphs "
+                "WHERE source_kind = 'knowledge' AND kind = 'hard_rule'"
+            ).fetchall()
+        finally:
+            conn.close()
+        scopes = {r["body"]: r["version_scope"] for r in rows}
+        self.assertEqual(scopes["gasket rule for release two"],
+                         "release/2.0")
+        self.assertEqual(scopes["gasket rule that always applies"],
+                         "default")
+        # The incremental sync path must carry it too.
+        n = sync_brief_to_kb(self.graph_dir, load_brief(self.graph_dir))
+        self.assertGreater(n, 0)
+        conn = _kb_connect(self.graph_dir)
+        try:
+            again = conn.execute(
+                "SELECT COUNT(*) FROM kb_paragraphs "
+                "WHERE version_scope = 'release/2.0'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertGreater(again, 0)
+        # Ranked query puts the current scope first and labels the rest.
+        hits = query_kb(self.graph_dir, "gasket rule",
+                        version_scope="release/2.0")
+        self.assertTrue(hits)
+        self.assertEqual(hits[0]["version_scope"], "release/2.0")
+        self.assertTrue(hits[0]["is_current_scope"])
+
+    def test_brief_round_trip_keeps_scope(self):
+        # replace_from_brief (brief-* commands) must not flatten a
+        # scoped item back to 'default'.
+        store = self._open()
+        brief = {
+            "project": "demo",
+            "hard_rules": [{"rule": "scoped rule",
+                            "version_scope": "release/9.9"}],
+            "key_abstractions": [{"name": "gasket",
+                                  "role": "seals things",
+                                  "version_scope": "main"}],
+        }
+        self.assertEqual(store.replace_from_brief(brief), 2)
+        out = store.to_brief()
+        store.close()
+        self.assertEqual(out["hard_rules"][0]["version_scope"],
+                         "release/9.9")
+        self.assertEqual(out["key_abstractions"][0]["version_scope"],
+                         "main")
+
     def test_rebuild_skips_derived_brief_file_when_store_present(self):
         # With the store present, scanning brief.json would double
         # every knowledge paragraph.

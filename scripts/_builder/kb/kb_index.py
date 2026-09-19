@@ -505,24 +505,31 @@ def _brief_sections_as_paragraphs(brief: dict, source_file: str,
     ]
     for hr in brief.get("hard_rules") or []:
         if isinstance(hr, dict) and hr.get("rule"):
-            section_map.append(("hard_rule", "Hard Rule", hr["rule"]))
+            section_map.append(
+                ("hard_rule", "Hard Rule", hr["rule"],
+                 hr.get("version_scope", "default")))
     for m in brief.get("modes") or []:
         if isinstance(m, dict) and m.get("name"):
             body = f"use when {m.get('when', '')} — " \
                    f"{m.get('differences', '')}"
-            section_map.append(("mode", f"Mode: {m['name']}", body))
+            section_map.append(
+                ("mode", f"Mode: {m['name']}", body,
+                 m.get("version_scope", "default")))
     for ab in brief.get("key_abstractions") or []:
         if isinstance(ab, dict) and ab.get("name"):
-            section_map.append(("abstraction", ab["name"],
-                                ab.get("role", "")))
+            section_map.append(
+                ("abstraction", ab["name"], ab.get("role", ""),
+                 ab.get("version_scope", "default")))
     for key, title in (("conventions", "Convention"),
                        ("pitfalls", "Pitfall"),
                        ("query_paths", "Query Path")):
         for item in brief.get(key) or []:
             if item:
-                section_map.append((key, title, str(item)))
+                section_map.append((key, title, str(item), "default"))
 
-    for para_index, (kind, title, body) in enumerate(section_map):
+    for para_index, entry in enumerate(section_map):
+        kind, title, body = entry[0], entry[1], entry[2]
+        version_scope = entry[3] if len(entry) > 3 else "default"
         if not body or not str(body).strip():
             continue
         paragraphs.append({
@@ -538,6 +545,7 @@ def _brief_sections_as_paragraphs(brief: dict, source_file: str,
             "kind": kind,
             "graph_version": None,
             "created_at": datetime.now().isoformat(),
+            "version_scope": version_scope or "default",
         })
     return paragraphs
 
@@ -761,7 +769,8 @@ def upsert_kb_paragraph(graph_dir: str, source_kind: str, source_file: str,
                         title: str, body: str, tags: List[str] = None,
                         node_ids: List[str] = None, weight: float = 1.0,
                         kind: str = "qa", confidence: float = 1.0,
-                        graph_version: str = None) -> int:
+                        graph_version: str = None,
+                        version_scope: str = "default") -> int:
     """Insert or update a single kb_paragraph row.
 
     Used to keep the FTS5 index in sync after direct kb writes
@@ -777,11 +786,12 @@ def upsert_kb_paragraph(graph_dir: str, source_kind: str, source_file: str,
             "INSERT INTO kb_paragraphs "
             "(source_kind, source_file, para_index, title, body, tags, "
             " node_ids, weight, confidence, kind, graph_version, created_at, "
-            " access_count) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+            " access_count, version_scope) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
             (source_kind, source_file, 0, title, body, tags_json,
              node_ids_json, weight, confidence, kind, graph_version,
-             datetime.now().isoformat())
+             datetime.now().isoformat(),
+             version_scope or "default")
         )
         conn.commit()
         return cur.lastrowid
@@ -838,14 +848,15 @@ def sync_brief_to_kb(graph_dir: str, brief: dict) -> int:
                 "INSERT INTO kb_paragraphs "
                 "(source_kind, source_file, para_index, title, body, tags, "
                 " node_ids, weight, confidence, kind, graph_version, "
-                " created_at, access_count) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+                " created_at, access_count, version_scope) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
                 (p["source_kind"], p["source_file"], p["para_index"],
                  p["title"], p["body"], p.get("tags"),
                  p.get("node_ids"), p.get("weight", 1.0),
                  p.get("confidence", 1.0), p.get("kind", "knowledge"),
                  p.get("graph_version"),
-                 datetime.now().isoformat()))
+                 datetime.now().isoformat(),
+                 p.get("version_scope") or "default"))
         conn.commit()
         return len(paragraphs)
     except sqlite3.Error as exc:

@@ -346,17 +346,20 @@ class KnowledgeStore:
                     "rule": body, "type": extra.get("type", ""),
                     "detail": extra.get("detail", ""),
                     "evidence": extra.get("evidence", ""),
+                    "version_scope": item.get("version_scope", "default"),
                 })
             elif kind == "mode":
                 brief["modes"].append({
                     "name": item.get("title", ""),
                     "when": extra.get("when", ""),
                     "differences": extra.get("differences", ""),
+                    "version_scope": item.get("version_scope", "default"),
                 })
             elif kind == "abstraction":
                 brief["key_abstractions"].append({
                     "name": item.get("title", ""),
                     "role": extra.get("role", ""),
+                    "version_scope": item.get("version_scope", "default"),
                 })
             elif kind in ("convention", "pitfall", "query_path"):
                 brief[kind + "s"].append(body)
@@ -398,6 +401,7 @@ class KnowledgeStore:
                     "extra": {"type": hr.get("type", ""),
                               "detail": hr.get("detail", ""),
                               "evidence": hr.get("evidence", "")},
+                    "version_scope": hr.get("version_scope", "default"),
                 })
         for m in brief.get("modes") or []:
             if isinstance(m, dict) and m.get("name"):
@@ -407,6 +411,7 @@ class KnowledgeStore:
                             f"{m.get('differences', '')}",
                     "extra": {"when": m.get("when", ""),
                               "differences": m.get("differences", "")},
+                    "version_scope": m.get("version_scope", "default"),
                 })
         for ab in brief.get("key_abstractions") or []:
             if isinstance(ab, dict) and ab.get("name"):
@@ -414,6 +419,7 @@ class KnowledgeStore:
                     "kind": "abstraction", "title": ab["name"],
                     "body": ab.get("role", ""),
                     "extra": {"role": ab.get("role", "")},
+                    "version_scope": ab.get("version_scope", "default"),
                 })
         for kind in ("convention", "pitfall", "query_path"):
             for text in brief.get(kind + "s") or []:

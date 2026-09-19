@@ -840,11 +840,11 @@ def cmd_cgdb_layer_summary(args):
       L1: cgdb_nodes, cgdb_edges, cgdb_files (AST graph)
       L2: cgdb_types (type system)
       L3: conditions (CFG branch predicates)
-      layer 3.5: config_predicates (#ifdef trees)
-      layer 4: basic_blocks, cfg_edges (CFG)
+      L3.5: config_predicates (#ifdef trees)
+      L4: basic_blocks, cfg_edges (CFG)
       layer 5: data_flow (def-use chains)
-      layer 6: alias_sets (alias analysis)
-      layer 7: sync_primitives, happens_before (concurrency)
+      L6: alias_sets (alias analysis)
+      L7: sync_primitives, happens_before (concurrency)
       L8: ops_bindings (vtable / ops_table)
       L9: doc_comments (raw comment text)
       L10: cgdb_includes (file dependencies)
@@ -889,11 +889,11 @@ def cmd_cgdb_layer_summary(args):
             "L2 cgdb_types": _count("cgdb_types"),
             "L3 conditions": _count("conditions"),
             "L3.5 config_predicates": _count("config_predicates"),
-            "layer 4 basic_blocks": _count("basic_blocks"),
-            "layer 4 cfg_edges": _count("cfg_edges"),
+            "L4 basic_blocks": _count("basic_blocks"),
+            "L4 cfg_edges": _count("cfg_edges"),
             "layer 5 data_flow": _count("data_flow"),
-            "layer 6 alias_sets": _count("alias_sets"),
-            "layer 7 sync_primitives": _count("sync_primitives"),
+            "L6 alias_sets": _count("alias_sets"),
+            "L7 sync_primitives": _count("sync_primitives"),
             "L7 happens_before": _count("happens_before"),
             "L8 ops_bindings": _count("ops_bindings"),
             "L9 doc_comments": _count("doc_comments"),

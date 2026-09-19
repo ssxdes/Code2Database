@@ -316,6 +316,19 @@ class TestCmdCgdbPath(_StoreFixture):
         self.assertIn("not found", err)
 
 
+class TestCmdCgdbLayerSummary(_StoreFixture):
+    def test_writes_report_with_counts(self):
+        out_path = os.path.join(self.graph_dir, "cgdb_layer_summary.md")
+        self.addCleanup(lambda: os.path.exists(out_path) and os.remove(out_path))
+        _, out, _ = _run(cc.cmd_cgdb_layer_summary, _ns(graph=self.graph_dir))
+        self.assertEqual(os.path.abspath(out.strip()), os.path.abspath(out_path))
+        with open(out_path, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("## Table Row Counts", text)
+        self.assertIn("`cgdb_nodes`", text)
+        self.assertIn("## Layer Health Notes", text)
+
+
 class TestResolveNodeId(_StoreFixture):
     def _resolve(self, value, prefer="in"):
         store = SQLiteCGDBStore(

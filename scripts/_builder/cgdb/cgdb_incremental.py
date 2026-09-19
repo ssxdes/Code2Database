@@ -315,11 +315,25 @@ class IncrementalSync:
                     except ValueError:
                         pass
             if delete_paths:
-                cur = conn.executemany(
-                    "DELETE FROM cgdb_files WHERE path = ?",
-                    delete_paths
-                )
-                rows += cur.rowcount
+                # Files gone from disk must leave through the cascade
+                # deletion (nodes, edges, L1 rows — cgdb_nodes has a
+                # NO-ACTION FK on cgdb_files.id). A bare cgdb_files
+                # DELETE raises IntegrityError whenever the file had
+                # any node/edge rows, which discarded this whole batch
+                # of hash updates with it.
+                from _builder.cgdb.cgdb_store import SQLiteCGDBStore
+                store = SQLiteCGDBStore(db_path)
+                try:
+                    for (fpath,) in delete_paths:
+                        row = store._ensure_conn().execute(
+                            "SELECT id FROM cgdb_files WHERE path = ?",
+                            (fpath,)).fetchone()
+                        if row is None:
+                            continue
+                        store.delete_file_records(fpath)
+                        rows += 1
+                finally:
+                    store.close()
             if update_rows:
                 cur = conn.executemany(
                     "UPDATE cgdb_files SET content_hash = ?, sha256 = ? "

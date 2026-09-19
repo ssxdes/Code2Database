@@ -340,6 +340,56 @@ class TestIncrementalSyncMarkClean(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_mark_clean_missing_file_with_nodes_cascades(self):
+        """A vanished file that still has graph rows must leave through
+        the cascade deletion — a bare cgdb_files DELETE trips the nodes
+        FK and used to discard the whole batch of hash updates with
+        it."""
+        import sqlite3
+        from _builder.cgdb.cgdb_schema import apply_cgdb_schema
+        missing_path = os.path.join(self.tmpdir, "gone.c")
+        kept_path = os.path.join(self.tmpdir, "kept.c")
+        with open(kept_path, 'w') as f:
+            f.write("int kept(void) { return 0; }\n")
+        conn = sqlite3.connect(self.db_path)
+        try:
+            apply_cgdb_schema(conn)
+            for p, h in ((missing_path, "h"), (kept_path, "stale")):
+                conn.execute(
+                    "INSERT INTO cgdb_files (path, content_hash, sha256, "
+                    "language) VALUES (?, ?, ?, 'c')", (p, h, h))
+            fid = conn.execute(
+                "SELECT id FROM cgdb_files WHERE path = ?",
+                (missing_path,)).fetchone()[0]
+            conn.execute(
+                "INSERT INTO cgdb_nodes (id, kind, name, fqn, file_id, "
+                "line, col, byte_start, byte_end, attrs, commit_hash) "
+                "VALUES (7001, 'function', 'gone_fn', 'gone_fn', ?, "
+                "1, 1, 0, 1, '{}', 'unknown')", (fid,))
+            conn.commit()
+        finally:
+            conn.close()
+        sync = IncrementalSync(self.tmpdir)
+        rows = sync.mark_clean([missing_path, kept_path], self.db_path)
+        self.assertEqual(rows, 2)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(conn.execute(
+                "SELECT COUNT(*) FROM cgdb_files WHERE path = ?",
+                (missing_path,)).fetchone()[0], 0)
+            self.assertEqual(conn.execute(
+                "SELECT COUNT(*) FROM cgdb_nodes WHERE id = 7001"
+            ).fetchone()[0], 0,
+                "the vanished file's nodes must cascade away")
+            # The hash update for the surviving file must persist.
+            self.assertEqual(
+                conn.execute(
+                    "SELECT content_hash FROM cgdb_files WHERE path = ?",
+                    (kept_path,)).fetchone()[0],
+                compute_content_hash(kept_path))
+        finally:
+            conn.close()
+
 
 class TestComputeAffectedTusWrapper(unittest.TestCase):
     """Test the convenience wrapper compute_affected_tus(changed, root)."""

@@ -84,9 +84,13 @@ def _migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
       - cgdb_files: add encoding / line_ending / has_bom columns
         (legacy cgdb_files only had language/sha256/line_count/byte_count).
 
-    For fresh v4 databases, all these tables/columns are created by the
-    _CGDB_DDL + _CGDB_DDL_V4 scripts directly. This migration is only needed
-    when upgrading an existing v3 database to v4.
+    For fresh v4 databases, the new TABLES come from the _CGDB_DDL +
+    _CGDB_DDL_V4 scripts, but the ALTER-added COLUMNS below exist only on
+    migrated databases — fresh schemas store the same information in the
+    side tables instead (encoding/line_ending/has_bom live in
+    source_files_meta). A migrated v4 database therefore carries extra
+    columns a fresh one lacks; readers must not depend on them. This
+    migration is only needed when upgrading an existing v3 database.
     """
     # Run the v4-only DDL (creates new tables + new FTS5/triggers). All
     # statements use CREATE ... IF NOT EXISTS so this is safe to run on

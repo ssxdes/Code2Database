@@ -359,6 +359,28 @@ class TestKbConflict(unittest.TestCase):
         self.assertGreater(len(conflicts), 0)
         self.assertEqual(conflicts[0]["contradiction"], ("yes", "no"))
 
+    def test_detect_conflicts_ignores_substring_hits(self):
+        # Contradiction pairs match whole words only: 'open' inside
+        # 'openfd' is not the antonym of 'close', and the removed
+        # single-letter ('y','n') pair used to flag nearly any two
+        # English bodies as contradictory.
+        rid1 = upsert_kb_paragraph(self.graph_dir, "memory", "f1.json",
+                                    "openfd wrapper", "the openfd wrapper "
+                                    "must be initialized",
+                                    kind="memory_qa")
+        rid2 = upsert_kb_paragraph(self.graph_dir, "memory", "f2.json",
+                                    "close path", "the close path is "
+                                    "separate from any n-of-m retry",
+                                    kind="memory_qa")
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.graph_dir)
+        conn.execute("UPDATE kb_paragraphs SET scope_id = 2 WHERE id IN (?, ?)",
+                      (rid1, rid2))
+        conn.commit()
+        conn.close()
+        conflicts = detect_conflicts(self.graph_dir)
+        self.assertEqual(len(conflicts), 0)
+
     def test_forget_immediately_deletes(self):
         rid = upsert_kb_paragraph(self.graph_dir, "memory", "f.json",
                                     "title", "body", kind="memory_qa")

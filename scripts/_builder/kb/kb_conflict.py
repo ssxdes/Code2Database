@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from typing import Dict, List, Any
 
@@ -22,10 +23,12 @@ from _builder.kb.kb_audit import write_audit_log_entry
 # Pairs of words indicating contradiction in technical writing.
 # Each pair (w1, w2) means "if w1 appears in item A and w2 in item B
 # (or vice versa), they likely contradict". Conservative — only well-
-# defined technical antonyms are included.
+# defined technical antonyms are included. Matching is word-boundary
+# (see _has_word): plain substring containment matched 'open' inside
+# 'opened-loop' and single-letter pairs matched nearly everything.
 _CONTRADICTION_PAIRS = [
     # Boolean / truth
-    ("yes", "no"), ("true", "false"), ("y", "n"),
+    ("yes", "no"), ("true", "false"),
     # Modal verbs
     ("must", "must not"), ("must", "mustn't"), ("must", "mustn't"),
     ("should", "should not"), ("should", "shouldn't"),
@@ -59,6 +62,13 @@ _CONTRADICTION_PAIRS = [
 ]
 
 
+def _has_word(body: str, word: str) -> bool:
+    """Word-boundary containment: 'open' matches 'the file is open' but
+    not 'opened-loop' or 'openfd'."""
+    return re.search(rf"(?<![\w-]){re.escape(word)}(?![\w-])",
+                     body) is not None
+
+
 def detect_conflicts(graph_dir: str) -> List[Dict[str, Any]]:
     """Detect contradictions within the same cluster.
 
@@ -90,7 +100,7 @@ def detect_conflicts(graph_dir: str) -> List[Dict[str, Any]]:
                     body_a = (a["body"] or "").lower()
                     body_b = (b["body"] or "").lower()
                     for w1, w2 in _CONTRADICTION_PAIRS:
-                        if w1 in body_a and w2 in body_b:
+                        if _has_word(body_a, w1) and _has_word(body_b, w2):
                             conflicts.append({
                                 "scope_id": scope_id,
                                 "item_a": {"id": a["id"], "title": a["title"] or "",
@@ -100,7 +110,7 @@ def detect_conflicts(graph_dir: str) -> List[Dict[str, Any]]:
                                 "contradiction": (w1, w2),
                             })
                             break
-                        if w2 in body_a and w1 in body_b:
+                        if _has_word(body_a, w2) and _has_word(body_b, w1):
                             conflicts.append({
                                 "scope_id": scope_id,
                                 "item_a": {"id": a["id"], "title": a["title"] or "",

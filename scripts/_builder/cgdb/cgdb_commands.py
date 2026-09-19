@@ -432,6 +432,13 @@ def cmd_cgdb_views(args):
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    # Same reader-side recovery the store runs per connection — see
+    # heal_interrupted_bulk_load in cgdb_store.
+    try:
+        from _builder.cgdb.cgdb_store import heal_interrupted_bulk_load
+        heal_interrupted_bulk_load(conn)
+    except Exception:
+        pass
     try:
         cur = conn.execute(sql)
         rows = [dict(r) for r in cur.fetchall()]

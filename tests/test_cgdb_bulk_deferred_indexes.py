@@ -353,6 +353,33 @@ class TestCrashedBulkHeals(_TempStoreTestCase):
         self.store.finalize()
         self.assertEqual(self._index_names(self._conn()), before_idx)
 
+    def test_report_tool_conn_heals_too(self):
+        """The design-report tools open raw connections that bypass
+        SQLiteCGDBStore._ensure_conn — _get_conn must run the same
+        reader-side recovery or those 28 tools query a degraded db
+        until some other path happens to heal it."""
+        from _builder.mcp import mcp_report_tools
+        before_idx = self._index_names(self._conn())
+        self.store.begin_bulk_load()
+        self.store.write_batch(_make_node_batch(7010, name='report_heal'))
+        self.store.commit_bulk_checkpoint()
+        self.store.close()
+        self._kill_writer()
+        # _get_conn resolves <graph_dir>/code2database.db — name the
+        # crashed db accordingly.
+        import shutil
+        canonical = os.path.join(
+            os.path.dirname(self.db_path), "code2database.db")
+        shutil.copyfile(self.db_path, canonical)
+        conn = mcp_report_tools._get_conn(
+            os.path.dirname(canonical))
+        mcp_report_tools._close_conn(conn)
+        os.unlink(canonical)
+        conn = self._conn()
+        self.assertEqual(self._index_names(conn), before_idx,
+                         "report-tool connection must restore the drops")
+        self.assertIn("cgdb_nodes_ai", self._trigger_names(conn))
+
     def test_finalize_on_fresh_store_still_recreates(self):
         """finalize() with no active bulk load remains a valid heal path
         (idempotent even after _ensure_conn already healed)."""

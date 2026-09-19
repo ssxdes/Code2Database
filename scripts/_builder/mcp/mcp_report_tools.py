@@ -69,6 +69,15 @@ def _get_conn(graph_dir: str) -> sqlite3.Connection:
     # integrity.  This is the C2D DB's contract — foreign keys must be
     # enforced so the graph stays consistent with the schema.
     conn.execute("PRAGMA foreign_keys = ON")
+    # Same reader-side recovery the store runs per connection: a build
+    # killed mid-bulk-load leaves this db without its secondary indexes,
+    # and every tool below would query degraded until a cgdb_* tool
+    # happened to open the store.
+    try:
+        from _builder.cgdb.cgdb_store import heal_interrupted_bulk_load
+        heal_interrupted_bulk_load(conn)
+    except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
     return conn
 
 

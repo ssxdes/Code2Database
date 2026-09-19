@@ -719,7 +719,7 @@ python3 scripts/code2database_builder.py serve \
 
 ### `kb-rebuild-index`
 
-从 `memory/*.json` + `knowledge/*.md` 重建统一 FTS5 索引。
+从 `memory/memory.db` 条目 + 知识库（`knowledge/knowledge.db`）重建统一 FTS5 索引。
 每次 `build` / `update` 后或手动修改 memory/knowledge 后运行。
 
 ```bash

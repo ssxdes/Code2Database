@@ -721,7 +721,7 @@ query surface across memory + knowledge stores:
 
 ### `kb-rebuild-index`
 
-Rebuild the unified FTS5 index from `memory/*.json` + `knowledge/*.md`.
+Rebuild the unified FTS5 index from `memory/memory.db` entries + the knowledge store (`knowledge/knowledge.db`).
 Run after each `build` / `update` or after manual memory/knowledge edits.
 
 ```bash

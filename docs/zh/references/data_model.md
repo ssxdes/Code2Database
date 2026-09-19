@@ -319,7 +319,7 @@ CREATE INDEX idx_field_struct ON field_access(struct_name);
 
 `cgdb_migrations.run_migrations` 在 schema 版本升级时原地 ALTER 表，保留数据。Schema 版本：6。检查方式：`cgdb_index_status` MCP 工具报告每文件每层行数。
 
-`SQLiteStore.SCHEMA_VERSION`（当前 **13**，在同一 db 的遗留表侧）跟踪非-cgdb schema。v9-v13 新增：
+`SQLiteStore.SCHEMA_VERSION`（当前 **13**，在同一 db 的遗留表侧）跟踪非-cgdb schema。下列 kb 表历史上以 v9-v12 schema 步骤引入；kb 独立成子 skill 后它们位于 kb 存储自己的 **`kb_index.db`**（携带它们的遗留 db 会在首次打开时一次性拷贝过去）：
 
 - **kb_paragraphs**— 跨 `memory/memory.db` + 知识库的统一 FTS5+BM25 索引（`knowledge/knowledge.db` 为事实源，`knowledge/brief.json` 为派生提示视图）；替代逐存储的 Jaccard / 子串搜索。可通过 `kb-rebuild-index` 重建。
 - **kb_paragraphs_fts** — title/body/tags 的 FTS5 虚拟表（porter + unicode61 分词器），带 AI/AD/AU 触发器。
@@ -329,7 +329,7 @@ CREATE INDEX idx_field_struct ON field_access(struct_name);
 - **kb_items_fts** — kb_items 的 FTS5。
 - **kb_query_log**— 记录每次 `kb-query` 调用，供 feedback loop 分析；驱动 `kb-known-unknowns`。
 
-### 知识库表（Schema v9-v12）
+### 知识库表（kb_index.db）
 
 | 表 | 用途 | 阶段 |
 |---|---|---|

@@ -165,7 +165,7 @@ python3 scripts/code2database_builder.py brief-validate --graph code2db-out/    
 
 ## Unified KB index
 
-`kb-rebuild-index` indexes **memory.db entries + brief sections** into `kb_paragraphs` (FTS5+BM25) inside `code2database.db`:
+`kb-rebuild-index` indexes **memory.db entries + knowledge-store rows** into `kb_paragraphs` (FTS5+BM25) inside the kb store's own `kb_index.db` (independent of the graph db):
 
 ```bash
 python3 scripts/code2database_builder.py kb-rebuild-index --graph code2db-out/

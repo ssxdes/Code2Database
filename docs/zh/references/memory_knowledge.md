@@ -165,7 +165,7 @@ python3 scripts/code2database_builder.py brief-validate --graph code2db-out/    
 
 ## 统一 KB 索引
 
-`kb-rebuild-index` 把 **memory.db 条目 + 简报节** 索引进 `code2database.db` 的 `kb_paragraphs`（FTS5+BM25）：
+`kb-rebuild-index` 把 **memory.db 条目 + 知识库行** 索引进 kb 存储自己的 `kb_index.db` 中的 `kb_paragraphs`（FTS5+BM25，与图数据库相互独立）：
 
 ```bash
 python3 scripts/code2database_builder.py kb-rebuild-index --graph code2db-out/

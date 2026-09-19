@@ -329,7 +329,7 @@ Each predicate carries a `status` field:
 
 `cgdb_migrations.run_migrations` ALTERs tables in-place when schema version bumps, preserving data. Current schema version: 6. To check: `cgdb_index_status` MCP tool reports per-file row counts per layer.
 
-`SQLiteStore.SCHEMA_VERSION` (currently **13**, on the legacy tables side of the same db) tracks the non-cgdb schema. v9-v13 added:
+`SQLiteStore.SCHEMA_VERSION` (currently **13**, on the legacy tables side of the same db) tracks the non-cgdb schema. The kb tables below historically arrived as v9-v12 schema steps; since the kb became a standalone sub-skill they live in the kb store's own **`kb_index.db`** (a legacy db carrying them is copied across once on first open):
 
 - **kb_paragraphs**  — unified FTS5+BM25 index across `memory/memory.db` + the knowledge store (`knowledge/knowledge.db` is the fact source; `knowledge/brief.json` is the derived prompt view); replaces per-store Jaccard / substring search. Rebuildable via `kb-rebuild-index`.
 - **kb_paragraphs_fts** — FTS5 virtual table (porter + unicode61 tokenizer) over title/body/tags with AI/AD/AU triggers.
@@ -339,7 +339,7 @@ Each predicate carries a `status` field:
 - **kb_items_fts** — FTS5 over kb_items.
 - **kb_query_log**  — records every `kb-query` call for feedback-loop analysis; powers `kb-known-unknowns`.
 
-### Knowledge Base Tables (Schema v9-v12)
+### Knowledge Base Tables (kb_index.db)
 
 | Table | Purpose | Stage |
 |---|---|---|

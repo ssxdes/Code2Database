@@ -74,6 +74,13 @@ python3 scripts/code2database_builder.py save-memory \
 
 当一条记忆反复证明有用，它升格为事实：`brief-suggest` 挖掘毕业候选（高权重或高合并数）并给出可直接执行的 `brief-update` 命令——毕业永远是经过审视的一步，绝不自动进行。knowledge 保持精简：简报超过 3000 字符告警、超过 6000 报错。
 
+## 扩展规则（知识边界怎么生长）
+
+- **相邻域**：当一个新子系统/新语言反复出现在提问里但没有任何记忆覆盖，先补 memory（低成本试错），连续命中后再考虑是否需要新的 `--category` 层级——层级为记忆而生，不预先铺设
+- **跨域复用**：另一个域里已验证的解释优先用 `kb-domain-add` 挂过来（`kb-query --cross` 标注来源域），而不是复制一份；副本会漂移
+- **knowledge 只纵向加深**：扩展 = 给已有 hard_rule / abstraction 补更准的表述（`revise`），而不是横向加新条目；横向增长的内容属于 memory
+- **收缩也是扩展**：两条 hard_rule 说的其实是同一件事时合并为一条（`brief-update` 重写）；knowledge 的价值密度比条数重要
+
 ## 分域分层
 
 - **存储内**：`--category path/to/topic` 构建层级（`bdev/nvme/pcie`），自动创建；按记忆涉及的符号/子系统选择路径

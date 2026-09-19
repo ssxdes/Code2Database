@@ -74,6 +74,13 @@ python3 scripts/code2database_builder.py save-memory \
 
 When a memory keeps proving useful, it becomes a fact: `brief-suggest` mines graduation candidates (strong weight or merge count) and emits ready-to-run `brief-update` commands — graduation is always a reviewed step, never automatic. Knowledge stays lean: the brief warns above 3000 chars, errors above 6000.
 
+## Expansion rules (how the boundary grows)
+
+- **adjacent domains**: when a new subsystem/language keeps showing up in questions but no memory covers it, add a memory first (cheap to be wrong); create a new `--category` level only after repeated hits — hierarchy follows memories, never the reverse
+- **cross-domain reuse**: an explanation already validated in another domain gets attached via `kb-domain-add` (`kb-query --cross` labels the source domain) instead of copied — copies drift
+- **knowledge deepens, never widens**: expanding knowledge means `revise`-ing an existing hard_rule / abstraction with a sharper wording, not appending new items; horizontal growth belongs to memory
+- **shrinking is expanding too**: two hard_rules saying the same thing merge into one (`brief-update` rewrite); knowledge is valued by density, not entry count
+
 ## Domain partitioning
 
 - **within a store**: `--category path/to/topic` builds a hierarchy (`bdev/nvme/pcie`), auto-created; choose the path by the symbols/subsystem the memory is about

@@ -440,13 +440,21 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
     # version_id=1, which made time-travel see incremental nodes as
     # first-seen/last-seen at version 1 — permanently invisible at the
     # current version). Idempotent on commit_hash.
+    _version_created = False
     try:
         from _builder.cgdb.cgdb_versions import VersionController
-        _version_id = VersionController(db_path).record_version(
+        _vc = VersionController(db_path)
+        # Track whether this call allocates a NEW row: record_version is
+        # idempotent on commit_hash, so a repeated update reuses the
+        # existing version — only a freshly allocated row may be taken
+        # back when the data transaction below aborts.
+        _version_created = _vc.get_version_by_commit(commit) is None
+        _version_id = _vc.record_version(
             commit_hash=commit,
             commit_subject=(f"build-update: {len(affected)} "
                             f"updated, {len(deleted)} deleted"),
         )
+        _vc.close()
     except Exception as exc:
         print(f"[build-update] version record skipped: {exc}",
               file=sys.stderr)
@@ -579,6 +587,19 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
                 cgdb_store.abort_bulk_load()
             except Exception:
                 pass
+            # The version row was committed on its own connection before
+            # the bulk transaction started — the abort above leaves it a
+            # phantom MAX(version_id) no row was stamped with, hiding
+            # every pre-existing record from time-travel at the latest
+            # version. Take back only the row this run allocated.
+            if _version_created and _version_id and _version_id != 1:
+                try:
+                    from _builder.cgdb.cgdb_versions import VersionController
+                    VersionController(db_path).delete_version(
+                        _version_id, commit_hash=commit)
+                except Exception as exc:
+                    print(f"[build-update] version row take-back skipped: "
+                          f"{exc}", file=sys.stderr)
         try:
             conn.close()
         except Exception:

@@ -107,6 +107,43 @@ class TestRecordVersion(unittest.TestCase):
         """get_version_by_commit returns None for unknown commit."""
         self.assertIsNone(self.ctrl.get_version_by_commit("nonexistent"))
 
+    def test_delete_version_removes_only_that_row(self):
+        v1 = self.ctrl.record_version("c1", "First")
+        v2 = self.ctrl.record_version("c2", "Second")
+        self.assertTrue(self.ctrl.delete_version(v2, commit_hash="c2"))
+        self.assertIsNone(self.ctrl.get_version(v2))
+        self.assertIsNotNone(self.ctrl.get_version(v1))
+        # Idempotent: a second call finds nothing.
+        self.assertFalse(self.ctrl.delete_version(v2, commit_hash="c2"))
+
+    def test_delete_version_hash_guard_blocks_wrong_row(self):
+        v1 = self.ctrl.record_version("c1", "First")
+        self.assertFalse(self.ctrl.delete_version(v1, commit_hash="other"))
+        self.assertIsNotNone(self.ctrl.get_version(v1))
+
+    def test_phantom_version_take_back_restores_alive_view(self):
+        """A version row committed by a writer whose data transaction
+        then aborts must be taken back — otherwise MAX(version_id)
+        points past every stamped row and nothing is alive at the
+        latest version."""
+        import sqlite3
+        v1 = self.ctrl.record_version("c1", "First")
+        conn = sqlite3.connect(self.db_path)
+        try:
+            _insert_node(conn, 9001, v1, v1, name="alpha")
+            conn.commit()
+        finally:
+            conn.close()
+        self.assertIn(9001, self.ctrl.list_nodes_at_version(v1))
+        # The writer allocates the next version, then its data
+        # transaction aborts (no row is ever stamped with v2).
+        v2 = self.ctrl.record_version("c2", "Second")
+        self.assertNotIn(9001, self.ctrl.list_nodes_at_version(v2),
+                         "phantom MAX(version_id) hides every record")
+        # Taking the row back restores the alive view.
+        self.assertTrue(self.ctrl.delete_version(v2, commit_hash="c2"))
+        self.assertIn(9001, self.ctrl.list_nodes_at_version(v1))
+
     def test_get_version_returns_full_row(self):
         """get_version returns dict with all expected fields."""
         vid = self.ctrl.record_version("c1", "Subject", parent_version_id=None)

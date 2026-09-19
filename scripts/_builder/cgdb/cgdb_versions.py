@@ -88,6 +88,31 @@ class VersionController:
         ).fetchone()
         return row[0] if row else None
 
+    def delete_version(self, version_id: int,
+                       commit_hash: str = None) -> bool:
+        """Remove a graph_versions row this session just created.
+
+        The writer that allocates a version before its data transaction
+        must be able to take the row back when that transaction aborts —
+        otherwise MAX(version_id) points at a version no row was ever
+        stamped with and the alive predicate (last_seen_version =
+        MAX(version_id)) hides every pre-existing record. The optional
+        commit_hash guard restricts the delete to the exact row that
+        was allocated. Returns True when a row was removed.
+        """
+        conn = self._ensure_conn()
+        if commit_hash:
+            cur = conn.execute(
+                "DELETE FROM graph_versions "
+                "WHERE version_id = ? AND commit_hash = ?",
+                (version_id, commit_hash))
+        else:
+            cur = conn.execute(
+                "DELETE FROM graph_versions WHERE version_id = ?",
+                (version_id,))
+        conn.commit()
+        return cur.rowcount > 0
+
     def get_version(self, version_id: int) -> Optional[Dict[str, Any]]:
         """Return the graph_versions row for a version_id."""
         conn = self._ensure_conn()

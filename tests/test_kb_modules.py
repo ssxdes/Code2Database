@@ -23,6 +23,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from _builder.kb.kb_index import (
+    _kb_connect,
     rebuild_kb_index,
     query_kb,
     upsert_kb_paragraph,
@@ -152,6 +153,27 @@ class TestRebuildAndQueryKB(unittest.TestCase):
         self.assertTrue(summary["rebuilt"])
         self.assertEqual(summary["memory_count"], 2)
         self.assertGreaterEqual(summary["knowledge_count"], 2)  # at least 2 paragraphs
+
+    def test_rebuild_persists_marker_and_skips_when_unchanged(self):
+        # The post-data work (FTS rebuild command + last_rebuild_mtime
+        # marker) runs in its own transaction after the data commit; it
+        # must be persisted or every rebuild redoes the full work.
+        _make_memory_entry(self.graph_dir, 1,
+                           "How does bdev register io_device?",
+                           "bdev_register() calls io_device_register()")
+        first = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertTrue(first["rebuilt"])
+        conn = _kb_connect(self.graph_dir)
+        try:
+            row = conn.execute(
+                "SELECT value FROM kb_meta WHERE key = 'last_rebuild_mtime'"
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(row)
+        second = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertFalse(second["rebuilt"])
+        self.assertEqual(second.get("reason"), "unchanged")
 
     def test_query_returns_memory_and_knowledge(self):
         _make_memory_entry(self.graph_dir, 1,

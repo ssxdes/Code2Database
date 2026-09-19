@@ -735,6 +735,10 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
             )
         except sqlite3.Error:
             pass
+        # The FTS 'rebuild' command and the mtime marker above run after the
+        # data commit, in their own implicit transaction — persist them
+        # before the summary read, otherwise close() discards them.
+        conn.commit()
         cur = conn.execute(
             "SELECT source_kind, COUNT(*) FROM kb_paragraphs GROUP BY source_kind"
         )

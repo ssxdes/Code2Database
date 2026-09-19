@@ -729,12 +729,18 @@ def cmd_update(args):
                 _pm = getattr(args, "parallel_mode", "") or ""
                 if _pm and _pm != "thread":
                     scan_cmd.extend(["--parallel-mode", _pm])
-                scan_result = subprocess.run(
-                    scan_cmd,
-                    capture_output=True, text=True,
-                    stdin=subprocess.DEVNULL,
-                    timeout=3600
-                )
+                try:
+                    scan_result = subprocess.run(
+                        scan_cmd,
+                        capture_output=True, text=True,
+                        stdin=subprocess.DEVNULL,
+                        timeout=3600
+                    )
+                except subprocess.TimeoutExpired:
+                    print("Error scanning changed files: scanner did not "
+                          "finish within 3600s — re-run update on a "
+                          "smaller change set", file=sys.stderr)
+                    sys.exit(1)
                 if scan_result.returncode != 0:
                     print(f"Error scanning changed files: {scan_result.stderr}", file=sys.stderr)
                     sys.exit(1)

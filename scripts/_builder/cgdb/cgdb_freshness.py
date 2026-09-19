@@ -66,6 +66,11 @@ def check_freshness(graph_dir: str, source_root: str = "",
         if cached:
             cached_time, cached_result = cached
             if time.time() - cached_time < _FRESHNESS_TTL:
+                # Refresh the insertion order so a repeatedly-probed
+                # entry is not the first casualty of the size-cap
+                # eviction below.
+                _freshness_cache.pop(cache_key, None)
+                _freshness_cache[cache_key] = cached
                 return cached_result
 
     result = {
@@ -145,22 +150,34 @@ def check_freshness(graph_dir: str, source_root: str = "",
     from pathlib import Path
 
     current_files = {}
-    if source_root and os.path.exists(source_root):
-        for dirpath, dirnames, filenames in os.walk(source_root):
-            dirnames[:] = [d for d in dirnames
-                           if not d.startswith('.') and d not in _skip_dirs]
-            for fname in filenames:
-                dot = fname.rfind('.')
-                ext = fname[dot:].lower() if dot >= 0 else ''
-                if ext in all_source_extensions:
-                    fpath = os.path.join(dirpath, fname)
-                    rel = os.path.relpath(fpath, source_root)
-                    try:
-                        st = os.stat(fpath)
-                        current_files[rel] = f"{st.st_mtime_ns}:{st.st_size}"
-                    except OSError:
-                        logging.getLogger(__name__).debug("silent exception", exc_info=True)
-                        pass
+    if not (source_root and os.path.exists(source_root)):
+        # An empty/moved source root is not "everything was deleted" —
+        # report it as its own condition instead of a misleading
+        # full-stale verdict.
+        result["source_root_missing"] = True
+        result["is_fresh"] = False
+        result["recommendation"] = (
+            f"Source root not found: {source_root or '(empty)'}. "
+            "Re-check the --source path."
+        )
+        if use_cache:
+            _cache_set(cache_key, (time.time(), result))
+        return result
+    for dirpath, dirnames, filenames in os.walk(source_root):
+        dirnames[:] = [d for d in dirnames
+                       if not d.startswith('.') and d not in _skip_dirs]
+        for fname in filenames:
+            dot = fname.rfind('.')
+            ext = fname[dot:].lower() if dot >= 0 else ''
+            if ext in all_source_extensions:
+                fpath = os.path.join(dirpath, fname)
+                rel = os.path.relpath(fpath, source_root)
+                try:
+                    st = os.stat(fpath)
+                    current_files[rel] = f"{st.st_mtime_ns}:{st.st_size}"
+                except OSError:
+                    logging.getLogger(__name__).debug("silent exception", exc_info=True)
+                    pass
     new_files = []
     changed_files = []
     for rel, fingerprint in current_files.items():

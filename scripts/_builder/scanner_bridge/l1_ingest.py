@@ -195,8 +195,11 @@ def run_l1_ingest(tasks, db_path, source_root, commit_hash,
                     chunksize=max(1, len(tasks) // (workers * 4)),
                 ))
             return results
-        except (ImportError, OSError, BrokenPipeError, ValueError):
-            # ValueError: start context unavailable; fall back to serial.
+        except (ImportError, OSError, BrokenPipeError, ValueError,
+                RuntimeError):
+            # ValueError: start context unavailable. RuntimeError covers
+            # BrokenProcessPool (an OOM-killed worker takes the whole
+            # pool down) — fall back to serial.
             pass
     conn = serial_conn if serial_conn is not None else sqlite3.connect(
         db_path, timeout=120.0)

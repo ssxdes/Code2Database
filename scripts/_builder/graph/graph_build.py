@@ -4988,8 +4988,8 @@ def cmd_build(args):
                             # Periodic WAL checkpoint to bound WAL growth.
                             # Without this, a single multi-GB transaction
                             # lets the WAL grow unbounded, degrading index
-                            # lookups for every INSERT OR REPLACE inside
-                            # the same transaction.
+                            # lookups for every row write inside the same
+                            # transaction.
                             _bulk_file_count += 1
                             if (_bulk_file_count %
                                     _BULK_CHECKPOINT_INTERVAL == 0):

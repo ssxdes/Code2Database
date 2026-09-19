@@ -8,7 +8,7 @@ walk), rescan just those TUs (plus the #include closure for changed
 C/C++ headers), and rewrite their records:
 
   - cgdb 13-layer tables: delete_file_records (cascading) + write_batch
-    (id-keyed, INSERT OR REPLACE)
+    (id-keyed, INSERT OR IGNORE — re-derived duplicates collapse)
   - legacy functions: delete by source_file + INSERT OR REPLACE by id
   - legacy edges / field_access / global_access: delete via the file's
     old function ids, then re-insert the rescan's (scan-level) edges

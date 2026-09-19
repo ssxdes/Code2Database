@@ -91,9 +91,10 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
 
     # 1. Convert cgdb_nodes → NodeRecord
     # Map legacy/invalid kind values to the cgdb_nodes.kind CHECK constraint
-    # whitelist. Values not in the map are passed through; if they violate
-    # the CHECK constraint the write_batch will fail and the offending row
-    # is dropped (logged via the store's exception handler).
+    # whitelist. Values not in the map are passed through; a row that still
+    # violates the CHECK is silently suppressed by the INSERT conflict
+    # clause — normalize every kind you need upstream, there is no failure
+    # signal at write time.
     _KIND_NORMALIZE = {
         'type': 'typedef',     # legacy scanner emit for enum/typedef nodes
         'enum_type': 'enum',

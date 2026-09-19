@@ -1974,8 +1974,10 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                     e.first_seen_version, e.last_seen_version, commit_hash,
                 ))
         # OR IGNORE on both edge paths: explicit edge ids are hash-derived
-        # (a conflict is the same edge re-derived); the without-id path uses
-        # AUTOINCREMENT so conflicts cannot arise at all.
+        # so a conflict collapses the re-derived duplicate (first writer
+        # wins — writers derive rows from the same source, so the
+        # surviving row is the definition-site one); the without-id path
+        # uses AUTOINCREMENT so conflicts cannot arise at all.
         if with_id:
             conn.executemany(
                 "INSERT OR IGNORE INTO cgdb_edges "
@@ -2093,7 +2095,9 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             for b in bindings
         ]
         # OR IGNORE: edge_id is the primary key — ops bindings are deduped
-        # per edge (first writer wins, and all writers derive identical rows).
+        # per edge (first writer wins; rows derive from the same source
+        # extraction, and callers delete-before-rewrite when the source
+        # changed).
         conn.executemany(
             "INSERT OR IGNORE INTO ops_bindings "
             "(edge_id, ops_table_id, field_node_id, impl_function_id, "

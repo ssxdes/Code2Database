@@ -248,6 +248,20 @@ class TestAbortRestores(_TempStoreTestCase):
 
 
 class TestCrashedBulkHeals(_TempStoreTestCase):
+    _DEAD_PID = 2147483647  # beyond any Linux pid allocation
+
+    def _kill_writer(self):
+        """The liveness marker records the (alive) test pid; a build that
+        died mid-load leaves a DEAD writer pid behind. Stamp one."""
+        import sqlite3
+        c = sqlite3.connect(self.db_path)
+        try:
+            c.execute("UPDATE cgdb_bulk_state SET pid = ? WHERE id = 1",
+                      (self._DEAD_PID,))
+            c.commit()
+        finally:
+            c.close()
+
     def test_reopen_auto_heals_interrupted_bulk(self):
         """Simulate a build killed after a committed checkpoint segment: the
         drops + data are persisted, the last open segment rolled back by
@@ -260,17 +274,51 @@ class TestCrashedBulkHeals(_TempStoreTestCase):
         self.store.commit_bulk_checkpoint()  # drops + data committed
         # Hard-close without abort/finalize (last segment rolls back).
         self.store.close()
+        self._kill_writer()
         # Reopen on the same db file: _ensure_conn heals the schema.
         conn = self._conn()
         self.assertEqual(self._index_names(conn), before_idx)
         for t in ("cgdb_nodes_ai", "cgdb_nodes_ad", "cgdb_nodes_au"):
             self.assertIn(t, self._trigger_names(conn))
+        # The stale marker went down with the writer.
+        marker = conn.execute(
+            "SELECT COUNT(*) FROM cgdb_bulk_state WHERE id = 1").fetchone()
+        self.assertEqual(marker[0], 0)
         # FTS was rebuilt too — the surviving row is searchable via a
         # FRESH store (same process would share the healed db).
         healed = SQLiteCGDBStore(self.db_path)
         hits = healed.search_symbols('crash_survivor')
         self.assertTrue(any(h['id'] == 7008 for h in hits))
         healed.close()
+
+    def test_live_writer_marker_suppresses_heal(self):
+        """A marker whose writer pid is alive means the drops belong to a
+        load in progress in another process — a concurrent reader must
+        NOT recreate the indexes mid-load (that would reintroduce the
+        per-INSERT B-tree maintenance the load deferred)."""
+        before_idx = self._index_names(self._conn())
+        self.store.begin_bulk_load()
+        self.store.write_batch(_make_node_batch(7009, name='live_load'))
+        self.store.commit_bulk_checkpoint()
+        # Marker still points at THIS (alive) process — no stamping.
+        self.store.close()
+        # A reader store opens: heal check sees a live writer and waits.
+        reader = SQLiteCGDBStore(self.db_path)
+        conn = reader._ensure_conn()
+        self.assertNotEqual(self._index_names(conn), before_idx,
+                            "live load must keep its deferred drops")
+        self.assertNotIn("cgdb_nodes_ai", self._trigger_names(conn))
+        reader.close()
+        # The load completes later — finalize restores everything.
+        writer = SQLiteCGDBStore(self.db_path)
+        writer.finalize()
+        conn = self._conn()
+        self.assertEqual(self._index_names(conn), before_idx)
+        self.assertIn("cgdb_nodes_ai", self._trigger_names(conn))
+        n = conn.execute(
+            "SELECT COUNT(*) FROM cgdb_bulk_state WHERE id = 1").fetchone()
+        self.assertEqual(n[0], 0, "finalize clears the marker")
+        writer.close()
 
     def test_finalize_on_fresh_store_still_recreates(self):
         """finalize() with no active bulk load remains a valid heal path
@@ -279,6 +327,7 @@ class TestCrashedBulkHeals(_TempStoreTestCase):
         self.store.begin_bulk_load()
         self.store.commit_bulk_checkpoint()
         self.store.close()
+        self._kill_writer()
         conn = self._conn()  # auto-heal happens here
         self.store.finalize()  # no-op heal — must not raise
         self.assertEqual(self._index_names(conn), before_idx)

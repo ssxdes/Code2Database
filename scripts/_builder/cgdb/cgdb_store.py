@@ -7,9 +7,11 @@ Concrete backend: SQLiteCGDBStore — uses the same code2database.db connection 
 the legacy SQLiteStore (side-by-side coexistence).
 """
 import logging
+import os
 import sqlite3
 import sys
 import threading
+import time
 import json
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Tuple
@@ -39,6 +41,20 @@ _BULK_WRITTEN_TABLES = frozenset({
     "sync_primitives", "happens_before", "cgdb_includes",
     "doc_comments", "node_metadata", "edge_metadata",
 })
+
+
+def _pid_is_alive(pid: int) -> bool:
+    """True when a process with this pid exists (signal-0 probe)."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Exists but is owned by another user.
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+    return True
 
 
 # ============================================================================
@@ -240,6 +256,13 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         but a bulk load ever drops it — and restore the indexes, triggers
         and FTS content. Best-effort: on a read-only or locked db the
         queries still run, just slower.
+
+        begin_bulk_load() also publishes a liveness marker (writer pid)
+        committed before the drops. While that pid is alive the drops
+        belong to a load in progress in another process — recreating
+        the indexes mid-load would reintroduce the per-INSERT B-tree
+        maintenance the load deferred, so the heal waits. Only a marker
+        whose writer is gone (crashed build) triggers recovery.
         """
         if self._interrupted_bulk_checked or self._bulk_load_active:
             return
@@ -250,6 +273,22 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
                 "AND name='cgdb_nodes'").fetchone()
             if not has_nodes:
                 return
+            marker = None
+            try:
+                marker = conn.execute(
+                    "SELECT pid FROM cgdb_bulk_state WHERE id = 1"
+                ).fetchone()
+            except sqlite3.OperationalError:
+                # Table absent: no bulk load ever began on this db.
+                pass
+            if marker is not None:
+                if _pid_is_alive(marker[0]):
+                    # Live writer in another process — the drops are
+                    # its own doing; finalize() restores everything.
+                    return
+                # Writer is gone: take the stale marker down with it.
+                conn.execute("DELETE FROM cgdb_bulk_state WHERE id = 1")
+                conn.commit()
             has_trigger = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='trigger' "
                 "AND name='cgdb_nodes_ai'").fetchone()
@@ -323,6 +362,32 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             )
             conn.commit()
 
+    def _publish_bulk_marker(self, conn: sqlite3.Connection) -> None:
+        """Publish the cross-process bulk-load liveness marker (own
+        committed transaction, BEFORE any drops become visible) so
+        concurrent readers can tell an in-progress load from a crashed
+        one. Best-effort: a marker write failure must not kill the load.
+        """
+        try:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS cgdb_bulk_state ("
+                " id INTEGER PRIMARY KEY CHECK (id = 1),"
+                " pid INTEGER NOT NULL,"
+                " heartbeat REAL NOT NULL)")
+            conn.execute(
+                "INSERT OR REPLACE INTO cgdb_bulk_state (id, pid, heartbeat) "
+                "VALUES (1, ?, ?)", (os.getpid(), time.time()))
+            conn.commit()
+        except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+
+    def _clear_bulk_marker(self, conn: sqlite3.Connection) -> None:
+        """Remove the liveness marker on the load's way out."""
+        try:
+            conn.execute("DELETE FROM cgdb_bulk_state WHERE id = 1")
+        except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
+
     def begin_bulk_load(self) -> None:
         conn = self._ensure_conn()
         # Defer index rebuilds and bump cache for bulk load
@@ -345,6 +410,10 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         self._bulk_prev_autockpt = conn.execute(
             "PRAGMA wal_autocheckpoint").fetchone()[0]
         conn.execute("PRAGMA wal_autocheckpoint = 0")
+        # Marker first, on its own committed transaction: once the drop
+        # transaction below checkpoints, "trigger missing" is ambiguous
+        # between a live load and a crashed one — the marker resolves it.
+        self._publish_bulk_marker(conn)
         conn.execute("BEGIN")
         # Deferred inside the transaction: a ROLLBACK (abort path) then
         # restores them without any bookkeeping. Segments committed by
@@ -422,8 +491,15 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             pass
         conn.execute("BEGIN")
         # defer_foreign_keys resets to OFF on the COMMIT above; re-arm for
-        # the next batch segment.
+        # the next batch segment. The heartbeat rides in this segment —
+        # readers see it once the segment commits.
         conn.execute("PRAGMA defer_foreign_keys = ON")
+        try:
+            conn.execute(
+                "UPDATE cgdb_bulk_state SET heartbeat = ? WHERE id = 1",
+                (time.time(),))
+        except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
 
     def abort_bulk_load(self) -> None:
         """Rollback a bulk-load transaction and reset PRAGMAs.
@@ -447,6 +523,11 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             # db stays fully query-capable after the abort.
             self._recreate_bulk_indexes(conn)
             self._restore_bulk_pragmas(conn)
+        self._clear_bulk_marker(conn)
+        try:
+            conn.commit()
+        except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
         conn.execute("PRAGMA synchronous = NORMAL")
 
     def write_batch(self, batch: IngestBatch) -> None:
@@ -709,6 +790,10 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         except sqlite3.OperationalError:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
+        # The load is complete — its liveness marker must not outlive it
+        # (a lingering marker with a dead pid would block nothing, but a
+        # REUSED pid could pin a stale skip decision forever).
+        self._clear_bulk_marker(conn)
         conn.commit()
         self._restore_bulk_pragmas(conn)
         # Shrink the WAL back to zero now that this connection's bulk

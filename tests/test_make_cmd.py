@@ -867,3 +867,80 @@ class TestDaemonConflictDetection(unittest.TestCase):
                        serial_derived=True)
             make_cmd.cmd_make(args)
         self.assertGreater(len(calls), 2)
+
+
+class TestFormatStepExit(unittest.TestCase):
+    """Signal deaths must be recognizable in step logs.
+
+    A step killed by the OOM killer returns -9 with no stderr at all;
+    logging it as a bare negative number forced users to dig through
+    dmesg to understand what happened.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self.source = os.path.join(self._tmp, "proj")
+        os.makedirs(self.source)
+        open(os.path.join(self.source, "main.c"), "w").write(
+            "int main(void){return 0;}\n")
+        self.graph = os.path.join(self._tmp, "g-out")
+
+    def _patch_env(self):
+        patcher_lib = mock.patch.object(
+            make_cmd, "check_libclang",
+            return_value=TestDecideBackend._CLANG_OK)
+        patcher_mod = mock.patch.object(make_cmd, "_module_available",
+                                        return_value=True)
+        patcher_lib.start()
+        patcher_mod.start()
+        self.addCleanup(patcher_lib.stop)
+        self.addCleanup(patcher_mod.stop)
+
+    def test_normal_exit_unchanged(self):
+        self.assertEqual(make_cmd._format_step_exit(0), "exit 0")
+        self.assertEqual(make_cmd._format_step_exit(2), "exit 2")
+
+    def test_sigkill_reports_oom_hint(self):
+        desc = make_cmd._format_step_exit(-9)
+        self.assertIn("SIGKILL", desc)
+        self.assertIn("OOM", desc)
+        self.assertIn("dmesg", desc)
+
+    def test_other_signals_named_without_oom_hint(self):
+        desc = make_cmd._format_step_exit(-11)  # SIGSEGV
+        self.assertIn("SIGSEGV", desc)
+        self.assertNotIn("OOM", desc)
+
+    def test_unknown_signal_number_still_rendered(self):
+        # Platforms without a name for the signal must not raise.
+        desc = make_cmd._format_step_exit(-99)
+        self.assertIn("signal 99", desc)
+
+    def test_derived_step_warning_mentions_signal(self):
+        """End-to-end: a derived step dying from SIGKILL logs the OOM
+        hint, not a bare negative number."""
+        import contextlib
+        self._patch_env()
+        counter = {"n": 0}
+
+        def _fake_run(_cmd, **_kw):
+            # First two subprocess steps are scan + build (fatal): let
+            # them succeed so the flow reaches the derived steps.
+            counter["n"] += 1
+            return SimpleNamespace(returncode=0 if counter["n"] <= 2 else -9)
+
+        with mock.patch("_builder.daemon.daemon.is_daemon_running",
+                        return_value=False), \
+             mock.patch.object(make_cmd.subprocess, "run",
+                               side_effect=_fake_run):
+            args = _ns(source=self.source, graph=self.graph,
+                       serial_derived=True)
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as cm:
+                    make_cmd.cmd_make(args)
+            # derived-step failures are non-fatal for the graph but
+            # still surface a nonzero exit
+            self.assertNotEqual(cm.exception.code, 0)
+            self.assertIn("SIGKILL", stderr.getvalue())
+            self.assertIn("OOM", stderr.getvalue())

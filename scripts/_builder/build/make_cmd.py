@@ -17,10 +17,31 @@ Two stages, strictly ordered:
 
 import json
 import os
+import signal
 import subprocess
 import sys
 
 from _scanner.utils import LANG_EXTENSIONS
+
+
+def _format_step_exit(rc: int) -> str:
+    """Human-readable exit descriptor for step logs.
+
+    Negative return codes mean the step died from a signal: -9 is the
+    Linux OOM killer, which otherwise shows up as an unexplained failure
+    with no stderr output — the user has to dig through dmesg to find
+    out. Normal exits render unchanged ("exit 2").
+    """
+    if rc >= 0:
+        return "exit %d" % rc
+    try:
+        sig = signal.Signals(-rc)
+    except ValueError:
+        return "killed by signal %d" % (-rc)
+    desc = "killed by %s" % sig.name
+    if -rc == int(signal.SIGKILL):
+        desc += " (likely the OOM killer — check dmesg / journalctl)"
+    return desc
 
 _SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _SCANNER = os.path.join(_SCRIPTS_DIR, "code2database_scanner.py")
@@ -668,9 +689,10 @@ def _do_make(rep, args):
                                   % _auto_profile)
                             break
         if rc != 0:
-            print("\n[make] FAILED at step %d/%d (%s, exit %d) — "
-                  "fix the issue above and re-run make"
-                  % (step_num, total, name, rc), file=sys.stderr)
+            print("\n[make] FAILED at step %d/%d (%s, %s) — "
+                  "resolve the failure above and re-run make"
+                  % (step_num, total, name, _format_step_exit(rc)),
+                  file=sys.stderr)
             sys.exit(rc)
 
     # --- Derived steps ---
@@ -719,8 +741,8 @@ def _do_make(rep, args):
                           file=sys.stderr)
                 rc = proc.returncode
                 if rc != 0:
-                    print("[make] WARN: step %s failed (exit %d) — continuing"
-                          % (name, rc), file=sys.stderr)
+                    print("[make] WARN: step %s failed (%s) — continuing"
+                          % (name, _format_step_exit(rc)), file=sys.stderr)
                     failures.append(name)
 
     # Phase B: serial (DB writes + brief→kb dependency chain)
@@ -734,9 +756,9 @@ def _do_make(rep, args):
         print("  $ %s" % " ".join(cmd))
         rc = subprocess.run(cmd).returncode
         if rc != 0:
-            print("[make] WARN: step %s failed (exit %d) — continuing; "
+            print("[make] WARN: step %s failed (%s) — continuing; "
                   "the artifact it produces will be missing until re-run"
-                  % (name, rc), file=sys.stderr)
+                  % (name, _format_step_exit(rc)), file=sys.stderr)
             failures.append(name)
 
     graph = rep["graph"]
@@ -777,7 +799,7 @@ def cmd_make(args):
     print_env_check_report(rep)
     if not rep["ok"]:
         print("[make] env-check failed — nothing was built; "
-              "fix the ERROR items above and re-run",
+              "resolve the ERROR items above and re-run",
               file=sys.stderr)
         sys.exit(1)
     if getattr(args, "check", False):

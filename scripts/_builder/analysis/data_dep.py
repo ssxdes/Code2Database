@@ -30,6 +30,8 @@ from collections import defaultdict, deque
 from typing import List, Dict, Set
 import logging
 
+from _builder.utils import _ensure_mutable_graph
+
 
 # ---------------------------------------------------------------------------
 # Build data-dependency edges from existing globals_read/written, fields_read/written
@@ -448,6 +450,16 @@ def cmd_data_dep(args):
     G = _load_full_graph(graph_dir)
 
     if getattr(args, "build", False):
+        # Guard: the build materializes a registry over every node in
+        # memory; on SQLite-backed multi-million-node graphs this gets the
+        # process OOM-killed (exit -9, no diagnostics). Exit cleanly like
+        # value-flow --build / export-html do.
+        _ensure_mutable_graph(
+            G, "data-dep --build",
+            reason=("the build step materializes a full in-memory registry "
+                    "over every node; on multi-million-node SQLite-backed "
+                    "graphs the process gets OOM-killed instead of failing "
+                    "cleanly."))
         result = build_data_dep_edges(G)
         out_path = os.path.join(graph_dir, ".code2database_data_dep.json")
         with open(out_path, "w", encoding="utf-8") as f:

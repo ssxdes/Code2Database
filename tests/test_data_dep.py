@@ -226,5 +226,55 @@ class TestReverseDataDepSelfInitializedGlobals(unittest.TestCase):
                          "same function) must not be reported uninitialized")
 
 
+class TestBuildGuardForLargeGraphs(unittest.TestCase):
+    """--build must exit cleanly (code 2) on SQLite-backed large graphs.
+
+    Without the guard, build_data_dep_edges materializes a registry over
+    every node of a multi-million-node LazySQLiteGraph and the process is
+    OOM-killed (exit -9) with no diagnostics.
+    """
+
+    def test_build_exits_cleanly_on_lazy_sqlite_graph(self):
+        import argparse
+        import contextlib
+        import io
+        from _builder.analysis import data_dep
+        from _builder.graph import graph_build
+
+        class LazySQLiteGraph:
+            _db_path = "/tmp/fake.db"
+
+            def number_of_nodes(self):
+                return 2295083
+
+        original = graph_build._load_full_graph
+        graph_build._load_full_graph = lambda _dir: LazySQLiteGraph()
+        stderr = io.StringIO()
+        try:
+            args = argparse.Namespace(graph="/tmp/whatever", build=True)
+            with contextlib.redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as cm:
+                    data_dep.cmd_data_dep(args)
+            self.assertEqual(cm.exception.code, 2)
+            self.assertIn("data-dep --build", stderr.getvalue())
+            self.assertIn("OOM-killed", stderr.getvalue())
+        finally:
+            graph_build._load_full_graph = original
+
+    def test_dead_writers_query_bypasses_the_guard(self):
+        """Point queries (--dead-writers etc.) are memory-bounded and must
+        not be affected by the build-only guard."""
+        import argparse
+        from _builder.analysis import data_dep
+
+        graph_dir = _make_dep_graph([])
+        args = argparse.Namespace(graph=graph_dir, build=False,
+                                  dead_writers=True)
+        # Empty graph: prints an empty result and returns normally —
+        # anything else (notably SystemExit 2) means the guard leaked
+        # into the query path.
+        self.assertIsNone(data_dep.cmd_data_dep(args))
+
+
 if __name__ == "__main__":
     unittest.main()

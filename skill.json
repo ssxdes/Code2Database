@@ -14,7 +14,8 @@
   ],
   "sub_skills": [
     "Code2Database-analysis",
-    "Code2Database-ops"
+    "Code2Database-ops",
+    "Code2Database-kb"
   ],
   "tier_1_commands": [
     "c2d",

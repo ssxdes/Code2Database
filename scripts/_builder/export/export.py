@@ -1,5 +1,6 @@
 """callgraph builder module: export."""
 
+import hashlib
 import os
 import json
 import re
@@ -14,6 +15,34 @@ import logging
 # directory paths and may contain quotes, angle brackets, spaces, etc.
 # The old '.'-only replacement let those through into href="" attributes.
 _DOMAIN_SAFE_RE = re.compile(r'[^A-Za-z0-9_\-]')
+
+# Obsidian note names derive from function names. Kernel inline-asm
+# "functions" have names that are entire assembly snippets — hundreds of
+# bytes with tabs, quotes and newlines — which crash the export with
+# OSError [Errno 36] (NAME_MAX is 255 bytes) or leave Obsidian-illegal
+# characters (:, |, #, [, ]) in file names. Unicode word characters are
+# kept (Python identifiers may be non-ASCII); everything else maps to
+# '_'. The budget counts BYTES (a CJK identifier char is 3 UTF-8 bytes),
+# and the ".md" suffix plus any truncation hash must fit in NAME_MAX.
+_NOTE_NAME_SAFE_RE = re.compile(r'[^\w\-]', re.UNICODE)
+_NOTE_NAME_MAX_BYTES = 180
+
+
+def _safe_note_name(name: str) -> str:
+    """Filesystem- and Obsidian-safe note name for a node name.
+
+    Wiki-links ([[...]]) are written with the same sanitized name, so
+    links keep resolving after the transformation. Names over the byte
+    budget are truncated with an md5 suffix so distinct notes stay
+    distinct.
+    """
+    safe = _NOTE_NAME_SAFE_RE.sub('_', name)
+    if len(safe.encode('utf-8')) > _NOTE_NAME_MAX_BYTES:
+        digest = hashlib.md5(name.encode('utf-8', 'replace')).hexdigest()[:8]
+        head = safe.encode('utf-8')[:_NOTE_NAME_MAX_BYTES - 9]\
+            .decode('utf-8', 'ignore')
+        safe = head + '_' + digest
+    return safe or '_'
 
 
 def _esc(value) -> str:
@@ -784,7 +813,7 @@ def cmd_export_obsidian(args):
             body += "## Called by\n"
             for c in callers:
                 cname = G.nodes[c].get("name", c)
-                body += f"- [[{cname}]]\n"
+                body += f"- [[{_safe_note_name(cname)}]]\n"
             body += "\n"
 
         # Callees (forward links, call edges only)
@@ -799,7 +828,7 @@ def cmd_export_obsidian(args):
                 order = ed.get("call_order", "")
                 note = f" (order={order})" if order else ""
                 note += f" [{cond}]" if cond else ""
-                body += f"- [[{sname}]]{note}\n"
+                body += f"- [[{_safe_note_name(sname)}]]{note}\n"
             body += "\n"
 
         # Write to domain subfolder (sanitize to prevent path traversal)
@@ -809,7 +838,7 @@ def cmd_export_obsidian(args):
         if not note_dir.startswith(os.path.normpath(output_dir)):
             note_dir = output_dir
         os.makedirs(note_dir, exist_ok=True)
-        safe_name = name.replace("/", "_").replace("\\", "_")
+        safe_name = _safe_note_name(name)
         note_path = os.path.join(note_dir, f"{safe_name}.md")
         Path(note_path).write_text(frontmatter + body, encoding="utf-8")
         note_count += 1

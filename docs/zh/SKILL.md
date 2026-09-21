@@ -82,11 +82,11 @@ python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_s
 
 ## 核心命令（Tier-1）
 
-27 个 Tier-1 命令覆盖 ~95% 的 agent 工作流。任务→命令导航：`references/usage_reference.md` 的意图索引，或运行时的 `c2d recipes` / `c2d verbs`。
+22 个 Tier-1 命令覆盖 ~95% 的 agent 工作流。任务→命令导航：`references/usage_reference.md` 的意图索引，或运行时的 `c2d recipes` / `c2d verbs`。
 
 - **生命周期**：`c2d`、`make`、`build`、`update`
 - **查询**：`query`（Cypher；自然语言用 `intent-query`）、`describe`、`trace`、`impact`、`context`、`find`、`flow`、`concurrency`
-- **记忆与知识**：`session-init`、`kb-query`、`save-memory`、`search-memory`、`knowledge-brief`、`kb-rebuild-index`、`kb-cluster`、`kb-known-unknowns`、`kb-audit`、`kb-forget`
+- **记忆与知识**：`session-init`、`kb-query`、`save-memory`、`search-memory`、`knowledge-brief`——kb 治理命令归 ops 与 kb 子技能
 - **服务与运维**：`serve`（MCP，83 工具）、`web-ui`、`tx-begin`、`daemon`、`health`
 
 别名：`describe`/`context` → describe-node、`trace` → trace-chain、`find` → find-invariants、`flow` → value-flow、`concurrency` → concurrency-risks、`save` → save-memory、`recall` → search-memory、`brief` → knowledge-brief、`health` → profile-health、`daemon` → daemon-status、`export` → export-mermaid。

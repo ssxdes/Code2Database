@@ -52,7 +52,7 @@ This design lets Code2Database scale from a quick install (`pip install tree-sit
 
 The skill ships as 3 sub-skills (`/Code2Database` core, `/Code2Database-analysis` deep analysis, `/Code2Database-ops` operations) so the LLM agent loads only the commands relevant to its current question:
 
-- **Core (27 Tier-1 commands, incl. the `c2d` umbrella)** — always loaded. Build, browse, basic query (scan, build, explore-flow, describe-node, trace-chain, neighbors, path, search, key-paths, etc.)
+- **Core (22 Tier-1 commands, incl. the `c2d` umbrella)** — always loaded. Build, browse, basic query (scan, build, explore-flow, describe-node, trace-chain, neighbors, path, search, key-paths, etc.)
 - **Analysis (13 Tier-1 + 19 cgdb_* MCP tools)** — loaded on demand. Concurrency, data flow, invariants, FFI, path feasibility, provenance, cgdb tables.
 - **Ops (23 Tier-1 commands)** — loaded on demand. Transactions, daemon, profile health, doc-code alignment, exports, plugins, memory, embeddings.
 

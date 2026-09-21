@@ -52,7 +52,7 @@ C/C++ 提取后端有两种模式，服务于不同需求：
 
 skill 以 3 个子 skill 形式发布（`/Code2Database` 核心、`/Code2Database-analysis` 深度分析、`/Code2Database-ops` 运维），让 LLM 代理只加载与当前疑问相关的命令：
 
-- **核心（27 个 Tier-1 命令，含 `c2d` 总入口）**——常驻加载。构建、浏览、基础查询（scan、build、explore-flow、describe-node、trace-chain、neighbors、path、search、key-paths 等）。
+- **核心（22 个 Tier-1 命令，含 `c2d` 总入口）**——常驻加载。构建、浏览、基础查询（scan、build、explore-flow、describe-node、trace-chain、neighbors、path、search、key-paths 等）。
 - **分析（13 个 Tier-1 + 19 个 cgdb_* MCP 工具）**——按需加载。并发、数据流、不变量、FFI、路径可行性、来源、cgdb 表。
 - **运维（23 个 Tier-1 命令）**——按需加载。事务、守护进程、profile 健康、文档-代码对齐、导出、插件、记忆、嵌入。
 
@@ -832,7 +832,7 @@ Code2Database 当前能力，按类别组织：
 - 值流（DATA_FLOW 边）+ 跨函数数据依赖（DATA_DEP 边）
 
 ### 查询与分析
-- 266 个 CLI 命令（4 个子 skill：核心 27、分析 13、运维 23、知识库 8 个 Tier-1）
+- 266 个 CLI 命令（4 个子 skill：核心 22、分析 13、运维 23、知识库 8 个 Tier-1）
 - 83 个 MCP (55 base + 28 design-report) 工具（36 code2database_* + 19 cgdb_*）
 - Cypher 子集查询语言（MATCH/WHERE/RETURN）
 - Z3 SMT 路径可行性（启发式回退）

@@ -82,11 +82,11 @@ python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_s
 
 ## Core Commands (Tier-1)
 
-The 27 Tier-1 commands cover ~95% of agent workflows. Task→command navigation: the intent index in `references/usage_reference.md`, or `c2d recipes` / `c2d verbs` at runtime.
+The 22 Tier-1 commands cover ~95% of agent workflows. Task→command navigation: the intent index in `references/usage_reference.md`, or `c2d recipes` / `c2d verbs` at runtime.
 
 - **Lifecycle**: `c2d`, `make`, `build`, `update`
 - **Query**: `query` (Cypher; natural language: `intent-query`), `describe`, `trace`, `impact`, `context`, `find`, `flow`, `concurrency`
-- **Memory & knowledge**: `session-init`, `kb-query`, `save-memory`, `search-memory`, `knowledge-brief`, `kb-rebuild-index`, `kb-cluster`, `kb-known-unknowns`, `kb-audit`, `kb-forget`
+- **Memory & knowledge**: `session-init`, `kb-query`, `save-memory`, `search-memory`, `knowledge-brief` — kb governance commands live in the ops and kb sub-skills
 - **Serving & ops**: `serve` (MCP, 83 tools), `web-ui`, `tx-begin`, `daemon`, `health`
 
 Aliases: `describe`/`context` → describe-node, `trace` → trace-chain, `find` → find-invariants, `flow` → value-flow, `concurrency` → concurrency-risks, `save` → save-memory, `recall` → search-memory, `brief` → knowledge-brief, `health` → profile-health, `daemon` → daemon-status, `export` → export-mermaid.

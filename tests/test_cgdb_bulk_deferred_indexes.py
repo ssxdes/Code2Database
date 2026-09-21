@@ -25,7 +25,9 @@ from _builder.cgdb.cgdb_schema import (
     bulk_index_registry, nodes_fts_trigger_registry,
 )
 from _builder.cgdb.cgdb_store import SQLiteCGDBStore, _BULK_WRITTEN_TABLES
-from _builder.cgdb.cgdb_records import IngestBatch, NodeRecord, FileRecord
+from _builder.cgdb.cgdb_records import (
+    IngestBatch, NodeRecord, FileRecord, EdgeRecord,
+)
 
 
 # Indexes whose UNIQUE constraint write_batch() dedup depends on — these
@@ -477,6 +479,98 @@ class TestBulkDedupSemantics(_TempStoreTestCase):
         self.assertEqual(fh[0], 'unknown')
         self.assertEqual(eh[0], 'unknown')
         self.assertEqual(nh[0], 'unknown')
+
+
+class TestBulkCommitLocatesFKFailure(_TempStoreTestCase):
+    """A COMMIT-time deferred-FK failure must name its rows.
+
+    A bare 'FOREIGN KEY constraint failed' pointed at neither table nor
+    row, and the rollback destroyed the evidence — a 60K-file build was
+    left with a one-line marker and no way to find the dangling record.
+    The failed COMMIT keeps the transaction open, so the violations are
+    still locatable at raise time.
+    """
+
+    def _dangling_edge_batch(self):
+        # Edge referencing node 4242 — that node is never written, so
+        # the deferred FK check fails at the next COMMIT.
+        return IngestBatch(
+            file=FileRecord(id=7, path='dangling.c', language='c',
+                            sha256='h', content_hash='h'),
+            edges=[EdgeRecord(src_id=4242, dst_id=4242, kind='INVOKES',
+                              file_id=7, line=1, col=1)],
+        )
+
+    def _assert_located(self, cm):
+        exc = cm.exception
+        self.assertIn("FOREIGN KEY", str(exc))
+        self.assertIn("cgdb_edges", str(exc))
+        self.assertIn("cgdb_nodes", str(exc))
+        self.assertGreaterEqual(exc.total_violations, 1)
+        # cgdb_edges declares one FK per endpoint; foreign_key_check
+        # reports each violating FK separately, so the set of located
+        # fk columns must cover both endpoints.
+        all_fk_cols = set()
+        for v in exc.violations:
+            all_fk_cols.update(v["fk_columns"])
+        self.assertEqual(all_fk_cols, {"src_id", "dst_id"})
+        v = exc.violations[0]
+        self.assertEqual(v["table"], "cgdb_edges")
+        self.assertEqual(v["parent"], "cgdb_nodes")
+        self.assertEqual(v["row"]["src_id"], 4242)
+        self.assertEqual(v["row"]["dst_id"], 4242)
+        self.assertEqual(v["row"]["kind"], "INVOKES")
+
+    def test_checkpoint_commit_names_the_dangling_row(self):
+        from _builder.cgdb.cgdb_store import FKViolationError
+        self.store.begin_bulk_load()
+        self.store.write_batch(_make_node_batch(1))
+        self.store.write_batch(self._dangling_edge_batch())
+        with self.assertRaises(FKViolationError) as cm:
+            self.store.commit_bulk_checkpoint()
+        self._assert_located(cm)
+        # The raise rolled the segment back; the abort path then restores
+        # the dropped indexes and clears the marker.
+        self.store.abort_bulk_load()
+        conn = self._conn()
+        self.assertEqual(
+            conn.execute("SELECT COUNT(*) FROM cgdb_edges").fetchone()[0], 0)
+        self.assertEqual(
+            conn.execute("SELECT COUNT(*) FROM cgdb_nodes").fetchone()[0], 0)
+
+    def test_finalize_commit_names_the_dangling_row(self):
+        from _builder.cgdb.cgdb_store import FKViolationError
+        self.store.begin_bulk_load()
+        self.store.write_batch(self._dangling_edge_batch())
+        with self.assertRaises(FKViolationError) as cm:
+            self.store.finalize()
+        self._assert_located(cm)
+        self.store.abort_bulk_load()
+        conn = self._conn()
+        self.assertEqual(
+            conn.execute("SELECT COUNT(*) FROM cgdb_edges").fetchone()[0], 0)
+
+    def test_non_bulk_write_batch_names_the_dangling_row(self):
+        from _builder.cgdb.cgdb_store import FKViolationError
+        with self.assertRaises(FKViolationError) as cm:
+            self.store.write_batch(self._dangling_edge_batch())
+        self._assert_located(cm)
+        conn = self._conn()
+        self.assertEqual(
+            conn.execute("SELECT COUNT(*) FROM cgdb_edges").fetchone()[0], 0)
+        self.assertEqual(
+            conn.execute("SELECT COUNT(*) FROM cgdb_files").fetchone()[0], 0)
+
+    def test_clean_batch_commits_without_violations(self):
+        from _builder.cgdb.cgdb_store import FKViolationError
+        self.store.begin_bulk_load()
+        self.store.write_batch(_make_node_batch(1))
+        self.store.commit_bulk_checkpoint()  # must not raise
+        self.store.write_batch(_make_node_batch(2))
+        self.store.finalize()  # must not raise
+        conn = self._conn()
+        self.assertEqual(
+            conn.execute("SELECT COUNT(*) FROM cgdb_nodes").fetchone()[0], 2)
 
 
 if __name__ == "__main__":

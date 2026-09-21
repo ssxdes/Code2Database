@@ -43,6 +43,108 @@ _BULK_WRITTEN_TABLES = frozenset({
 })
 
 
+class FKViolationError(sqlite3.IntegrityError):
+    """A COMMIT-time deferred-FK failure with the offending rows located.
+
+    A bare 'FOREIGN KEY constraint failed' from a bulk-load COMMIT names
+    neither the table nor the row, and the ROLLBACK that follows destroys
+    the evidence — on a 60K-file build the only artifact left is a marker
+    file with a one-line error. When COMMIT fails, SQLite keeps the
+    transaction open, so the violating (uncommitted) rows are still
+    visible to PRAGMA foreign_key_check on the same connection. This
+    exception carries that list as ``violations`` (dicts: table, rowid,
+    parent, fk_columns, row) and embeds the first few in its message.
+    """
+
+    def __init__(self, base_error, violations, total_count):
+        self.violations = violations
+        self.total_violations = total_count
+        shown = "; ".join(_format_fk_violation(v) for v in violations)
+        more = f" (+{total_count - len(violations)} more)" \
+            if total_count > len(violations) else ""
+        message = (f"{base_error} — {total_count} row(s) fail foreign-key "
+                   f"checks: {shown}{more}. The transaction was rolled "
+                   f"back; the rows above name the exact records to "
+                   f"inspect.")
+        super().__init__(message)
+
+
+def _format_fk_violation(v) -> str:
+    row_bits = " ".join(f"{k}={val!r}" for k, val in v["row"].items())
+    cols = ", ".join(v["fk_columns"])
+    return (f"[{v['table']} rowid={v['rowid']} {row_bits}: "
+            f"{cols} references missing {v['parent']} row]")
+
+
+def _locate_fk_violations(conn, limit=10):
+    """List FK violations visible to ``conn``, including uncommitted rows.
+
+    Returns (violations, total_count). Each violation dict carries the
+    table, rowid, parent table, the FK child column names, and a short
+    identifying slice of the offending row.
+    """
+    violations = []
+    try:
+        rows = conn.execute("PRAGMA foreign_key_check").fetchall()
+    except sqlite3.Error:
+        return [], 0
+    for table, rowid, parent, fkid in rows:
+        if len(violations) >= limit:
+            break
+        fk_cols = [r[3] for r in conn.execute(
+            f'PRAGMA foreign_key_list("{table}")').fetchall()
+            if r[0] == fkid]
+        row_summary = {}
+        try:
+            wanted = {"id", "fqn", "name", "kind", "src_id", "dst_id",
+                      "file_id", "type_id", "function_id", "path",
+                      "first_seen_version", "last_seen_version",
+                      "invoke_kind", "field_name"}
+            cur = conn.execute(
+                f'SELECT * FROM "{table}" WHERE rowid = ?', (rowid,))
+            col_names = [d[0] for d in cur.description]
+            data = cur.fetchone()
+            if data is not None:
+                for col, val in zip(col_names, data):
+                    if col in wanted or col in fk_cols:
+                        text = val if isinstance(val, (int, float)) \
+                            else str(val)
+                        if isinstance(text, str) and len(text) > 60:
+                            text = text[:57] + "..."
+                        row_summary[col] = text
+        except sqlite3.Error:
+            pass
+        violations.append({
+            "table": table, "rowid": rowid, "parent": parent,
+            "fk_columns": fk_cols, "row": row_summary,
+        })
+    return violations, len(rows)
+
+
+def _commit_locating_fk_failure(conn):
+    """COMMIT a bulk segment; on a deferred-FK failure, locate the
+    offending rows before any caller can roll them away.
+
+    On failure the transaction stays open (SQLite semantics), so
+    PRAGMA foreign_key_check still sees the uncommitted rows. The
+    transaction is rolled back here — every caller's cleanup path
+    treats a raise from COMMIT as "segment lost" anyway, and leaving a
+    write transaction open would hold the write lock until the
+    connection closes.
+    """
+    try:
+        conn.execute("COMMIT")
+    except sqlite3.IntegrityError as exc:
+        if "FOREIGN KEY" not in str(exc).upper():
+            raise
+        violations, total = _locate_fk_violations(conn)
+        try:
+            conn.execute("ROLLBACK")
+        except sqlite3.Error:
+            pass
+        raise FKViolationError(str(exc), violations, total) from None
+
+
 def _pid_is_alive(pid: int) -> bool:
     """True when a process with this pid exists (signal-0 probe)."""
     try:
@@ -539,7 +641,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         conn = self._ensure_conn()
         if not self._bulk_load_active:
             return
-        conn.execute("COMMIT")
+        _commit_locating_fk_failure(conn)
         # PASSIVE checkpoint merges committed WAL frames into the main DB
         # without blocking concurrent readers. TRUNCATE would require
         # exclusive access which we cannot guarantee if external readers
@@ -615,10 +717,15 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
             self._write_doc_comments(conn, batch.doc_comments)
             self._write_metadata(conn, batch.metadata)
             if not in_explicit_tx:
-                conn.execute("COMMIT")
+                _commit_locating_fk_failure(conn)
         except Exception:
             if not in_explicit_tx:
-                conn.execute("ROLLBACK")
+                try:
+                    conn.execute("ROLLBACK")
+                except sqlite3.OperationalError:
+                    # _commit_locating_fk_failure already rolled the
+                    # segment back on the FK path.
+                    pass
             raise
 
     def delete_file_records(self, file_path: str) -> tuple:
@@ -827,7 +934,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         conn = self._ensure_conn()
         if self._bulk_load_active:
             try:
-                conn.execute("COMMIT")
+                _commit_locating_fk_failure(conn)
             except sqlite3.OperationalError:
                 # No active transaction (e.g. the connection the bulk load
                 # ran on was replaced after a hard close) — nothing to

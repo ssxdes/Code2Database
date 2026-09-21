@@ -5376,12 +5376,22 @@ def cmd_build(args):
                     # unnoticed while builds reported success) and make
                     # the degraded state durable + machine-detectable.
                     _cgdb_export_error = str(e)
-                    _marker = _mark_cgdb_export_failed(outdir, str(e), {
+                    _export_ctx = {
                         "stage": "cgdb_export",
                         "cgdb_nodes_input": len(cgdb_nodes_data),
                         "cgdb_edges_input": len(cgdb_edges_data),
                         "cgdb_types_input": len(cgdb_types_data),
-                    })
+                    }
+                    # FKViolationError carries the located offending
+                    # rows (COMMIT-time violations are otherwise
+                    # unseeable after the rollback).
+                    _fk_violations = getattr(e, "violations", None)
+                    if _fk_violations:
+                        _export_ctx["fk_violations"] = _fk_violations
+                        _export_ctx["fk_violation_count"] = getattr(
+                            e, "total_violations", len(_fk_violations))
+                    _marker = _mark_cgdb_export_failed(
+                        outdir, str(e), _export_ctx)
                     print(f"[cgdb] ERROR: cgdb export failed: {e}",
                           file=sys.stderr)
                     print(f"[cgdb] ERROR: the graph is missing cgdb "

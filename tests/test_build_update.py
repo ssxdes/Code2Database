@@ -472,5 +472,66 @@ class TestAstHash(unittest.TestCase):
             self._hash(self._result(line=99)))
 
 
+class TestBumpSurvivingVersions(unittest.TestCase):
+    """The version bump must not silently point records at a missing
+    version row (dangling last_seen_version made the whole graph
+    invisible to time-travel with no signal)."""
+
+    def _make_db(self):
+        """Fresh cgdb schema + one surviving node stamped at version 1."""
+        from _builder.cgdb.cgdb_records import (
+            FileRecord, IngestBatch, NodeRecord,
+        )
+        from _builder.cgdb.cgdb_store import SQLiteCGDBStore
+        tmp = tempfile.mkdtemp(prefix="c2d_bump_test_")
+        db = os.path.join(tmp, "code2database.db")
+        store = SQLiteCGDBStore(db)
+        store.create_schema()
+        store.write_batch(IngestBatch(
+            file=FileRecord(id=1, path='a.c', language='c',
+                            sha256='x', content_hash='x'),
+            nodes=[NodeRecord(id=1, kind='function', name='f', fqn='f',
+                              file_id=1, line=1, col=1, byte_start=0,
+                              byte_end=42, attrs={})],
+        ))
+        store.close()
+        return db
+
+    def _last_seen(self, db):
+        conn = sqlite3.connect(db)
+        try:
+            return conn.execute(
+                "SELECT last_seen_version FROM cgdb_nodes WHERE id=1"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+    def test_bump_with_valid_version_row_updates(self):
+        import _builder.build.build_update as bu
+        db = self._make_db()
+        conn = sqlite3.connect(db)
+        conn.execute(
+            "INSERT INTO graph_versions (version_id, commit_hash, commit_short,"
+            " commit_subject, compiled_at, parent_version_id, diff_summary)"
+            " VALUES (2, 'c2', 'c2', 'second', '2026-01-02T00:00:00', 1, '')")
+        conn.commit()
+        conn.close()
+        self.assertTrue(bu._bump_surviving_versions(db, 2))
+        self.assertEqual(self._last_seen(db), 2)
+
+    def test_bump_with_missing_version_row_refuses(self):
+        """A phantom version row must not be written into every record."""
+        import contextlib
+        import io
+        import _builder.build.build_update as bu
+        db = self._make_db()
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            self.assertFalse(bu._bump_surviving_versions(db, 2))
+        self.assertEqual(self._last_seen(db), 1,
+                         "records must keep pointing at the real version")
+        self.assertIn("bump skipped", stderr.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

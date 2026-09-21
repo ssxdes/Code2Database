@@ -332,6 +332,39 @@ def _scan_one(file_path, source_root, extraction_backend=None):
                       extraction_backend=extraction_backend)
 
 
+def _bump_surviving_versions(db_path: str, version_id: int) -> bool:
+    """Stamp surviving cgdb records with this build's version_id.
+
+    last_seen_version is a foreign key into graph_versions, so this
+    write runs with FK enforcement on: if the version row is missing
+    (e.g. it was recorded on a separate connection that got rolled
+    back), the UPDATE refuses loudly instead of silently leaving every
+    surviving record pointing at a dangling version — which used to make
+    the whole graph invisible to time-travel queries with no signal.
+    """
+    try:
+        import sqlite3 as _sqlite3
+        _bump_conn = _sqlite3.connect(db_path)
+        try:
+            _bump_conn.execute("PRAGMA foreign_keys = ON")
+            _bump_conn.execute(
+                "UPDATE cgdb_nodes SET last_seen_version = ? "
+                "WHERE last_seen_version > 0 AND last_seen_version < ?",
+                (version_id, version_id))
+            _bump_conn.execute(
+                "UPDATE cgdb_edges SET last_seen_version = ? "
+                "WHERE last_seen_version > 0 AND last_seen_version < ?",
+                (version_id, version_id))
+            _bump_conn.commit()
+        finally:
+            _bump_conn.close()
+    except Exception as exc:
+        print(f"[build-update] surviving-record version bump skipped: "
+              f"{exc}", file=sys.stderr)
+        return False
+    return True
+
+
 def _commit_hash(source_root):
     try:
         from _builder.graph.graph_build import _detect_commit_hash
@@ -641,24 +674,7 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
     # the new version after a cross-commit incremental update (full
     # builds wipe + re-stamp everything, so they don't need this).
     if _version_id and _version_id != 1:
-        try:
-            import sqlite3 as _sqlite3
-            _bump_conn = _sqlite3.connect(db_path)
-            try:
-                _bump_conn.execute(
-                    "UPDATE cgdb_nodes SET last_seen_version = ? "
-                    "WHERE last_seen_version > 0 AND last_seen_version < ?",
-                    (_version_id, _version_id))
-                _bump_conn.execute(
-                    "UPDATE cgdb_edges SET last_seen_version = ? "
-                    "WHERE last_seen_version > 0 AND last_seen_version < ?",
-                    (_version_id, _version_id))
-                _bump_conn.commit()
-            finally:
-                _bump_conn.close()
-        except Exception as exc:
-            print(f"[build-update] surviving-record version bump skipped: "
-                  f"{exc}", file=sys.stderr)
+        _bump_surviving_versions(db_path, _version_id)
 
     # Refresh the fingerprint manifest so freshness checks (session-init,
     # web UI badge) reflect the synced state instead of reporting stale.

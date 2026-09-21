@@ -875,9 +875,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## 完整 CLI 命令参考（261 个命令）
+## 完整 CLI 命令参考（266 个命令）
 
-全部 261 个 CLI 子命令，涵盖 `code2database_builder.py`（253 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。
+全部 266 个 CLI 子命令，涵盖 `code2database_builder.py`（258 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。另有 13 个短别名（`describe`、`context`、`trace`、`concurrency`、`save`、`recall`、`brief`、`flow`、`find`、`health`、`daemon`、`export`、`init`）映射到下表中的完整命令，计入 builder 总数。
 
 | 命令 | 说明 |
 |------|------|
@@ -1037,8 +1037,11 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `kb-forget` | Immediately delete a kb_paragraph (no decay) |
 | `kb-global-add` | Add an entry to the cross-project global KB |
 | `kb-global-import` | Import a shared global KB JSON file |
+| `kb-global-import-memory` | Import similar Q&A from global KB into project memory (with merge) |
 | `kb-global-search` | Search the cross-project global KB |
+| `kb-global-search-memory` | Search the global KB for cross-project memory Q&A |
 | `kb-global-share` | Export global KB to a portable JSON file |
+| `kb-global-share-memory` | Export the highest-value project memories to the cross-project global KB |
 | `kb-known-unknowns` | List queries that returned no matches （第 9 阶段） |
 | `kb-migrate` | Migrate kb_paragraphs rows into kb_items (fact-level) |
 | `kb-query` | Unified FTS5+BM25 query across memory and knowledge |
@@ -1053,6 +1056,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `knowledge-brief` | 渲染项目简报（会话启动加载） |
 | `brief-validate` | 校验简报（schema、体积预算、图漂移） |
 | `brief-suggest` | 从高价值记忆挖掘简报候选（只建议不写入） |
+| `brief-migrate-legacy` | Migrate legacy knowledge/*.md into the brief |
 | `session-init` | 一站式会话上下文：简报 + 记忆摘要 + 图状态（含过期检查）+ 未解答疑问 |
 | `light-scan` | Lightweight scan of changed files (no LLM) |
 | `load` | Load and summarize the invocation graph |

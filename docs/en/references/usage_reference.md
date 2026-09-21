@@ -876,9 +876,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (261 commands)
+## Complete CLI Command Reference (266 commands)
 
-All 261 CLI subparsers across `code2database_builder.py` (253) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary.
+All 266 CLI subparsers across `code2database_builder.py` (258) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary. 13 short aliases (`describe`, `context`, `trace`, `concurrency`, `save`, `recall`, `brief`, `flow`, `find`, `health`, `daemon`, `export`, `init`) map to the full commands listed below and count toward the builder total.
 
 | Command | Description |
 |---------|-------------|
@@ -1038,8 +1038,11 @@ All 261 CLI subparsers across `code2database_builder.py` (253) and `code2databas
 | `kb-forget` | Immediately delete a kb_paragraph (no decay) |
 | `kb-global-add` | Add an entry to the cross-project global KB |
 | `kb-global-import` | Import a shared global KB JSON file |
+| `kb-global-import-memory` | Import similar Q&A from global KB into project memory (with merge) |
 | `kb-global-search` | Search the cross-project global KB |
+| `kb-global-search-memory` | Search the global KB for cross-project memory Q&A |
 | `kb-global-share` | Export global KB to a portable JSON file |
+| `kb-global-share-memory` | Export the highest-value project memories to the cross-project global KB |
 | `kb-known-unknowns` | List queries that returned no matches (Stage 9) |
 | `kb-migrate` | Migrate kb_paragraphs rows into kb_items (fact-level) |
 | `kb-query` | Unified FTS5+BM25 query across memory and knowledge |
@@ -1054,6 +1057,7 @@ All 261 CLI subparsers across `code2database_builder.py` (253) and `code2databas
 | `knowledge-brief` | Render the project brief (session-start load) |
 | `brief-validate` | Validate the brief (schema, size budget, graph drift) |
 | `brief-suggest` | Suggest brief additions from valuable memories (no writes) |
+| `brief-migrate-legacy` | Migrate legacy knowledge/*.md into the brief |
 | `session-init` | One-shot session context: brief + memory digest + graph (+staleness check) + known-unknowns |
 | `light-scan` | Lightweight scan of changed files (no LLM) |
 | `load` | Load and summarize the invocation graph |

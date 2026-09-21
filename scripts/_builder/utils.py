@@ -1060,7 +1060,24 @@ def _make_call_graph(G: nx.DiGraph, skip_file_nodes: bool = False) -> nx.DiGraph
 
     Returns:
         A new DiGraph containing only call edges (and their nodes).
+
+    Raises:
+        RuntimeError: G is a LazySQLiteGraph (>=50K nodes). Copying every
+            node and edge into a fresh in-memory DiGraph is exactly the
+            eager load the lazy view exists to avoid — on multi-million-
+            node graphs the process gets OOM-killed (or, inside the MCP
+            server, hits the per-tool timeout mid-copy). Raising keeps
+            the failure explainable in every consumer context (CLI
+            traceback, MCP error dict); callers that support lazy views
+            pre-gate this call and traverse G directly.
     """
+    if type(G).__name__ == "LazySQLiteGraph":
+        raise RuntimeError(
+            "call-graph copy is not supported on SQLite-backed large "
+            f"graphs ({G.number_of_nodes()} nodes via LazySQLiteGraph): "
+            "it duplicates every node and edge in memory. Re-run against "
+            "an in-memory graph, or use a command that traverses the "
+            "lazy view directly.")
     call_G = nx.DiGraph()
     for nid, ndata in G.nodes(data=True):
         if skip_file_nodes and (ndata.get("node_type") == "file"

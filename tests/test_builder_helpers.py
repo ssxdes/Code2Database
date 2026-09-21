@@ -487,6 +487,62 @@ class TestDomainSubdir(unittest.TestCase):
                         f"rel_path must stay relative, got {rel_path!r}")
 
 
+class TestHostileDomainComponents(unittest.TestCase):
+    """Domain pieces can arrive from node supplements, not just source
+    directory names — they must never escape the output tree or exceed
+    NAME_MAX when they become file/directory names."""
+
+    def test_separator_and_absolute_prefixes_neutralized(self):
+        from _builder.utils import _safe_domain_component
+        for hostile in ("/etc", "..", "../..", "a/b", "a\\b", "  ", "."):
+            safe = _safe_domain_component(hostile)
+            self.assertNotIn("/", safe, hostile)
+            self.assertNotIn("\\", safe, hostile)
+            self.assertTrue(safe)  # never empty
+            self.assertNotEqual(safe, "..")
+
+    def test_long_component_truncated_with_distinct_hash(self):
+        from _builder.utils import _safe_domain_component
+        long_a = "x" * 400
+        long_b = "y" * 400
+        sa, sb = _safe_domain_component(long_a), _safe_domain_component(long_b)
+        self.assertLessEqual(len(sa.encode("utf-8")) + len(".json"), 255)
+        self.assertLessEqual(len(sb.encode("utf-8")) + len(".json"), 255)
+        self.assertNotEqual(sa, sb)
+        self.assertEqual(sa, _safe_domain_component(long_a))  # deterministic
+
+    def test_normal_and_unicode_components_preserved(self):
+        from _builder.utils import _safe_domain_component
+        self.assertEqual(_safe_domain_component("drivers_net"), "drivers_net")
+        self.assertEqual(_safe_domain_component("net-eth"), "net-eth")
+        self.assertEqual(_safe_domain_component("驱动"), "驱动")
+
+    def test_control_characters_replaced(self):
+        from _builder.utils import _safe_domain_component
+        safe = _safe_domain_component("a\tb\nc")
+        self.assertNotIn("\t", safe)
+        self.assertNotIn("\n", safe)
+
+    def test_subdir_path_stays_within_output_tree(self):
+        import os
+        from _builder.graph.graph_build import _domain_subdir
+        for hostile in ("/abs", "a/b.c", "..x", "sp ace"):
+            subdir = _domain_subdir(hostile, {hostile: 5}, max_per_dir=50)
+            joined = os.path.join("domains", subdir, "f.json")
+            self.assertTrue(joined.startswith("domains/"),
+                            f"escaped output tree: {hostile!r} -> {joined!r}")
+            self.assertNotIn("..", joined.split(os.sep))
+
+    def test_overlong_domain_gets_bounded_filename(self):
+        # The domain-split filename embeds the sanitized domain; a
+        # hostile 300-char domain must not produce a >255-byte filename.
+        from _builder.utils import _safe_domain_component
+        domain = ".".join(["d" * 150, "e" * 150])
+        filename = "code2database_domain_%s.json" % (
+            _safe_domain_component(domain.replace(".", "_")))
+        self.assertLessEqual(len(filename.encode("utf-8")), 255)
+
+
 class TestBareNameCalleeDomainAssignment(unittest.TestCase):
     """Verify that unresolved bare-name callees are assigned to the
     "external" domain, not the caller's project domain.

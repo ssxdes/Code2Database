@@ -1,5 +1,6 @@
 """callgraph builder module: utils."""
 
+import hashlib
 import os
 import json
 import sys
@@ -14,6 +15,30 @@ from typing import Optional
 # Cache source_root per graph_dir to avoid re-reading master.json on every
 # describe-node / get-source / get-source query. Invalidated only on graph reload.
 _SOURCE_ROOT_CACHE: dict = {}
+
+# Domains derive from source directory paths but can also be set through
+# node supplements (update-node, community merges): a component carrying
+# path separators, an absolute prefix, control characters or hundreds of
+# bytes would escape the output tree or break NAME_MAX (255). Unicode
+# word characters survive; everything else maps to '_'; over-budget
+# components truncate with a short hash so distinct domains stay
+# distinct.
+_DOMAIN_COMPONENT_SAFE_RE = re.compile(r'[^\w\-]', re.UNICODE)
+_DOMAIN_COMPONENT_MAX_BYTES = 120
+
+
+def _safe_domain_component(component: str) -> str:
+    """Filesystem-safe single path component for a domain piece."""
+    safe = _DOMAIN_COMPONENT_SAFE_RE.sub('_', (component or "").strip())
+    if not safe or safe.strip('_') == "":
+        safe = "root"
+    if len(safe.encode('utf-8')) > _DOMAIN_COMPONENT_MAX_BYTES:
+        digest = hashlib.md5(
+            component.encode('utf-8', 'replace')).hexdigest()[:8]
+        head = safe.encode('utf-8')[:_DOMAIN_COMPONENT_MAX_BYTES - 9]\
+            .decode('utf-8', 'ignore')
+        safe = head + '_' + digest
+    return safe
 
 
 def resolve_source_root(graph_dir: str) -> str:

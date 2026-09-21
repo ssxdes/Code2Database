@@ -8,6 +8,8 @@ import re
 import time
 from pathlib import Path
 from collections import defaultdict, Counter
+
+from _builder.utils import _safe_domain_component
 import networkx as nx
 from _builder.graph.streaming_graph import StreamingGraph
 from _builder.utils import _resolve_invoked_id
@@ -31,11 +33,15 @@ def _domain_subdir(domain: str, domain_count: dict, max_per_dir: int = 50) -> st
     """
     if not domain:
         return "root/"
-    parts = domain.split(".")
+    # Each path component is sanitized: domain pieces arrive from source
+    # directory names but can also be supplemented (update-node, community
+    # merges) — a piece with separators or an absolute prefix must not
+    # escape the output tree.
+    parts = [_safe_domain_component(p) for p in domain.split(".")]
     for depth in range(1, len(parts) + 1):
         prefix = "/".join(parts[:depth]) + "/"
         matching = sum(1 for d in domain_count
-                       if ".".join(d.split(".")[:depth]) == ".".join(parts[:depth]))
+                       if ".".join(d.split(".")[:depth]) == ".".join(domain.split(".")[:depth]))
         if matching <= max_per_dir or depth == len(parts):
             return prefix
     return "/".join(parts) + "/"
@@ -416,7 +422,8 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
         nodes.sort(key=lambda x: x[1].get("name", ""))
         edges.sort(key=lambda x: (x.get("call_order") or 999, x.get("source", "")))
 
-        sanitized = domain.replace(".", "_") if domain else "root"
+        sanitized = _safe_domain_component(domain.replace(".", "_")) \
+            if domain else "root"
         filename = f"code2database_domain_{sanitized}.json"
 
         # Compact format: split into summary rows + details + empty nodes

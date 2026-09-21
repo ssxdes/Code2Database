@@ -17,6 +17,8 @@ import sys
 import sqlite3
 from collections import defaultdict
 from contextlib import contextmanager
+
+from _builder.utils import _safe_domain_component
 from pathlib import Path
 import logging
 
@@ -780,7 +782,7 @@ def _build_domain_readmes_from_sqlite(db_path, outdir):
             nid, name, domain, labels_json, sig, src = row
             labels = json.loads(labels_json) if labels_json else []
             parts = domain.split(".") if domain else ["root"]
-            top_dir = parts[0] if parts else "root"
+            top_dir = _safe_domain_component(parts[0]) if parts else "root"
             domain_dir_nodes[top_dir].append({
                 "id": nid, "name": name, "domain": domain,
                 "labels": labels, "signature": sig or "", "source_file": src or ""

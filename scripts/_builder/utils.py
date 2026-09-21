@@ -41,6 +41,27 @@ def _safe_domain_component(component: str) -> str:
     return safe
 
 
+def _format_step_exit(rc: int) -> str:
+    """Human-readable exit descriptor for subprocess-step logs.
+
+    Negative return codes mean the step died from a signal: -9 is the
+    Linux OOM killer, which otherwise shows up as an unexplained failure
+    with no stderr output — the user has to dig through dmesg to find
+    out. Normal exits render unchanged ("exit 2").
+    """
+    if rc >= 0:
+        return "exit %d" % rc
+    try:
+        import signal
+        sig = signal.Signals(-rc)
+    except ValueError:
+        return "killed by signal %d" % (-rc)
+    desc = "killed by %s" % sig.name
+    if -rc == int(signal.SIGKILL):
+        desc += " (likely the OOM killer — check dmesg / journalctl)"
+    return desc
+
+
 def resolve_source_root(graph_dir: str) -> str:
     """Derive the project source root for a graph dir.
 

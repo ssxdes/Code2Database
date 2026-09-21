@@ -15,6 +15,7 @@ import shutil
 from _builder.graph.graph_build import _load_full_graph, build_graph, split_by_domain
 from _builder.export.index_pack import _build_indexes, _mark_endpoint_nodes
 from _builder.memory.memory_cmd import _auto_validate_memory
+from _builder.utils import _format_step_exit
 import logging
 
 
@@ -581,7 +582,9 @@ def cmd_update(args):
         stdin=subprocess.DEVNULL
     )
     if detect_result.returncode != 0:
-        print(f"Error detecting changes: {detect_result.stderr}", file=sys.stderr)
+        print(f"Error detecting changes "
+              f"({_format_step_exit(detect_result.returncode)}): "
+              f"{detect_result.stderr}", file=sys.stderr)
         sys.exit(1)
 
     try:
@@ -742,7 +745,9 @@ def cmd_update(args):
                           "smaller change set", file=sys.stderr)
                     sys.exit(1)
                 if scan_result.returncode != 0:
-                    print(f"Error scanning changed files: {scan_result.stderr}", file=sys.stderr)
+                    print(f"Error scanning changed files "
+                          f"({_format_step_exit(scan_result.returncode)}): "
+                          f"{scan_result.stderr}", file=sys.stderr)
                     sys.exit(1)
                 print(scan_result.stderr.strip() if scan_result.stderr else "", file=sys.stderr)
             finally:

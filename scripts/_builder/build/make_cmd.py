@@ -17,31 +17,11 @@ Two stages, strictly ordered:
 
 import json
 import os
-import signal
 import subprocess
 import sys
 
 from _scanner.utils import LANG_EXTENSIONS
-
-
-def _format_step_exit(rc: int) -> str:
-    """Human-readable exit descriptor for step logs.
-
-    Negative return codes mean the step died from a signal: -9 is the
-    Linux OOM killer, which otherwise shows up as an unexplained failure
-    with no stderr output — the user has to dig through dmesg to find
-    out. Normal exits render unchanged ("exit 2").
-    """
-    if rc >= 0:
-        return "exit %d" % rc
-    try:
-        sig = signal.Signals(-rc)
-    except ValueError:
-        return "killed by signal %d" % (-rc)
-    desc = "killed by %s" % sig.name
-    if -rc == int(signal.SIGKILL):
-        desc += " (likely the OOM killer — check dmesg / journalctl)"
-    return desc
+from _builder.utils import _format_step_exit
 
 _SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _SCANNER = os.path.join(_SCRIPTS_DIR, "code2database_scanner.py")

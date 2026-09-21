@@ -8,7 +8,6 @@ from pathlib import Path
 from collections import defaultdict
 import networkx as nx
 from _builder.graph.graph_build import _load_full_graph
-from _builder.utils import _ensure_mutable_graph
 import logging
 
 # Filesystem- and URL-safe name for a domain: domain names derive from
@@ -173,24 +172,45 @@ def _build_mermaid_graph(G: nx.DiGraph) -> str:
 
 
 
-def _build_domain_subgraph(G, domain_node_list):
-    """Build a DiGraph subgraph for a domain, including cross-domain call edges."""
-    sub_G = nx.DiGraph()
-    node_ids = set()
-    for nid, ndata in domain_node_list:
-        sub_G.add_node(nid, **ndata)
-        node_ids.add(nid)
+def _domain_pages(G, domain_nodes):
+    """Build per-domain DiGraphs in ONE pass over the edge list.
+
+    A domain page contains the domain's own nodes plus every call edge
+    with at least one endpoint in the domain (cross-domain endpoints
+    join as context nodes) — the same page composition
+    _build_domain_subgraph produced, but without re-scanning every edge
+    once per domain. On a 2.3M-node, 5K-domain graph the per-domain
+    rescan was ~10 billion edge visits; this is one pass plus per-page
+    assembly.
+    """
+    domain_of = {}
+    for dom, nodes in domain_nodes.items():
+        for nid, _ in nodes:
+            domain_of[nid] = dom
+    edge_buckets = defaultdict(list)
     for u, v, edata in G.edges(data=True):
-        # Skip non-call edges (CONTAINS/IMPORTS) in visualization
         if edata.get("relation") in ("CONTAINS", "IMPORTS"):
             continue
-        if u in node_ids or v in node_ids:
+        du = domain_of.get(u)
+        dv = domain_of.get(v)
+        if du is not None:
+            edge_buckets[du].append((u, v, edata))
+        if dv is not None and dv != du:
+            edge_buckets[dv].append((u, v, edata))
+    pages = []
+    for dom in sorted(domain_nodes.keys()):
+        nodes = domain_nodes[dom]
+        sub_G = nx.DiGraph()
+        for nid, ndata in nodes:
+            sub_G.add_node(nid, **ndata)
+        for u, v, edata in edge_buckets.get(dom, ()):
             if u not in sub_G:
                 sub_G.add_node(u, **G.nodes[u])
             if v not in sub_G:
                 sub_G.add_node(v, **G.nodes[v])
             sub_G.add_edge(u, v, **edata)
-    return sub_G
+        pages.append((dom, sub_G))
+    return pages
 
 
 def _export_mermaid(G, output, max_nodes, domain_nodes, total_nodes):
@@ -203,10 +223,7 @@ def _export_mermaid(G, output, max_nodes, domain_nodes, total_nodes):
         os.makedirs(html_dir, exist_ok=True)
 
         index_links = []
-        for domain in sorted(domain_nodes.keys()):
-            nodes = domain_nodes[domain]
-            sub_G = _build_domain_subgraph(G, nodes)
-
+        for domain, sub_G in _domain_pages(G, domain_nodes):
             safe_name = _safe_domain_filename(domain)
             domain_html = os.path.join(html_dir, f"domain_{safe_name}_mermaid.html")
             _write_mermaid_html(sub_G, domain_html, f"Call Graph — {domain}")
@@ -228,10 +245,7 @@ def _export_vis_network(G, output, max_nodes, domain_nodes, total_nodes):
         os.makedirs(html_dir, exist_ok=True)
 
         index_links = []
-        for domain in sorted(domain_nodes.keys()):
-            nodes = domain_nodes[domain]
-            sub_G = _build_domain_subgraph(G, nodes)
-
+        for domain, sub_G in _domain_pages(G, domain_nodes):
             safe_name = _safe_domain_filename(domain)
             domain_html = os.path.join(html_dir, f"domain_{safe_name}.html")
             _write_html_file(sub_G, domain_html, f"Call Graph — {domain}", full_graph=False)
@@ -736,25 +750,32 @@ def cmd_export_html(args):
     G = _load_full_graph(graph_dir)
 
     # Load community assignments if available (for collapse/expand feature)
+    comm_map = {}
     comm_path = os.path.join(graph_dir, ".code2database_communities.json")
     if os.path.exists(comm_path):
         try:
             comm_data = json.loads(Path(comm_path).read_text(encoding="utf-8"))
-            # Guard against LazySQLiteGraph — G.nodes[nid][...] = ... is a
-            # per-node write that LazySQLiteGraph rejects.  Without this,
-            # the exception is caught silently below and community_id
-            # is never set, producing a graph without community labels.
-            _ensure_mutable_graph(G, "export-html")
             for comm in comm_data.get("communities", []):
                 cid = comm.get("id", "")
                 for nid in comm.get("node_ids", []):
-                    if nid in G:
-                        G.nodes[nid]["community_id"] = cid
+                    comm_map[nid] = cid
         except (json.JSONDecodeError, OSError):
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
+    lazy_graph = type(G).__name__ == "LazySQLiteGraph"
+    if comm_map and not lazy_graph:
+        # In-memory graph: label nodes directly so the full-graph export
+        # path (used under max_nodes) sees community_id in its own
+        # iteration. The lazy view rejects per-node writes — there the
+        # labels merge into the per-domain copies below instead.
+        for nid, cid in comm_map.items():
+            if nid in G:
+                G.nodes[nid]["community_id"] = cid
     domain_nodes = defaultdict(list)
     for nid, ndata in G.nodes(data=True):
+        if nid in comm_map:
+            ndata = dict(ndata)
+            ndata["community_id"] = comm_map[nid]
         domain_nodes[ndata.get("domain", "root")].append((nid, ndata))
 
     total_nodes = G.number_of_nodes()

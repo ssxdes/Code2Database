@@ -24,15 +24,16 @@ set -euo pipefail
 #   bash install.sh --target opencode        # Install for OpenCode
 #   bash install.sh --target gemini          # Install for Gemini CLI
 #   bash install.sh --target all             # Install for all supported tools
-#   bash install.sh --uninstall              # Remove installation (3 sub-skills + agent configs)
+#   bash install.sh --uninstall              # Remove installation (4 sub-skills + agent configs)
 #
-# Installs 3 sub-skills under <install-parent>/:
+# Installs 4 sub-skills under <install-parent>/:
 #   Code2Database            (core: build + browse — always loaded)
 #   Code2Database-analysis   (deep semantic analysis — on-demand)
 #   Code2Database-ops        (graph editing + ops — on-demand)
-# The core sub-skill owns scripts/; the other two symlink to it.
+#   Code2Database-kb         (standalone knowledge/memory base — on-demand)
+# The core sub-skill owns scripts/; the other three symlink to it.
 # Default install parent: ~/.claude/skills/ (for Claude Code discovery).
-# Users may specify any parent (e.g. ~/.cac/skills/) — all three sub-skills
+# Users may specify any parent (e.g. ~/.cac/skills/) — all four sub-skills
 # land under that parent, and discovery symlinks are created in
 # ~/.claude/skills/ so Claude Code can still find them.
 #
@@ -85,10 +86,11 @@ while [[ $# -gt 0 ]]; do
             cat <<'HELP'
 Usage: install.sh [OPTIONS]
 
-Installs the Code2Database skill as 3 sub-skills under <install-parent>/:
+Installs the Code2Database skill as 4 sub-skills under <install-parent>/:
   Code2Database            (core: build + browse — always loaded; owns scripts/)
   Code2Database-analysis   (deep semantic analysis — on-demand; symlinks scripts/)
   Code2Database-ops        (graph editing + ops — on-demand; symlinks scripts/)
+  Code2Database-kb         (standalone knowledge/memory base — on-demand; symlinks scripts/)
 
 Default install parent: ~/.claude/skills/ (so Claude Code can discover the
 skill). You may pass any parent via --dir; discovery symlinks are still
@@ -97,8 +99,8 @@ created in ~/.claude/skills/ for Claude Code.
 Options:
   --dir PATH     Install directory or parent (default: interactive prompt).
                  If PATH does not end in Code2Database, the skill is installed
-                 as <PATH>/Code2Database, with sub-skills as
-                 <PATH>/Code2Database-{analysis,ops}.
+                  as <PATH>/Code2Database, with sub-skills as
+                  <PATH>/Code2Database-{analysis,ops,kb}.
                  Examples:
                    --dir ~/.cac/skills                      → ~/.cac/skills/Code2Database
                    --dir ~/.claude/skills/Code2Database     (explicit, no auto-append)
@@ -121,7 +123,7 @@ Options:
                  (e.g. removed reference docs, old scripts) are cleaned up
                  automatically because the entire sub-skill directory is
                  deleted before the new content is copied in.
-  --uninstall    Remove installation (3 sub-skills + agent configs).
+  --uninstall    Remove installation (4 sub-skills + agent configs).
                  Tries known locations (~/.claude/skills/Code2Database,
                  ~/.local/share/Code2Database, ~/.cursor/extensions/Code2Database)
                  unless --dir is given.
@@ -190,9 +192,10 @@ if [ "$ACTION" = "uninstall" ]; then
     echo "Uninstalling from $INSTALL_DIR ..."
     rm -rf "$INSTALL_DIR"
 
-    # Also remove the two sub-skills (Code2Database-analysis, Code2Database-ops)
-    # from the same parent directory as the core skill.
-    for sub in analysis ops; do
+    # Also remove the non-core sub-skills (Code2Database-analysis,
+    # Code2Database-ops, Code2Database-kb) from the same parent
+    # directory as the core skill.
+    for sub in analysis ops kb; do
         SUB_DIR="$UNINSTALL_PARENT/Code2Database-$sub"
         if [ -d "$SUB_DIR" ] || [ -L "$SUB_DIR" ]; then
             echo "  Removing sub-skill: $SUB_DIR"
@@ -202,7 +205,7 @@ if [ "$ACTION" = "uninstall" ]; then
 
     # Clean up agent-specific links/configs in ~/.claude/skills/ (in case
     # the user installed elsewhere and we created discovery symlinks there).
-    for link in Code2Database Code2Database-analysis Code2Database-ops; do
+    for link in Code2Database Code2Database-analysis Code2Database-ops Code2Database-kb; do
         [ -L "$HOME/.claude/skills/$link" ] && rm -f "$HOME/.claude/skills/$link"
     done
     [ -f "$HOME/.codex/instructions.md" ] && sed -i '/Code2Database/,+2d' "$HOME/.codex/instructions.md" 2>/dev/null
@@ -215,7 +218,7 @@ if [ "$ACTION" = "uninstall" ]; then
         jq 'del(.mcpServers["Code2Database"])' "$HOME/.claude/settings.json" > "$TMP" && mv "$TMP" "$HOME/.claude/settings.json"
     fi
 
-    ok "Uninstalled (3 sub-skills + agent configs)."
+    ok "Uninstalled (4 sub-skills + agent configs)."
     exit 0
 fi
 
@@ -255,7 +258,7 @@ if [ -z "$INSTALL_DIR" ]; then
     echo ""
     echo "  Tip: enter a parent directory (e.g. ~/.cac/skills/) and the skill"
     echo "  will be installed as <parent>/Code2Database, with sub-skills as"
-    echo "  <parent>/Code2Database-analysis and <parent>/Code2Database-ops."
+    echo "  <parent>/Code2Database-{analysis,ops,kb}."
     echo ""
     read -rp "Install directory: " install_input
     if [ -z "$install_input" ]; then
@@ -277,15 +280,17 @@ if [ "$_base" != "Code2Database" ]; then
     INSTALL_DIR="${INSTALL_DIR%/}/Code2Database"
 fi
 
-# Parent directory holds all three sub-skills (core, analysis, ops).
+# Parent directory holds all four sub-skills (core, analysis, ops, kb).
 INSTALL_PARENT="$(dirname "$INSTALL_DIR")"
 ANALYSIS_DIR="$INSTALL_PARENT/Code2Database-analysis"
 OPS_DIR="$INSTALL_PARENT/Code2Database-ops"
+KB_DIR="$INSTALL_PARENT/Code2Database-kb"
 ok "Install directory: $INSTALL_DIR"
 info "Sub-skills will be installed under: $INSTALL_PARENT"
 info "  core:     $INSTALL_DIR"
 info "  analysis: $ANALYSIS_DIR"
 info "  ops:      $OPS_DIR"
+info "  kb:       $KB_DIR"
 
 # --- Overwrite check ---
 # If sub-skill directories already exist with content from a previous
@@ -305,6 +310,7 @@ _check_existing() {
 _check_existing "$INSTALL_DIR"   "core"
 _check_existing "$ANALYSIS_DIR"  "analysis"
 _check_existing "$OPS_DIR"       "ops"
+_check_existing "$KB_DIR"        "kb"
 
 if [ "${#_existing_dirs[@]}" -gt 0 ]; then
     echo ""
@@ -343,7 +349,7 @@ ok "Python $PY_VER"
 
 # --- Copy only essential files ---
 echo ""
-echo "${BOLD}Installing Code2Database (slim mode, 3 sub-skills)...${RESET}"
+echo "${BOLD}Installing Code2Database (slim mode, 4 sub-skills)...${RESET}"
 
 # Create install directory
 mkdir -p "$INSTALL_DIR"
@@ -356,9 +362,9 @@ copy_to() {
 }
 
 # =============================================================================
-# Sub-skill 1 of 3: Code2Database (CORE — always loaded)
+# Sub-skill 1 of 4: Code2Database (CORE — always loaded)
 # Gets scripts/ (the shared CLI), skill.json, SKILL.md, references/, AGENTS.md,
-# CLAUDE.md, config/runtime.json. The other two sub-skills reference this
+# CLAUDE.md, config/runtime.json. The other three sub-skills reference this
 # install dir for scripts/ via absolute path.
 # =============================================================================
 
@@ -449,7 +455,7 @@ if [ -f "$SCRIPT_DIR/config/runtime.json" ]; then
 fi
 
 # =============================================================================
-# Sub-skill 2 of 3: Code2Database-analysis (DEEP ANALYSIS — on-demand)
+# Sub-skill 2 of 4: Code2Database-analysis (DEEP ANALYSIS — on-demand)
 # Gets SKILL_analysis.md (as SKILL.md), skill_analysis.json (as skill.json),
 # and references/analysis_commands.md. No scripts/ — uses core's scripts/.
 # =============================================================================
@@ -487,7 +493,7 @@ if [ -d "$INSTALL_DIR/scripts" ] && [ ! -e "$ANALYSIS_DIR/scripts" ]; then
 fi
 
 # =============================================================================
-# Sub-skill 3 of 3: Code2Database-ops (OPERATIONS — on-demand)
+# Sub-skill 3 of 4: Code2Database-ops (OPERATIONS — on-demand)
 # Gets SKILL_ops.md (as SKILL.md), skill_ops.json (as skill.json),
 # and references/ops_commands.md. No scripts/ — uses core's scripts/.
 # =============================================================================
@@ -522,6 +528,37 @@ ok "References/ops_commands.md [ops]"
 if [ -d "$INSTALL_DIR/scripts" ] && [ ! -e "$OPS_DIR/scripts" ]; then
     ln -sf "$INSTALL_DIR/scripts" "$OPS_DIR/scripts"
     ok "scripts/ symlinked [ops → core]"
+fi
+
+# =============================================================================
+# Sub-skill 4 of 4: Code2Database-kb (KNOWLEDGE BASE — on-demand)
+# Gets SKILL_kb.md (as SKILL.md) and skill_kb.json (as skill.json).
+# SKILL_kb.md is self-contained (no references/). No scripts/ — uses
+# core's scripts/. Works with or without a built graph (kb-init
+# provisions a standalone store).
+# =============================================================================
+
+# KB_DIR is computed early (above) so the overwrite check can clean it.
+
+# Install SKILL_kb.md as SKILL.md in the kb sub-skill dir
+mkdir -p "$KB_DIR"
+if [ -f "$SCRIPT_DIR/docs/$LANG/SKILL_kb.md" ]; then
+    copy_to "$SCRIPT_DIR/docs/$LANG/SKILL_kb.md" "$KB_DIR/SKILL.md"
+    ok "SKILL.md ($LANG) [kb]"
+else
+    warn "SKILL_kb.md for $LANG not found — kb sub-skill will be incomplete"
+fi
+
+# Install skill_kb.json as skill.json in the kb sub-skill dir
+if [ -f "$SCRIPT_DIR/skill_kb.json" ]; then
+    copy_to "$SCRIPT_DIR/skill_kb.json" "$KB_DIR/skill.json"
+    ok "skill.json [kb]"
+fi
+
+# Symlink scripts/ from core skill so kb sub-skill can run commands
+if [ -d "$INSTALL_DIR/scripts" ] && [ ! -e "$KB_DIR/scripts" ]; then
+    ln -sf "$INSTALL_DIR/scripts" "$KB_DIR/scripts"
+    ok "scripts/ symlinked [kb → core]"
 fi
 
 # =============================================================================
@@ -596,8 +633,8 @@ if [ "$TARGET" = "claudecode" ] || [ "$TARGET" = "all" ]; then
     mkdir -p "$CLAUDE_SKILLS_DIR"
 
     # Create symlink to install directory so Claude Code can discover the
-    # skill when installed outside ~/.claude/skills/. Also link the two
-    # sub-skills (analysis, ops) so all three are discoverable.
+    # skill when installed outside ~/.claude/skills/. Also link the
+    # non-core sub-skills (analysis, ops, kb) so all four are discoverable.
     _link_sub() {
         local src="$1" name="$2"
         local link="$CLAUDE_SKILLS_DIR/$name"
@@ -616,6 +653,7 @@ if [ "$TARGET" = "claudecode" ] || [ "$TARGET" = "all" ]; then
     _link_sub "$INSTALL_DIR" "Code2Database"
     _link_sub "$ANALYSIS_DIR" "Code2Database-analysis"
     _link_sub "$OPS_DIR" "Code2Database-ops"
+    _link_sub "$KB_DIR" "Code2Database-kb"
 
     # Sync Claude Code settings for MCP server
     CLAUDE_SETTINGS="$HOME/.claude/settings.json"
@@ -791,7 +829,7 @@ fi
 
 # --- Verification ---
 echo ""
-echo "${BOLD}Verifying installation (3 sub-skills)...${RESET}"
+echo "${BOLD}Verifying installation (4 sub-skills)...${RESET}"
 
 if python3 "$INSTALL_DIR/scripts/code2database_builder.py" --help &>/dev/null; then
     ok "code2database_builder.py is functional"
@@ -837,6 +875,18 @@ else
     warn "Ops references/ops_commands.md missing"
 fi
 
+# Kb sub-skill
+if [ -f "$KB_DIR/SKILL.md" ]; then
+    ok "Kb SKILL.md present at $KB_DIR/SKILL.md"
+else
+    warn "Kb SKILL.md missing"
+fi
+if [ -f "$KB_DIR/skill.json" ]; then
+    ok "Kb skill.json present"
+else
+    warn "Kb skill.json missing"
+fi
+
 # Sub-skill scripts/ symlinks
 if [ -L "$ANALYSIS_DIR/scripts" ]; then
     ok "Analysis scripts/ symlinked to core"
@@ -848,25 +898,32 @@ if [ -L "$OPS_DIR/scripts" ]; then
 else
     warn "Ops scripts/ symlink missing"
 fi
+if [ -L "$KB_DIR/scripts" ]; then
+    ok "Kb scripts/ symlinked to core"
+else
+    warn "Kb scripts/ symlink missing"
+fi
 
 # --- Summary ---
 echo ""
-ok "Installation complete! (3 sub-skills)"
+ok "Installation complete! (4 sub-skills)"
 echo ""
 info "Core install directory:    $INSTALL_DIR"
 info "Analysis sub-skill:        $ANALYSIS_DIR"
 info "Ops sub-skill:             $OPS_DIR"
+info "Kb sub-skill:              $KB_DIR"
 info "Language: $LANG"
 echo ""
 info "Sub-skills:"
 info "  /Code2Database            — core: build + browse (always loaded)"
 info "  /Code2Database-analysis   — deep semantic analysis (on-demand)"
 info "  /Code2Database-ops        — graph editing + ops (on-demand)"
+info "  /Code2Database-kb         — standalone knowledge/memory base (on-demand)"
 echo ""
 if [ "$TARGET" = "claudecode" ] || [ "$TARGET" = "all" ]; then
-    info "Claude Code: Skills at ~/.claude/skills/Code2Database{,-analysis,-ops}"
+    info "Claude Code: Skills at ~/.claude/skills/Code2Database{,-analysis,-ops,-kb}"
     info "Restart Claude Code and use /Code2Database, /Code2Database-analysis,"
-    info "  or /Code2Database-ops to activate each sub-skill"
+    info "  /Code2Database-ops, or /Code2Database-kb to activate each sub-skill"
 fi
 if [ "$TARGET" = "cursor" ] || [ "$TARGET" = "all" ]; then
     info "Cursor: Rule file at ~/.cursor/rules/Code2Database.mdc"

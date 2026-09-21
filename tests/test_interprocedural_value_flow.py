@@ -250,5 +250,67 @@ class TestAttachDataFlowNonDestructive(unittest.TestCase):
         self.assertNotIn("caller", ed["data_flow"][0])
 
 
+class TestBuildOnLazySQLiteGraph(unittest.TestCase):
+    """--build on a SQLite-backed large graph must succeed.
+
+    The edges are persisted to .code2database_data_flow.json before any
+    in-memory attach is attempted, so the artifact is complete. The old
+    path still called attach_data_flow_to_graph (whose guard exits 2),
+    which reported the make step as failed AFTER it had fully written
+    its output.
+    """
+
+    def _run_build_on_lazy_graph(self):
+        import argparse
+        import json as _json
+        import tempfile
+        from _builder.analysis import value_flow as vf
+
+        class LazySQLiteGraph:
+            pass
+
+        original_loader = vf._load_full_graph_local
+        original_builder = vf.build_data_flow_edges
+        vf._load_full_graph_local = lambda _dir: LazySQLiteGraph()
+        vf.build_data_flow_edges = lambda _G: [
+            {"caller": "a", "callee": "b", "relation": "DATA_FLOW"}]
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                args = argparse.Namespace(graph=tmp, build=True)
+                vf.cmd_value_flow(args)  # must NOT raise SystemExit
+                out = os.path.join(
+                    tmp, ".code2database_data_flow.json")
+                with open(out, encoding="utf-8") as f:
+                    payload = _json.load(f)
+                return payload
+        finally:
+            vf._load_full_graph_local = original_loader
+            vf.build_data_flow_edges = original_builder
+
+    def test_build_persists_artifact_and_exits_zero(self):
+        payload = self._run_build_on_lazy_graph()
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["edges"][0]["caller"], "a")
+
+    def test_attach_guard_still_protects_query_paths(self):
+        """Direct attach attempts on a lazy view must still exit 2 —
+        only the --build branch treats attach as best-effort."""
+        import contextlib
+        import io
+        from _builder.analysis.value_flow import attach_data_flow_to_graph
+
+        class LazySQLiteGraph:
+            _db_path = "/tmp/fake.db"
+
+            def number_of_nodes(self):
+                return 1
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit) as cm:
+                attach_data_flow_to_graph(LazySQLiteGraph(), [])
+        self.assertEqual(cm.exception.code, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

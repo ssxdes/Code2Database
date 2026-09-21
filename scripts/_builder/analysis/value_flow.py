@@ -724,8 +724,17 @@ def cmd_value_flow(args):
                       ensure_ascii=False, indent=2)
         print(f"Built {len(edges)} DATA_FLOW/RETURN_FLOW edges → {out_path}",
               file=sys.stderr)
-        # Attach to in-memory graph (best-effort; skipped on LazySQLiteGraph)
-        attach_data_flow_to_graph(G, edges)
+        # Attach to in-memory graph (best-effort; skipped on LazySQLiteGraph).
+        # The persisted artifact is the deliverable on large graphs — a hard
+        # exit here (the guard inside attach) would make the make step
+        # report failure for a step that actually completed and wrote its
+        # artifact.
+        if type(G).__name__ == "LazySQLiteGraph":
+            print(f"[value-flow] SQLite-backed large graph: edges persisted "
+                  f"to {out_path}; in-memory attach skipped",
+                  file=sys.stderr)
+        else:
+            attach_data_flow_to_graph(G, edges)
         return
 
     # For reverse/taint/interprocedural traces, ensure DATA_FLOW edges are

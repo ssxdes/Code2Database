@@ -672,7 +672,7 @@ Used for `#ifdef` macro resolution and conditional compilation path feasibility.
 
 | Component | Purpose |
 |-----------|---------|
-| **pytest** | Test runner (160 test files, covering scanner/builder/cgdb/daemon/MCP/concurrency/etc.) |
+| **pytest** | Test runner (175 test files, covering scanner/builder/cgdb/daemon/MCP/concurrency/etc.) |
 | **evals/evals_en.json** + **evals_zh.json** | End-to-end scenario evals (multi-language scan + query) |
 | **BUG benchmark** | `bug_benchmark.py`: GraphInvestigator vs GrepInvestigator recall/precision/token efficiency |
 
@@ -861,6 +861,6 @@ Code2Database's current capabilities, organized by category:
 - Python skill with 4 sub-skills (`/Code2Database`, `/Code2Database-analysis`, `/Code2Database-ops`, `/Code2Database-kb`)
 - One-click installer (`install.sh`) for Claude Code / Cursor / Codex / OpenCode / Gemini
 - Per-language install (`C2D_LANGUAGES` env var or `setup.sh --languages`)
-- 160 test files (scanner, builder, cgdb, daemon, MCP, concurrency, FFI, etc.)
+- 175 test files (scanner, builder, cgdb, daemon, MCP, concurrency, FFI, etc.)
 - End-to-end evals in English and Chinese (`evals/evals_en.json`, `evals/evals_zh.json`)
 - Bilingual documentation (`docs/en/`, `docs/zh/`)

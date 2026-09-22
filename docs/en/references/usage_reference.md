@@ -33,6 +33,12 @@ $BUILDER c2d ask --question "..." --dry-run    # preview the translated commands
 
 ## Intent Index — task → one call → direct commands
 
+**Grep boundary first**: this database answers reverse, global and
+budget-bound questions (callers, impact, races, field flow, domains,
+memory). For point lookups — where X is defined, what X calls forward,
+reading one file — direct `rg` + read is faster and always fresh. If
+grep + read resolves it in ≤3 tool calls, grep.
+
 Start here: find the task, use the one call, or drop to the direct command sequence. The recipe rows are executable — `c2d recipes --recipe NAME` shows the match patterns and steps; `c2d ask --question "..."` auto-classifies.
 
 | Task | One call | Direct commands |

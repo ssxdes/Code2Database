@@ -1,12 +1,12 @@
 ---
 name: Code2Database
-description: "将代码库转为可查询的代码数据库。扫描一次，永久查询——不再需要 grep/glob/Read。C/C++/Go/Python/Java/Rust/ASM 调用图：条件路径、并发分析、数据流、FFI 追踪、13 层强类型 cgdb 语义库。通过 c2d 总入口一键生命周期（setup → session → ask → capture）。83 个 MCP 工具 + 263 个 CLI 命令。当代码提问涉及结构、调用链、影响分析、并发或数据流时使用 /Code2Database。"
+description: "将代码库转为可查询的代码数据库，专答 grep 几次调用答不了的问题：反向查询（调用方、影响面）、全局聚合（领域、关键路径、值流）、竞争检测、跨会话记忆。扫描一次，永久查询。C/C++/Go/Python/Java/Rust/ASM 调用图：条件路径、并发分析、数据流、FFI 追踪、13 层强类型 cgdb 语义库。通过 c2d 总入口一键生命周期（setup → session → ask → capture）。83 个 MCP 工具 + 263 个 CLI 命令。当代码提问涉及结构、调用链、影响分析、并发或数据流时使用 /Code2Database。"
 trigger: /Code2Database
 ---
 
 # /Code2Database
 
-**扫描一次 → 持久图 → 查询替代 grep。** 一次工具调用即可回答原本需要多次 grep/glob/Read 的疑问。
+**扫描一次 → 持久图 → 一次调用回答反向与全局问题。** 点查询仍归 grep/read；本数据库回答 grep 做不到的：谁调用它、改动破坏哪些下游、一个字段流经哪里、哪些路径有竞争。
 
 ## 一键式生命周期 — `c2d` 总入口
 
@@ -19,7 +19,7 @@ trigger: /Code2Database
 | `c2d ask` | 提出任意代码疑问 — 匹配的配方自动执行正确的只读命令序列并聚合输出 | `c2d ask --question "is bdev_start thread safe?"` |
 | `c2d capture` | 把 Q&A 沉淀到项目记忆 | `c2d capture --question "..." --answer "..." --category bdev --author you` |
 | `c2d freshen` | 新鲜度检查 → 路由到全量重建 / 守护进程 / 按文件更新 | `c2d freshen` |
-| `c2d report` | 产出工件：设计文档 / 诊断 / html / mermaid / plantuml | `c2d report --kind design --module fs` |
+| `c2d report` | 产出工件：设计文档 / 诊断 / mermaid / plantuml | `c2d report --kind design --module fs` |
 
 - `c2d recipes` 列出 提问→命令 路由配方（内置 13 个；详情：`c2d recipes --recipe thread-safety`）。`c2d ask` 用 `--question` 自动分类匹配，或用 `--recipe NAME` 直接指定；无匹配时回退到单命令意图路由。
 - 每一步都是普通的只读子命令，执行前先回显 — 任意动词可用 `--dry-run` 预览；`c2d ask` 还支持 `--json` 结构化摘要。
@@ -54,8 +54,23 @@ python3 scripts/code2database_builder.py session-init   # --graph 自动发现 c
 ## 何时激活
 
 - 任何关于调用关系、调用链、架构、影响面、并发的疑问
-- 当 `code2db-out/` 或 `code2database.db` 存在时 — 查询而非 grep
+- 当 `code2db-out/` 或 `code2database.db` 存在时 — 反向/全局问题查图，点查询用 grep
 - `#ifdef` 条件路径、数据竞争、FFI 边界、数据流
+
+## 何时不该用本 skill（直接 grep 更好）
+
+本 skill 的优势在于 grep 几次工具调用做不到的事：反向查询（谁
+调用它？改动会破坏哪些下游？）、预计算的全局聚合（领域、社区、
+关键路径、值流）、跨会话记忆、按 token 预算裁剪的上下文包。
+对于点查询，直接 grep/read 更快、永远新鲜、且不依赖索引：
+
+- X 在哪定义、X 正向调用了什么？→ `rg` + 直接读文件
+- 读一个函数或一个文件 → 直接读
+- 任何字面字符串/符号的文本搜索 → `rg`
+
+经验法则：**grep + read 能在 ≤3 次工具调用内解决的，就用 grep。**
+问题属于反向、全局或预算受限时才用本 skill——调用方、影响半径、
+竞争、字段流、领域地图、会话记忆。
 
 ## 快速开始
 

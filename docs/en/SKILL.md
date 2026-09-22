@@ -1,12 +1,12 @@
 ---
 name: Code2Database
-description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. C/C++/Go/Python/Java/Rust/ASM invocation graphs: conditional paths, concurrency analysis, data flow, FFI tracing, a 13-layer typed cgdb semantic store. One-shot lifecycle via the c2d umbrella (setup → session → ask → capture). 83 MCP tools + 263 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
+description: "Turn a codebase into a queryable code database for the questions grep cannot answer in a few calls: reverse queries (callers, impact), global aggregates (domains, key paths, value flow), races, and cross-session memory. Scan once, query forever. C/C++/Go/Python/Java/Rust/ASM invocation graphs: conditional paths, concurrency analysis, data flow, FFI tracing, a 13-layer typed cgdb semantic store. One-shot lifecycle via the c2d umbrella (setup → session → ask → capture). 83 MCP tools + 263 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
 trigger: /Code2Database
 ---
 
 # /Code2Database
 
-**Scan once → persistent graph → query instead of grep.** One tool call answers questions that would otherwise require multiple grep/glob/Read across files.
+**Scan once → persistent graph → answer reverse and global questions in one call.** Point lookups stay with grep/read; this database answers what grep cannot: who calls this, what breaks downstream, where a field flows, which paths are racy.
 
 ## One-Click Lifecycle — the `c2d` Umbrella
 
@@ -19,7 +19,7 @@ You do not need to memorize the 263-command surface. One command covers the whol
 | `c2d ask` | Ask any code question — the matched recipe runs the right read-only command sequence with aggregated output | `c2d ask --question "is bdev_start thread safe?"` |
 | `c2d capture` | Save a Q&A into project memory | `c2d capture --question "..." --answer "..." --category bdev --author you` |
 | `c2d freshen` | Freshness check → routes to full rebuild / daemon watch / per-file sync | `c2d freshen` |
-| `c2d report` | Generate an artifact: design doc / diagnosis / html / mermaid / plantuml | `c2d report --kind design --module fs` |
+| `c2d report` | Generate an artifact: design doc / diagnosis / mermaid / plantuml | `c2d report --kind design --module fs` |
 
 - `c2d recipes` lists the question→command routing recipes (13 built in; detail view: `c2d recipes --recipe thread-safety`). `c2d ask` classifies `--question` against them, or run one directly with `--recipe NAME`; no match falls back to the single-command intent router.
 - Every step is a normal read-only subcommand, echoed before it runs — preview any verb with `--dry-run`; `c2d ask` also accepts `--json` for a structured summary.
@@ -54,8 +54,25 @@ top kb hits as a `_hints` field alongside graph rows.
 ## When to Activate
 
 - Any question about call relationships, chains, architecture, impact, concurrency
-- When `code2db-out/` or `code2database.db` exists — query instead of grep
+- When `code2db-out/` or `code2database.db` exists — reverse/global questions go to the graph, point lookups to grep
 - `#ifdef` conditional paths, data races, FFI boundaries, data flow
+
+## When NOT to Use This Skill (grep wins)
+
+This skill's edge is what grep cannot do in a few tool calls: reverse
+queries (who calls this? what breaks downstream?), precomputed global
+aggregates (domains, communities, key paths, value flow), cross-session
+memory, and token-budgeted context packs. For point lookups, direct
+grep/read is faster, always fresh, and needs no index:
+
+- Where is X defined, or what does X call forward? → `rg` + read the file
+- Reading one function or file → read the file
+- Any literal string/symbol text search → `rg`
+
+Rule of thumb: **if grep + read answers it in ≤3 tool calls, grep.**
+Reach for this skill when the question is reverse, global, or
+budget-bound — callers, impact radius, races, field flow, the domain
+map, or session memory.
 
 ## Quick Start
 

@@ -123,7 +123,7 @@ class TestCFGExtractorUnit(unittest.TestCase):
         """Passing func_cursor directly produces the same blocks/edges as
         walking the TU AST to find the function (the slow backward-compat path).
 
-        This verifies the SPDK-hang fix: when func_cursor is passed, the
+        This pins the func_cursor fast path: when func_cursor is passed, the
         extractor uses it directly without re-walking the entire TU AST.
         For projects with N functions and M-node ASTs per TU, this changes
         extraction from O(N×M) to O(M + N×m) where m << M is the function

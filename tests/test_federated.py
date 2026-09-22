@@ -131,7 +131,7 @@ class TestFederatedQueries(unittest.TestCase):
                 self.name = name
             def nodes(self, data=False):
                 if data:
-                    # Return a fixed node name that does NOT appear
+                    # Return a constant node name that does NOT appear
                     # in any graph_dir path — otherwise the temporary
                     # directory path (e.g. /tmp/tmplXyGax/projA) can
                     # accidentally match the search query 'ga' and

@@ -387,7 +387,7 @@ class TestResolveSourceFileGraphDir(unittest.TestCase):
         from _builder.utils import resolve_source_file, _SOURCE_ROOT_CACHE
         _SOURCE_ROOT_CACHE.pop(self.graph_dir, None)
         # Create a real file outside source_root to prove the guard
-        # would have leaked it without the fix.
+        # rejects it.
         outside = os.path.join(self.tmpdir, 'secret.txt')
         with open(outside, 'w') as f:
             f.write('SECRET')

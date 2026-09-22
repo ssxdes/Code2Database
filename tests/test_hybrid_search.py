@@ -12,7 +12,7 @@ This test suite covers:
 - SHORT_CODE_PENALTY: down-ranking of < 30-char snippets
 
 This test file exists specifically to prevent regression of the
-defaultdict import bug (fixed in P0-1) which made the dense channel
+historical defaultdict import bug which made the dense channel
 throw NameError whenever an embedding was available.
 """
 import json
@@ -90,9 +90,9 @@ class TestRRFFusion(unittest.TestCase):
         self.assertEqual(SHORT_CODE_PENALTY, 0.5)
 
     def test_rrf_fusion_does_not_raise_nameerror(self):
-        """Regression test for P0-1: defaultdict import was missing.
+        """Regression test: defaultdict import was missing historically.
 
-        Before the fix, _rrf_fusion would throw
+        Without the import, _rrf_fusion would throw
         NameError: name 'defaultdict' is not defined
         whenever the dense channel returned any results. This test runs
         the fusion path with non-empty dense_results to verify it works.

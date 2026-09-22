@@ -79,10 +79,10 @@ class TestSessionContextEmpty(unittest.TestCase):
                             "save-memory" in h for h in ctx["hints"]))
 
     def test_session_init_does_not_create_memory_db(self):
-        """session-init is a read-only status
+        """        session-init is a read-only status
         query — it must NOT create memory/memory.db as a side effect.
-        Before the fix, MemoryStore(graph_dir) without read_only=True
-        called os.makedirs + _init_schema, leaving an empty memory.db.
+        A MemoryStore(graph_dir) without read_only=True would
+        call os.makedirs + _init_schema, leaving an empty memory.db.
         """
         # Confirm precondition: no memory dir or db exists.
         self.assertFalse(

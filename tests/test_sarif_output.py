@@ -66,7 +66,7 @@ class TestResultsToSarif(unittest.TestCase):
         from _builder.export.sarif_output import results_to_sarif
         findings = [{
             "rule_id": "test_rule",
-            "message": "test issue",
+            "message": "test finding",
             "level": "warning",
             "file": "/tmp/foo.c",
             "line": 42,
@@ -79,7 +79,7 @@ class TestResultsToSarif(unittest.TestCase):
         r = run["results"][0]
         self.assertEqual(r["ruleId"], "test_rule")
         self.assertEqual(r["level"], "warning")
-        self.assertEqual(r["message"]["text"], "test issue")
+        self.assertEqual(r["message"]["text"], "test finding")
         # Location should have file + startLine
         self.assertEqual(len(r["locations"]), 1)
         loc = r["locations"][0]

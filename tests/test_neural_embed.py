@@ -14,9 +14,9 @@ This test suite covers:
 - get_embedding_batch(): batch path for sentence-transformers
 - semantic_search(): graceful degradation when no provider available
 
-The P0-2 fix corrected cosine_similarity's nb formula:
-  Before: nb = sum(x * y for x, y in zip(a, b))  # WRONG: dot product again
-  After:  nb = sum(y * y for y in b)             # CORRECT: b's L2 norm
+cosine_similarity's nb formula is b's L2 norm:
+  Wrong form: nb = sum(x * y for x, y in zip(a, b))  # dot product again
+  Right form: nb = sum(y * y for y in b)             # b's L2 norm
 """
 import math
 import os
@@ -33,11 +33,11 @@ class TestCosineSimilarity(unittest.TestCase):
     """
 
     def test_known_vectors(self):
-        """Regression test for P0-2.
+        """Regression test for the nb formula.
 
-        Before fix: nb was computed as sum(x*y) instead of sum(y*y),
-        so cosine([1,0,0], [1,1,0]) returned 1.0 (because nb=1, na=1,
-        dot=1, dot/(1*1) = 1.0). After fix: nb=sqrt(2), result=1/sqrt(2).
+        With the wrong nb (sum(x*y) instead of sum(y*y)),
+        cosine([1,0,0], [1,1,0]) returned 1.0 (because nb=1, na=1,
+        dot=1, dot/(1*1) = 1.0). With b's L2 norm: nb=sqrt(2), result=1/sqrt(2).
         """
         from _builder.kb.neural_embed import cosine_similarity
         result = cosine_similarity([1, 0, 0], [1, 1, 0])

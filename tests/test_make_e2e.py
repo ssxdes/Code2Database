@@ -73,7 +73,7 @@ class TestMakeEndToEnd(unittest.TestCase):
     def test_make_reports_all_eleven_steps(self):
         self.assertIn("build pipeline (11 steps)", self.proc.stdout)
         self.assertIn("[make] done:", self.proc.stdout)
-        # env-check phase ran first and passed
+        # env-check stage ran first and passed
         self.assertIn("env-check OK", self.proc.stdout)
 
     def test_core_artifacts_exist(self):

@@ -285,7 +285,7 @@ class TestValidateAllAndCmd(unittest.TestCase):
     def test_cmd_validate_exit_code_reflects_ok(self):
         d = self._make_outdir()
         self.addCleanup(shutil.rmtree, d, ignore_errors=True)
-        # introduce a must-fix error: duplicate cross-domain edge
+        # introduce a blocking error: duplicate cross-domain edge
         master_path = os.path.join(d, "code2database_master.json")
         master = json.loads(open(master_path).read())
         edge = {"source": "x", "target": "y", "concurrency": "s",

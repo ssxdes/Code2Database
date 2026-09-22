@@ -1,6 +1,6 @@
 """Regression tests for TOCTOU detection pairing semantics.
 
-Pins two false-positive sources fixed in this round:
+Pins two false-positive sources:
   1. Writers/readers were paired by bare field_name — same-name fields
      of DIFFERENT structs (dev->state vs conn->state, ubiquitous in C)
      cross-paired into phantom TOCTOU races. Pairing key is now

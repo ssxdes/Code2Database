@@ -3,7 +3,7 @@
 Large graphs are exported per domain, and the per-domain assembly
 (_domain_pages) used to re-scan the full edge list once per domain —
 ~10 billion edge visits on a 2.3M-node, 5K-domain graph. These tests
-pin the fixed behavior: the single-pass assembly produces the same
+pin the current behavior: the single-pass assembly produces the same
 pages the per-domain scan produced, lazy views feed it, community
 labels reach the pages, and the mermaid export path completes on a
 read-only lazy view.

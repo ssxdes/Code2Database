@@ -116,7 +116,7 @@ class TestWipeCgdbDataOnMissingTables(unittest.TestCase):
     def test_wipe_on_schemaless_connection(self):
         # A raw connection to an EMPTY db (no cgdb tables at all): the
         # wipe must skip missing tables instead of raising — this is the
-        # exact 'no such table' crash family the guards fixed.
+        # exact 'no such table' crash family the guards exist for.
         d, db = _tmp_db()
         conn = sqlite3.connect(db)
         try:
@@ -131,7 +131,7 @@ class TestWipeCgdbDataOnMissingTables(unittest.TestCase):
 
     def test_wipe_list_names_all_exist_in_schema(self):
         # Every table in _CGDB_WIPE_TABLES must be a real schema table —
-        # a dead name (like the pre-fix "predicates") makes every build
+        # a dead name (like the retired "predicates") makes every build
         # log a spurious warning/error.
         from _builder.cgdb.cgdb_schema import apply_cgdb_schema
         from _builder.graph.graph_build import _CGDB_WIPE_TABLES
@@ -247,14 +247,14 @@ class TestForeignKeysEnforcedOnSharedConnection(unittest.TestCase):
 
     def test_cgdb_store_shared_conn_reasserts_foreign_keys(self):
         # Simulate a connection that has FK OFF (e.g. opened by an
-        # older SQLiteStore without the fix, then handed to CGDBStore).
+        # older SQLiteStore, then handed to CGDBStore).
         from _builder.cgdb.cgdb_schema import apply_cgdb_schema
         from _builder.cgdb.cgdb_store import SQLiteCGDBStore
         from _builder.graph.sqlite_store import SQLiteStore
         d, db = _tmp_db()
         store = SQLiteStore(db)
         store.connect()
-        # Manually disable FK to simulate the pre-fix state.
+        # Manually disable FK to simulate the degraded state.
         store._conn.execute("PRAGMA foreign_keys = OFF")
         self.assertEqual(
             store._conn.execute("PRAGMA foreign_keys").fetchone()[0], 0)

@@ -233,7 +233,7 @@ class TestRunEnvCheck(unittest.TestCase):
 
 
 class TestCmdMake(unittest.TestCase):
-    """Orchestration: phase ordering, subprocess commands, failure abort."""
+    """Orchestration: stage ordering, subprocess commands, failure abort."""
 
     def setUp(self):
         self._tmp = tempfile.mkdtemp()

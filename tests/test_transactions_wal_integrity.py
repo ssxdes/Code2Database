@@ -1,9 +1,9 @@
 """Regression tests for transaction snapshot/restore WAL integrity.
 
-Pins three data-corruption paths fixed in this round:
+Pins three data-corruption paths:
   1. create_snapshot copied only code2database.db — with the db in WAL
      mode every commit still living in the -wal file was silently lost
-     (reproduced pre-fix: snapshot db had neither table nor rows).
+     (symptom: snapshot db had neither table nor rows).
      Now the snapshot checkpoints the WAL first and falls back to
      copying the -wal sidecar when a concurrent reader pins the log.
   2. restore_snapshot did not restore the snapshotted -wal sidecar

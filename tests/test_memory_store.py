@@ -309,7 +309,7 @@ class TestCjkSearch(MemoryStoreTestBase):
 
     def test_cjk_query_with_author_filter(self):
         self.store.add("登录失败如何处理", "重试", author="alice")
-        self.store.add("其他问题", "其他答案", author="bob")
+        self.store.add("其他疑问", "其他答案", author="bob")
         results = self.store.search("登录", author="alice")
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["author"], "alice")
@@ -509,7 +509,7 @@ class TestCorrectSimilar(MemoryStoreTestBase):
         self.assertEqual(result["id"], 1)
         self.assertGreaterEqual(result["score"],
                                 MERGE_SIMILARITY_THRESHOLD)
-        # No new entry created — the wrong one was fixed in place
+        # No new entry created — the wrong one was corrected in place
         self.assertEqual(len(self._raw(
             "SELECT id FROM memories WHERE status = 'active'")), 1)
         entry = self.store.get(1)

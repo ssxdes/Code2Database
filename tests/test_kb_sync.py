@@ -7,7 +7,7 @@ was removed. These tests pin the new sync_memory_entries() primitive
 and its MemoryManager wiring: memory edits are searchable immediately,
 without a full rebuild.
 
-Also covers the update_sync.py stale guard fix (legacy memory/
+Also covers the update_sync.py stale guard (legacy memory/
 index.json → memory/memory.db).
 """
 import os

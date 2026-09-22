@@ -58,7 +58,7 @@ class BugCase:
     root_cause_file: str  # source file
     root_cause_line: int  # line number
     expected_keywords: List[str] = field(default_factory=list)  # terms to find
-    source: str = ""  # CVE id or issue link
+    source: str = ""  # CVE id or tracker link
     severity: str = ""  # "high", "medium", "low"
     hints: List[str] = field(default_factory=list)  # starting-point hints
     # reproduction vs production environment annotations.

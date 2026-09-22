@@ -460,13 +460,13 @@ class CTreeSitterScanner(BaseScanner):
         # push/pop around the recursive descent into children.
         func_nodes = []
         class_nodes = []
-        concept_nodes = []  # D13: C++20 concepts
+        concept_nodes = []  # C++20 concepts
         self._ifdef_stack = []  # Reset for this file
-        # D13: per-function template metadata (keyed by id(node))
+        # Per-function template metadata (keyed by id(node))
         if not hasattr(self, '_template_meta') or self._template_meta is None:
             self._template_meta = {}
         self._template_meta.clear()
-        # D12: extract macro definitions for MACRO_EXPANDS_TO edges
+        # Extract macro definitions for MACRO_EXPANDS_TO edges
         self._macro_defs = self._extract_macro_definitions(root, source_bytes)
 
         def _collect_nodes(node):
@@ -515,7 +515,7 @@ class CTreeSitterScanner(BaseScanner):
                 class_nodes.append(node)
             elif self.is_cpp and node.type == 'struct_specifier':
                 class_nodes.append(node)
-            # D13: C++ templates, concepts, coroutines
+            # C++ templates, concepts, coroutines
             elif self.is_cpp and node.type == 'template_declaration':
                 # template_declaration wraps a function_definition or
                 # class_specifier — descend to find the inner declaration.
@@ -924,7 +924,7 @@ class CTreeSitterScanner(BaseScanner):
             for class_node in class_nodes:
                 self._extract_inheritance(class_node, source_bytes, source_root,
                                           filepath, domain, edges)
-            # D13: extract C++20 concept definitions
+            # Extract C++20 concept definitions
             for concept_node in concept_nodes:
                 concept_info = self._extract_concept(
                     concept_node, source_bytes, filepath, source_root)
@@ -1163,7 +1163,7 @@ class CTreeSitterScanner(BaseScanner):
                 labels.append("API_entry")
             if is_dead:
                 labels.append("dead_code")
-            # D13: template/concept/coroutine annotations
+            # template/concept/coroutine annotations
             tpl_meta = self._template_meta.get(id(func_node), {})
             is_coro = self._is_coroutine(func_node, source_bytes, body_node)
             functions.append({
@@ -1198,10 +1198,10 @@ class CTreeSitterScanner(BaseScanner):
         if is_dead:
             labels.append("dead_code")
 
-        # D13: template/concept/coroutine annotations
+        # template/concept/coroutine annotations
         tpl_meta = self._template_meta.get(id(func_node), {})
         is_coro = self._is_coroutine(func_node, source_bytes, body_node)
-        # D13: detect co_await/co_return calls in body for coroutine edges
+        # Detect co_await/co_return calls in body for coroutine edges
         coroutine_awaits = self._extract_coroutine_awaits(
             body_node, source_bytes) if is_coro else []
 
@@ -1290,7 +1290,7 @@ class CTreeSitterScanner(BaseScanner):
         return ""
 
     # ------------------------------------------------------------------
-    # D13: C++ template / concept / coroutine extraction
+    # C++ template / concept / coroutine extraction
     # ------------------------------------------------------------------
 
     def _find_template_inner_function(self, template_node):
@@ -2363,7 +2363,7 @@ class CTreeSitterScanner(BaseScanner):
                         # Record the spawn relationship in callee_args
                         callee_args_list[-1]["callback_target"] = spawn_target_name
 
-                    # D12: MACRO_EXPANDS_TO edges — when the callee is a
+                    # MACRO_EXPANDS_TO edges — when the callee is a
                     # function-like macro defined in this file, expand it
                     # and add edges to the calls inside the macro body.
                     _macro_defs = getattr(self, '_macro_defs', {}) or {}

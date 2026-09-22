@@ -264,7 +264,7 @@ class CFGExtractor:
                 block_succs[idx].append((then_idx, 'true_branch'))
                 block_succs[idx].append((else_idx, 'false_branch'))
                 # Both branches fall through to whatever comes next
-                # (we'll fix this in the post-pass below)
+                # (repaired in the post-pass below)
                 sequential_blocks.extend([then_idx, else_idx])
                 prev_idx = None  # branch, no direct fallthrough from idx
                 # Then/else need to fall through to the next top-level stmt

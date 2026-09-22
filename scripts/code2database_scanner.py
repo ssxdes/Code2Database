@@ -254,7 +254,7 @@ def _proc_scan_one(item):
     Returns:
         Scanner result dict (functions, edges, globals, ...) or ``None``
         on failure. The dict is plain JSON-serializable data, so it
-        crosses the process boundary via pickle without issue.
+        crosses the process boundary via pickle intact.
 
     All scanner configuration is read from the module-level
     _PROC_SCAN_CONFIG, which is set by the parent process before fork().
@@ -1249,7 +1249,6 @@ def scan_directory(source_root: str, lang: str = "auto",
         # aggregator thread drains the queue and does the 12+ list.extend
         # calls. Without this, the main process blocks on aggregation
         # while all child processes sleep waiting for new tasks.
-        # (Fix for c2d_scanner_parallel_bottleneck_report.md Finding 2)
         import queue as _queue_mod
         import threading as _threading_mod
         _result_queue = _queue_mod.Queue()

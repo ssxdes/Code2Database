@@ -13,7 +13,7 @@ Public API:
 - record_sync_change_log(store, source_root, written_by_file, deleted_files)
 
 Design notes:
-- All git invocations use --no-pager and -c to suppress pager/config issues.
+- All git invocations use --no-pager and -c to suppress pager/config quirks.
 - svn support is best-effort: many projects are git, svn is rare but supported.
 - For non-VCS projects, returns vcs_type='none' and callers fall back to mtime.
 - Heavy operations (git blame) are optional and only invoked when explicitly

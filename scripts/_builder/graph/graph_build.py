@@ -38,7 +38,7 @@ _FIELD_WRITE_RE = re.compile(
 
 # Static regex: matches callback/function-pointer parameter names.
 # Used in build_graph's edge processing loop (5.4M edges on kernel).
-# Was recompiled per-edge before this fix — ~27 seconds wasted on kernel.
+# Compiled once at import time — per-edge recompilation wasted ~27s on kernel.
 _FN_PTR_PARAM_RE = re.compile(
     r'^(cb_fn|cpl_cb|cb|fn|func|handler|callback|op|action|proc|'
     r'routine|build_io_fn|disconnected_qpair_cb)$|'

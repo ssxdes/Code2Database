@@ -646,7 +646,7 @@ def _extract_state_access_all(G: nx.DiGraph, extraction: dict,
 
     # Pre-build per-build cache: ``global_var_names`` dict + the compiled
     # ``_ASSIGN_OPS`` regex. Both depend only on ``globals_data``, which is
-    # fixed for the entire build. Compiling once here saves ~5-10s on SPDK
+    # constant for the entire build. Compiling once here saves ~5-10s on SPDK
     # (16K nodes × ~3ms compile = ~50s wasted).
     global_var_names_full = {}
     for gv in globals_data.get("global_vars", []):

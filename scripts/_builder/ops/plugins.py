@@ -133,7 +133,7 @@ def cmd_validate_plugin(args):
         print(f"Plugin file not found: {plugin_path}", file=sys.stderr)
         sys.exit(1)
 
-    issues = []
+    findings = []
     try:
         import importlib.util
         spec = importlib.util.spec_from_file_location("test_plugin", plugin_path)
@@ -145,18 +145,18 @@ def cmd_validate_plugin(args):
 
     # Check for CallgraphPlugin class
     if not hasattr(mod, 'CallgraphPlugin'):
-        issues.append("Missing 'CallgraphPlugin' class")
+        findings.append("Missing 'CallgraphPlugin' class")
     else:
         cls = mod.CallgraphPlugin
         required = ['enrich_functions', 'enrich_graph']
         for method in required:
             if not hasattr(cls, method):
-                issues.append(f"Missing required method: {method}")
+                findings.append(f"Missing required method: {method}")
 
     result = {
         "plugin": plugin_path,
-        "valid": len(issues) == 0,
-        "errors": issues,
+        "valid": len(findings) == 0,
+        "errors": findings,
         "has_custom_scan": hasattr(mod.CallgraphPlugin, 'custom_scan') if hasattr(mod, 'CallgraphPlugin') else False,
         "has_custom_query": hasattr(mod.CallgraphPlugin, 'custom_query') if hasattr(mod, 'CallgraphPlugin') else False,
         "has_custom_output": hasattr(mod.CallgraphPlugin, 'custom_output') if hasattr(mod, 'CallgraphPlugin') else False,

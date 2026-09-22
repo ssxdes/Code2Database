@@ -905,7 +905,7 @@ def cmd_explore_flow(args):
     if not exact_match:
         # Unicode-aware Python fallback. This also covers regular
         # (non-lazy) NetworkX graphs, where the SQL index doesn't exist —
-        # without it the #10 exact-match fix only ever fired on
+        # without it the exact-match shortcut only ever fired on
         # LazySQLiteGraph and JSON-graph queries always fell through to
         # the BM25 scoring path. SQLite's lower() is ASCII-only, so
         # non-ASCII uppercase names need this loop regardless of backend.

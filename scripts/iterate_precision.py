@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Iterative callgraph precision analysis and improvement.
 
-This script systematically analyzes callgraph output, identifies issues,
-categorizes them, and produces a report of findings that need fixing.
+This script systematically analyzes callgraph output, flags precision
+gaps, categorizes them, and produces a findings report.
 
 Usage:
   python3 iterate_precision.py --extraction PATH --source PATH [--iteration N]

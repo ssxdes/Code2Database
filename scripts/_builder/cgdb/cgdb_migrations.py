@@ -95,7 +95,7 @@ def _migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
     # Run the v4-only DDL (creates new tables + new FTS5/triggers). All
     # statements use CREATE ... IF NOT EXISTS so this is safe to run on
     # partially-upgraded databases. We deliberately do NOT re-run the v3
-    # _CGDB_DDL because that would re-issue CREATE INDEX statements
+    # _CGDB_DDL because that would re-run CREATE INDEX statements
     # (e.g., idx_cgdb_files_hash ON cgdb_files(content_hash)) that fail
     # on v3 databases missing the content_hash column (orphan legacy dbs).
     from _builder.cgdb.cgdb_schema import _CGDB_DDL_V4

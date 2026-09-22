@@ -474,7 +474,7 @@ def _merge_project_data(joint_extraction: Dict[str, Any],
     """
     joint_extraction["functions"].extend(project_data.get("functions", []))
     joint_extraction["edges"].extend(project_data.get("edges", []))
-    # globals: the subkeys are fixed categories (enums, constants,
+    # globals: the subkeys are constant categories (enums, constants,
     # typedefs, global_vars), not per-project namespaces. Prefixing them
     # produced keys like "<project>.global_vars" that no downstream
     # consumer reads (graph_build/state_access look up the bare names),
@@ -495,7 +495,7 @@ def _merge_project_data(joint_extraction: Dict[str, Any],
     # predicates, ops_bindings, basic_blocks, cfg_edges, data_flow,
     # sync_primitives, happens_before, alias_sets, doc_comments,
     # metadata, includes, ...). Generic on purpose: any NEW cgdb_* key
-    # the scanner starts emitting gets merged without another fix here.
+    # the scanner starts emitting gets merged without touching this code.
     _legacy_keys = {"functions", "edges", "globals", "vtables", "imports"}
     # these scanner-output keys are consumed by
     # graph_build / build_phases (vtable dispatch, fn_ptr dispatch,

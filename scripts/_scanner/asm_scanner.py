@@ -1202,8 +1202,8 @@ class AsmRegexScanner(BaseScanner):
         for i, line in enumerate(lines):
             stripped = line.strip()
             # Strip inline NASM ';' comments before any regex matching —
-            # the round-1 fix only patched the FIRST pass; this main scan
-            # loop still matched 'call bar' inside 'mov rax, 5 ; call bar'
+            # otherwise this main scan loop still matches 'call bar'
+            # inside 'mov rax, 5 ; call bar'
             # (false EXTRACTED edges from comment text).
             # GAS inline '#' comments are deliberately NOT stripped here:
             # '#' preceded by whitespace is also the ARM/AArch64 immediate

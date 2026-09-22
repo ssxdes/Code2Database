@@ -570,7 +570,7 @@ class WritebackPipeline:
           Uses the SQLite backup API (not file replacement) so the
           live connection stays valid for the subsequent meta cleanup.
           Falls back to the most recent snapshot if the tx's snapshot
-          ID is missing (e.g., tx began before this fix was deployed).
+          ID is missing (e.g., tx began before snapshot ids were recorded).
         - Clears tx state from meta.
 
         Returns True only if the snapshot restore succeeded (or there

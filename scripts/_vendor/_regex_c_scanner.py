@@ -1954,7 +1954,7 @@ def _extract_pp_conditions(source: str) -> list:
 
     Returns list of (start_line, end_line, condition_text) where line numbers
     are 0-indexed. Using line numbers instead of byte offsets avoids alignment
-    issues when the body text is stripped/modified.
+    drift when the body text is stripped/modified.
     """
     conditions = []
     stack = []
@@ -3002,7 +3002,7 @@ def _disambiguate_func_ids(functions: list, edges: list) -> tuple:
         return possible_ids[0] if possible_ids else None
 
     for edge in edges:
-        # Fix source (caller) ID
+        # Pin source (caller) ID
         src = edge["source"]
         if src in dup_ids:
             src_file = edge.get("_source_file", "")
@@ -3011,7 +3011,7 @@ def _disambiguate_func_ids(functions: list, edges: list) -> tuple:
             elif src in old_id_default_new:
                 edge["source"] = old_id_default_new[src]
 
-        # Fix target (callee) — resolve bare name to disambiguated func ID
+        # Pin target (callee) — resolve bare name to disambiguated func ID
         # Skip FN_PTR edges: their targets are struct field names (dynamic dispatch),
         # not specific function names. Resolving them to a single function is wrong
         # because the actual implementation depends on the vtable registration.

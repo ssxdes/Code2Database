@@ -484,7 +484,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         elif not self._owns_conn:
             # Shared connection from SQLiteStore — re-assert FK pragma.
             # SQLiteStore.connect() now sets PRAGMA foreign_keys = ON, but
-            # older graphs created before that fix, or connections opened
+            # older graphs, or connections opened
             # by other callers, may still default to OFF.  The pragma is
             # idempotent and cheap.
             try:

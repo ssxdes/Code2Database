@@ -561,7 +561,7 @@ def _verify_scan_completed(source, graph_dir, extraction_path):
                     warnings.append(
                         "extraction is empty (0 functions, 0 edges) — if the "
                         "source has implementation files, check the scan "
-                        "output above (backend / compile_commands issues)")
+                        "output above (backend / compile_commands failures)")
             except (OSError, ValueError):
                 warnings.append(
                     "extraction at %s is unreadable" % extraction_path)
@@ -677,7 +677,7 @@ def _do_make(rep, args):
         parallel_steps = [s for s in derived if s[0] in _PARALLEL]
         serial_steps = [s for s in derived if s[0] not in _PARALLEL]
 
-    # Phase A: parallel (JSON/file-only steps)
+    # Parallel stage: JSON/file-only steps
     if parallel_steps:
         from concurrent.futures import ThreadPoolExecutor, as_completed
         n_par = len(parallel_steps)
@@ -719,7 +719,7 @@ def _do_make(rep, args):
                           % (name, _format_step_exit(rc)), file=sys.stderr)
                     failures.append(name)
 
-    # Phase B: serial (DB writes + brief→kb dependency chain)
+    # Serial stage: DB writes + brief→kb dependency chain
     for name, cmd, _fatal, note, requires, skip_reason in serial_steps:
         step_num += 1
         print("\n[make] step %d/%d: %s — %s" % (step_num, total, name, note))

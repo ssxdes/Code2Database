@@ -1,6 +1,6 @@
 """config_predicates_lang — cross-language config predicate extraction.
 
-Per cgdb-architecture-and-poc-report.md 5.5.5 (L3.5 config layer), every
+For the cgdb L3.5 config layer, every
 node should carry a config_predicate_id. The C/C++ clang_scanner uses
 ConfigPredicateExtractor for #ifdef tracking; this module provides
 language-specific predicates for Go, Python, Java, Rust, ASM:

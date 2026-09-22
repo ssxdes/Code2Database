@@ -415,7 +415,7 @@ class GraphCache:
         (compressed blobs are only decompressed on demand), so we call
         ``get_body_text`` to fetch the real body. The body's line count
         extends the read window so the *entire* function is shown,
-        not just a fixed 21-line window around the start line.
+        not just a constant 21-line window around the start line.
         """
         with self._lock:
             if node_id not in self.G:
@@ -443,7 +443,7 @@ class GraphCache:
                 with open(resolved, "r", encoding="utf-8", errors="replace") as f:
                     lines = f.readlines()
                 # Use body_text line count to extend the read window so
-                # the entire function body is shown, not just a fixed
+                # the entire function body is shown, not just a constant
                 # 21-line window around the start line.
                 if body_text:
                     body_line_count = body_text.count('\n') + 1

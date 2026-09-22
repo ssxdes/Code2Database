@@ -22,7 +22,7 @@ class ValidationResult:
     """Accumulates validation findings."""
 
     def __init__(self):
-        self.errors: List[Dict] = []    # Must-fix issues
+        self.errors: List[Dict] = []    # Blocking findings
         self.warnings: List[Dict] = []  # Worth investigating
         self.infos: List[Dict] = []      # Informational notes
 
@@ -160,7 +160,7 @@ def validate_edge_logic(master: dict, result: ValidationResult):
     # OPS_BIND edges (vtable → handler) are not call edges and don't carry concurrency.
     # Cross-architecture macro calls (e.g. arch.*.asm__macro_*) legitimately lack
     # static concurrency semantics — aggregate into a single warn rather than
-    # spamming N error() calls that obscure real must-fix issues.
+    # spamming N error() calls that obscure real blocking findings.
     bad_cross = 0
     missing_concurrency = []
     for i, e in enumerate(cross):
@@ -422,7 +422,7 @@ def validate_out_end_labels(master: dict, result: ValidationResult,
                            f"successors={call_successors[nid]}")
 
         # Internal leaf with source_file should not be out_end
-        # (but this is a known issue from legacy labeling — only warn if many)
+        # (but this is a legacy-labeling artifact — only warn if many)
         is_external = dom == "external" or dom.startswith("external_")
         if not is_external and src and "out_end" in labels:
             suspicious_out_end += 1

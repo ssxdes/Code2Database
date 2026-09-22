@@ -915,8 +915,8 @@ def _handle_tools_call(msg_id, params, graph_dir, mcp_stats,
         handler = TOOLS[tool_name]["handler"]
         # per-tool execution timeout. Without
         # this, a handler that loops indefinitely (e.g. _tool_impact
-        # with depth=1000000 on a 1.5M-node graph before issue 27's
-        # cap was added) blocks the dispatch thread — in stdio mode the
+        # with depth=1000000 on a 1.5M-node graph without the depth
+        # cap) blocks the dispatch thread — in stdio mode the
         # entire server hangs. signal.alarm only works in the main
         # thread (stdio mode); HTTP worker threads fall back to no
         # timeout (the --max-clients concurrency limit bounds resource

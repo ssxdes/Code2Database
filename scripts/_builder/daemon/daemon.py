@@ -170,8 +170,8 @@ class DaemonState:
         """Atomically write state to <graph_dir>/.daemon_status.json."""
         path = Path(graph_dir) / ".daemon_status.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Atomic write: write to a PER-WRITER tmp file then rename. The old
-        # fixed '.json.tmp' name is shared by the main loop, the sync worker
+        # Atomic write: write to a PER-WRITER tmp file then rename. A
+        # shared '.json.tmp' name used by the main loop, the sync worker
         # and the watcher callback — two concurrent writers could race so
         # one rename raised FileNotFoundError (which used to kill the
         # sync-worker thread or abandon the inotify event buffer).
@@ -1030,7 +1030,7 @@ class Daemon:
             if time_since_last_event < debounce:
                 time.sleep(debounce - time_since_last_event)
                 continue
-            # D32: adaptive batch — grow batch_window when event rate is high
+            # Adaptive batch — grow batch_window when event rate is high
             # so we collect more events per sync (fewer, larger syncs).
             if self.config.get("adaptive_batch", True):
                 batch_window_ms = self._compute_adaptive_batch_window()
@@ -1330,7 +1330,7 @@ class Daemon:
             signal.signal(signal.SIGINT, handler)
             # SIGHUP is not available on Windows; only register on POSIX.
             # Reload is best-effort and may fail silently if config is
-            # being mutated concurrently — see M1/M3 in the audit notes.
+            # being mutated concurrently.
             sighup = getattr(signal, "SIGHUP", None)
             if sighup is not None:
                 def reload_handler(signum, frame):
@@ -1803,7 +1803,7 @@ class Daemon:
         # status writer (line 179) already does this; the freshness
         # marker writer was missed. _rebuild_output_files is currently
         # only called from a single sync-worker thread, but if future
-        # refactoring makes it concurrent, the fixed tmp name would race.
+        # refactoring makes it concurrent, a shared tmp name would race.
         tmp_path = fresh_path.with_suffix(
             f".json.tmp.{os.getpid()}.{threading.get_ident()}")
         tmp_path.write_text(json.dumps(freshness, indent=2),
@@ -1975,8 +1975,8 @@ def _daemon_socket_path(graph_dir: str) -> str:
     """Compute the daemon socket path for a graph_dir.
 
     Shared by the daemon (server bind) and daemon_query (client connect)
-    so they can never diverge again (a previous fix changed only the
-    server side, breaking the whole socket API).
+    so they can never diverge (changing one side alone breaks the socket
+    API).
     """
     import hashlib as _hashlib
     _tmpdir = os.environ.get("TMPDIR") or "/tmp"

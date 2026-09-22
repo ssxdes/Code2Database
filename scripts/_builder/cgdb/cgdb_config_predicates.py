@@ -197,7 +197,7 @@ def _text_form_to_bdd_expr(text_form: str, vmap: Dict[str, str]) -> str:
 class _SafeBoolExprEvaluator(ast.NodeVisitor):
     """Walks a parsed boolean expression AST and evaluates it without eval().
 
-    Per security requirement (RCE fix): only allows BoolOp (And/Or),
+    Per security requirement (RCE-safe by construction): only allows BoolOp (And/Or),
     UnaryOp (Not/USub/UAdd), Compare (Eq/NotEq/Lt/Gt/LtE/GtE), Name, and
     Constant (True/False/int). Rejects Attribute, Subscript, Call, Import,
     Lambda, comprehensions, etc. — so a malicious #if directive cannot

@@ -160,7 +160,7 @@ def _memory_lock(mem_dir: str, timeout: float = 10.0):
     fd = open(lock_path, "a+")
     try:
         deadline = time.time() + timeout
-        # L6: exponential backoff instead of a fixed 50ms spin — high
+        # Exponential backoff instead of a constant 50ms spin — high
         # contention wasted CPU. Start at 2ms, double up to 200ms.
         backoff = 0.002
         while True:
@@ -235,7 +235,7 @@ class MemoryStore:
             except sqlite3.OperationalError:
                 # e.g. WAL leftovers the reader cannot mmap — degrade
                 # to a normal connection; the API layer still never
-                # issues writes in read_only mode. The file exists
+                # performs writes in read_only mode. The file exists
                 # (checked above) so this connect won't create it.
                 conn = sqlite3.connect(self.db_path, timeout=10.0)
             conn.row_factory = sqlite3.Row

@@ -9,7 +9,7 @@ supported:
   the GIL, so regex-heavy per-node work (state_access extraction, heuristic
   enhance) actually parallelizes.
 
-  **GIL caveat (Phase J audit, 2026-08-27)**: Python's tree-sitter bindings
+  **GIL caveat**: Python's tree-sitter bindings
   release the GIL *during parse*, but the per-node post-processing (extracting
   fields, building dicts, walking AST via Python) holds the GIL. On
   CPU-bound workloads where post-processing dominates, ThreadPoolExecutor
@@ -65,7 +65,7 @@ def map_files_processpool(
 ) -> List[Any]:
     """Apply ``work_fn(file_path, file_lang)`` to each file using ProcessPoolExecutor.
 
-    Phase J (2026-08-27): true multi-core for CPU-bound tree-sitter parsing.
+    True multi-core for CPU-bound tree-sitter parsing.
     The Python tree-sitter bindings do NOT release the GIL during parse, so
     ThreadPoolExecutor serializes 48 threads onto a single core. This helper
     uses ProcessPoolExecutor to bypass the GIL — each child process gets its
@@ -147,9 +147,8 @@ def _proc_map_nodes_wrapper(args):
     work_fn, nid, nd = args
     return work_fn(nid, nd)
 
-# Default hard ceiling on worker count. Was 8 (too low for modern hardware),
-# changed to 16 in a previous fix — but 16 is still an artificial ceiling
-# that underutilizes 32/64/128-core machines.
+# Default hard ceiling on worker count. Earlier defaults (8, then 16) were
+# artificial ceilings that underutilize 32/64/128-core machines.
 #
 # Now: the default is the machine's actual core count with no artificial
 # cap. This prevents oversubscription on low-core machines (4-core box

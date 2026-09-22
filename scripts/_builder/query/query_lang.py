@@ -700,7 +700,7 @@ def _matches_label(node: Dict, label: Optional[str]) -> bool:
         return True
     # 'Function' is a special label meaning "any function node" — matches
     # all call-graph nodes regardless of their assigned labels (since the
-    # 7 fixed labels are semantic roles, not the Cypher-style node-type).
+    # 7 constant labels are semantic roles, not the Cypher-style node-type).
     if label == "Function":
         return True
     labels = node.get("labels", []) or []

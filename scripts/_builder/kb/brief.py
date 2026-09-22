@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Project brief — the lean, mandatory-load knowledge for Code2Database.
 
-Knowledge is the SMALL, curated, fixed description of THIS project:
+Knowledge is the SMALL, curated, stable description of THIS project:
 architecture, functionality, design, usage. It is what an AI MUST load
 into its prompt before working on the project via the C2D skill. It is
 NOT an accumulation store (that's memory/memory.db) — it is a tight

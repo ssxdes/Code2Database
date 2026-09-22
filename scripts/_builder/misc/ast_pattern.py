@@ -77,8 +77,8 @@ def _tokenize_pattern(pattern: str) -> List[str]:
             pos += 3
             continue
         # Check for multi-char operators BEFORE single-char fallback.
-        # This is the fix: previously, '==' fell through to the single-char
-        # case and was tokenized as two '=' tokens, breaking patterns with
+        # Without this, '==' falls through to the single-char
+        # case and gets tokenized as two '=' tokens, breaking patterns with
         # any comparison / compound-assignment operator.
         matched_op = False
         for op in _MULTICHAR_OPS:

@@ -50,7 +50,7 @@ This design lets Code2Database scale from a quick install (`pip install tree-sit
 
 ### Why Three Sub-Skills Instead of One
 
-The skill ships as 3 sub-skills (`/Code2Database` core, `/Code2Database-analysis` deep analysis, `/Code2Database-ops` operations) so the LLM agent loads only the commands relevant to its current question:
+The skill ships as 4 sub-skills (`/Code2Database` core, `/Code2Database-analysis` deep analysis, `/Code2Database-ops` operations, `/Code2Database-kb` knowledge base) so the LLM agent loads only the commands relevant to its current question:
 
 - **Core (22 Tier-1 commands, incl. the `c2d` umbrella)** — always loaded. Build, browse, basic query (scan, build, explore-flow, describe-node, trace-chain, neighbors, path, search, key-paths, etc.)
 - **Analysis (13 Tier-1 + 19 cgdb_* MCP tools)** — loaded on demand. Concurrency, data flow, invariants, FFI, path feasibility, provenance, cgdb tables.
@@ -862,7 +862,7 @@ Code2Database's current capabilities, organized by category:
 - Git post-commit hook for auto quick-update
 
 ### Distribution
-- Python skill with 3 sub-skills (`/Code2Database`, `/Code2Database-analysis`, `/Code2Database-ops`)
+- Python skill with 4 sub-skills (`/Code2Database`, `/Code2Database-analysis`, `/Code2Database-ops`, `/Code2Database-kb`)
 - One-click installer (`install.sh`) for Claude Code / Cursor / Codex / OpenCode / Gemini
 - Per-language install (`C2D_LANGUAGES` env var or `setup.sh --languages`)
 - 160 test files (scanner, builder, cgdb, daemon, MCP, concurrency, FFI, etc.)

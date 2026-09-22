@@ -110,12 +110,13 @@ bash install.sh --lang zh --dir ~/.local/share/Code2Database --target codex
 bash install.sh --target all  # Install for all supported tools
 ```
 
-The installer installs **3 sub-skills** under `~/.claude/skills/`:
+The installer installs **4 sub-skills** under `~/.claude/skills/`:
 - `Code2Database` (core — always loaded, owns `scripts/`)
 - `Code2Database-analysis` (deep analysis — on-demand)
 - `Code2Database-ops` (graph editing + ops — on-demand)
+- `Code2Database-kb` (standalone knowledge/memory base — on-demand)
 
-The two on-demand sub-skills symlink to the core's `scripts/` directory — single CLI, no duplication.
+The three on-demand sub-skills symlink to the core's `scripts/` directory — single CLI, no duplication.
 
 Supported targets:
 - **claudecode** — Claude Code (installs skill to `~/.claude/skills/`, configures MCP server)
@@ -562,7 +563,7 @@ If the cgdb export fails mid-build, the graph is left missing (parts of) its sem
 
 ---
 
-## Skill Activation (3 sub-skills)
+## Skill Activation (4 sub-skills)
 
 The skill is split into 4 sub-skills to keep LLM context lean. Each sub-skill has its own `SKILL.md` exposing only the commands relevant to its layer. The CLI (`scripts/code2database_builder.py`) is shared — all 258 subcommands are accessible regardless of which sub-skill is active.
 

@@ -50,7 +50,7 @@ C/C++ 提取后端有两种模式，服务于不同需求：
 
 ### 为什么是三个子 skill 而不是一个
 
-skill 以 3 个子 skill 形式发布（`/Code2Database` 核心、`/Code2Database-analysis` 深度分析、`/Code2Database-ops` 运维），让 LLM 代理只加载与当前疑问相关的命令：
+skill 以 4 个子 skill 形式发布（`/Code2Database` 核心、`/Code2Database-analysis` 深度分析、`/Code2Database-ops` 运维、`/Code2Database-kb` 知识库），让 LLM 代理只加载与当前疑问相关的命令：
 
 - **核心（22 个 Tier-1 命令，含 `c2d` 总入口）**——常驻加载。构建、浏览、基础查询（scan、build、explore-flow、describe-node、trace-chain、neighbors、path、search、key-paths 等）。
 - **分析（13 个 Tier-1 + 19 个 cgdb_* MCP 工具）**——按需加载。并发、数据流、不变量、FFI、路径可行性、来源、cgdb 表。
@@ -857,7 +857,7 @@ Code2Database 当前能力，按类别组织：
 - Git post-commit 钩子，自动 quick-update
 
 ### 分发
-- Python skill，3 个子 skill（`/Code2Database`、`/Code2Database-analysis`、`/Code2Database-ops`）
+- Python skill，4 个子 skill（`/Code2Database`、`/Code2Database-analysis`、`/Code2Database-ops`、`/Code2Database-kb`）
 - 一键安装器（`install.sh`），支持 Claude Code / Cursor / Codex / OpenCode / Gemini
 - 按语言安装（`C2D_LANGUAGES` 环境变量或 `setup.sh --languages`）
 - 160 个测试文件（扫描器、构建器、cgdb、守护进程、MCP、并发、FFI 等）

@@ -108,12 +108,13 @@ bash install.sh --lang en --dir ~/.local/share/Code2Database --target codex
 bash install.sh --target all  # 为所有支持的工具安装
 ```
 
-安装器在 `~/.claude/skills/` 下安装 **3 个子技能**：
+安装器在 `~/.claude/skills/` 下安装 **4 个子技能**：
 - `Code2Database`（核心——始终加载，拥有 `scripts/`）
 - `Code2Database-analysis`（深度分析——按需）
 - `Code2Database-ops`（图谱编辑 + 运维——按需）
+- `Code2Database-kb`（独立知识/记忆库——按需）
 
-两个按需子技能 symlink 到核心的 `scripts/` 目录——单一 CLI，无重复。
+三个按需子技能 symlink 到核心的 `scripts/` 目录——单一 CLI，无重复。
 
 支持的目标：
 - **claudecode** — Claude Code（安装 skill 到 `~/.claude/skills/`，配置 MCP 服务器）
@@ -556,7 +557,7 @@ python3 scripts/code2database_scanner.py scan --source /path --extraction-backen
 
 ---
 
-## 技能激活（3 个子技能）
+## 技能激活（4 个子技能）
 
 技能分为 4 个子技能以保持 LLM 上下文精简。每个子技能有自己的 `SKILL.md`，仅暴露与其层相关的命令。CLI（`scripts/code2database_builder.py`）共享——无论哪个子技能激活，全部 266 个命令都可访问。
 

@@ -221,5 +221,89 @@ public class Handler {
             f"obj::method reference edge missing: {pairs}")
 
 
+class TestJavaInheritanceEdges(unittest.TestCase):
+    """extends AND implements clauses produce IMPLEMENTS edges."""
+
+    _CODE = """\
+package com.example;
+
+interface Printable { void print(); }
+interface Closeable2 { void close(); }
+abstract class Base { abstract void cleanup(); }
+
+public class Impl extends Base implements Printable, Closeable2 {
+    public void print() { }
+    public void close() { }
+}
+"""
+
+    def test_implements_clause_edges(self):
+        result = _scan_java(self._CODE)
+        impl_edges = [e for e in result.get("edges", [])
+                      if e.get("relation") == "IMPLEMENTS"]
+        targets = {e.get("target") for e in impl_edges}
+        self.assertIn("printable", targets)
+        self.assertIn("closeable2", targets)
+
+    def test_extends_clause_edge(self):
+        result = _scan_java(self._CODE)
+        impl_edges = [e for e in result.get("edges", [])
+                      if e.get("relation") == "IMPLEMENTS"]
+        sources = {e.get("source") for e in impl_edges}
+        pairs = {(e.get("source"), e.get("target")) for e in impl_edges}
+        self.assertIn(("com_example_impl", "base"), pairs)
+        self.assertEqual(sources, {"com_example_impl"})
+
+    def test_signature_includes_clauses(self):
+        result = _scan_java(self._CODE)
+        impl = next(f for f in result["functions"] if f["name"] == "Impl")
+        self.assertIn("extends Base", impl["signature"])
+        self.assertIn("implements Printable, Closeable2", impl["signature"])
+
+
+class TestJavaLambdaAndLabels(unittest.TestCase):
+
+    _CODE = """\
+package com.example;
+
+public class Service {
+    public void run() {
+        Runnable r = () -> { helper(); };
+        new Thread(() -> { work(); }).start();
+    }
+    void helper() {}
+    void work() {}
+    protected void finalize() { helper(); }
+    public static void util() {}
+}
+"""
+
+    def test_lambda_body_calls_attributed_to_enclosing_method(self):
+        result = _scan_java(self._CODE)
+        run = next(f for f in result["functions"]
+                   if f["name"] == "Service.run")
+        callees = {a["callee"] for a in run.get("callee_args", [])}
+        self.assertIn("helper", callees)
+        self.assertIn("work", callees)
+
+    def test_new_thread_labels_the_starter(self):
+        result = _scan_java(self._CODE)
+        run = next(f for f in result["functions"]
+                   if f["name"] == "Service.run")
+        self.assertIn("thread_processor", run["labels"])
+
+    def test_finalize_gets_destructor_label(self):
+        result = _scan_java(self._CODE)
+        fin = next(f for f in result["functions"]
+                   if f["name"] == "Service.finalize")
+        self.assertIn("destructor", fin["labels"])
+
+    def test_static_method_label(self):
+        result = _scan_java(self._CODE)
+        util = next(f for f in result["functions"]
+                    if f["name"] == "Service.util")
+        self.assertIn("static_method", util["labels"])
+
+
 if __name__ == "__main__":
     unittest.main()

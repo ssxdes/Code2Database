@@ -120,8 +120,10 @@ class JavaTreeSitterScanner(BaseScanner):
                 for sub in child.children:
                     if sub.type in ('type_identifier', 'scoped_identifier'):
                         extends_names.append(self._node_text(sub, source_bytes))
-            elif child.type == 'interfaces':
-                # implements clause: interfaces > type_list > type_identifier/scoped_identifier
+            elif child.type in ('interfaces', 'super_interfaces'):
+                # implements clause: super_interfaces > type_list >
+                # type_identifier / scoped_identifier (the node type is
+                # super_interfaces in tree-sitter's Java grammar)
                 for sub in child.children:
                     if sub.type == 'type_list':
                         for t in sub.children:
@@ -585,9 +587,13 @@ class JavaTreeSitterScanner(BaseScanner):
                         callee_args_list[-1]["callback_target"] = spawn_target_name
 
                 # Walk argument_list children for method references (::)
-                # and lambda callbacks that may contain nested calls.
-                # The early return above used to skip this, so
-                # method_reference nodes inside arguments were lost.
+                # and lambda callbacks that may contain nested calls,
+                # and the object position for receiver chains like
+                # new Thread(() -> work()).start() — the object
+                # creation's arguments hold the lambda body.
+                _obj_field = node.child_by_field_name('object')
+                if _obj_field is not None:
+                    _walk(_obj_field)
                 for child in node.children:
                     if child.type == 'argument_list':
                         for arg in child.children:

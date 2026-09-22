@@ -930,11 +930,15 @@ def _eval_pp_expr(expr: str, bindings: dict) -> bool:
         rhs = m.group(2)
         # C standard: undefined macros evaluate to 0 in #if expressions.
         # So #if UNDEFINED == 0 is 0 == 0 → True (alive code).
-        val = bindings.get(macro, "0")
+        # Binding values may arrive as non-strings (profile JSON carries
+        # numbers/booleans) — coerce before string operations.
+        raw = bindings.get(macro, "0")
+        val = raw if isinstance(raw, str) else str(raw)
         # If rhs is a macro name (not a numeric literal), resolve it too
         # (undefined rhs macros also evaluate to 0).
         if not re.match(r'(\d+|0x[\da-fA-F]+)$', rhs):
-            rhs = bindings.get(rhs, "0")
+            rhs_raw = bindings.get(rhs, "0")
+            rhs = rhs_raw if isinstance(rhs_raw, str) else str(rhs_raw)
         return val.strip() == rhs or _numeric_eq(val, rhs)
 
     # MACRO != value
@@ -942,9 +946,11 @@ def _eval_pp_expr(expr: str, bindings: dict) -> bool:
     if m:
         macro = m.group(1)
         rhs = m.group(2)
-        val = bindings.get(macro, "0")
+        raw = bindings.get(macro, "0")
+        val = raw if isinstance(raw, str) else str(raw)
         if not re.match(r'(\d+|0x[\da-fA-F]+)$', rhs):
-            rhs = bindings.get(rhs, "0")
+            rhs_raw = bindings.get(rhs, "0")
+            rhs = rhs_raw if isinstance(rhs_raw, str) else str(rhs_raw)
         return not (val.strip() == rhs or _numeric_eq(val, rhs))
 
     # MACRO > value / MACRO >= value / MACRO < value / MACRO <= value
@@ -953,9 +959,10 @@ def _eval_pp_expr(expr: str, bindings: dict) -> bool:
         macro = m.group(1)
         op = m.group(2)
         rhs = int(m.group(3))
-        val = bindings.get(macro)
-        if val is None:
+        raw = bindings.get(macro)
+        if raw is None:
             return True  # Conservative
+        val = raw if isinstance(raw, str) else str(raw)
         try:
             lhs = int(val, 0)  # base=0 parses 0x/0b/decimal uniformly from #if expressions
         except (ValueError, TypeError):
@@ -998,8 +1005,10 @@ def _eval_pp_expr(expr: str, bindings: dict) -> bool:
     return True
 
 
-def _numeric_eq(a: str, b: str) -> bool:
+def _numeric_eq(a, b) -> bool:
     """Compare two numeric strings for equality."""
+    a = a if isinstance(a, str) else str(a)
+    b = b if isinstance(b, str) else str(b)
     try:
         a_val = int(a, 0)  # Handles 0x prefix
         b_val = int(b, 0)

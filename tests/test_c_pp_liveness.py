@@ -231,5 +231,63 @@ class TestScanFilePpLiveness(unittest.TestCase):
         self.assertFalse(funcs["always_off"]["preproc_alive"])
 
 
+class TestNonStringBindingValues(unittest.TestCase):
+    """Profile JSON delivers binding values as numbers/booleans; the
+    expression evaluator must coerce instead of raising (a raise here
+    drops the whole source file from the scan with an extract error).
+    """
+
+    def test_integer_bindings_compare_and_do_not_lose_the_file(self):
+        code = (
+            "#if MODE == 2\n"
+            "void mode_two(void) {}\n"
+            "#endif\n"
+            "#if MODE != 2\n"
+            "void mode_other(void) {}\n"
+            "#endif\n"
+        )
+        result = _scan_c(code, bindings={"MODE": 2})
+        self.assertNotIn("error", result,
+                         f"file lost to extract error: {result.get('error')}")
+        funcs = _funcs_by_name(result)
+        self.assertTrue(funcs["mode_two"]["preproc_alive"])
+        self.assertFalse(funcs["mode_other"]["preproc_alive"])
+
+    def test_integer_relational_bindings(self):
+        code = (
+            "#if LEVEL > 1\n"
+            "void level_two(void) {}\n"
+            "#endif\n"
+            "#if LEVEL > 5\n"
+            "void level_six(void) {}\n"
+            "#endif\n"
+        )
+        result = _scan_c(code, bindings={"LEVEL": 2})
+        self.assertNotIn("error", result)
+        funcs = _funcs_by_name(result)
+        self.assertTrue(funcs["level_two"]["preproc_alive"])
+        self.assertFalse(funcs["level_six"]["preproc_alive"])
+
+    def test_boolean_binding_bare_name(self):
+        code = (
+            "#if ENABLED\n"
+            "void enabled_path(void) {}\n"
+            "#endif\n"
+        )
+        result = _scan_c(code, bindings={"ENABLED": True})
+        self.assertNotIn("error", result)
+        self.assertTrue(_funcs_by_name(result)["enabled_path"]["preproc_alive"])
+
+    def test_rhs_macro_resolution_with_integer_values(self):
+        code = (
+            "#if MODE == EXPECTED\n"
+            "void matching_mode(void) {}\n"
+            "#endif\n"
+        )
+        result = _scan_c(code, bindings={"MODE": 2, "EXPECTED": 2})
+        self.assertNotIn("error", result)
+        self.assertTrue(_funcs_by_name(result)["matching_mode"]["preproc_alive"])
+
+
 if __name__ == "__main__":
     unittest.main()

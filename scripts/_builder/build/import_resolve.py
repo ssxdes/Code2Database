@@ -10,7 +10,7 @@ import logging
 _ASM_EXTERN_RE = re.compile(
     r'^\s*(?:extern|\.globl|\.global)\s+([a-zA-Z_]\w*)', re.MULTILINE)
 
-# Hoisted static regexes for per-file import scanning (Finding 25).
+# Hoisted static regexes for per-file import scanning.
 # These were bare-string re.finditer calls compiled 30K+ times on kernel.
 _INCLUDE_RE = re.compile(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]', re.MULTILINE)
 _PY_IMPORT_PAREN_RE = re.compile(r'\bimport\s+(?:\(([^)]*)\)|"([^"]+)")')

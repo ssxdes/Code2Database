@@ -132,7 +132,7 @@ def split_by_domain(G: nx.DiGraph, outdir: str, source_root: str = "",
     _domain_overrides = {}  # nid → new_domain (for LazySQLiteGraph, where G.nodes[] writes are cache-only)
     if profile and profile.get("domain_rules"):
         # Pre-compile all domain rule regexes ONCE, then do a SINGLE
-        # pass over all nodes (Finding 3 + 33: was O(R×N), now O(R+N)).
+        # pass over all nodes (O(R+N) instead of the naive O(R×N)).
         _compiled_rules = []
         for rule in profile["domain_rules"]:
             pattern = rule.get("pattern", "")

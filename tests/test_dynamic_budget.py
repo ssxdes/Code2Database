@@ -1,4 +1,4 @@
-"""Tests for dynamic LLM context budget allocation (D36)."""
+"""Tests for dynamic LLM context budget allocation."""
 import os
 import sys
 import unittest

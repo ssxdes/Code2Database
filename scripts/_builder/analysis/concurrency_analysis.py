@@ -291,7 +291,7 @@ def _detect_toctou_patterns(G, target_func=None, profile=None):
 
     field_writers = defaultdict(list)
     # Single-pass traversal: collect both field_writers AND reader
-    # data in one G.nodes(data=True) pass (Finding 28: was two
+    # data in one G.nodes(data=True) pass (previously two
     # separate full-graph traversals doing the same regex work).
     # The first traversal collects writers + their lock sets; the
     # second collects readers + their lock sets. Merged into one

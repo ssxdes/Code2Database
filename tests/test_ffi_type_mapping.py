@@ -1,4 +1,4 @@
-"""Tests for FFI platform ABI + signature inference (D22)."""
+"""Tests for FFI platform ABI + signature inference."""
 import os
 import sys
 import unittest

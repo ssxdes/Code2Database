@@ -1,4 +1,4 @@
-"""Tests for C++ template/concept/coroutine extraction (D13)."""
+"""Tests for C++ template/concept/coroutine extraction."""
 import os
 import sys
 import unittest

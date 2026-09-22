@@ -70,9 +70,8 @@ def _migrate_v2_to_v3(conn: sqlite3.Connection) -> None:
 def _migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
     """v3 → v4: Add design-report L1/L3/L4 + multi-db + cross-language tables.
 
-    This migration creates the new tables that implement the design report
-    (C代码数据库化方案-分析与执行报告.md) appendices C.1 (L1), C.3 (L3),
-    C.4 (L4), C.5 (multi-db routing), C.6 (cross-language bridge).
+    This migration creates the new design-report tables: the L1/L3/L4
+    layers, multi-db routing, and the cross-language bridge.
 
     All new tables are CREATE TABLE IF NOT EXISTS, so this is safe to run
     repeatedly. We also ALTER existing tables to add the additional columns

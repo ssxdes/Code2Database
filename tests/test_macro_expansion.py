@@ -1,4 +1,4 @@
-"""Tests for C/C++ macro expansion (D12: MACRO_EXPANDS_TO)."""
+"""Tests for C/C++ macro expansion (MACRO_EXPANDS_TO)."""
 import os
 import sys
 import unittest

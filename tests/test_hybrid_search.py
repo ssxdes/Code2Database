@@ -242,7 +242,7 @@ class TestHybridSearchEndToEnd(unittest.TestCase):
 
     def test_hybrid_when_dense_available(self):
         """When _get_embedding returns a vector, the dense channel is exercised
-        and RRF fusion runs (regression test for P0-1 defaultdict bug)."""
+        and RRF fusion runs (guards the historical defaultdict bug)."""
         from _builder.query.hybrid_search import hybrid_search
         # Mock _get_embedding to return a fake 4-dim vector
         with patch("_builder.query.hybrid_search._get_embedding",

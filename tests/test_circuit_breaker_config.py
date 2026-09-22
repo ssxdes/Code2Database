@@ -1,4 +1,4 @@
-"""Tests for configurable circuit breaker + adaptive batch (D32)."""
+"""Tests for configurable circuit breaker + adaptive batch."""
 import os
 import sys
 import tempfile

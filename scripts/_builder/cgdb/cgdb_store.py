@@ -1605,7 +1605,7 @@ class SQLiteCGDBStore(CGDBWriter, CGDBReader):
         ).fetchall()
         return [r[0] for r in rows]
 
-    # ---- L1/L2 extended queries (per doc 5.5.7 MCP tool list) ----
+    # ---- L1/L2 extended queries (backing the extended MCP tool list) ----
 
     def get_definition(self, symbol_name: str,
                        limit: int = 10) -> List[Dict[str, Any]]:

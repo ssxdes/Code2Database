@@ -1,4 +1,4 @@
-"""Tests for daemon multi-threading (D31).
+"""Tests for daemon multi-threading.
 
 Tests that the sync worker thread runs separately from the main loop,
 socket queries aren't blocked by syncs, and sync-status is reported
@@ -153,7 +153,7 @@ class TestSyncWorkerThread(unittest.TestCase):
 
 
 class TestStartupGracePeriod(unittest.TestCase):
-    """M1: daemon start() must not dispatch syncs during the startup
+    """Daemon start() must not dispatch syncs during the startup
     grace window, and the recovery bulk sync from a crashed previous
     daemon must be deferred until the grace ends (crash-loop guard).
     """

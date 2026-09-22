@@ -416,7 +416,7 @@ def cmd_describe_node(args):
     # --snippet: include source code snippet around the function definition.
     # Runs for all detail levels (brief/standard/full) so callers can get
     # source context without a separate get-code-snippet call.
-    # Falls back to source_snippet if already extracted at scan time (D16).
+    # Falls back to source_snippet if already extracted at scan time.
     if snippet_lines > 0:
         existing_snippet = nd.get("source_snippet", "")
         if existing_snippet:

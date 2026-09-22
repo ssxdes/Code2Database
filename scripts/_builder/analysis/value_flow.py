@@ -487,7 +487,7 @@ def forward_taint_trace(G, source_id: str, taint_pattern: str,
 
 
 # ---------------------------------------------------------------------------
-# Alias extraction: parse local-variable assignments from body text (D19)
+# Alias extraction: parse local-variable assignments from body text
 # ---------------------------------------------------------------------------
 
 # Match simple assignments: `type *alias = expr;` or `alias = expr;`

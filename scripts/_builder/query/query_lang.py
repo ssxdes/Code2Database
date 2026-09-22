@@ -203,7 +203,7 @@ class _Parser:
             q.where = self._parse_where()
         self._expect("WORD", "RETURN")
         q.return_items = self._parse_return()
-        # Optional GROUP BY (D25)
+        # Optional GROUP BY
         if self._accept("WORD", "GROUP"):
             self._expect("WORD", "BY")
             while True:
@@ -214,7 +214,7 @@ class _Parser:
                 q.group_by.append(attr)
                 if not self._accept("PUNCT", ","):
                     break
-        # Optional HAVING (D25) — only meaningful with GROUP BY
+        # Optional HAVING — only meaningful with GROUP BY
         if self._accept("WORD", "HAVING"):
             q.having = self._parse_where()
         # Optional ORDER BY (with optional DESC/ASC)
@@ -753,7 +753,7 @@ def execute_query(query: Query, G) -> List[Dict]:
     finally:
         query.limit = saved_limit
 
-    # D25: Apply GROUP BY + aggregates if any aggregate is in RETURN
+    # Apply GROUP BY + aggregates if any aggregate is in RETURN
     has_aggregate = any(item.is_aggregate for item in query.return_items)
     if has_aggregate or query.group_by:
         rows = _apply_group_by_and_aggregates(query, rows)

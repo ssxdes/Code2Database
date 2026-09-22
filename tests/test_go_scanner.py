@@ -199,7 +199,7 @@ class TestGoInterfaceDispatchBuildPhase(unittest.TestCase):
                 self.assertTrue(d.get("evidence", ""))
 
     def test_partial_implementor_gets_no_dispatch(self):
-        """M5: a type that has the method but doesn't satisfy the FULL
+        """A type that has the method but doesn't satisfy the FULL
         interface must NOT get a DISPATCH edge (Go structural
         satisfaction requires all methods)."""
         from _builder.graph.graph_build import build_graph

@@ -1,4 +1,4 @@
-"""Tests for graph history versioning (D9)."""
+"""Tests for graph history versioning."""
 import json
 import os
 import shutil

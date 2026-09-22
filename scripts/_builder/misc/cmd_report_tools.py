@@ -5,8 +5,7 @@ can be invoked from the code2database_builder CLI. Each cmd_* function
 takes argparse args, builds a dict matching the MCP tool's inputSchema,
 calls the underlying _tool_* handler, and prints JSON to stdout.
 
-Implements the 13 commands listed in Code2Database-最终差距分析与优化报告.md
-(RPT-P0-13):
+Implements the 13 write-back/L1 commands:
 
   L1 写回与一致性 (5):
     - render-source        (file_id)

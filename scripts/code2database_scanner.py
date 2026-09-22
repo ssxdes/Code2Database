@@ -721,7 +721,7 @@ def scan_directory(source_root: str, lang: str = "auto",
 
     # Auto-detect large project: if > 2000 source files, treat as large.
     # This auto-enables split-output for better memory management.
-    # Threshold lowered from 5000 to 2000 (Finding 10) to protect memory
+    # Threshold lowered from 5000 to 2000 to protect memory
     # on medium-sized projects (2K-5K files) that accumulate ~200-500MB
     # in all_functions list without split-output. At 2000 files the
     # accumulated data is ~200MB which is manageable on most systems;

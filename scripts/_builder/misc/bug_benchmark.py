@@ -52,7 +52,7 @@ import logging
 @dataclass
 class BugCase:
     """One BUG case in the benchmark."""
-    id: str  # e.g., "CVE-2024-12345" or "issue-42"
+    id: str  # e.g., "CVE-2024-12345" or "tracker-42"
     description: str  # what the bug is
     root_cause_function: str  # the function that has the bug
     root_cause_file: str  # source file

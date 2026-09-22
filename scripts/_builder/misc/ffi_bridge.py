@@ -140,7 +140,7 @@ _RUST_TO_C = {
 
 
 # ---------------------------------------------------------------------------
-# D22: Platform ABI models — type sizes/alignments differ across ABIs
+# Platform ABI models — type sizes/alignments differ across ABIs
 # ---------------------------------------------------------------------------
 
 # Common platform ABIs: type name → byte width
@@ -426,7 +426,7 @@ def detect_python_ffi(file_text: str, file_path: str) -> List[Dict]:
                 "from": rtype, "to": c_rtype, "lossy": False,
                 "direction": "return",
             })
-        # D22: signature inference — when argtypes is missing, infer
+        # Signature inference — when argtypes is missing, infer
         # from the call-site argument expressions
         if not explicit_argtypes:
             # Get the full call text (var.func(args)) — balance parens

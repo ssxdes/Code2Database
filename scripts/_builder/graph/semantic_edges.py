@@ -21,7 +21,7 @@ Resource target identification:
   - For READS/WRITES, existing field_access / global_access tables
     already capture this — we don't duplicate.
 
-Resource nodes (D1 first-class citizenship) is partially addressed by
+Resource-node first-class citizenship is partially addressed by
 allowing edges to non-function targets (the resource name itself is
 stored as a virtual node with node_type='resource').
 

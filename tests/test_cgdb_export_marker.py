@@ -1,4 +1,4 @@
-"""Tests for the cgdb-export-failure marker (M3).
+"""Tests for the cgdb-export-failure marker.
 
 The cgdb export failure used to be logged as a stderr WARNING only:
 builds reported success while cgdb semantic tables (L1 tokens, types,

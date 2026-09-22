@@ -1,4 +1,4 @@
-"""Graph history versioning (D9).
+"""Graph history versioning.
 
 Tracks logical graph versions in a `graph_versions` SQLite table and provides:
 - `record_version`: capture a version snapshot after a build/update

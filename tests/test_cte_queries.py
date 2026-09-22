@@ -1,4 +1,4 @@
-"""Tests for SQL CTE recursive path queries (D7+D8)."""
+"""Tests for SQL CTE recursive path queries."""
 import os
 import sqlite3
 import sys

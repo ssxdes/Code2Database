@@ -1,4 +1,4 @@
-"""Tests for Cypher-subset extensions (D25): aggregates, GROUP BY, ORDER BY DESC."""
+"""Tests for Cypher-subset extensions: aggregates, GROUP BY, ORDER BY DESC."""
 import os
 import sys
 import unittest

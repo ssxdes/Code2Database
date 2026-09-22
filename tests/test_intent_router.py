@@ -1,4 +1,4 @@
-"""Tests for the intent router (D45+D16 optimization)."""
+"""Tests for the intent router."""
 import os
 import sys
 import unittest

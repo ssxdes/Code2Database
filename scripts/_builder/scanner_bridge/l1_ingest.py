@@ -1,9 +1,10 @@
 """L1 ingest — design-report L1 无损重建层 implementation.
 
-Implements the design-report §2.1.1 (L1 无损重建层) and §11.6 (源码重建与一致性)
+Implements the L1 lossless source reconstruction layer and its
+source-render consistency contract
 using libclang's Lexer (cursor.get_tokens()) + a PPCallbacks simulation layer.
 
-The design report expects:
+The L1 contract expects:
   - 全量 Token 流（关键字/标识符/字面量/运算符/分隔符/注释/空白）
   - preceding_whitespace（前置空白，含换行、缩进、空行）
   - PP-callbacks：宏定义/宏调用/条件编译/include/pragma
@@ -860,7 +861,7 @@ def ingest_l1(
     if commit:
         conn.commit()
 
-    # RPT-P0-21: L1↔L2 alignment — link identifier tokens to cgdb_nodes
+    # L1↔L2 alignment — link identifier tokens to cgdb_nodes
     # This runs AFTER the main commit so it doesn't hold the write lock
     # during the CPU-intensive parsing phase.
     try:
@@ -900,7 +901,7 @@ def ingest_l1(
         if linked and commit:
             conn.commit()
     except Exception as _align_exc:
-        # Best-effort — alignment is a P0-21 enhancement, not a correctness
+        # Best-effort — alignment is an enhancement, not a correctness
         # requirement for L1 ingest itself.
         stats["l1_l2_linked"] = 0
         import sys as _sys

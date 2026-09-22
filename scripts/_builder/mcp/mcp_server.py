@@ -422,7 +422,7 @@ TOOLS = {
         },
         "handler": _tool_extract_signals,
     },
-    # ---- D37: New tools for expanded MCP coverage (16 -> 34) ----
+    # ---- New tools for expanded MCP coverage (16 -> 34) ----
     "code2database_path_feasible": {
         "description": "Check feasibility of a path under #ifdef conditions using Z3 or heuristics.",
         "inputSchema": {
@@ -814,7 +814,7 @@ TOOLS = {
 # Merge in 28 design-report MCP tools (render_source / verify_consistency /
 # edit_token / ... / commit_db_transaction / rollback_db_transaction /
 # insert_node_after / delete_node / add_function).
-# These implement design-report appendix B (28 tools: 8 L1 + 8 L2 + 7 L3 +
+# These implement the design-report write-back tool set (28 tools: 8 L1 + 8 L2 + 7 L3 +
 # 2 writeback + 3 advanced-edit). They are imported from mcp_report_tools
 # so mcp_server.py stays under 2000 lines. Total tool count: 55 + 28 = 83.
 # ============================================================================

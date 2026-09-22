@@ -3331,7 +3331,7 @@ def _add_go_interface_dispatch(G) -> int:
                 continue
             if method not in interface_methods[iface]:
                 continue
-            # M5: Go structural satisfaction — a type must implement ALL
+            # Go structural satisfaction — a type must implement ALL
             # of the interface's methods, not just the one being called.
             required = interface_methods[iface]
             for tname, meths in methods_by_type.items():
@@ -4696,7 +4696,7 @@ def cmd_build(args):
             _BATCH_SIZE = 5000
             _func_batch = []
             _access_batch = []  # accumulate nodes for batch field/global access
-            # Finding 9: Accumulate domain counts during the functions pass
+            # Accumulate domain counts during the functions pass
             # to avoid a separate full-graph traversal for domain_stats.
             _domain_counter: Counter = Counter()
             print(f"[SQLite] Exporting functions + field_access/global_access...", file=sys.stderr)
@@ -4767,7 +4767,7 @@ def cmd_build(args):
                 store.store_entry_scores(score_list)
 
             # Store domain stats — uses counts accumulated during the
-            # functions pass above (Finding 9: merged from separate pass).
+            # functions pass above (merged from a separate pass).
             for domain, func_count in _domain_counter.items():
                 stats = {
                     "funcs": func_count,
@@ -4882,7 +4882,7 @@ def cmd_build(args):
                     _l1_tasks = []
                     # Begin a single bulk-load transaction for the entire
                     # per-file write loop. Without this, each write_batch()
-                    # issues its own BEGIN+COMMIT, causing 40K+ fdatasync
+                    # performs its own BEGIN+COMMIT, causing 40K+ fdatasync
                     # calls (one per file) on large projects like the Linux
                     # kernel — the dominant bottleneck observed in
                     # production (12h+ stall at this point).
@@ -5282,7 +5282,7 @@ def cmd_build(args):
                                 invoker_to_arg_calls.setdefault(
                                     (invoker_nid, callee_nid), []).append(ca)
                         # Walk invoke_sites and populate arg_bindings.
-                        # Batch all updates into a list and issue a single
+                        # Batch all updates into a list and emit a single
                         # executemany — the per-row conn.execute("UPDATE")
                         # inside the SELECT loop was the same class of
                         # bottleneck as the old per-file COMMIT bug.
@@ -5604,7 +5604,7 @@ def cmd_build(args):
         if getattr(args, 'auto_enhance', False):
             _post_build_auto_enhance(args, outdir)
 
-        # /D15: write coverage reports (SQLite path).
+        # Write coverage reports (SQLite path).
         try:
             from _builder.misc.coverage_report import (
                 write_coverage_report, write_file_coverage,
@@ -5658,7 +5658,7 @@ def cmd_build(args):
     if getattr(args, 'auto_enhance', False):
         _post_build_auto_enhance(args, outdir)
 
-    # /D15: write coverage reports (JSON path).
+    # Write coverage reports (JSON path).
     try:
         from _builder.misc.coverage_report import (
             write_coverage_report, write_file_coverage,

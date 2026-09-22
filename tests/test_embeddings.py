@@ -1,4 +1,4 @@
-"""Tests for TF-IDF char n-gram embeddings (D24 enhancement)."""
+"""Tests for TF-IDF char n-gram embeddings."""
 import json
 import os
 import sys

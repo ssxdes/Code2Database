@@ -1,4 +1,4 @@
-"""Tests for cross-platform daemon backends (D29).
+"""Tests for cross-platform daemon backends.
 
 Tests FSEvents (macOS), ReadDirectoryChangesW (Windows), and watchdog
 adapter behavior. Since the test runs on Linux, we can only verify:

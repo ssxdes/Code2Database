@@ -19,7 +19,7 @@ import time
 from typing import Dict
 import logging
 
-# M3: TTL cache so session-init doesn't os.walk a 70K-file source tree
+# TTL cache so session-init doesn't os.walk a 70K-file source tree
 # on every call. GraphCache.freshness() already had a 10s
 # wrapper; session-init called check_freshness() directly with no cache.
 # bounded LRU — long-running MCP servers querying

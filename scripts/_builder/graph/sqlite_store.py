@@ -1185,7 +1185,7 @@ class SQLiteStore:
         } for r in rows]
 
     # ------------------------------------------------------------------
-    # CTE-based recursive path queries (D7+D8)
+    # CTE-based recursive path queries
     # ------------------------------------------------------------------
 
     def query_call_chain_cte(self, start_id: str, max_depth: int = 5,

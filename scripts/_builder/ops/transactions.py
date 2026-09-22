@@ -762,12 +762,12 @@ class TransactionState:
     status: str  # 'active', 'committed', 'rolled_back', 'failed'
     ended_at: Optional[float] = None
     error: Optional[str] = None
-    # RPT-P0-15: file_ids whose tokens/literals/source_files_meta were mutated
+    # file_ids whose tokens/literals/source_files_meta were mutated
     # during this transaction. Tracked so that commit() can run
     # source_renderer.verify_consistency() on just the touched files (cheap)
     # rather than the whole graph (expensive on 700K+ node builds).
     dirty_file_ids: List[int] = field(default_factory=list)
-    # RPT-P0-15: results of the post-commit consistency check. Each entry is
+    # results of the post-commit consistency check. Each entry is
     # {"file_id": int, "ok": bool, "diff": str|None}. Empty if no dirty files
     # or if consistency checking was disabled.
     consistency_results: List[Dict[str, Any]] = field(default_factory=list)
@@ -832,7 +832,7 @@ def transaction(graph_dir: str, description: str = "",
             # ... other mutations ...
         # On normal exit: committed. On exception: rolled back.
 
-    RPT-P0-15: After commit, if `verify_consistency=True` and the
+    After commit, if `verify_consistency=True` and the
     TransactionState has any `dirty_file_ids` (populated via
     `mark_file_dirty()`), source_renderer.verify_consistency() is run on
     each touched file_id. Mismatches are recorded in
@@ -871,7 +871,7 @@ def transaction(graph_dir: str, description: str = "",
 
         try:
             yield tx_state
-            # RPT-P0-15: re-read the state file to pick up any
+            # re-read the state file to pick up any
             # mark_file_dirty() calls made inside the `with` block.
             # mark_file_dirty writes its own copy of the state to disk,
             # so the in-memory `tx_state` may be stale at this point.
@@ -932,7 +932,7 @@ def transaction(graph_dir: str, description: str = "",
         # These hooks are best-effort: log on failure but don't undo the
         # commit.
         try:
-            # RPT-P0-15: post-commit consistency check on dirty files.
+            # post-commit consistency check on dirty files.
             if verify_consistency and tx_state.dirty_file_ids:
                 _run_post_commit_consistency_check(graph_dir, tx_state)
 
@@ -1198,7 +1198,7 @@ def cmd_tx_begin(args):
             "started_at": tx_state.started_at, "status": "active",
         }
 
-        # RPT-P0-16: If --file-id given, also register a write-back tx.
+        # If --file-id given, also register a write-back tx.
         if file_id is not None:
             try:
                 import sqlite3 as _sqlite3
@@ -1272,7 +1272,7 @@ def cmd_tx_commit(args):
             print("No active transaction to commit", file=sys.stderr)
             sys.exit(1)
 
-        # RPT-P0-16: Check for a pending write-back tx. We stored its id in
+        # Check for a pending write-back tx. We stored its id in
         # the description as "[writeback_tx=<uuid>]".
         writeback_tx_id: Optional[str] = None
         if state.description and "writeback_tx=" in state.description:

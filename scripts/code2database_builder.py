@@ -2190,14 +2190,14 @@ def main():
     p_eil.add_argument("--num-calls", type=int, default=3,
                        help="Number of LLM calls for consensus (default 3)")
 
-    # graph-history — list graph versions or show history of a node (D9)
+    # graph-history — list graph versions or show history of a node
     p_gh = sub.add_parser("graph-history",
                           help="List graph versions or show history of a specific node")
     p_gh.add_argument("--graph", required=True, help="Call graph output directory")
     p_gh.add_argument("--node", default=None, help="Node id to show history for")
     p_gh.add_argument("--limit", type=int, default=50, help="Max versions to show")
 
-    # graph-diff — diff two graph versions (D9)
+    # graph-diff — diff two graph versions
     p_gd = sub.add_parser("graph-diff", help="Diff two graph versions")
     p_gd.add_argument("--graph", required=True, help="Call graph output directory")
     p_gd.add_argument("--from-version", type=int, default=None,
@@ -2211,7 +2211,7 @@ def main():
     p_gd.add_argument("--summary-only", action="store_true",
                       help="Only print summary counts")
 
-    # graph-record-version — manually record a graph version (D9)
+    # graph-record-version — manually record a graph version
     p_grv = sub.add_parser("graph-record-version",
                            help="Manually record a graph version")
     p_grv.add_argument("--graph", required=True, help="Call graph output directory")
@@ -2409,7 +2409,7 @@ def main():
     p_vf.add_argument("--taint", action="store_true",
                       help="Forward taint trace: where can a value flow to?")
     p_vf.add_argument("--interprocedural", action="store_true",
-                      help="Multi-hop interprocedural trace with alias propagation (D19)")
+                       help="Multi-hop interprocedural trace with alias propagation")
     p_vf.add_argument("--node", default="", help="Node ID or function name (for --reverse/--taint)")
     p_vf.add_argument("--pattern", default="",
                       help="Value pattern to track (e.g., 'NULL', 'user_input')")
@@ -2637,14 +2637,14 @@ def main():
     p_ffiTy.add_argument("--from", dest="from_type", default="", help="Source type pattern (e.g., 'int')")
     p_ffiTy.add_argument("--to", dest="to_type", default="", help="Target type pattern (e.g., 'long')")
 
-    # D45+D16 optimization: intent-query — route a natural-language question
+    # intent-query — route a natural-language question
     # to the most appropriate CLI command automatically.
     p_iq = sub.add_parser("intent-query",
                            help="Classify a natural-language question and route to a CLI command")
     p_iq.add_argument("--question", required=True, help="Natural-language question to route")
     p_iq.add_argument("--graph", default="", help="Call graph output directory (optional)")
 
-    # D24 enhancement: TF-IDF char n-gram embeddings for semantic search
+    # TF-IDF char n-gram embeddings for semantic search
     p_eb = sub.add_parser("embeddings-build",
                            help="Build TF-IDF char n-gram embeddings for semantic search")
     p_eb.add_argument("--graph", required=True, help="Call graph output directory")
@@ -3393,9 +3393,9 @@ def main():
         "ffi-list": cmd_ffi_list,
         "ffi-trace": cmd_ffi_trace,
         "ffi-types": cmd_ffi_types,
-        # D45+D16 optimization: intent router
+        # intent router
         "intent-query": cmd_intent_query,
-        # D24 enhancement: TF-IDF char n-gram embeddings
+        # TF-IDF char n-gram embeddings
         "embeddings-build": _lazy("_builder.kb.embeddings", "cmd_embeddings_build"),
         "embeddings-search": _lazy("_builder.kb.embeddings", "cmd_embeddings_search"),
         # BUG benchmark

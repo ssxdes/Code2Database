@@ -38,7 +38,7 @@ class MemoryGuard:
         - If `warn_threshold_mb` / `crit_threshold_mb` are provided (in MB):
           used as absolute caps. Absolute caps override fractional thresholds
           and are safer for systems with very large or very small RAM where a
-          fixed fraction would either OOM too eagerly or never trigger.
+          constant fraction would either OOM too eagerly or never trigger.
         - When neither absolute cap is given, `crit_threshold` is also clamped
           so that the absolute critical threshold never exceeds
           `total_mb * 0.9` AND never exceeds `available_mb_at_start + total_mb * 0.5`

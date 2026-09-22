@@ -194,7 +194,7 @@ def route_change_log_by_node(graph_dir: str, node_id: str,
 
 
 # ---------------------------------------------------------------------------
-# CTE-based recursive path queries (D7+D8)
+# CTE-based recursive path queries
 # ---------------------------------------------------------------------------
 
 def route_call_chain(graph_dir: str, start_id: str, max_depth: int = 5,

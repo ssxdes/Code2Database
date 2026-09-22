@@ -1,4 +1,4 @@
-"""Tests for interprocedural value flow with alias propagation (D19)."""
+"""Tests for interprocedural value flow with alias propagation."""
 import os
 import sys
 import unittest

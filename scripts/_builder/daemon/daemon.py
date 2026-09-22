@@ -87,7 +87,7 @@ DEFAULT_CONFIG = {
     "idle_sleep_minutes": 30,
     "max_events_per_minute": 1000,
     "backend": "auto",  # auto / inotify / polling
-    # D32: circuit breaker + adaptive batch options
+    # circuit breaker + adaptive batch options
     "circuit_breaker_window_sec": 60.0,  # window for event-rate counting
     "circuit_breaker_threshold": 1000,   # events/window → bulk rebuild
     "circuit_breaker_cooldown_sec": 30.0,  # after tripping, stay in bulk mode
@@ -862,7 +862,7 @@ class Daemon:
         self._socket_thread: Optional[threading.Thread] = None
         self._server_socket: Optional[socket.socket] = None
         self._stop = False
-        # D31: separate sync worker thread so socket queries aren't blocked
+        # Separate sync worker thread so socket queries aren't blocked
         # by long-running syncs. Main loop dispatches sync jobs to this worker;
         # status is reported via _sync_busy / _sync_pending_jobs.
         self._sync_worker_thread: Optional[threading.Thread] = None
@@ -905,7 +905,7 @@ class Daemon:
         """Start the daemon (foreground; blocks until stop())."""
         self._write_state()
         self._setup_signal_handlers()
-        # Apply env-var overrides (D32) — CALLGRAPH_DAEMON_* overrides
+        # Apply env-var overrides — CALLGRAPH_DAEMON_* overrides
         # config — BEFORE setup, then re-freeze the grace window so the
         # CALLGRAPH_DAEMON_STARTUP_GRACE_SEC override actually applies
         # (it was previously read after __init__ had already computed
@@ -1040,11 +1040,11 @@ class Daemon:
                 _pending_snapshot = sorted(self._pending)
                 self.state.pending_events = 0
             paths_to_sync = _pending_snapshot
-            # D32: filter out format-only changes (whitespace/comments only)
+            # Filter out format-only changes (whitespace/comments only)
             if self.config.get("format_only_filter", True):
                 paths_to_sync = self._filter_format_only(paths_to_sync)
             self._prune_old_events(now)
-            # D32: configurable circuit breaker with cooldown
+            # Configurable circuit breaker with cooldown
             window = self.config.get("circuit_breaker_window_sec", 60.0)
             threshold = self.config.get("circuit_breaker_threshold", 1000)
             cooldown = self.config.get("circuit_breaker_cooldown_sec", 30.0)
@@ -1072,7 +1072,7 @@ class Daemon:
         self._cleanup()
 
     def _apply_env_overrides(self):
-        """Apply CALLGRAPH_DAEMON_* env-var overrides to self.config (D32)."""
+        """Apply CALLGRAPH_DAEMON_* env-var overrides to self.config."""
         env_map = {
             "CALLGRAPH_DAEMON_BATCH_WINDOW_MS": ("batch_window_ms", int),
             "CALLGRAPH_DAEMON_DEBOUNCE_MS": ("debounce_ms", int),
@@ -1197,7 +1197,7 @@ class Daemon:
         return _strip(prev) == _strip(cur)
 
     def _start_sync_worker(self):
-        """Start the background sync worker thread (D31)."""
+        """Start the background sync worker thread."""
         self._sync_worker_thread = threading.Thread(
             target=self._sync_worker_loop,
             daemon=True, name="daemon-sync-worker"
@@ -1874,11 +1874,11 @@ class Daemon:
         """Handle a daemon socket command."""
         if cmd == "status":
             status = self.state.to_dict()
-            # D31: include sync-worker status so clients can see queued jobs
+            # Include sync-worker status so clients can see queued jobs
             status["sync"] = self.get_sync_status()
             return status
         elif cmd == "sync-status":
-            # D31: dedicated sync-status command
+            # Dedicated sync-status command
             return {"ok": True, "sync": self.get_sync_status()}
         elif cmd == "force-refresh":
             path = request.get("path", "")

@@ -141,7 +141,7 @@ def budget_describe(data: dict, max_tokens: int = 0) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Complexity evaluator + dynamic LLM context budget allocation (D36)
+# Complexity evaluator + dynamic LLM context budget allocation
 # ---------------------------------------------------------------------------
 
 def evaluate_query_complexity(query: str, related_nodes_count: int = 0,

@@ -1067,7 +1067,7 @@ class TestCompact(MemoryStoreTestBase):
 
 
 class TestCjkDetection(unittest.TestCase):
-    """M4: _has_cjk / _simple_tokenize must cover Japanese and Korean
+    """_has_cjk / _simple_tokenize must cover Japanese and Korean
     script ranges, not just CJK ideographs."""
 
     def test_hiragana_detected(self):

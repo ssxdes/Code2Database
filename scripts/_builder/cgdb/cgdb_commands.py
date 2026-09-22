@@ -1146,7 +1146,7 @@ def cmd_cgdb_coverage(args):
 def cmd_cgdb_write_coverage(args):
     """Manually (re)write the coverage reports.
 
-    Useful when the build was run before /D15 was integrated,
+    Useful when the build predates automatic coverage writing,
     or after a manual DB modification (e.g., tx-commit) that added/removed
     files. Writes both `.code2database_coverage_report.json` (subsystem
     summary) and `.code2database_file_coverage.json` (file-level list).

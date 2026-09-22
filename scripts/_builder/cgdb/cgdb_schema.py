@@ -560,8 +560,8 @@ CREATE VIEW IF NOT EXISTS cdb_nodes AS
 
 # ============================================================================
 # DDL v4 additions — design-report L1/L3/L4 + multi-db + cross-language bridge
-# These tables implement the design report (C代码数据库化方案-分析与执行报告.md)
-# appendix C.1 (L1), C.3 (L3), C.4 (L4), C.5 (multi-db routing), C.6 (cross-lang).
+# These tables implement the design-report layers (L1/L3/L4), multi-db
+# routing, and the cross-language bridge.
 # They are additive — they do NOT replace the legacy cgdb tables above; they sit
 # side-by-side in the same db. Kept as a separate DDL string so the v3→v4
 # migration can run ONLY this part without re-touching v3 tables/indexes.
@@ -571,10 +571,10 @@ _CGDB_DDL_V4 = """
 -- ============================================================================
 -- ==                                                                        ==
 -- ==  Schema v4 additions — design-report L1/L3/L4 + multi-db + cross-lang ==
--- ==  These tables implement the design report (C代码数据库化方案-分析与执行报告.md) ==
--- ==  appendix C.1 (L1), C.3 (L3), C.4 (L4), C.5 (multi-db routing),       ==
--- ==  C.6 (cross-language bridge). They are additive — they do NOT replace  ==
--- ==  the legacy cgdb tables above; they sit side-by-side in the same db.   ==
+-- ==  These tables implement the design-report layers (L1/L3/L4),           ==
+-- ==  multi-db routing, and the cross-language bridge. They are additive —  ==
+-- ==  they do NOT replace the legacy cgdb tables above; they sit            ==
+-- ==  side-by-side in the same db.                                          ==
 -- ==                                                                        ==
 -- ============================================================================
 -- ============================================================================

@@ -280,7 +280,7 @@ class TestSessionFreshness(unittest.TestCase):
 
 
 class TestFreshnessCache(unittest.TestCase):
-    """M3: check_freshness caches its os.walk result with a short TTL
+    """check_freshness caches its os.walk result with a short TTL
     so session-init doesn't walk 70K+ files on every call."""
 
     def setUp(self):

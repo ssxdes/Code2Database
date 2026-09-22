@@ -887,7 +887,7 @@ def _tool_extract_signals(args: dict, graph_dir: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Additional tool handlers (D37: MCP server tool expansion)
+# Additional tool handlers (MCP server tool expansion)
 # ---------------------------------------------------------------------------
 
 

@@ -32,7 +32,7 @@ def results_to_sarif(results: List[Dict], tool_name: str = "Code2Database",
     seen_rules = set()
 
     for r in results:
-        rule_id = r.get("rule_id", r.get("type", "issue"))
+        rule_id = r.get("rule_id", r.get("type", "finding"))
         rule_short = r.get("rule_short_desc", rule_id)
         rule_full = r.get("rule_full_desc", r.get("message", ""))
 

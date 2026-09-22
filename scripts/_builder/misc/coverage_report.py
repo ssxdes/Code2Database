@@ -8,7 +8,7 @@ Also provides `path_not_found_hints()` — called from `cmd_cgdb_path` when
 src or dst node is missing, to suggest which common kernel subsystems the
 user might be missing from the graph.
 
-Closes the KERNEL-D14 gap from skill_vs_kasan_comparison.md: when path-not-found,
+Closes the coverage gap: when path-not-found,
 the user gets actionable hints instead of a bare "not found" error.
 """
 import json

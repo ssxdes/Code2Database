@@ -7,7 +7,7 @@ no provider is available.
 
 This test suite covers:
 - cosine_similarity(): correct values for known vectors + edge cases
-  (regression test for P0-2: formula bug that returned 1.0 instead of
+  (guards the historical formula bug that returned 1.0 instead of
   ~0.707 for [1,0,0] vs [1,1,0])
 - _detect_provider(): auto-detection logic with mocked network calls
 - get_embedding(): provider dispatch + None-fallback

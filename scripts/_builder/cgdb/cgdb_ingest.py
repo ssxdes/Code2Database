@@ -172,7 +172,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
             config_predicate_id = None
         else:
             config_predicate_id = int(raw_pred_id)
-        # L1+5.4.2: propagate enclosing_symbol_id (set by ClangScanner via
+        # L1: propagate enclosing_symbol_id (set by ClangScanner via
         # cursor.semantic_parent walk). 0/None = file/TU scope.
         enclosing_symbol_id = n.get('enclosing_symbol_id') or 0
         if enclosing_symbol_id:
@@ -308,7 +308,7 @@ def extract_cgdb_batch(scan_result: dict, commit_hash: str = "",
         edge_id = e.get('edge_id')
         if edge_id is not None:
             edge_id = int(edge_id)
-        # L1+5.4.2: propagate enclosing_symbol_id (set by ClangScanner).
+        # L1: propagate enclosing_symbol_id (set by ClangScanner).
         edge_enclosing = e.get('enclosing_symbol_id') or 0
         if edge_enclosing:
             edge_enclosing = int(edge_enclosing)

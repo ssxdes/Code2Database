@@ -221,7 +221,7 @@ if __name__ == "__main__":
 
 
 class TestExpandedToolRegistry(unittest.TestCase):
-    """Tests for the expanded MCP tool registry (D37)."""
+    """Tests for the expanded MCP tool registry."""
 
     def test_at_least_30_tools_registered(self):
         """The TOOLS registry should have at least 30 tools after expansion."""

@@ -1042,7 +1042,7 @@ def unpin_foreign_ref(graph_dir: str, ref_id: int,
 
 
 # ---------------------------------------------------------------------------
-# A3: ATTACH/DETACH context manager — eliminates try/ATTACH/DETACH/except
+# ATTACH/DETACH context manager — eliminates try/ATTACH/DETACH/except
 # boilerplate across c2d_foreign, c2d_phase2, c2d_phase3, kb_index.
 # Existing code is NOT refactored (to avoid introducing bugs); new code
 # should use this context manager instead of manual ATTACH/DETACH.

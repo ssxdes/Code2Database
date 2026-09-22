@@ -252,5 +252,132 @@ class TestGoInterfaceDispatchBuildPhase(unittest.TestCase):
                          "partial implementor must NOT get dispatch")
 
 
+class TestGoGoroutineExtraction(unittest.TestCase):
+    """Goroutine launches: named-callee spawn edges and function-literal
+    bodies (which become synthetic anonymous nodes so the spawn target
+    resolves and the literal's calls stay in the graph)."""
+
+    _GOROUTINE_CODE = """\
+package main
+
+func helper() {}
+
+func launcher() {
+    go worker(1)
+    go func() { helper() }()
+}
+
+func worker(n int) {}
+"""
+
+    def test_named_callee_spawn_edge(self):
+        result = _scan_go(self._GOROUTINE_CODE)
+        spawn = [e for e in result["edges"]
+                 if e.get("target") == "worker"]
+        self.assertEqual(len(spawn), 1)
+        self.assertEqual(spawn[0].get("concurrency"), "goroutine")
+        self.assertEqual(spawn[0].get("source"), "root_launcher")
+
+    def test_spawn_concurrency_info_recorded(self):
+        result = _scan_go(self._GOROUTINE_CODE)
+        launcher = next(f for f in result["functions"]
+                        if f["name"] == "launcher")
+        worker_call = next(a for a in launcher["callee_args"]
+                           if a["callee"] == "worker")
+        self.assertTrue(worker_call["concurrency_info"]["is_spawn"])
+        self.assertEqual(
+            worker_call["concurrency_info"]["concurrency_type"], "goroutine")
+        self.assertEqual(
+            worker_call["concurrency_info"]["spawn_target"], "worker")
+
+    def test_goroutine_launcher_gets_thread_label(self):
+        result = _scan_go(self._GOROUTINE_CODE)
+        launcher = next(f for f in result["functions"]
+                        if f["name"] == "launcher")
+        self.assertIn("thread_processor", launcher["labels"])
+
+    def test_func_literal_becomes_synthetic_node(self):
+        result = _scan_go(self._GOROUTINE_CODE)
+        anon = [f for f in result["functions"]
+                if f.get("node_type") == "anonymous"]
+        self.assertEqual(len(anon), 1)
+        self.assertEqual(anon[0]["name"], "launcher_go_anon_7")
+        self.assertIn("thread_processor", anon[0]["labels"])
+        self.assertEqual(anon[0]["callee_args"][0]["callee"], "helper")
+
+    def test_func_literal_spawn_edge_resolves_and_body_calls_kept(self):
+        result = _scan_go(self._GOROUTINE_CODE)
+        edges = {(e.get("source"), e.get("target")) for e in result["edges"]}
+        self.assertIn(("root_launcher", "launcher_go_anon_7"), edges)
+        self.assertIn(("root_launcher_go_anon_7", "helper"), edges)
+
+    def test_nested_func_literals(self):
+        code = """\
+package main
+
+func deep() {}
+
+func launcher() {
+    go func() {
+        go func() { deep() }()
+    }()
+}
+"""
+        result = _scan_go(code)
+        names = {f["name"] for f in result["functions"]}
+        self.assertIn("launcher_go_anon_6", names)
+        self.assertIn("launcher_go_anon_6_go_anon_7", names)
+        edges = {(e.get("source"), e.get("target")) for e in result["edges"]}
+        self.assertIn(("root_launcher", "launcher_go_anon_6"), edges)
+        self.assertIn(("root_launcher_go_anon_6",
+                       "launcher_go_anon_6_go_anon_7"), edges)
+        self.assertIn(("root_launcher_go_anon_6_go_anon_7", "deep"), edges)
+        nested = [e for e in result["edges"]
+                  if e.get("target") == "launcher_go_anon_6_go_anon_7"]
+        self.assertEqual(nested[0].get("concurrency"), "goroutine")
+
+
+class TestGoConditionScopes(unittest.TestCase):
+    """if/else branches route calls through synthetic condition nodes."""
+
+    def test_if_else_scope_edges(self):
+        code = """\
+package main
+
+func a() {}
+func b() {}
+func c() {}
+
+func chooser(flag bool) {
+    if flag {
+        a()
+    } else {
+        b()
+    }
+    c()
+}
+"""
+        result = _scan_go(code)
+        chooser = next(f for f in result["functions"]
+                       if f["name"] == "chooser")
+        edges = [(e.get("source"), e.get("target"),
+                  e.get("call_condition"), e.get("is_cond_child"))
+                 for e in result["edges"]]
+        # then-branch: cond node -> a
+        self.assertIn(("root_chooser__cond_0", "a", "", True), edges)
+        # else-branch: else cond node -> b
+        self.assertIn(("root_chooser__cond_0_else", "b", "", True), edges)
+        # scope wiring from the invoker
+        self.assertIn(("root_chooser", "root_chooser__cond_0",
+                       "if(flag)", None), edges)
+        self.assertIn(("root_chooser", "root_chooser__cond_0_else",
+                       "!(flag)", None), edges)
+        # unconditional call bypasses the scope nodes
+        self.assertIn(("root_chooser", "c", "", None), edges)
+        self.assertIn(
+            {"condition": "if(flag)", "vars": ["flag"]},
+            chooser.get("condition_vars", []))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -229,17 +229,49 @@ class GoTreeSitterScanner(BaseScanner):
             cond_vars_list = []
             goto_jumps_list = []
             goto_labels_list = []
+            anon_queue = []
+            host_fn = functions[-1]
             self._extract_go_calls(body_node, source_bytes, func_id, domain, edges,
                                    callee_args_list, cond_vars_list,
-                                   goto_jumps_list, goto_labels_list)
+                                   goto_jumps_list, goto_labels_list,
+                                   anon_queue=anon_queue, invoker_name=func_name)
             if callee_args_list:
-                functions[-1]["callee_args"] = callee_args_list
+                host_fn["callee_args"] = callee_args_list
             if cond_vars_list:
-                functions[-1]["condition_vars"] = cond_vars_list
+                host_fn["condition_vars"] = cond_vars_list
             if goto_jumps_list:
-                functions[-1]["goto_jumps"] = goto_jumps_list
+                host_fn["goto_jumps"] = goto_jumps_list
             if goto_labels_list:
-                functions[-1]["goto_labels"] = goto_labels_list
+                host_fn["goto_labels"] = goto_labels_list
+            # Goroutine function literals become synthetic nodes so the
+            # spawn edge resolves and the literal's calls stay visible.
+            while anon_queue:
+                spec = anon_queue.pop(0)
+                rel_path = os.path.relpath(filepath, source_root)
+                functions.append({
+                    "id": spec["id"], "name": spec["name"],
+                    "source_file": rel_path,
+                    "line": spec["line"], "domain": domain,
+                    "labels": ["thread_processor"], "is_empty": False,
+                    "node_type": "anonymous",
+                    "api_constraints": "",
+                    "body_text": self._node_text(spec["body"], source_bytes),
+                    "signature": "",
+                    "params": [], "local_vars": [],
+                    "callee_args": [], "condition_vars": [],
+                    "start_byte": spec["start"], "end_byte": spec["end"],
+                })
+                anon_callee_args = []
+                anon_cond_vars = []
+                self._extract_go_calls(spec["body"], source_bytes, spec["id"],
+                                       domain, edges, anon_callee_args,
+                                       anon_cond_vars, None, None,
+                                       anon_queue=anon_queue,
+                                       invoker_name=spec["name"])
+                if anon_callee_args:
+                    functions[-1]["callee_args"] = anon_callee_args
+                if anon_cond_vars:
+                    functions[-1]["condition_vars"] = anon_cond_vars
             # Interface-typed receiver inference: params and explicit
             # `var x T` declarations give the receiver's STATIC type.
             # The builder resolves the type against the global
@@ -282,7 +314,7 @@ class GoTreeSitterScanner(BaseScanner):
                         "receiver": recv,
                     })
             if interface_calls:
-                functions[-1]["interface_calls"] = interface_calls
+                host_fn["interface_calls"] = interface_calls
 
     def _detect_go_labels(self, func_name: str, body_text: str) -> list:
         labels = []
@@ -377,7 +409,8 @@ class GoTreeSitterScanner(BaseScanner):
 
     def _extract_go_calls(self, body_node, source_bytes, invoker_id,
                           domain, edges, callee_args_list, cond_vars_list,
-                          goto_jumps_list=None, goto_labels_list=None):
+                          goto_jumps_list=None, goto_labels_list=None,
+                          anon_queue=None, invoker_name=""):
         call_order = [0]
         cond_stack = []
         _goto_jumps = goto_jumps_list if goto_jumps_list is not None else []
@@ -411,6 +444,30 @@ class GoTreeSitterScanner(BaseScanner):
 
                     # Check if this is a goroutine launch
                     is_goroutine = (node.parent and node.parent.type == 'go_statement')
+
+                    # go func(){...}(): the callee text is a function
+                    # literal that can never resolve to a node — the
+                    # spawn edge would be dropped at build time and the
+                    # literal's calls lost. Give the spawned body a
+                    # stable synthetic name; its calls are extracted
+                    # under that new invoker after this walk.
+                    if is_goroutine:
+                        _fn_field = node.child_by_field_name('function')
+                        if (_fn_field is not None
+                                and _fn_field.type == 'func_literal'):
+                            _line = node.start_point[0] + 1
+                            _anon_body = _fn_field.child_by_field_name('body')
+                            _anon_name = f"{invoker_name}_go_anon_{_line}"
+                            callee = _anon_name
+                            if anon_queue is not None and _anon_body is not None:
+                                anon_queue.append({
+                                    "name": _anon_name,
+                                    "id": self._make_func_id(domain, _anon_name),
+                                    "line": _line,
+                                    "body": _anon_body,
+                                    "start": int(_fn_field.start_byte),
+                                    "end": int(_fn_field.end_byte),
+                                })
 
                     concurrency_info = {"is_spawn": is_goroutine, "spawn_target": "",
                                         "spawn_arg": "", "concurrency_type": ""}

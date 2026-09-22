@@ -75,8 +75,11 @@ class TestDetectConcurrencyInfo(unittest.TestCase):
     def test_goroutine(self):
         s = ConcreteScanner()
         result = s._detect_concurrency_info("go", [])
-        # "go" is not a direct spawn call name in this context
-        # It would be detected differently in the Go scanner
+        # "go" is a Go statement keyword, not a C-family spawn call —
+        # the Go scanner handles goroutines via go_statement parents,
+        # so the base helper must not report a spawn here.
+        self.assertFalse(result["is_spawn"])
+        self.assertEqual(result["concurrency_type"], "")
 
     def test_regular_call(self):
         s = ConcreteScanner()

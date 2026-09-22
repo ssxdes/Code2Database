@@ -14,9 +14,9 @@ Code2Database was built to answer a question that traditional call-graph tools c
 - **Is the call certain?** (`confidence` — EXTRACTED/INFERRED/AMBIGUOUS + evidence trace)
 - **Does the call exist under this build config?** (`ifdef_conditions`, `preproc_alive`, Z3 SMT `path-feasible`)
 - **What happens if I change it?** (`blast-radius` — transitive impact)
-- **How did execution reach this point?** (`reverse-trace` — backward BFS from any node)
+- **How did execution reach this point?** (`trace reverse` — backward BFS from any node)
 - **Which commit introduced this?** (`commit_meta.source_commit` — git/svn hash verified, not timestamp)
-- **Can these two chains race?** (`concurrency-analyze` — pair-wise thread model + lock overlap)
+- **Can these two chains race?** (`concurrency analyze` — pair-wise thread model + lock overlap)
 - **Does the doc still match the code?** (`doc_code_mismatches` — return/param/signature/stale-doc)
 
 Most tools stop at the first question. Code2Database answers all of them, persisting the answers in a graph that an LLM agent can query with a single tool call instead of grep/glob/Read across N files. That's the shift from *reading* code to *querying* code.
@@ -56,7 +56,7 @@ The skill ships as 4 sub-skills (`/Code2Database` core, `/Code2Database-analysis
 - **Analysis (13 Tier-1 + 19 cgdb_* MCP tools)** — loaded on demand. Concurrency, data flow, invariants, FFI, path feasibility, provenance, cgdb tables.
 - **Ops (23 Tier-1 commands)** — loaded on demand. Transactions, daemon, profile health, doc-code alignment, exports, plugins, memory, embeddings.
 
-All 263 CLI commands are accessible via the shared `scripts/code2database_builder.py` regardless of which sub-skill is active. The split is purely about LLM context economy: a 4K-token core skill is always useful; a 20K-token analysis skill should only be loaded when the user asks about races or invariants.
+All 275 CLI spellings (120 visible umbrella commands + 155 hidden legacy) are accessible via the shared `scripts/code2database_builder.py` regardless of which sub-skill is active. The split is purely about LLM context economy: a 4K-token core skill is always useful; a 20K-token analysis skill should only be loaded when the user asks about races or invariants.
 
 ### Why micro → lite → local Query Mode
 
@@ -199,7 +199,7 @@ The daemon coordinates with manual updates via `pause`/`resume` socket commands 
 │         cgdb_sync.py, sqlite_store.py, sqlite_postprocess.py,       │
 │         memory_manager.py, semantics.py,                            │
 │         auto_enhance.py, bug_benchmark.py, etc.                     │
-│  CLI: scripts/code2database_builder.py (255 CLI commands, 263 total with 8 scanner) │
+│  CLI: scripts/code2database_builder.py (275 spellings: 120 visible; +8 scanner)   │
 └──────────────────────────────┬───────────────────────────────────────┘
                                │
                                ▼  (optional)
@@ -211,7 +211,7 @@ The daemon coordinates with manual updates via `pause`/`resume` socket commands 
 │                  wrap updates in transaction, auto-rebuild           │
 │                  output files, expose Unix socket API                │
 │  Files: scripts/_builder/daemon/daemon.py, watcher.py                      │
-│  CLI: scripts/code2database_builder.py daemon-start                  │
+│  CLI: scripts/code2database_builder.py daemon start                  │
 │  Socket: /tmp/code2database-daemon-<project>.sock                    │
 │  State: <graph_dir>/.daemon_status.json                             │
 │  Log: ~/.code2database/daemon-<project>.log                          │
@@ -255,7 +255,7 @@ The C scanner annotates functions and edges with `ifdef_conditions` — a list o
 This enables:
 - `extract-signals` — map conditional macros to affected functions/edges/domains
 - `resolve-chain` with `--bindings` — trace only paths alive under specific macro configurations
-- `diff-chains` — compare execution paths under two different macro configurations
+- `trace diff` — compare execution paths under two different macro configurations
 - `cgdb_find_nodes_under_config` — list all nodes gated by a config predicate
 - `cgdb_find_configs_for` — list config predicates affecting a node
 - `path-feasible` — Z3 SMT feasibility under constraints (sound when Z3 installed, heuristic fallback)
@@ -272,7 +272,7 @@ Unlike most existing tools, Code2Database can detect **data races** by combining
 - **Happens-before** (cgdb L8): `sync_primitives` + `happens_before` tables enable pair-wise ordering checks
 - **Race detection**: Pairs of functions in different thread contexts accessing the same resource without common lock protection
 
-Commands: `concurrency-risks` (global), `concurrency-analyze` (pair-wise), `detect-races` (cross-thread), `field-access` (per-resource), `who-locks`, `lock-coverage`, `happens-before`, `memory-ordering`.
+Commands: `concurrency` (global), `concurrency analyze` (pair-wise), `concurrency detect-races` (cross-thread), `field-access` (per-resource), `who locks`, `lock-coverage`, `concurrency happens-before`, `concurrency memory-ordering`.
 
 ### 5. External Code Separation
 
@@ -835,7 +835,7 @@ Code2Database's current capabilities, organized by category:
 - Value flow (DATA_FLOW edges) + cross-function data dependency (DATA_DEP edges)
 
 ### Query & Analysis
-- 263 CLI commands (4 sub-skills: core 21, analysis 13, ops 23, kb 8 Tier-1)
+- 120 visible CLI commands, 275 parseable spellings (4 sub-skills: core, analysis, ops, kb)
 - 83 MCP tools (55 base + 28 design-report) (36 code2database_* + 19 cgdb_*)
 - Cypher-subset query language (MATCH/WHERE/RETURN)
 - Z3 SMT path feasibility (heuristic fallback)

@@ -534,7 +534,7 @@ fi
 # Sub-skill 4 of 4: Code2Database-kb (KNOWLEDGE BASE — on-demand)
 # Gets SKILL_kb.md (as SKILL.md) and skill_kb.json (as skill.json).
 # SKILL_kb.md is self-contained (no references/). No scripts/ — uses
-# core's scripts/. Works with or without a built graph (kb-init
+# core's scripts/. Works with or without a built graph (kb init
 # provisions a standalone store).
 # =============================================================================
 
@@ -725,7 +725,7 @@ Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/
 - **Never pre-load** `scripts/` or `config/profiles/` into context — they are implementation details
 - **Never load** `OVERVIEW.md` — it is internal architecture, not needed for usage
 - **Global-to-local query mode**: start from micro/lite context packs, then drill down with describe-node
-- **Use query commands** (explore-flow, describe-node, trace-chain) instead of reading raw JSON output files
+- **Use query commands** (explore-flow, describe-node, trace) instead of reading raw JSON output files
 - **Only 7 labels**: API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end
 - **Always annotate** edge confidence (EXTRACTED/INFERRED/AMBIGUOUS) and invocation conditions
 - **Do not propose fixes** before finding root cause
@@ -950,10 +950,10 @@ info "MCP server: 83 tools (36 code2database_* + 19 cgdb_* + 28 design-report) �
 info "  python3 $INSTALL_DIR/scripts/code2database_builder.py serve --graph code2db-out/"
 echo ""
 info "Knowledge base (kb-*): unified FTS5+BM25 across memory+knowledge+global — start with:"
-info "Multi-project: build-multi for joint C2D from A→B→C dependencies — start with:"
-info "  python3 $INSTALL_DIR/scripts/code2database_builder.py build-multi --manifest projects.json --outdir code2db-out/"
-info "  python3 $INSTALL_DIR/scripts/code2database_builder.py kb-rebuild-index --graph code2db-out/"
-info "  python3 $INSTALL_DIR/scripts/code2database_builder.py kb-query --graph code2db-out/ --query \"bdev register\""
+info "Multi-project: build multi for joint C2D from A→B→C dependencies — start with:"
+info "  python3 $INSTALL_DIR/scripts/code2database_builder.py build multi --manifest projects.json --outdir code2db-out/"
+info "  python3 $INSTALL_DIR/scripts/code2database_builder.py kb rebuild-index --graph code2db-out/"
+info "  python3 $INSTALL_DIR/scripts/code2database_builder.py kb query --graph code2db-out/ --query \"bdev register\""
 echo ""
 info "Optional backends (recommended, not required):"
 info "  pip install libclang==17.0.6   # enables cgdb clang backend (typed vtable dispatch, CFG, data flow, sync primitives)"

@@ -23,11 +23,11 @@ Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/
 - **cgdb layer** (clang backend only) — typed semantic tables alongside the legacy `functions`/`edges`: AST nodes, types, config predicates, CFG, data flow, alias (stub), ops_bindings (typed vtable dispatch), sync_primitives + happens_before, provenance + time-travel versions. Queried via 19 `cgdb_*` MCP tools or the `cgdb-*` CLI family.
 - **Dual knowledge/memory stores** — knowledge = typed rows in `knowledge/knowledge.db` (source of truth; `knowledge/brief.json` is the derived size-budgeted prompt view); memory = shared accumulating SQLite store (`memory/memory.db`, hierarchical categories, FTS5 BM25 retrieval, split/merge/move/compact governance; compact merges near-duplicate roots after every build). `session-init` is the one-shot entry (brief + memory digest + graph state incl. freshness + known-unknowns); `save-memory --correct` is the correct-first save; `brief-suggest` mines graduation candidates (no auto-write). Both stores run with or without a built graph (`kb-init` provisions a standalone store); every entry carries a version scope (branch/release tag) that queries use for current-version-first ranking, and `kb-query --cross` searches other watched kb domains.
 
-Full capability catalog with per-command detail: `docs/en/references/usage_reference.md` (intent index → pipeline walkthrough → complete 263-command reference). Do not duplicate it here.
+Full capability catalog with per-command detail: `docs/en/references/usage_reference.md` (intent index → family command map → pipeline walkthrough → complete spelling reference). Do not duplicate it here.
 
 ## Skill Structure (4 sub-skills)
 
-The skill is split into 4 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 255 subcommands + 8 scanner subcommands) is shared — all commands are accessible regardless of sub-skill activation.
+The skill is split into 4 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 275 subcommands — 120 visible umbrella surface + 155 hidden legacy spellings — plus 8 scanner subcommands) is shared; all spellings parse regardless of sub-skill activation.
 
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|

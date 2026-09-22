@@ -6,8 +6,8 @@ Code2Database separates two long-lived stores with opposite shapes:
 |---|---|---|
 | **Role** | Shared accumulating Q&A brain — many people, many question depths | Lean, fixed description of THIS project: architecture, functionality, design, usage |
 | **Storage** | `memory/memory.db` (SQLite WAL + FTS5) | `knowledge/brief.json` |
-| **Size** | Unbounded growth | Budget: warn >3000 chars, error >6000 (`brief-validate`) |
-| **When loaded** | On demand (`search-memory`, `kb-query`) | **Every session start** (`knowledge-brief`) |
+| **Size** | Unbounded growth | Budget: warn >3000 chars, error >6000 (`brief validate`) |
+| **When loaded** | On demand (`recall`, `kb query`) | **Every session start** (`knowledge-brief`) |
 | **Refresh cadence** | Continuously (save/merge/split) | Small scope, only when architecture genuinely changes |
 
 ## session-init — the one-shot entry
@@ -46,7 +46,7 @@ python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ --ac
 
 ### Retrieval
 
-`search-memory` runs FTS5 BM25 × weight with filters; results are grouped by similarity cluster so one popular Q&A can't flood the list:
+`recall` runs FTS5 BM25 × weight with filters; results are grouped by similarity cluster so one popular Q&A can't flood the list:
 
 ```bash
 python3 scripts/code2database_builder.py search-memory --graph code2db-out/ \
@@ -89,7 +89,7 @@ Nothing similar? It degrades to a normal save (`saved as new`).
 
 ### Governance
 
-Big shared stores accumulate over-broad and duplicate entries. `manage-memory` provides the governance operations:
+Big shared stores accumulate over-broad and duplicate entries. `memory manage` provides the governance operations:
 
 ```bash
 # Split an over-broad entry into focused sub-entries
@@ -131,7 +131,7 @@ A read-only MCP deployment serves memory the same way (`MemoryStore(read_only=Tr
 python3 scripts/code2database_builder.py knowledge-brief --graph code2db-out/
 ```
 
-Render the brief into your prompt BEFORE working on the project. If it doesn't exist, bootstrap with `brief-extract`, then curate.
+Render the brief into your prompt BEFORE working on the project. If it doesn't exist, bootstrap with `brief extract`, then curate.
 
 ### Sections
 
@@ -159,11 +159,11 @@ python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --ref
 python3 scripts/code2database_builder.py brief-validate --graph code2db-out/    # schema + size budget + graph drift
 ```
 
-`brief-validate` fails above 6000 rendered chars — overflow belongs in memory (`save-memory`) or the graph, not the brief.
+`brief validate` fails above 6000 rendered chars — overflow belongs in memory (`save`) or the graph, not the brief.
 
 ## Unified KB index
 
-`kb-rebuild-index` indexes **memory.db entries + knowledge-store rows** into `kb_paragraphs` (FTS5+BM25) inside the kb store's own `kb_index.db` (independent of the graph db):
+`kb rebuild-index` indexes **memory.db entries + knowledge-store rows** into `kb_paragraphs` (FTS5+BM25) inside the kb store's own `kb_index.db` (independent of the graph db):
 
 ```bash
 python3 scripts/code2database_builder.py kb-rebuild-index --graph code2db-out/

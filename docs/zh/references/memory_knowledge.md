@@ -6,8 +6,8 @@ Code2Database 用两个形态相反的长期存储：
 |---|---|---|
 | **角色** | 共享积累的 Q&A 大脑 — 多人、多深度提问 | 本项目的精简固定描述：架构、功能、设计、使用 |
 | **存储** | `memory/memory.db`（SQLite WAL + FTS5） | `knowledge/brief.json` |
-| **体积** | 无上限增长 | 预算：>3000 字符告警、>6000 报错（`brief-validate`） |
-| **加载时机** | 按需（`search-memory`、`kb-query`） | **每次会话启动**（`knowledge-brief`） |
+| **体积** | 无上限增长 | 预算：>3000 字符告警、>6000 报错（`brief validate`） |
+| **加载时机** | 按需（`recall`、`kb query`） | **每次会话启动**（`knowledge-brief`） |
 | **更新节奏** | 持续（save/merge/split） | 小范围，仅在架构真正变化时 |
 
 ## session-init — 一站式入口
@@ -46,7 +46,7 @@ python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ --ac
 
 ### 检索
 
-`search-memory` 以 FTS5 BM25 × 权重运行并支持过滤；结果按相似簇聚组，单个热门 Q&A 不会刷屏：
+`recall` 以 FTS5 BM25 × 权重运行并支持过滤；结果按相似簇聚组，单个热门 Q&A 不会刷屏：
 
 ```bash
 python3 scripts/code2database_builder.py search-memory --graph code2db-out/ \
@@ -89,7 +89,7 @@ python3 scripts/code2database_builder.py save-memory --graph code2db-out/ \
 
 ### 治理
 
-大型共享库会积累过泛与重复条目。`manage-memory` 提供治理操作：
+大型共享库会积累过泛与重复条目。`memory manage` 提供治理操作：
 
 ```bash
 # 把过泛条目拆解为聚焦子条目
@@ -131,7 +131,7 @@ python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
 python3 scripts/code2database_builder.py knowledge-brief --graph code2db-out/
 ```
 
-在开始工作前把简报渲染进 prompt。若不存在，用 `brief-extract` 自举后再精炼。
+在开始工作前把简报渲染进 prompt。若不存在，用 `brief extract` 自举后再精炼。
 
 ### 节
 
@@ -159,11 +159,11 @@ python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --ref
 python3 scripts/code2database_builder.py brief-validate --graph code2db-out/    # schema + 体积预算 + 图漂移
 ```
 
-`brief-validate` 渲染超 6000 字符即失败 — 溢出内容应放进 memory（`save-memory`）或图里，而不是简报。
+`brief validate` 渲染超 6000 字符即失败 — 溢出内容应放进 memory（`save`）或图里，而不是简报。
 
 ## 统一 KB 索引
 
-`kb-rebuild-index` 把 **memory.db 条目 + 知识库行** 索引进 kb 存储自己的 `kb_index.db` 中的 `kb_paragraphs`（FTS5+BM25，与图数据库相互独立）：
+`kb rebuild-index` 把 **memory.db 条目 + 知识库行** 索引进 kb 存储自己的 `kb_index.db` 中的 `kb_paragraphs`（FTS5+BM25，与图数据库相互独立）：
 
 ```bash
 python3 scripts/code2database_builder.py kb-rebuild-index --graph code2db-out/

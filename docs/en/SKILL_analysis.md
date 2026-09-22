@@ -9,7 +9,7 @@ parent_skill: Code2Database
 
 **Deep semantic analysis layer for Code2Database** — beyond "what calls what": concurrency safety, data races, value flow, path feasibility, invariants, FFI boundaries, commit-level provenance, and direct cgdb (code graph database) queries via the 19 `cgdb_*` MCP tools.
 
-This sub-skill does **not** re-scan or rebuild the graph. It assumes `code2db-out/` is already built (via the parent `/Code2Database` skill) and the graph is fresh (run `daemon-status` / `daemon-wait-sync` first if a daemon is running).
+This sub-skill does **not** re-scan or rebuild the graph. It assumes `code2db-out/` is already built (via the parent `/Code2Database` skill) and the graph is fresh (run `daemon status` / `daemon wait-sync` first if a daemon is running).
 
 ## When to Activate
 
@@ -33,8 +33,8 @@ These are the commands you'll reach for most often. Each one replaces dozens of 
 
 | Command | Purpose |
 |---------|---------|
-| `concurrency-analyze` | Pair-wise concurrency safety analysis (thread model + shared state + lock analysis) |
-| `detect-races` | Cross-thread data race detection |
+| `concurrency analyze` | Pair-wise concurrency safety analysis (thread model + shared state + lock analysis) |
+| `concurrency detect-races` | Cross-thread data race detection |
 | `lock-coverage` | Lock-held region analysis with event-stream + char positions |
 | `value-flow` | Trace parameter→return-value propagation (DATA_FLOW edges) |
 | `param-flow` | Trace parameter flow through invocation chain (cross-function) |
@@ -42,8 +42,8 @@ These are the commands you'll reach for most often. Each one replaces dozens of 
 | `field-access` | Per-field read/write tracking across functions |
 | `path-feasible` | Z3 SMT path feasibility (heuristic fallback when Z3 absent) |
 | `blast-radius` | Affected APIs / tests / domains for a change |
-| `find-invariants` | Find invariants matching a pattern (preconditions / postconditions / loop_invariants / state_machine) |
-| `ffi-trace` | Trace cross-language invocation chains (Python ctypes / Go cgo / Rust extern C) |
+| `find` | Find invariants matching a pattern (preconditions / postconditions / loop_invariants / state_machine) |
+| `ffi trace` | Trace cross-language invocation chains (Python ctypes / Go cgo / Rust extern C) |
 | `blame-node` | Find the commit that introduced a node |
 | `query` | Cypher-subset query (MATCH/WHERE/RETURN) for one-off structured queries |
 
@@ -55,16 +55,16 @@ When the question type matches one of these, use the listed command sequence. Re
 
 | Question Type | Command Sequence |
 |---------------|------------------|
-| **Is this thread-safe?** | `concurrency-risks` → `concurrency-analyze` → `detect-races` → `lock-coverage` → `happens-before` → `memory-ordering` → `who-locks` |
+| **Is this thread-safe?** | `concurrency` → `concurrency analyze` → `concurrency detect-races` → `lock-coverage` → `concurrency happens-before` → `concurrency memory-ordering` → `who locks` |
 | **Where does this NULL / value come from?** | `value-flow` → `param-flow` → `data-dep` → `field-flow` → `null-source` → `data-lifecycle` → `io-path` |
-| **What breaks if I change this?** | `impact` → `blast-radius` → `explore-flow` → `key-paths` → `neighbors` → `path` → `code-slice` → `diff-chains` |
+| **What breaks if I change this?** | `impact` → `blast-radius` → `explore-flow` → `key-paths` → `neighbors` → `path` → `code-slice` → `trace diff` |
 | **Is this path feasible?** | `path-feasible` → `path-guards` → `runtime-guards` → `resolve-chain` → `extract-signals` |
 | **Is this input sanitized (taint analysis)?** | `taint-analysis` → `null-source` → `path-guards` |
-| **What invariants does this function enforce?** | `extract-invariants` → `find-invariants` → `apply-invariants` |
-| **Which Python/Go/Rust function calls into C?** | `ffi-detect` → `ffi-list` → `ffi-trace` → `ffi-types` |
-| **Which commit introduced this?** | `blame-node` → `describe-commit` → `node-history` → `graph-provenance` → `find-commits` |
-| **Who allocates / frees this resource?** | `who-allocates` → `who-frees` → `unbalanced-alloc-free` → `add-semantic-edges` |
-| **Hybrid semantic + FTS search?** | `hybrid-search` → `code-slice` → `key-paths` |
+| **What invariants does this function enforce?** | `invariants extract` → `find` → `invariants apply` |
+| **Which Python/Go/Rust function calls into C?** | `ffi detect` → `ffi list` → `ffi trace` → `ffi types` |
+| **Which commit introduced this?** | `blame-node` → `describe-commit` → `node-history` → `graph provenance` → `find-commits` |
+| **Who allocates / frees this resource?** | `who allocates` → `who frees` → `who unbalanced` → `add-semantic-edges` |
+| **Hybrid semantic + FTS search?** | `search hybrid` → `code-slice` → `key-paths` |
 | **Query cgdb tables directly (clang backend)** | use the 19 `cgdb_*` MCP tools — see "cgdb MCP Tools" section below |
 
 ## cgdb MCP Tools (clang backend — 19 tools)
@@ -81,7 +81,7 @@ These commands are listed by **name only**. They are experimental, niche, or rar
 
 - `think-chain` — full chain thinking with conclusions
 - `intent-query` — intent-based graph query
-- `extract-invariants-llm` — LLM-driven invariant extraction
+- `invariants extract-llm` — LLM-driven invariant extraction
 - `explain-label` — explain why a node got a particular label
 - `why-ambiguous` — explain why an edge is marked AMBIGUOUS
 - `extract-semantics` / `apply-semantics` — extract and apply semantic descriptions from docs
@@ -105,9 +105,9 @@ When you detect a question about **simple browsing, scanning, building, or gener
 - **Path feasibility**: sound only with Z3 installed; without Z3, heuristic fallback may produce false positives — flag results as provisional
 - **Value flow**: DATA_FLOW edges trace parameter→return-value propagation; if a node lacks DATA_FLOW edges, the chain is broken — do not infer flow without evidence
 - **FFI tracing**: requires BOTH source and target language scanners to detect a binding site
-- **Invariants confidence**: never apply AMBIGUOUS invariants; INFERRED require user confirmation before `apply-invariants`
+- **Invariants confidence**: never apply AMBIGUOUS invariants; INFERRED require user confirmation before `invariants apply`
 - **Commit provenance**: every node/edge carries `commit_meta.source_commit` (git/svn hash). Verify with `git show <hash>`, not timestamps
-- **Database write constraint**: any DB-modifying command (`apply-invariants`, `add-semantic-edges`, `apply-semantics`) **requires user confirmation first**. See `references/analysis_commands.md` for the full protocol.
+- **Database write constraint**: any DB-modifying command (`invariants apply`, `add-semantic-edges`, `apply-semantics`) **requires user confirmation first**. See `references/analysis_commands.md` for the full protocol.
 - **Do not pre-load** `references/analysis_commands.md` — read on demand only when you need detailed syntax for a specific command
 - **cgdb clang backend is recommended, not required** — tree-sitter-only mode remains fully functional; cgdb_* MCP tools return empty results in that mode
 

@@ -14,9 +14,9 @@ Code2Database 旨在回答传统调用图工具无法回答的疑问：**"工程
 - **这次调用确定吗？**（`confidence`——EXTRACTED/INFERRED/AMBIGUOUS + 证据链）
 - **这次调用在当前构建配置下存在吗？**（`ifdef_conditions`、`preproc_alive`，Z3 SMT `path-feasible`）
 - **如果我改它，会影响什么？**（`blast-radius`——传递影响）
-- **执行是怎么到达这里的？**（`reverse-trace`——从任意节点反向 BFS）
+- **执行是怎么到达这里的？**（`trace reverse`——从任意节点反向 BFS）
 - **哪个提交引入了它？**（`commit_meta.source_commit`——git/svn 哈希可验证，而非时间戳）
-- **这两条链会竞争吗？**（`concurrency-analyze`——成对线程模型 + 锁重叠）
+- **这两条链会竞争吗？**（`concurrency analyze`——成对线程模型 + 锁重叠）
 - **文档还跟代码对得上吗？**（`doc_code_mismatches`——返回值/参数/签名/陈旧文档）
 
 多数工具止步于第一个疑问。Code2Database 回答了全部疑问，把答案持久化在图谱里，让 LLM 代理可以用一次工具调用查询，而不是跨 N 个文件 grep/glob/Read。这就是从*阅读*代码到*查询*代码的转变。
@@ -56,7 +56,7 @@ skill 以 4 个子 skill 形式发布（`/Code2Database` 核心、`/Code2Databas
 - **分析（13 个 Tier-1 + 19 个 cgdb_* MCP 工具）**——按需加载。并发、数据流、不变量、FFI、路径可行性、来源、cgdb 表。
 - **运维（23 个 Tier-1 命令）**——按需加载。事务、守护进程、profile 健康、文档-代码对齐、导出、插件、记忆、嵌入。
 
-全部 263 个 CLI 命令都通过共享的 `scripts/code2database_builder.py` 可访问，无论哪个子 skill 激活。这个拆分纯粹是为了 LLM 上下文经济：4K-token 的核心 skill 总是有用；20K-token 的分析 skill 只应在用户问及竞争或不变量时加载。
+全部 275 个 CLI 拼写（120 可见伞形 + 155 隐藏旧拼写）都通过共享的 `scripts/code2database_builder.py` 可解析，无论哪个子 skill 激活。这个拆分纯粹是为了 LLM 上下文经济：4K-token 的核心 skill 总是有用；20K-token 的分析 skill 只应在用户问及竞争或不变量时加载。
 
 ### 为什么是 micro → lite → local 查询模式
 
@@ -197,7 +197,7 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 │        cgdb_sync.py, sqlite_store.py, sqlite_postprocess.py,        │
 │        memory_manager.py, semantics.py,                             │
 │        auto_enhance.py, bug_benchmark.py 等                         │
-│  CLI：scripts/code2database_builder.py（255 个 CLI 命令，含 8 个 scanner 命令共 263）│
+│  CLI：scripts/code2database_builder.py（275 个拼写：120 可见；+8 scanner）        │
 └──────────────────────────────┬───────────────────────────────────────┘
                                │
                                ▼  （可选）
@@ -209,7 +209,7 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 │        将更新包裹在事务中，自动重建输出文件，                          │
 │        暴露 Unix socket API                                          │
 │  文件：scripts/_builder/daemon/daemon.py, watcher.py                       │
-│  CLI：scripts/code2database_builder.py daemon-start                  │
+│  CLI：scripts/code2database_builder.py daemon start                  │
 │  Socket：/tmp/code2database-daemon-<project>.sock                    │
 │  状态：<graph_dir>/.daemon_status.json                              │
 │  日志：~/.code2database/daemon-<project>.log                         │
@@ -253,7 +253,7 @@ C 扫描器用 `ifdef_conditions` 注解函数和边——一组守卫代码的 
 这支持：
 - `extract-signals`——把条件宏映射到受影响的函数/边/领域
 - `resolve-chain --bindings`——只追踪在特定宏配置下存活的路径
-- `diff-chains`——比较两种宏配置下的执行路径
+- `trace diff`——比较两种宏配置下的执行路径
 - `cgdb_find_nodes_under_config`——列出被某个 config 谓词守卫的所有节点
 - `cgdb_find_configs_for`——列出影响某个节点的 config 谓词
 - `path-feasible`——Z3 SMT 在约束下的可行性（装 Z3 时是可靠的，否则启发式回退）
@@ -270,7 +270,7 @@ C 扫描器在 AST 遍历期间跟踪预处理条件栈，正确处理嵌套 `#i
 - **Happens-before**（cgdb L8）：`sync_primitives` + `happens_before` 表支持成对顺序检查
 - **竞争检测**：在不同线程上下文中访问同一资源且无共同锁保护的函数对
 
-命令：`concurrency-risks`（全局）、`concurrency-analyze`（成对）、`detect-races`（跨线程）、`field-access`（每资源）、`who-locks`、`lock-coverage`、`happens-before`、`memory-ordering`。
+命令：`concurrency`（全局）、`concurrency analyze`（成对）、`concurrency detect-races`（跨线程）、`field-access`（每资源）、`who locks`、`lock-coverage`、`concurrency happens-before`、`concurrency memory-ordering`。
 
 ### 5. 外部代码分离
 

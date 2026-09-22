@@ -4,7 +4,7 @@ Detailed command syntax, parameters, and output descriptions for Code2Database.
 
 Read this file on demand when you need specific command details. Do not load into context unless needed.
 
-> **The shift this enables**: every command below is a *query into a persistent code database*, not a file-by-file search. `explore-flow` returns relevant nodes + paths in one call (vs. N grep/Read round-trips). `trace-chain` returns A→B with conditions annotated (vs. manually walking invocation sites). `detect-races` returns cross-thread hazards (vs. reading every invoker of a shared resource). `field-access` returns who reads/writes a field (vs. grep across the codebase). The graph is the index; the commands are the query language.
+> **The shift this enables**: every command below is a *query into a persistent code database*, not a file-by-file search. `explore-flow` returns relevant nodes + paths in one call (vs. N grep/Read round-trips). `trace` returns A→B with conditions annotated (vs. manually walking invocation sites). `concurrency detect-races` returns cross-thread hazards (vs. reading every invoker of a shared resource). `field-access` returns who reads/writes a field (vs. grep across the codebase). The graph is the index; the commands are the query language.
 
 ## One-Click Entry — the `c2d` Umbrella
 
@@ -20,7 +20,7 @@ $BUILDER c2d ask --question "is bdev_start thread safe?"
 $BUILDER c2d ask --recipe impact --target bdev_start
 $BUILDER c2d capture --question "..." --answer "..." --category bdev --author you
 $BUILDER c2d freshen                           # freshness check + sync routing
-$BUILDER c2d report --kind design --module fs  # design|diagnose|html|mermaid|plantuml
+$BUILDER c2d report --kind design --module fs  # design|diagnose|mermaid|plantuml
 
 # Self-documentation
 $BUILDER c2d recipes                           # list the routing recipes
@@ -30,6 +30,42 @@ $BUILDER c2d ask --question "..." --dry-run    # preview the translated commands
 ```
 
 `ask` classifies `--question` against the recipe registry — 13 built-in recipes: thread-safety, race-scan, value-origin, impact, call-path, path-feasibility, invariants, ffi, provenance, resource, quality, doc-alignment, explore — and executes the matched read-only command sequence with per-step banners and an aggregated summary (`--json` for structured output). Explicit flags (`--target/--from/--to/--query/--source`) override question extraction; when nothing matches, it falls back to the single-command intent router. Recipe steps are always read-only (write commands and write flags are refused by the engine); every step is echoed before it runs and any verb can be previewed with `--dry-run`.
+
+## Family Command Map — the 120-command visible surface
+
+The CLI collapses 27 prefix families into one visible umbrella command each: **120 visible commands** instead of 255. `tx begin`, `kb query`, `cgdb find-invokers`, `daemon start` are the taught spellings; the 155 legacy spellings (`tx-begin`, `kb-query`, ...) **still parse identically** — they are hidden from `--help` only, so existing scripts and muscle memory keep working. `--graph` and every flag are unchanged; `tx begin --help` prints exactly what `tx-begin --help` prints.
+
+| Umbrella | Bare form (=) | Hidden legacy spellings (all still parse) |
+|----------|---------------|-------------------------------------------|
+| `brief` | `brief` (= knowledge-brief, show) | `brief-extract`, `brief-migrate-legacy`, `brief-suggest`, `brief-update`, `brief-validate`, `knowledge-brief` |
+| `build` | `build` (= build from extraction JSON) | `build-diff`, `build-multi`, `build-update` |
+| `cgdb` | action required | `cgdb-cfg-paths`, `cgdb-compare`, `cgdb-configs-for`, `cgdb-coverage`, `cgdb-data-flow`, `cgdb-definition`, `cgdb-find-invoked`, `cgdb-find-invokers`, `cgdb-freshness`, `cgdb-function-body`, `cgdb-get-source`, `cgdb-index-status`, `cgdb-layer-summary`, `cgdb-merge-knowledge`, `cgdb-nodes-under-config`, `cgdb-ops-impls`, `cgdb-path`, `cgdb-path-feasible`, `cgdb-query`, `cgdb-race-check`, `cgdb-schema-version`, `cgdb-sql`, `cgdb-struct-layout`, `cgdb-suggest`, `cgdb-time-travel`, `cgdb-tour`, `cgdb-type-definition`, `cgdb-versions`, `cgdb-views`, `cgdb-write-coverage` |
+| `check` | action required | `check-bounds`, `check-clones`, `check-cycles`, `check-infinite-loop`, `check-recursion` |
+| `concurrency` | `concurrency` (= concurrency-risks) | `concurrency-analyze`, `concurrency-risks`, `detect-races`, `happens-before`, `memory-ordering` |
+| `daemon` | `daemon` (= daemon-status) | `daemon-force-refresh`, `daemon-list-projects`, `daemon-logs`, `daemon-pause`, `daemon-reload`, `daemon-resume`, `daemon-start`, `daemon-status`, `daemon-stop`, `daemon-wait-sync` |
+| `doc` | action required | `doc-alignment-report`, `doc-code-check`, `doc-mark-stale`, `doc-signature-diff` |
+| `embeddings` | action required | `embeddings-build`, `embeddings-search` |
+| `export` | `export` (= export-mermaid) | `export-mermaid`, `export-plantuml`, `sarif-export` |
+| `fed` | action required | `fed-neighbors`, `fed-path`, `fed-search`, `federate-list`, `federate-register`, `federate-remove` |
+| `ffi` | action required | `ffi-auto-link`, `ffi-detect`, `ffi-list`, `ffi-persist`, `ffi-trace`, `ffi-types` |
+| `foreign` | action required | `c2d-add-foreign`, `c2d-add-foreign-stub`, `c2d-check-compat`, `c2d-list-foreign`, `c2d-pin-foreign`, `c2d-prune-foreign`, `c2d-remove-foreign`, `c2d-resolve-foreign`, `c2d-sync-foreign`, `c2d-unpin-foreign` |
+| `graph` | action required | `graph-diff`, `graph-history`, `graph-provenance`, `graph-record-version` |
+| `invariants` | action required | `apply-invariants`, `extract-invariants`, `extract-invariants-llm`, `find-invariants` |
+| `kb` | action required | `kb-audit`, `kb-cluster`, `kb-conflict`, `kb-forget`, `kb-init`, `kb-known-unknowns`, `kb-migrate`, `kb-query`, `kb-rebuild-index`, `kb-rollback` |
+| `kb-domain` | action required | `kb-domain-add`, `kb-domain-list`, `kb-domain-name`, `kb-domain-remove` |
+| `kb-global` | action required | `kb-global-add`, `kb-global-import`, `kb-global-import-memory`, `kb-global-search`, `kb-global-search-memory`, `kb-global-share`, `kb-global-share-memory` |
+| `memory` | action required | `manage-memory`, `memory-health`, `save-memory`, `search-memory`, `validate-memory` |
+| `node` | action required | `add-function`, `delete-node`, `insert-node-after` |
+| `pp` | action required | `find-macros`, `get-pp-branches`, `get-string-literals` |
+| `profile` | action required | `profile-bind-version`, `profile-evolve`, `profile-health` |
+| `search` | `search` (= keyword search) | `hybrid-search`, `semantic-search` |
+| `token` | action required | `delete-token`, `edit-token`, `insert-token` |
+| `trace` | `trace` (= trace-chain, forward) | `diff-chains`, `reverse-trace`, `trace-chain` |
+| `tx` | action required | `tx-begin`, `tx-commit`, `tx-list-snapshots`, `tx-replay-wal`, `tx-restore`, `tx-rollback`, `tx-snapshot`, `tx-status` |
+| `who` | action required | `unbalanced-alloc-free`, `who-allocates`, `who-frees`, `who-locks` |
+| `writeback` | action required | `commit-db-transaction`, `rollback-db-transaction` |
+
+Short aliases (`save`/`recall` for memory, `find` for invariants, `health` for profile, `describe`/`context`, `flow`, `init`) remain visible and unchanged.
 
 ## Intent Index — task → one call → direct commands
 
@@ -43,27 +79,27 @@ Start here: find the task, use the one call, or drop to the direct command seque
 
 | Task | One call | Direct commands |
 |------|----------|-----------------|
-| Thread safety of a function | `c2d ask --recipe thread-safety --target FN` | `concurrency-analyze` → `detect-races` → `lock-coverage` → `memory-ordering` |
-| Graph-wide race scan | `c2d ask --recipe race-scan` | `concurrency-risks` → `detect-races` |
+| Thread safety of a function | `c2d ask --recipe thread-safety --target FN` | `concurrency analyze` → `concurrency detect-races` → `lock-coverage` → `concurrency memory-ordering` |
+| Graph-wide race scan | `c2d ask --recipe race-scan` | `concurrency` → `concurrency detect-races` |
 | Where a value originates / flows | `c2d ask --recipe value-origin --target VAR` | `value-flow` → `data-dep` |
 | What breaks if I change X | `c2d ask --recipe impact --target FN` | `impact` → `blast-radius` → `neighbors` |
 | Call chain A → B | `c2d ask --recipe call-path --from A --to B` | `path` |
 | Feasibility of a guarded path | `c2d ask --recipe path-feasible --from A --to B` | `path-guards` → `path-feasible` |
-| Invariants of a function | `c2d ask --recipe invariants --target FN` | `extract-invariants` → `find-invariants` |
-| Cross-language FFI boundaries | `c2d ask --recipe ffi` | `ffi-detect` → `ffi-list` → `ffi-trace` |
+| Invariants of a function | `c2d ask --recipe invariants --target FN` | `invariants extract` → `invariants find` |
+| Cross-language FFI boundaries | `c2d ask --recipe ffi` | `ffi detect` → `ffi list` → `ffi trace` |
 | Which commits introduced / changed X | `c2d ask --recipe provenance --target FN` | `blame-node` → `node-history` → `find-commits` |
-| Who allocates / frees a resource | `c2d ask --recipe resource --target RES` | `who-allocates` → `who-frees` → `unbalanced-alloc-free` |
-| Quality scan (cycles, recursion, bounds, loops, clones) | `c2d ask --recipe quality` | `check-cycles` → `check-recursion` → `check-bounds` → `check-infinite-loop` → `check-clones` |
-| Doc-vs-code alignment | `c2d ask --recipe doc-alignment` | `doc-code-check` → `doc-alignment-report` |
-| Explore a topic | `c2d ask --recipe explore --query TOPIC` | `hybrid-search` → `explore-flow` |
+| Who allocates / frees a resource | `c2d ask --recipe resource --target RES` | `who allocates` → `who frees` → `who unbalanced` |
+| Quality scan (cycles, recursion, bounds, loops, clones) | `c2d ask --recipe quality` | `check cycles` → `check recursion` → `check bounds` → `check infinite-loop` → `check clones` |
+| Doc-vs-code alignment | `c2d ask --recipe doc-alignment` | `doc code-check` → `doc alignment-report` |
+| Explore a topic | `c2d ask --recipe explore --query TOPIC` | `search hybrid` → `explore-flow` |
 | Ingest a project (first time) | `c2d setup --source DIR` | `make` (env-check → scan → build → derived artifacts → exports) |
 | Load session context | `c2d session` | `session-init` |
-| Freshness check + sync routing | `c2d freshen` | `cgdb-freshness` → `make` / `daemon-start` / `build-update` |
-| Generate a report artifact | `c2d report --kind KIND` | `design-doc` / `diagnose` / `export-mermaid` / `export-plantuml` |
-| Save a Q&A into memory | `c2d capture --question .. --answer ..` | `save-memory` |
-| Safe graph editing | — | `tx-begin` → `update-node` / `update-edge` / `patch-profile` → `tx-commit` |
-| Keep the graph current | — | `daemon-start` → `daemon-status` → `daemon-wait-sync`, or `build-update` |
-| Memory & knowledge management | — | `kb-query`, `search-memory`, `manage-memory`, `brief-*` |
+| Freshness check + sync routing | `c2d freshen` | `cgdb freshness` → `make` / `daemon start` / `build update` |
+| Generate a report artifact | `c2d report --kind KIND` | `design-doc` / `diagnose` / `export mermaid` / `export plantuml` |
+| Save a Q&A into memory | `c2d capture --question .. --answer ..` | `memory save` |
+| Safe graph editing | — | `tx begin` → `update-node` / `update-edge` / `patch-profile` → `tx commit` |
+| Keep the graph current | — | `daemon start` → `daemon status` → `daemon wait-sync`, or `build update` |
+| Memory & knowledge management | — | `kb query`, `memory search`, `memory manage`, `brief update\|extract\|validate\|suggest` |
 
 ## Behavior Notes — power-use caveats
 
@@ -879,9 +915,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (263 commands)
+## Complete CLI Command Reference (275 builder spellings: 120 visible + 155 hidden legacy)
 
-All 263 CLI subparsers across `code2database_builder.py` (255) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary. 13 short aliases (`describe`, `context`, `trace`, `concurrency`, `save`, `recall`, `brief`, `flow`, `find`, `health`, `daemon`, `export`, `init`) map to the full commands listed below and count toward the builder total.
+283 CLI subparsers total: `code2database_builder.py` (275) + `code2database_scanner.py` (8). The builder surface teaches 120 visible commands (see the Family Command Map above); the 155 legacy spellings listed here still parse identically — this section is their flag-level reference. 13 short aliases (`describe`, `context`, `trace`, `concurrency`, `save`, `recall`, `brief`, `flow`, `find`, `health`, `daemon`, `export`, `init`) map to the full commands listed below and count toward the builder total.
 
 | Command | Description |
 |---------|-------------|

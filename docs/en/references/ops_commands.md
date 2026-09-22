@@ -6,7 +6,7 @@ This document covers the full syntax for all ops commands exposed by the `/Code2
 
 ## Transactions
 
-### `tx-begin`
+### `tx begin`
 
 Begin a transaction. Creates a snapshot of the current graph state and takes the write lock.
 
@@ -16,7 +16,7 @@ python3 scripts/code2database_builder.py tx-begin \
   [--label "descriptive label"]
 ```
 
-### `tx-commit`  [write]
+### `tx commit`  [write]
 
 Commit the current transaction. Persists the committed state; the edits made inside the transaction become durable and the snapshot is kept until pruned. **Requires user confirmation** for write transactions.
 
@@ -26,16 +26,16 @@ python3 scripts/code2database_builder.py tx-commit \
   [--yes]  # NOT recommended — bypasses confirmation
 ```
 
-### `tx-rollback`
+### `tx rollback`
 
-Rollback the current transaction. Restores the snapshot taken at `tx-begin`.
+Rollback the current transaction. Restores the snapshot taken at `tx begin`.
 
 ```bash
 python3 scripts/code2database_builder.py tx-rollback \
   --graph code2db-out/
 ```
 
-### `tx-status`
+### `tx status`
 
 Show the current transaction status (active / committed / rolled-back, snapshot path, WAL entries count).
 
@@ -44,7 +44,7 @@ python3 scripts/code2database_builder.py tx-status \
   --graph code2db-out/
 ```
 
-### `tx-snapshot`
+### `tx snapshot`
 
 Create a named snapshot of the current graph state (does not begin a transaction).
 
@@ -54,7 +54,7 @@ python3 scripts/code2database_builder.py tx-snapshot \
   --name SNAPSHOT_NAME
 ```
 
-### `tx-restore`
+### `tx restore`
 
 Restore the graph from a named snapshot. **Requires user confirmation** (overwrites current state).
 
@@ -65,7 +65,7 @@ python3 scripts/code2database_builder.py tx-restore \
   [--yes]
 ```
 
-### `tx-list-snapshots`
+### `tx list-snapshots`
 
 List all named snapshots.
 
@@ -74,7 +74,7 @@ python3 scripts/code2database_builder.py tx-list-snapshots \
   --graph code2db-out/
 ```
 
-### `tx-replay-wal`
+### `tx replay-wal`
 
 Snapshot-based crash recovery: rolls back an interrupted (still-active) transaction from its snapshot and clears stray recovery sidecar entries. Use if a previous transaction was interrupted.
 
@@ -220,7 +220,7 @@ python3 scripts/code2database_builder.py audit-log \
 
 ## Daemon
 
-### `daemon-start`
+### `daemon start`
 
 Start the background daemon (foreground; blocks). Monitors source files via inotify (or polling fallback) and auto-syncs changes through transactions.
 
@@ -231,7 +231,7 @@ python3 scripts/code2database_builder.py daemon-start \
   [--polling-interval SEC]
 ```
 
-### `daemon-stop`
+### `daemon stop`
 
 Stop a running daemon.
 
@@ -240,7 +240,7 @@ python3 scripts/code2database_builder.py daemon-stop \
   --graph code2db-out/
 ```
 
-### `daemon-status`
+### `daemon status`
 
 Get daemon status: pid, last_sync, pending events, stale nodes, circuit breaker state, and startup-grace state (`sync.startup_grace_active`, `sync.startup_grace_remaining_sec` — events seen during the grace window are held, not synced). The JSON envelope is identical whether the daemon is alive or stopped: `{"running": <bool>, "state": {...}}` (the live payload adds the sync-worker report under `state.sync`).
 
@@ -249,7 +249,7 @@ python3 scripts/code2database_builder.py daemon-status \
   --graph code2db-out/
 ```
 
-### `daemon-force-refresh`
+### `daemon force-refresh`
 
 Force re-scan of a specific file (bypasses change detection).
 
@@ -259,7 +259,7 @@ python3 scripts/code2database_builder.py daemon-force-refresh \
   --path src/foo.c
 ```
 
-### `daemon-pause`
+### `daemon pause`
 
 Pause the daemon (e.g., before manual updates).
 
@@ -269,7 +269,7 @@ python3 scripts/code2database_builder.py daemon-pause \
   --reason "manual edit"
 ```
 
-### `daemon-resume`
+### `daemon resume`
 
 Resume the daemon after pause.
 
@@ -278,7 +278,7 @@ python3 scripts/code2database_builder.py daemon-resume \
   --graph code2db-out/
 ```
 
-### `daemon-wait-sync`
+### `daemon wait-sync`
 
 Block until the current sync completes. **Call before important queries** to ensure the graph is up-to-date.
 
@@ -288,7 +288,7 @@ python3 scripts/code2database_builder.py daemon-wait-sync \
   --timeout 30
 ```
 
-### `daemon-logs`
+### `daemon logs`
 
 Show the daemon log file. Use `--follow` for streaming.
 
@@ -298,7 +298,7 @@ python3 scripts/code2database_builder.py daemon-logs \
   [--follow] [--lines N]
 ```
 
-### `daemon-reload`
+### `daemon reload`
 
 Reload daemon config (re-reads profile).
 
@@ -307,7 +307,7 @@ python3 scripts/code2database_builder.py daemon-reload \
   --graph code2db-out/
 ```
 
-### `daemon-list-projects`
+### `daemon list-projects`
 
 List all projects with daemon state files.
 
@@ -431,7 +431,7 @@ python3 scripts/code2database_builder.py merge-changes \
 
 ## Profile & Doc-Code
 
-### `profile-health`
+### `profile health`
 
 Compute a 0-100 health score across 7 categories (callback coverage, vtable coverage, domain rules, lock patterns, FFI bindings, daemon config, doc-code alignment).
 
@@ -441,7 +441,7 @@ python3 scripts/code2database_builder.py profile-health \
   [--json]
 ```
 
-### `profile-evolve`  [write]
+### `profile evolve`  [write]
 
 Detect new callback patterns and other profile-worthy structures. `--apply` applies EXTRACTED-confidence suggestions; INFERRED require user confirmation.
 
@@ -453,7 +453,7 @@ python3 scripts/code2database_builder.py profile-evolve \
   [--json]
 ```
 
-### `profile-bind-version`
+### `profile bind-version`
 
 Bind the profile to the current git/svn HEAD commit (records the commit hash so profile drift can be detected later).
 
@@ -463,7 +463,7 @@ python3 scripts/code2database_builder.py profile-bind-version \
   [--source /path/to/repo]
 ```
 
-### `doc-code-check`
+### `doc code-check`
 
 Check doc-code alignment; detect return-value / param / signature / stale-doc mismatches.
 
@@ -474,7 +474,7 @@ python3 scripts/code2database_builder.py doc-code-check \
   [--json]
 ```
 
-### `doc-mark-stale`  [write]
+### `doc mark-stale`  [write]
 
 Mark a node's doc as stale (non-destructive but visible — `describe-node` will warn users).
 
@@ -486,7 +486,7 @@ python3 scripts/code2database_builder.py doc-mark-stale \
   [--yes]
 ```
 
-### `doc-alignment-report`
+### `doc alignment-report`
 
 Generate a full Markdown doc-code alignment report.
 
@@ -496,7 +496,7 @@ python3 scripts/code2database_builder.py doc-alignment-report \
   --output /path/to/report.md
 ```
 
-### `doc-signature-diff`
+### `doc signature-diff`
 
 Detect signature changes between two graph versions.
 
@@ -514,7 +514,7 @@ per-file sync appends one row to `graph_versions.db` (timestamp, source
 commit, node/edge counts). The commands below read that history and add
 named checkpoints on top.
 
-### `graph-record-version`
+### `graph record-version`
 
 Record a named graph version (snapshot for later diffing).
 
@@ -525,7 +525,7 @@ python3 scripts/code2database_builder.py graph-record-version \
   [--notes "Release 1.2.3"]
 ```
 
-### `graph-history`
+### `graph history`
 
 Show the version history of the graph (auto-recorded build/sync rows
 plus named checkpoints — node/edge counts over time).
@@ -535,7 +535,7 @@ python3 scripts/code2database_builder.py graph-history \
   --graph code2db-out/
 ```
 
-### `graph-diff`
+### `graph diff`
 
 Diff two graph versions.
 
@@ -548,7 +548,7 @@ python3 scripts/code2database_builder.py graph-diff \
 
 ## Memory Management
 
-### `save-memory`  [write]
+### `save`  [write]
 
 Save a Q&A to persistent memory. **Requires user confirmation.**
 
@@ -564,7 +564,7 @@ python3 scripts/code2database_builder.py save-memory \
 `--symbol` (repeatable) grounds the memory to graph symbols;
 `search-memory --symbol` filters by it.
 
-### `search-memory`
+### `recall`
 
 Search persistent memory by query or tags.
 
@@ -577,7 +577,7 @@ python3 scripts/code2database_builder.py search-memory \
   [--limit N]
 ```
 
-### `manage-memory`  [write]
+### `memory manage`  [write]
 
 Advanced memory CRUD and decay. Actions: `add`, `correct`, `reshape`, `promote`, `refine`, `decay`. **Requires user confirmation.**
 
@@ -590,7 +590,7 @@ python3 scripts/code2database_builder.py manage-memory \
   [--yes]
 ```
 
-### `memory-health`
+### `memory health`
 
 Check memory system health (count, decay status, coverage).
 
@@ -599,7 +599,7 @@ python3 scripts/code2database_builder.py memory-health \
   --graph code2db-out/
 ```
 
-### `validate-memory`
+### `memory validate`
 
 Validate memory entries for accuracy and freshness.
 
@@ -641,7 +641,7 @@ python3 scripts/code2database_builder.py bug-benchmark \
 
 ## Embeddings (experimental)
 
-### `embeddings-build`
+### `embeddings build`
 
 Build semantic embeddings for the graph (experimental).
 
@@ -651,7 +651,7 @@ python3 scripts/code2database_builder.py embeddings-build \
   [--model all-MiniLM-L6-v2]
 ```
 
-### `embeddings-search`
+### `embeddings search`
 
 Semantic search over the graph using embeddings.
 
@@ -686,7 +686,7 @@ query surface across memory + knowledge stores:
 
 ## Knowledge Base (kb-* commands)
 
-### `kb-rebuild-index`
+### `kb rebuild-index`
 
 Rebuild the unified FTS5 index from `memory/memory.db` entries + the knowledge store (`knowledge/knowledge.db`).
 Run after each `build` / `update` or after manual memory/knowledge edits.
@@ -696,7 +696,7 @@ python3 scripts/code2database_builder.py kb-rebuild-index \
   --graph code2db-out/
 ```
 
-### `kb-query`
+### `kb query`
 
 Unified FTS5+BM25 query across memory + knowledge. Returns ranked hits
 with `source_kind` (memory / knowledge), `score`, `body`, `see_also`.
@@ -717,7 +717,7 @@ sentence-transformers; auto-degrades to FTS5 if unavailable).
 `--global`: fall back to `~/.code2database_global_kb/global.db` when the
 project KB has no matches.
 
-### `kb-cluster`
+### `kb cluster`
 
 Cluster similar kb items via union-find on FTS5 BM25 > threshold. Picks
 canonical (highest weight × confidence) per cluster and links
@@ -729,7 +729,7 @@ python3 scripts/code2database_builder.py kb-cluster \
   [--threshold 0.5]
 ```
 
-### `kb-migrate`
+### `kb migrate`
 
 Migrate `kb_paragraphs` rows → `kb_items` (fact-level with `versions_json`,
 `decay_class`, `provenance_commit`). Both tables coexist; kb_items is the
@@ -740,7 +740,7 @@ python3 scripts/code2database_builder.py kb-migrate \
   --graph code2db-out/
 ```
 
-### `kb-known-unknowns`
+### `kb known-unknowns`
 
 List queries that returned no matches (aggregated from `kb_query_log`).
 Helps identify knowledge gaps the user should fill.
@@ -751,7 +751,7 @@ python3 scripts/code2database_builder.py kb-known-unknowns \
   [--top 20] [--min-occurrences 2]
 ```
 
-### `kb-audit`
+### `kb audit`
 
 Review the project KB: counts by kind, stale items (>90d untouched),
 low_confidence_items (<0.5), high_citation_items (top access_count), most-linked
@@ -763,7 +763,7 @@ python3 scripts/code2database_builder.py kb-audit \
   [--topic "bdev registration"]
 ```
 
-### `kb-conflict`
+### `kb conflict`
 
 Detect contradictory items within the same cluster (pairwise check for
 14 word pairs: yes/no, must/must not, always/never, safe/unsafe, ...).
@@ -773,7 +773,7 @@ python3 scripts/code2database_builder.py kb-conflict \
   --graph code2db-out/
 ```
 
-### `kb-rollback`
+### `kb rollback`
 
 Restore a `kb_item` to a prior version (saves current state as a new
 version entry first, so rollback is itself reversible).
@@ -784,7 +784,7 @@ python3 scripts/code2database_builder.py kb-rollback \
   --id 42 [--to-version 3]
 ```
 
-### `kb-forget`  [write]
+### `kb forget`  [write]
 
 Immediately delete a `kb_paragraph` row (no decay wait). Writes an
 audit_log entry (operator, timestamp, reason) for traceability.
@@ -796,7 +796,7 @@ python3 scripts/code2database_builder.py kb-forget \
   --reason "incorrect: bdev_register doesn't call io_device_register"
 ```
 
-### `kb-global-add` / `kb-global-search` / `kb-global-share` / `kb-global-import`
+### `kb-global add` / `kb-global search` / `kb-global share` / `kb-global import`
 
 Cross-project global KB at `~/.code2database_global_kb/global.db`. Stores
 project-agnostic knowledge (debugging methodology, protocol standards,
@@ -873,7 +873,7 @@ python3 scripts/code2database_builder.py c2d-unpin-foreign \
 
 ## Multi-Project Commands
 
-### `build-multi`
+### `build multi`
 
 Build a unified C2D from multiple interdependent projects (A→B→C) via a
 manifest JSON. Forces project-name domain prefix to prevent collisions.
@@ -956,7 +956,7 @@ python3 scripts/code2database_builder.py c2d-add-foreign-stub \
   --graph B/c2db-out/ --stub-c2d glibc_stub/ --project-name glibc
 ```
 
-### `ffi-auto-link`
+### `ffi auto-link`
 
 Auto-link FFI bindings (ctypes/cgo/extern C) to watched foreign C2Ds.
 
@@ -993,7 +993,7 @@ python3 scripts/code2database_builder.py domain \
   [--json]
 ```
 
-### `extract-invariants-llm`
+### `invariants extract-llm`
 
 LLM-driven invariant extraction (also in analysis sub-skill).
 
@@ -1001,7 +1001,7 @@ LLM-driven invariant extraction (also in analysis sub-skill).
 
 LLM-driven reasoning helpers (also in analysis sub-skill).
 
-### `unbalanced-alloc-free`
+### `who unbalanced`
 
 Find unbalanced alloc/free pairs (also in analysis sub-skill).
 

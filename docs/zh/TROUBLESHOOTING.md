@@ -35,7 +35,7 @@ echo $?   # 0 = 健康，1 = 有告警，2 = 失败
 - 新鲜度用文件指纹（mtime + size）对比 manifest，并用 git HEAD
   对比记录的源码 commit——仅 `touch` 过的文件可能显得过期；
   内容哈希（clang 后端）是更强的信号
-- 若守护进程在跑，先看 `daemon-status`：启动宽限窗口内守护进程
+- 若守护进程在跑，先看 `daemon status`：启动宽限窗口内守护进程
   只持有事件而不同步
 
 ## 数据库损坏或不可读
@@ -43,11 +43,11 @@ echo $?   # 0 = 健康，1 = 有告警，2 = 失败
 现象：`doctor` 的 `database` 项失败；查询报错。
 
 ```bash
-code2database-builder tx-list-snapshots --graph code2db-out/
-code2database-builder tx-restore --graph code2db-out/ --snapshot <id>
+code2database-builder tx list-snapshots --graph code2db-out/
+code2database-builder tx restore --graph code2db-out/ --snapshot <id>
 ```
 
-- 事务快照在每次多步写入（`tx-begin`/`patch-from-diff`/…）前捕获
+- 事务快照在每次多步写入（`tx begin`/`patch-from-diff`/…）前捕获
   数据库与关键 JSON；最新的健康快照通常只落后几分钟
 - WAL 日志会在下一次连接时自动恢复；同步中硬断电留下的是事务前
   状态
@@ -56,7 +56,7 @@ code2database-builder tx-restore --graph code2db-out/ --snapshot <id>
 
 ## 同步守护进程无响应
 
-现象：`daemon-status` 连不上。
+现象：`daemon status` 连不上。
 
 - 控制套接字为 `$TMPDIR/code2database-daemon-<哈希>.sock`（图谱
   目录绝对路径的哈希）；确认两侧算的是同一个 `--graph` 路径——
@@ -64,10 +64,10 @@ code2database-builder tx-restore --graph code2db-out/ --snapshot <id>
 - systemd 下 `PrivateTmp=true` 会把套接字对用户 shell 隐藏——
   随附的 `deploy/c2d-daemon.service` 正因此固定 `TMPDIR=/tmp` 且
   `PrivateTmp=false`
-- 崩溃后残留的套接字文件会在下次启动时清理；`daemon-logs` 给出
+- 崩溃后残留的套接字文件会在下次启动时清理；`daemon logs` 给出
   崩溃上下文，`.daemon_status.json` 是最后记录的状态
 - 停机期间堆积的事件：守护进程会把恢复性批量同步推迟到启动宽限
-  窗口之后——看 `daemon-status`，不要急于强制重建
+  窗口之后——看 `daemon status`，不要急于强制重建
 
 ## cgdb 层缺失或降级
 
@@ -119,8 +119,8 @@ code2database-builder tx-restore --graph code2db-out/ --snapshot <id>
 
 | 场景 | 命令 |
 |------|------|
-| 少量文件变更，图谱为 SQLite 后端 | `build-update`（按文件、事务化） |
-| 持续编辑，希望自动化 | `daemon-start` |
+| 少量文件变更，图谱为 SQLite 后端 | `build update`（按文件、事务化） |
+| 持续编辑，希望自动化 | `daemon start` |
 | 切分支或大规模结构性变动 | 完整 `build`（或 `make`） |
 | 只有派生产物（pack、摘要）过期 | 重跑导出/make 派生步骤 |
 

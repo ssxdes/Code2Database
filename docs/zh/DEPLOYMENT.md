@@ -10,7 +10,7 @@
 | CLI（交互式） | `c2d`、`code2database-builder`、`code2database-scanner` | 工程师工作站、CI 任务、脚本流水线 |
 | MCP over stdio | `serve --graph <目录>` | 本地 LLM 代理（Claude Desktop、Cursor 本地模式） |
 | MCP over HTTP | `serve --transport http ...` | TLS + 令牌鉴权后的共享/团队访问 |
-| 同步守护进程 | `daemon-start --graph <目录> --source <源码>` | 工程师持续改代码时保持图谱最新 |
+| 同步守护进程 | `daemon start --graph <目录> --source <源码>` | 工程师持续改代码时保持图谱最新 |
 
 ## 前置条件
 
@@ -107,9 +107,9 @@ sudo systemctl daemon-reload && sudo systemctl enable --now c2d-daemon
 - 控制套接字为 `$TMPDIR/code2database-daemon-<哈希>.sock`（图谱目录
   绝对路径的哈希）；服务单元固定 `TMPDIR=/tmp` 且保持
   `PrivateTmp=false`，shell 命令才能连上
-- 任意 shell 可用的控制面：`daemon-status`、`daemon-pause`、
-  `daemon-resume`、`daemon-force-refresh`、`daemon-wait-sync`、
-  `daemon-logs`、`daemon-list-projects`
+- 任意 shell 可用的控制面：`daemon status`、`daemon pause`、
+  `daemon resume`、`daemon force-refresh`、`daemon wait-sync`、
+  `daemon logs`、`daemon list-projects`
 - 状态存于 `<graph_dir>/.daemon_status.json`；重启时检测崩溃残留，
   接续 pending 事件，并把恢复性批量同步推迟到启动宽限窗口之后
   （防崩溃循环）
@@ -132,14 +132,14 @@ sudo systemctl daemon-reload && sudo systemctl enable --now c2d-daemon
 rsync -a code2db-out/ backup/code2db-out/
 
 # 无外部备份的时点恢复
-code2database-builder tx-list-snapshots --graph code2db-out/
-code2database-builder tx-restore --graph code2db-out/ --snapshot <id>
+code2database-builder tx list-snapshots --graph code2db-out/
+code2database-builder tx restore --graph code2db-out/ --snapshot <id>
 ```
 
 跨机器迁移：拷贝图谱目录与源码树；manifest 记录了 `source_root`——
 源码移动后先跑 `c2d freshen`，再走同步路径。跨项目全局知识库位于
 `~/.code2database_global_kb/`——若在项目间共享原理，需单独备份
-（`kb-global-share` / `kb-global-import` 在机器间搬运bundle）。
+（`kb-global share` / `kb-global import` 在机器间搬运bundle）。
 
 ## 健康监测
 
@@ -152,7 +152,7 @@ echo $?   # 0 = 健康，1 = 有告警，2 = 失败
 
 它检查 SQLite 完整性与外键、schema 版本、内容计数、源码新鲜度、
 记忆库、知识 brief 与守护进程状态。时间维度上的漂移看
-`graph-history`（累积的版本行：每次构建/同步的节点/边计数），
+`graph history`（累积的版本行：每次构建/同步的节点/边计数），
 `graph-provenance` 报告当前数据库对应的源码 commit 与工具版本。
 
 ## 数据敏感性

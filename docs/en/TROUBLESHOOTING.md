@@ -40,7 +40,7 @@ Symptom: `session-init` or `c2d freshen` reports drifted files.
   manifest and the git HEAD against the recorded source commit — a
   `touch`-only change can look stale; content hashes (clang backend)
   are the stronger signal
-- If a daemon is running, check `daemon-status` first: during its
+- If a daemon is running, check `daemon status` first: during its
   startup grace window the daemon holds events without syncing them
 
 ## Corrupt or Unreadable Database
@@ -48,12 +48,12 @@ Symptom: `session-init` or `c2d freshen` reports drifted files.
 Symptom: `doctor` fails `database`; queries error out.
 
 ```bash
-code2database-builder tx-list-snapshots --graph code2db-out/
-code2database-builder tx-restore --graph code2db-out/ --snapshot <id>
+code2database-builder tx list-snapshots --graph code2db-out/
+code2database-builder tx restore --graph code2db-out/ --snapshot <id>
 ```
 
 - Transaction snapshots capture the database + key JSONs before every
-  multi-step write (`tx-begin`/`patch-from-diff`/...); the newest sane
+  multi-step write (`tx begin`/`patch-from-diff`/...); the newest sane
   snapshot is usually minutes old
 - WAL journals recover automatically on the next connection; a hard
   power loss mid-sync leaves the pre-transaction state
@@ -62,7 +62,7 @@ code2database-builder tx-restore --graph code2db-out/ --snapshot <id>
 
 ## Sync Daemon Not Responding
 
-Symptom: `daemon-status` cannot connect.
+Symptom: `daemon status` cannot connect.
 
 - The control socket is `$TMPDIR/code2database-daemon-<hash>.sock`
   (hash of the absolute graph dir); confirm both sides compute the
@@ -72,10 +72,10 @@ Symptom: `daemon-status` cannot connect.
   shells — the shipped `deploy/c2d-daemon.service` pins `TMPDIR=/tmp`
   with `PrivateTmp=false` for exactly this reason
 - A stale socket file after a crash is cleaned up on next start;
-  `daemon-logs` shows the crash context, `.daemon_status.json` the
+  `daemon logs` shows the crash context, `.daemon_status.json` the
   last recorded state
 - If events piled up during downtime, the daemon defers the recovery
-  bulk sync until its startup grace window ends — watch `daemon-status`
+  bulk sync until its startup grace window ends — watch `daemon status`
   instead of forcing an immediate rebuild
 
 ## cgdb Layer Missing or Degraded
@@ -135,8 +135,8 @@ Symptom: scan aborts, or a language's functions never appear.
 
 | Situation | Command |
 |-----------|---------|
-| A few files changed, graph is SQLite-backed | `build-update` (per-file, transactional) |
-| Continuous editing, want it automated | `daemon-start` |
+| A few files changed, graph is SQLite-backed | `build update` (per-file, transactional) |
+| Continuous editing, want it automated | `daemon start` |
 | Branch switch or large structural churn | full `build` (or `make`) |
 | Only derived artifacts (packs, summaries) stale | re-run the export/make derived steps |
 

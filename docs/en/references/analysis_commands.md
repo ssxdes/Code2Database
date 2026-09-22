@@ -6,7 +6,7 @@ The commands are grouped by question type, mirroring the routing table in `SKILL
 
 ## Concurrency Safety
 
-### `concurrency-risks`
+### `concurrency`
 
 List all global concurrency risk hot-spots detected during the build stage.
 
@@ -16,7 +16,7 @@ python3 scripts/code2database_builder.py concurrency-risks --graph code2db-out/ 
 
 Output: ranked list of functions with risk score, shared state count, lock count, thread model annotation.
 
-### `concurrency-analyze`
+### `concurrency analyze`
 
 Pair-wise concurrency safety analysis between two functions or two invocation chains.
 
@@ -29,7 +29,7 @@ python3 scripts/code2database_builder.py concurrency-analyze \
 
 Output: thread model per function, shared state intersection, lock-held overlap, race verdict (SAFE / RISKY / RACY), evidence trace.
 
-### `detect-races`
+### `concurrency detect-races`
 
 Cross-thread data race detection across the whole graph or a scoped subset.
 
@@ -57,7 +57,7 @@ python3 scripts/code2database_builder.py lock-coverage \
 
 Output: per-lock event stream (acquire at line:col, release at line:col), uncovered sections (code executed without lock), nested-lock warnings.
 
-### `happens-before`
+### `concurrency happens-before`
 
 Compute happens-before relationships between two events across threads (uses cgdb sync_primitives + happens_before tables when clang backend is enabled).
 
@@ -71,7 +71,7 @@ python3 scripts/code2database_builder.py happens-before \
 
 Output: ordered / concurrent / undetermined verdict, ordering edges, evidence.
 
-### `memory-ordering`
+### `concurrency memory-ordering`
 
 Analyze memory ordering constraints (atomic operations, memory barriers, READ_ONCE / WRITE_ONCE, smp_mb).
 
@@ -84,7 +84,7 @@ python3 scripts/code2database_builder.py memory-ordering \
 
 Output: list of ordering points with location, operation type, ordering strength (relaxed / acquire / release / seq_cst), paired barrier.
 
-### `who-locks`
+### `who locks`
 
 Find all functions that acquire a specific lock variable.
 
@@ -219,9 +219,9 @@ python3 scripts/code2database_builder.py path \
   [--max-depth N] [--json] [--no-cache]
 ```
 
-**Query result cache**: `path` results are cached (TTL 600s, max 256 entries per graph). The cache invalidates on (a) TTL expiry, (b) graph SQLite file mtime change (catches daemon tx, manual sqlite3 edits, patcher writes), and (c) node-version bump on `update-node`/`patch-from-diff` for nodes the query touched. Pass `--no-cache` to bypass the cache for a single invocation — the result is computed fresh and is NOT written back to cache. Same caching applies to `describe-node`, `trace-chain`, `reverse-trace`, and `explore-flow`.
+**Query result cache**: `path` results are cached (TTL 600s, max 256 entries per graph). The cache invalidates on (a) TTL expiry, (b) graph SQLite file mtime change (catches daemon tx, manual sqlite3 edits, patcher writes), and (c) node-version bump on `update-node`/`patch-from-diff` for nodes the query touched. Pass `--no-cache` to bypass the cache for a single invocation — the result is computed fresh and is NOT written back to cache. Same caching applies to `describe-node`, `trace`, `trace reverse`, and `explore-flow`.
 
-### `reverse-trace`
+### `trace reverse`
 
 Reverse BFS from a crash point along INVOKES edges, listing all paths from entry points to the crash point. Prioritizes paths starting from `API_entry` / `thread_processor`.
 
@@ -244,7 +244,7 @@ Output: paths from entry points to the crash point, with condition and concurren
 
 JSON output includes a `field_write_suspects` array and `field_write_suspects_summary` block. Text output appends a "Field write suspects:" section after "Concurrency entry points:".
 
-### `diff-chains`
+### `trace diff`
 
 Compare invocation paths under two macro configurations.
 
@@ -344,7 +344,7 @@ Output: signal map — for each `#ifdef` macro, list of functions and edges gate
 
 ## Invariants
 
-### `extract-invariants`
+### `invariants extract`
 
 Extract preconditions, postconditions, loop invariants, and state machine from function bodies.
 
@@ -357,7 +357,7 @@ python3 scripts/code2database_builder.py extract-invariants \
 
 Output: list of invariants with kind (precondition / postcondition / loop_invariant / state_machine), expression, confidence (EXTRACTED / INFERRED / AMBIGUOUS), evidence.
 
-### `find-invariants`
+### `find`
 
 Find invariants matching a pattern across the graph.
 
@@ -368,7 +368,7 @@ python3 scripts/code2database_builder.py find-invariants \
   [--json]
 ```
 
-### `apply-invariants`
+### `invariants apply`
 
 Apply extracted invariants to the graph. **AMBIGUOUS never applied; INFERRED require user confirmation; EXTRACTED auto-applied.**
 
@@ -384,7 +384,7 @@ python3 scripts/code2database_builder.py apply-invariants \
 
 ## FFI Tracing
 
-### `ffi-detect`
+### `ffi detect`
 
 Detect FFI bindings across the codebase (Python ctypes, Go cgo, Rust extern "C").
 
@@ -396,7 +396,7 @@ python3 scripts/code2database_builder.py ffi-detect \
 
 Output: list of FFI binding sites with source language, target language, binding kind.
 
-### `ffi-list`
+### `ffi list`
 
 List all FFI binding sites with details.
 
@@ -407,7 +407,7 @@ python3 scripts/code2database_builder.py ffi-list \
   [--json]
 ```
 
-### `ffi-trace`
+### `ffi trace`
 
 Trace a cross-language invocation chain.
 
@@ -420,7 +420,7 @@ python3 scripts/code2database_builder.py ffi-trace \
 
 Output: chain crossing language boundaries with FFI binding points annotated.
 
-### `ffi-types`
+### `ffi types`
 
 Show type marshalling for an FFI edge. **Updating the type marshalling table requires user confirmation.**
 
@@ -471,7 +471,7 @@ python3 scripts/code2database_builder.py node-history \
   [--json]
 ```
 
-### `graph-provenance`
+### `graph provenance`
 
 Show graph-wide provenance summary.
 
@@ -494,7 +494,7 @@ python3 scripts/code2database_builder.py find-commits \
 
 ## Resource Lifecycle
 
-### `who-allocates`
+### `who allocates`
 
 Find all functions that allocate a resource.
 
@@ -505,7 +505,7 @@ python3 scripts/code2database_builder.py who-allocates \
   [--json]
 ```
 
-### `who-frees`
+### `who frees`
 
 Find all functions that free a resource.
 
@@ -516,7 +516,7 @@ python3 scripts/code2database_builder.py who-frees \
   [--json]
 ```
 
-### `unbalanced-alloc-free`
+### `who unbalanced`
 
 Find unbalanced allocation/free pairs (potential leak or double-free).
 
@@ -609,7 +609,7 @@ python3 scripts/code2database_builder.py intent-query \
   [--json]
 ```
 
-### `extract-invariants-llm`
+### `invariants extract-llm`
 
 LLM-driven invariant extraction (uses an LLM to propose invariants from function bodies).
 
@@ -658,7 +658,7 @@ python3 scripts/code2database_builder.py apply-semantics \
   [--yes]  # NOT recommended — requires user confirmation
 ```
 
-### `knowledge-brief` / `brief-update` / `brief-extract` / `brief-validate`
+### `knowledge-brief` / `brief update` / `brief extract` / `brief validate`
 
 Project brief commands (knowledge = the lean, mandatory-load brief). Load the brief at every session start; adjust it in small scope when the architecture changes.
 

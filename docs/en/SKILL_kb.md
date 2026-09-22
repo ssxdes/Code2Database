@@ -17,7 +17,7 @@ The kb sub-skill runs standalone or alongside the code graph — they share the 
 | knowledge + memory | `memory/memory.db`, `knowledge/knowledge.db`, `kb_index.db` | this sub-skill |
 | code graph | `code2database.db`, `code2database_master.json` | the graph skill |
 
-`kb-init` provisions a store with zero graph artifacts. Every kb command works on a directory that has never been scanned or built.
+`kb init` provisions a store with zero graph artifacts. Every kb command works on a directory that has never been scanned or built.
 
 ## The two stores — definition, logic, physical location
 
@@ -68,18 +68,18 @@ python3 scripts/code2database_builder.py save-memory \
 - **wrong answer** → `save-memory --correct` reshapes the most similar entry in place (version history kept, no duplicate variants)
 - **similar memories** → they merge on save (threshold 0.7); `manage-memory --action merge/split/move` reorganizes; `compact` runs after every build
 - **better wording** → `--correct` with the same question and an improved answer
-- **stale against code** → `validate-memory` demotes entries whose `node_ids` left the graph (skipped gracefully when no graph exists)
+- **stale against code** → `memory validate` demotes entries whose `node_ids` left the graph (skipped gracefully when no graph exists)
 
 ## Graduation rules (memory → knowledge)
 
-When a memory keeps proving useful, it becomes a fact: `brief-suggest` mines graduation candidates (strong weight or merge count) and emits ready-to-run `brief-update` commands — graduation is always a reviewed step, never automatic. Knowledge stays lean: the brief warns above 3000 chars, errors above 6000.
+When a memory keeps proving useful, it becomes a fact: `brief suggest` mines graduation candidates (strong weight or merge count) and emits ready-to-run `brief update` commands — graduation is always a reviewed step, never automatic. Knowledge stays lean: the brief warns above 3000 chars, errors above 6000.
 
 ## Expansion rules (how the boundary grows)
 
 - **adjacent domains**: when a new subsystem/language keeps showing up in questions but no memory covers it, add a memory first (cheap to be wrong); create a new `--category` level only after repeated hits — hierarchy follows memories, never the reverse
-- **cross-domain reuse**: an explanation already validated in another domain gets attached via `kb-domain-add` (`kb-query --cross` labels the source domain) instead of copied — copies drift
+- **cross-domain reuse**: an explanation already validated in another domain gets attached via `kb-domain add` (`kb-query --cross` labels the source domain) instead of copied — copies drift
 - **knowledge deepens, never widens**: expanding knowledge means `revise`-ing an existing hard_rule / abstraction with a sharper wording, not appending new items; horizontal growth belongs to memory
-- **shrinking is expanding too**: two hard_rules saying the same thing merge into one (`brief-update` rewrite); knowledge is valued by density, not entry count
+- **shrinking is expanding too**: two hard_rules saying the same thing merge into one (`brief update` rewrite); knowledge is valued by density, not entry count
 
 ## Domain partitioning
 
@@ -106,8 +106,8 @@ Entries learned on `release/2.0` rank first; entries from other versions follow,
 4. source (last resort)
 ```
 
-`kb-query` is the one-call surface across both stores; `session-init` is the one-call load of everything.
+`kb query` is the one-call surface across both stores; `session-init` is the one-call load of everything.
 
 ## Command surface (Tier-1)
 
-`kb-init`, `session-init`, `save-memory`, `search-memory`, `kb-query`, `knowledge-brief`, `kb-rebuild-index`, `kb-known-unknowns` — plus `brief-*` curation, `manage-memory` governance, `kb-cluster`, `kb-domain-*` registry, `semantic-search`. The full CLI remains accessible.
+`kb init`, `session-init`, `save`, `recall`, `kb query`, `knowledge-brief`, `kb rebuild-index`, `kb known-unknowns` — plus `brief-*` curation, `memory manage` governance, `kb cluster`, `kb-domain-*` registry, `search semantic`. The full CLI remains accessible.

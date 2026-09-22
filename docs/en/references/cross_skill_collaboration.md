@@ -2,7 +2,7 @@
 
 Code2Database provides invocation chain analysis, but scenarios like bug location, new feature development etc. require coordination with other skills.
 
-> **The code-database advantage in collaboration**: Code2Database's graph isn't just nodes and edges — it carries the conditions, concurrency context, field access, and evidence traces that other skills need as *input*. When a debugging skill asks "what could cause this crash?", Code2Database hands it `reverse-trace` output (all paths to the crash) + `detect-races` output (concurrent access) + `field-access` output (shared state) — a complete picture in one pass, not a file-by-file re-discovery. Other skills query the database; they don't re-read the code.
+> **The code-database advantage in collaboration**: Code2Database's graph isn't just nodes and edges — it carries the conditions, concurrency context, field access, and evidence traces that other skills need as *input*. When a debugging skill asks "what could cause this crash?", Code2Database hands it `trace reverse` output (all paths to the crash) + `concurrency detect-races` output (concurrent access) + `field-access` output (shared state) — a complete picture in one pass, not a file-by-file re-discovery. Other skills query the database; they don't re-read the code.
 
 ## Skill Discovery Mechanism
 

@@ -11,7 +11,7 @@ health monitoring.
 | CLI (interactive) | `c2d`, `code2database-builder`, `code2database-scanner` | Engineering workstations, CI jobs, scripted pipelines |
 | MCP over stdio | `serve --graph <dir>` | Local LLM agents (Claude Desktop, Cursor local mode) |
 | MCP over HTTP | `serve --transport http ...` | Shared/team access behind TLS + token auth |
-| Sync daemon | `daemon-start --graph <dir> --source <src>` | Keeping a graph current while engineers edit code |
+| Sync daemon | `daemon start --graph <dir> --source <src>` | Keeping a graph current while engineers edit code |
 
 ## Prerequisites
 
@@ -111,9 +111,9 @@ Operational facts:
 - The control socket is `$TMPDIR/code2database-daemon-<hash>.sock`
   (hash of the absolute graph dir); the service unit pins `TMPDIR=/tmp`
   and keeps `PrivateTmp=false` so shell commands can reach it
-- Control from any shell: `daemon-status`, `daemon-pause`,
-  `daemon-resume`, `daemon-force-refresh`, `daemon-wait-sync`,
-  `daemon-logs`, `daemon-list-projects`
+- Control from any shell: `daemon status`, `daemon pause`,
+  `daemon resume`, `daemon force-refresh`, `daemon wait-sync`,
+  `daemon logs`, `daemon list-projects`
 - State lives in `<graph_dir>/.daemon_status.json`; a crashed daemon is
   detected on restart, its pending events carried over, and the
   recovery bulk sync deferred until the startup grace window ends
@@ -134,20 +134,20 @@ The graph directory is the unit of backup. Copy it as a whole:
 | `.code2database_manifest.json` | Source fingerprints and the source commit anchor |
 
 ```bash
-# Cold backup (daemon stopped or after daemon-pause)
+# Cold backup (daemon stopped or after `daemon pause`)
 rsync -a code2db-out/ backup/code2db-out/
 
 # Point-in-time recovery without external backups
-code2database-builder tx-list-snapshots --graph code2db-out/
-code2database-builder tx-restore --graph code2db-out/ --snapshot <id>
+code2database-builder tx list-snapshots --graph code2db-out/
+code2database-builder tx restore --graph code2db-out/ --snapshot <id>
 ```
 
 Machine migration: copy the graph directory and the source tree; the
 manifest records `source_root` — re-run `c2d freshen` first, then a
 sync path if the source moved. The cross-project global knowledge store
 lives in `~/.code2database_global_kb/` — back it up separately if you
-share principles across projects (`kb-global-share` /
-`kb-global-import` move bundles between machines).
+share principles across projects (`kb-global share` /
+`kb-global import` move bundles between machines).
 
 ## Health Monitoring
 
@@ -161,7 +161,7 @@ echo $?   # 0 = healthy, 1 = warnings, 2 = failure
 
 It checks SQLite integrity and foreign keys, schema versions, content
 counts, source freshness, the memory store, the knowledge brief and the
-daemon state. For drift over time, `graph-history` reads the
+daemon state. For drift over time, `graph history` reads the
 accumulated version rows (node/edge counts per build and sync), and
 `graph-provenance` reports which source commit and tool version
 produced the current database.

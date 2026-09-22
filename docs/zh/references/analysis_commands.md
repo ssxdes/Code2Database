@@ -6,7 +6,7 @@
 
 ## 并发安全
 
-### `concurrency-risks`
+### `concurrency`
 
 列出构建阶段检测到的全局并发风险热点。
 
@@ -16,7 +16,7 @@ python3 scripts/code2database_builder.py concurrency-risks --graph code2db-out/ 
 
 输出：按风险评分排序的函数列表，含共享状态数、锁数、线程模型标注。
 
-### `concurrency-analyze`
+### `concurrency analyze`
 
 两个函数或两条调用链之间的成对并发安全分析。
 
@@ -29,7 +29,7 @@ python3 scripts/code2database_builder.py concurrency-analyze \
 
 输出：每个函数的线程模型、共享状态交集、锁持有重叠、竞争判定（SAFE / RISKY / RACY）、证据链。
 
-### `detect-races`
+### `concurrency detect-races`
 
 跨线程数据竞争检测（全图或某子集）。
 
@@ -57,7 +57,7 @@ python3 scripts/code2database_builder.py lock-coverage \
 
 输出：每把锁的事件流（line:col 获取、line:col 释放）、未覆盖段（无锁执行的代码）、嵌套锁警告。
 
-### `happens-before`
+### `concurrency happens-before`
 
 计算两个跨线程事件之间的 happens-before 关系（启用 clang 后端时使用 cgdb sync_primitives + happens_before 表）。
 
@@ -71,7 +71,7 @@ python3 scripts/code2database_builder.py happens-before \
 
 输出：有序 / 并发 / 不确定 判定、排序边、证据。
 
-### `memory-ordering`
+### `concurrency memory-ordering`
 
 分析内存序约束（原子操作、内存屏障、READ_ONCE / WRITE_ONCE、smp_mb）。
 
@@ -84,7 +84,7 @@ python3 scripts/code2database_builder.py memory-ordering \
 
 输出：排序点列表，含位置、操作类型、序强度（relaxed / acquire / release / seq_cst）、配对屏障。
 
-### `who-locks`
+### `who locks`
 
 查找所有获取某锁变量的函数。
 
@@ -219,9 +219,9 @@ python3 scripts/code2database_builder.py path \
   [--max-depth N] [--json] [--no-cache]
 ```
 
-**查询结果缓存**：`path` 结果会被缓存（TTL 600 秒，每图最多 256 条）。缓存失效条件：(a) TTL 到期，(b) 图 SQLite 文件 mtime 变化（覆盖守护事务、手动 sqlite3 编辑、patcher 写入），(c) `update-node`/`patch-from-diff` 触及的节点版本号递增。传 `--no-cache` 跳过缓存——结果重新计算且不写回缓存。`describe-node`、`trace-chain`、`reverse-trace`、`explore-flow` 同样适用此缓存机制。
+**查询结果缓存**：`path` 结果会被缓存（TTL 600 秒，每图最多 256 条）。缓存失效条件：(a) TTL 到期，(b) 图 SQLite 文件 mtime 变化（覆盖守护事务、手动 sqlite3 编辑、patcher 写入），(c) `update-node`/`patch-from-diff` 触及的节点版本号递增。传 `--no-cache` 跳过缓存——结果重新计算且不写回缓存。`describe-node`、`trace`、`trace reverse`、`explore-flow` 同样适用此缓存机制。
 
-### `reverse-trace`
+### `trace reverse`
 
 从崩溃点沿 INVOKES 边反向 BFS，列出所有从入口点到崩溃点的路径。优先展示从 `API_entry` / `thread_processor` 出发的路径。
 
@@ -244,7 +244,7 @@ python3 scripts/code2database_builder.py reverse-trace \
 
 JSON 输出包含 `field_write_suspects` 数组和 `field_write_suspects_summary` 块。文本输出在"Concurrency entry points:"后追加"Field write suspects:"段。
 
-### `diff-chains`
+### `trace diff`
 
 对比两种宏配置下的调用路径。
 
@@ -344,7 +344,7 @@ python3 scripts/code2database_builder.py extract-signals \
 
 ## 不变量
 
-### `extract-invariants`
+### `invariants extract`
 
 从函数体提取前置条件、后置条件、循环不变量、状态机。
 
@@ -357,7 +357,7 @@ python3 scripts/code2database_builder.py extract-invariants \
 
 输出：不变量列表，含类型（precondition / postcondition / loop_invariant / state_machine）、表达式、置信度（EXTRACTED / INFERRED / AMBIGUOUS）、证据。
 
-### `find-invariants`
+### `find`
 
 跨图查找匹配某模式的不变量。
 
@@ -368,7 +368,7 @@ python3 scripts/code2database_builder.py find-invariants \
   [--json]
 ```
 
-### `apply-invariants`
+### `invariants apply`
 
 应用提取的不变量到图。**AMBIGUOUS 永不应用；INFERRED 需用户确认；EXTRACTED 自动应用。**
 
@@ -384,7 +384,7 @@ python3 scripts/code2database_builder.py apply-invariants \
 
 ## FFI 追踪
 
-### `ffi-detect`
+### `ffi detect`
 
 跨代码库检测 FFI 绑定（Python ctypes、Go cgo、Rust extern "C"）。
 
@@ -396,7 +396,7 @@ python3 scripts/code2database_builder.py ffi-detect \
 
 输出：FFI 绑定位置列表，含源语言、目标语言、绑定类型。
 
-### `ffi-list`
+### `ffi list`
 
 列出所有 FFI 绑定位置及详情。
 
@@ -407,7 +407,7 @@ python3 scripts/code2database_builder.py ffi-list \
   [--json]
 ```
 
-### `ffi-trace`
+### `ffi trace`
 
 追踪跨语言调用链。
 
@@ -420,7 +420,7 @@ python3 scripts/code2database_builder.py ffi-trace \
 
 输出：跨越语言边界的链，标注 FFI 绑定点。
 
-### `ffi-types`
+### `ffi types`
 
 显示某条 FFI 边的类型映射。**更新类型映射表需用户确认。**
 
@@ -471,7 +471,7 @@ python3 scripts/code2database_builder.py node-history \
   [--json]
 ```
 
-### `graph-provenance`
+### `graph provenance`
 
 显示图级别的来源摘要。
 
@@ -494,7 +494,7 @@ python3 scripts/code2database_builder.py find-commits \
 
 ## 资源生命周期
 
-### `who-allocates`
+### `who allocates`
 
 查找所有分配某资源的函数。
 
@@ -505,7 +505,7 @@ python3 scripts/code2database_builder.py who-allocates \
   [--json]
 ```
 
-### `who-frees`
+### `who frees`
 
 查找所有释放某资源的函数。
 
@@ -516,7 +516,7 @@ python3 scripts/code2database_builder.py who-frees \
   [--json]
 ```
 
-### `unbalanced-alloc-free`
+### `who unbalanced`
 
 查找不平衡的分配/释放对（潜在泄漏或双重释放）。
 
@@ -609,7 +609,7 @@ python3 scripts/code2database_builder.py intent-query \
   [--json]
 ```
 
-### `extract-invariants-llm`
+### `invariants extract-llm`
 
 LLM 驱动的不变量提取（用 LLM 从函数体提议不变量）。
 
@@ -658,7 +658,7 @@ python3 scripts/code2database_builder.py apply-semantics \
   [--yes]  # 不推荐——需用户确认
 ```
 
-### `knowledge-brief` / `brief-update` / `brief-extract` / `brief-validate`
+### `knowledge-brief` / `brief update` / `brief extract` / `brief validate`
 
 项目简报命令（知识 = 精简必载简报）。每次会话启动加载简报；架构变化时小范围调整。
 

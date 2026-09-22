@@ -35,9 +35,9 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 **Commands requiring user confirmation** (default: y/N prompt) — grouped by family; per-command detail in `references/ops_commands.md`:
 
 - Graph edits: `update-node`, `update-edge`, `patch-profile`, `classify-endpoints`, `apply-semantics`, `merge-changes`
-- Memory / knowledge writes: `save-memory`, `manage-memory --action add/correct/reshape/promote/refine/split/merge/move`, `kb-rebuild-index`, `kb-cluster`, `kb-migrate`, `kb-forget`, `kb-rollback`
-- Enhancement / invariants / profile: `apply-invariants` (**AMBIGUOUS never applied**; INFERRED require confirmation; EXTRACTED auto-applied), `auto-enhance` (EXTRACTED+evidence auto-writes; **INFERRED require confirmation**), `batch-confirm`, `profile-evolve --apply` (**INFERRED require confirmation**), `doc-mark-stale`, `ffi-types`
-- Transactions: `tx-commit` (write transactions: persists the committed state, keeps the snapshot until pruned)
+- Memory / knowledge writes: `save`, `manage-memory --action add/correct/reshape/promote/refine/split/merge/move`, `kb rebuild-index`, `kb cluster`, `kb migrate`, `kb forget`, `kb rollback`
+- Enhancement / invariants / profile: `invariants apply` (**AMBIGUOUS never applied**; INFERRED require confirmation; EXTRACTED auto-applied), `auto-enhance` (EXTRACTED+evidence auto-writes; **INFERRED require confirmation**), `batch-confirm`, `profile-evolve --apply` (**INFERRED require confirmation**), `doc mark-stale`, `ffi types`
+- Transactions: `tx commit` (write transactions: persists the committed state, keeps the snapshot until pruned)
 
 **LLM behavior rules**:
 
@@ -46,36 +46,36 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 3. **NEVER** use `--yes` / `-y` to bypass the confirmation prompt unless the user explicitly authorizes it in conversation
 4. If user declines, do not retry the same write
 
-**Non-destructive write guarantee**: `update-node` / `update-edge` / `apply-invariants` / `auto-enhance` / `profile-evolve` store LLM supplements as `{key}_supplemented` fields — original scan data is never overwritten. Each supplement carries `_supplement_meta` (source / confidence / timestamp / original), visible in `describe-node` output; `rollback` reverts by time or scope. Original scan facts are always preserved; LLM incremental data is traceable and rollback-able.
+**Non-destructive write guarantee**: `update-node` / `update-edge` / `invariants apply` / `auto-enhance` / `profile evolve` store LLM supplements as `{key}_supplemented` fields — original scan data is never overwritten. Each supplement carries `_supplement_meta` (source / confidence / timestamp / original), visible in `describe-node` output; `rollback` reverts by time or scope. Original scan facts are always preserved; LLM incremental data is traceable and rollback-able.
 
 ## Tier 1 — Core Commands (Quick Reference)
 
 | Command | Purpose |
 |---------|---------|
-| `tx-begin` | Begin a transaction (snapshot + write lock) |
-| `tx-commit` | Commit current transaction (**requires user confirmation** for writes) |
-| `tx-rollback` | Roll back current transaction (restores snapshot) |
-| `tx-status` | Show transaction status |
-| `daemon-start` | Start background daemon (foreground; blocks) — inotify + transactional sync |
-| `daemon-stop` | Stop a running daemon |
-| `daemon-wait-sync` | Block until current sync completes (**call before important queries**) |
-| `profile-health` | Compute 0-100 health score across 7 categories |
-| `profile-evolve` | Detect new callback patterns; `--apply` applies EXTRACTED suggestions (**requires user confirmation** for INFERRED) |
-| `profile-bind-version` | Bind profile to current git/svn HEAD commit |
-| `doc-code-check` | Check doc-code alignment; detect return-value/param/signature mismatches |
-| `doc-mark-stale` | Mark a node's doc as stale (**requires user confirmation**) |
+| `tx begin` | Begin a transaction (snapshot + write lock) |
+| `tx commit` | Commit current transaction (**requires user confirmation** for writes) |
+| `tx rollback` | Roll back current transaction (restores snapshot) |
+| `tx status` | Show transaction status |
+| `daemon start` | Start background daemon (foreground; blocks) — inotify + transactional sync |
+| `daemon stop` | Stop a running daemon |
+| `daemon wait-sync` | Block until current sync completes (**call before important queries**) |
+| `profile health` | Compute 0-100 health score across 7 categories |
+| `profile evolve` | Detect new callback patterns; `--apply` applies EXTRACTED suggestions (**requires user confirmation** for INFERRED) |
+| `profile bind-version` | Bind profile to current git/svn HEAD commit |
+| `doc code-check` | Check doc-code alignment; detect return-value/param/signature mismatches |
+| `doc mark-stale` | Mark a node's doc as stale (**requires user confirmation**) |
 | `update-node` | LLM-driven incremental node attribute supplement (**requires user confirmation**, non-destructive) |
 | `update-edge` | LLM-driven incremental edge attribute supplement (**requires user confirmation**, non-destructive) |
 | `serve` | MCP server mode (stdio or HTTP, 83 tools: 36 code2database_* + 19 cgdb_* + 28 design-report). HTTP: `--transport http --host 0.0.0.0 --port 8765 --token SECRET --read-only` |
-| `kb-rebuild-index` | Rebuild unified FTS5 index from memory.db + brief.json (run after build/update) |
-| `kb-cluster` | Cluster similar kb items + link principle refs |
-| `kb-audit` | KB review: counts by kind / stale / weak-confidence / citations |
-| `kb-known-unknowns` | List unmatched queries (feedback loop) |
-| `kb-forget` | Immediately delete a kb item (no decay; **requires user confirmation**; writes audit_log) |
-| `kb-rollback` | Roll a kb_item back to a prior version (saves current as version history) |
-| `kb-conflict` | Detect contradictory items in the same cluster (yes/no, must/must not, ...) |
-| `kb-global-add` / `kb-global-search` / `kb-global-share` / `kb-global-import` | Cross-project global KB (~/.code2database_global_kb/) |
-| `kb-global-share-memory` / `kb-global-search-memory` / `kb-global-import-memory` | Cross-project global memory Q&A: share the most valuable memories to the global KB, search for similar Q&A across projects, import matches into the current project's memory.db (with merge) |
+| `kb rebuild-index` | Rebuild unified FTS5 index from memory.db + brief.json (run after build/update) |
+| `kb cluster` | Cluster similar kb items + link principle refs |
+| `kb audit` | KB review: counts by kind / stale / weak-confidence / citations |
+| `kb known-unknowns` | List unmatched queries (feedback loop) |
+| `kb forget` | Immediately delete a kb item (no decay; **requires user confirmation**; writes audit_log) |
+| `kb rollback` | Roll a kb_item back to a prior version (saves current as version history) |
+| `kb conflict` | Detect contradictory items in the same cluster (yes/no, must/must not, ...) |
+| `kb-global add` / `kb-global search` / `kb-global share` / `kb-global import` | Cross-project global KB (~/.code2database_global_kb/) |
+| `kb-global share-memory` / `kb-global search-memory` / `kb-global import-memory` | Cross-project global memory Q&A: share the most valuable memories to the global KB, search for similar Q&A across projects, import matches into the current project's memory.db (with merge) |
 
 ## Routing Table — Situational Commands by Question Type
 
@@ -83,24 +83,24 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 
 | Question Type | Command Sequence |
 |---------------|------------------|
-| **Safe graph editing** | `tx-begin` → `tx-status` → `update-node` / `update-edge` / `patch-profile` / `classify-endpoints` / `auto-enhance` / `heuristic-enhance` / `batch-confirm` / `rollback` / `fill-request` / `add-semantic-edges` / `semantic-status` / `audit-log` → `tx-commit` (with confirmation) → fallback `tx-restore` / `tx-list-snapshots` / `tx-replay-wal` if needed |
-| **Keep graph up to date** | `daemon-start` → `daemon-status` → `daemon-pause` / `daemon-resume` / `daemon-force-refresh` / `daemon-wait-sync` / `daemon-logs` / `daemon-reload` / `daemon-list-projects` → `daemon-stop` ; or `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes` ; precise per-file sync: `build-update --source SRC --graph DIR` or `quick-update --source SRC --graph DIR` |
-| **Profile and doc-code** | `profile-health` → `profile-evolve` → `profile-bind-version` ; `doc-code-check` → `doc-alignment-report` → `doc-signature-diff` → `doc-mark-stale` |
-| **Graph versioning** | `graph-record-version` → `graph-history` → `graph-diff` |
+| **Safe graph editing** | `tx begin` → `tx status` → `update-node` / `update-edge` / `patch-profile` / `classify-endpoints` / `auto-enhance` / `heuristic-enhance` / `batch-confirm` / `rollback` / `fill-request` / `add-semantic-edges` / `semantic-status` / `audit-log` → `tx commit` (with confirmation) → fallback `tx restore` / `tx list-snapshots` / `tx replay-wal` if needed |
+| **Keep graph up to date** | `daemon start` → `daemon status` → `daemon pause` / `daemon resume` / `daemon force-refresh` / `daemon wait-sync` / `daemon logs` / `daemon reload` / `daemon list-projects` → `daemon stop` ; or `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes` ; precise per-file sync: `build-update --source SRC --graph DIR` or `quick-update --source SRC --graph DIR` |
+| **Profile and doc-code** | `profile health` → `profile evolve` → `profile bind-version` ; `doc code-check` → `doc alignment-report` → `doc signature-diff` → `doc mark-stale` |
+| **Graph versioning** | `graph record-version` → `graph history` → `graph diff` |
 | **Health and integrity** | `doctor --graph DIR` (one-shot: db integrity, schema versions, freshness, memory, brief, daemon; `--json` + exit 0/1/2 for CI) |
-| **Memory management** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory` ; knowledge brief: `brief-extract` → `brief-validate` → `brief-suggest` → `brief-migrate-legacy` ; cross-project: `kb-global-share-memory` → `kb-global-search-memory` → `kb-global-import-memory` |
-| **Export / plugin / benchmark** | `export-mermaid` / `export-plantuml` / `design-doc` ; `plugins` / `validate-plugin` ; `bug-benchmark` |
-| **Embeddings (experimental)** | `embeddings-build` → `embeddings-search` |
+| **Memory management** | `save-memory --category` → `recall` → `manage-memory --action split/merge/move/categories` → `memory health` → `memory validate` ; knowledge brief: `brief extract` → `brief validate` → `brief suggest` → `brief migrate-legacy` ; cross-project: `kb-global share-memory` → `kb-global search-memory` → `kb-global import-memory` |
+| **Export / plugin / benchmark** | `export mermaid` / `export plantuml` / `design-doc` ; `plugins` / `validate-plugin` ; `bug-benchmark` |
+| **Embeddings (experimental)** | `embeddings build` → `embeddings search` |
 
 ## On-demand Commands (specialized / rare)
 
 Listed by **name only**. Read `references/ops_commands.md` before invoking — only when the user explicitly asks for them.
 
-- `embeddings-build`, `embeddings-search` — semantic embeddings (experimental)
-- `extract-invariants-llm`, `intent-query`, `think-chain` — LLM-driven extras
+- `embeddings build`, `embeddings search` — semantic embeddings (experimental)
+- `invariants extract-llm`, `intent-query`, `think-chain` — LLM-driven extras
 - `domain` — view domain structure (also in parent skill)
-- `graph-record-version` — record a named graph version
-- `unbalanced-alloc-free` — find unbalanced alloc/free pairs
+- `graph record-version` — record a named graph version
+- `who unbalanced` — find unbalanced alloc/free pairs
 - `explain-label`, `why-ambiguous` — explain labeling / ambiguity decisions
 
 ## Activation Hand-off
@@ -115,11 +115,11 @@ When you detect a question about **simple browsing, scanning, building, or gener
 
 ## Constraints (inherited from parent)
 
-- **Transactional writes**: wrap multi-step DB modifications in `tx-begin`/`tx-commit`. `patch-from-diff`/`patch-from-git` already do this by default; use `--no-transaction` to bypass. Use `tx-rollback` to abort; `tx-replay-wal` for crash recovery
-- **Daemon freshness**: call `daemon-status` before important queries; if `syncing` or `pending_events > 0`, call `daemon-wait-sync` to block until sync completes. Circuit breaker triggers bulk rebuild above 1000 events/minute
-- **Doc-code alignment**: `describe-node` (parent skill) surfaces `doc_code_mismatches` — if non-empty, `semantic_desc` may be unreliable; consult `body_text` and consider `doc-mark-stale` until docs are re-extracted
-- **Profile evolution**: `profile-evolve --apply` only applies EXTRACTED-confidence suggestions; INFERRED **require user confirmation**. Run `profile-bind-version` after evolution to bind to git/svn HEAD
-- **Memory management**: `manage-memory` write actions (add/correct/reshape/promote/refine/split/merge/move) and `save-memory` require user confirmation; `brief-update` edits the mandatory-load knowledge brief
+- **Transactional writes**: wrap multi-step DB modifications in `tx begin`/`tx commit`. `patch-from-diff`/`patch-from-git` already do this by default; use `--no-transaction` to bypass. Use `tx rollback` to abort; `tx replay-wal` for crash recovery
+- **Daemon freshness**: call `daemon status` before important queries; if `syncing` or `pending_events > 0`, call `daemon wait-sync` to block until sync completes. Circuit breaker triggers bulk rebuild above 1000 events/minute
+- **Doc-code alignment**: `describe-node` (parent skill) surfaces `doc_code_mismatches` — if non-empty, `semantic_desc` may be unreliable; consult `body_text` and consider `doc mark-stale` until docs are re-extracted
+- **Profile evolution**: `profile-evolve --apply` only applies EXTRACTED-confidence suggestions; INFERRED **require user confirmation**. Run `profile bind-version` after evolution to bind to git/svn HEAD
+- **Memory management**: `memory manage` write actions (add/correct/reshape/promote/refine/split/merge/move) and `save` require user confirmation; `brief update` edits the mandatory-load knowledge brief
 - **MCP server**: `serve` exposes 83 tools (36 `code2database_*` + 19 `cgdb_*` + 28 design-report); all accessible regardless of sub-skill activation
 - **Do not pre-load** `references/ops_commands.md` — read on demand only when you need detailed syntax for a specific command
 - **Daemon logs** at `~/.code2database/daemon-<project>.log`; daemon state at `<graph_dir>/.daemon_status.json`
@@ -129,7 +129,7 @@ When you detect a question about **simple browsing, scanning, building, or gener
 | Document | Content |
 |----------|---------|
 | `references/ops_commands.md` | Full syntax for all ops commands (transactions, daemon, profile, doc-code, exports, plugins, memory, embeddings) |
-| `references/manifest_schema.md` | `build-multi` manifest schema for multi-project graphs |
+| `references/manifest_schema.md` | `build multi` manifest schema for multi-project graphs |
 | `RUNTIME_CONFIG.md` *(inherited — parent skill dir)* | Runtime tuning (invariants, auto_enhance, transactions, ffi, benchmark, profile_health, doc_code, daemon sections) |
 | `PROFILE_MANUAL.md` *(inherited — parent skill dir)* | Profile authoring (skip_names, callback_detection, struct_op_types, registration_macros, domain_rules, threading_models) |
 

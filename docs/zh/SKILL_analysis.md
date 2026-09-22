@@ -9,7 +9,7 @@ parent_skill: Code2Database
 
 **Code2Database 的深度语义分析层**——超越"谁调用谁"：并发安全、数据竞争、值流、约束下路径可行性、不变量、FFI 边界、提交级来源，以及通过 19 个 `cgdb_*` MCP 工具直接查询 cgdb（代码图谱数据库）层。
 
-本子技能**不**重新扫描或重建图谱。它假设 `code2db-out/` 已构建完成（通过父技能 `/Code2Database`）且图谱新鲜（若守护进程在运行，先调用 `daemon-status` / `daemon-wait-sync`）。
+本子技能**不**重新扫描或重建图谱。它假设 `code2db-out/` 已构建完成（通过父技能 `/Code2Database`）且图谱新鲜（若守护进程在运行，先调用 `daemon status` / `daemon wait-sync`）。
 
 ## 何时激活
 
@@ -33,8 +33,8 @@ parent_skill: Code2Database
 
 | 命令 | 用途 |
 |------|------|
-| `concurrency-analyze` | 成对并发安全分析（线程模型 + 共享状态 + 锁分析） |
-| `detect-races` | 跨线程数据竞争检测 |
+| `concurrency analyze` | 成对并发安全分析（线程模型 + 共享状态 + 锁分析） |
+| `concurrency detect-races` | 跨线程数据竞争检测 |
 | `lock-coverage` | 锁持有区域分析，事件流 + 字符位置 |
 | `value-flow` | 追踪参数→返回值传播（DATA_FLOW 边） |
 | `param-flow` | 跨函数追踪参数传递路径 |
@@ -42,8 +42,8 @@ parent_skill: Code2Database
 | `field-access` | 按字段追踪读/写访问 |
 | `path-feasible` | Z3 SMT 求解路径可行性（无 Z3 时启发式回退） |
 | `blast-radius` | 变更影响的 API/测试/域 |
-| `find-invariants` | 按模式查找不变量（前置 / 后置 / 循环不变量 / 状态机） |
-| `ffi-trace` | 追踪跨语言调用链（Python ctypes / Go cgo / Rust extern C） |
+| `find` | 按模式查找不变量（前置 / 后置 / 循环不变量 / 状态机） |
+| `ffi trace` | 追踪跨语言调用链（Python ctypes / Go cgo / Rust extern C） |
 | `blame-node` | 定位引入某节点的提交 |
 | `query` | Cypher 子集查询（MATCH/WHERE/RETURN），用于一次性结构化查询 |
 
@@ -55,16 +55,16 @@ parent_skill: Code2Database
 
 | 提问类型 | 命令序列 |
 |---------|---------|
-| **这是线程安全的吗？** | `concurrency-risks` → `concurrency-analyze` → `detect-races` → `lock-coverage` → `happens-before` → `memory-ordering` → `who-locks` |
+| **这是线程安全的吗？** | `concurrency` → `concurrency analyze` → `concurrency detect-races` → `lock-coverage` → `concurrency happens-before` → `concurrency memory-ordering` → `who locks` |
 | **这个 NULL / 值从哪来？** | `value-flow` → `param-flow` → `data-dep` → `field-flow` → `null-source` → `data-lifecycle` → `io-path` |
-| **改这个会影响什么？** | `impact` → `blast-radius` → `explore-flow` → `key-paths` → `neighbors` → `path` → `code-slice` → `diff-chains` |
+| **改这个会影响什么？** | `impact` → `blast-radius` → `explore-flow` → `key-paths` → `neighbors` → `path` → `code-slice` → `trace diff` |
 | **这条路径可行吗？** | `path-feasible` → `path-guards` → `runtime-guards` → `resolve-chain` → `extract-signals` |
 | **输入被净化了吗（污点分析）？** | `taint-analysis` → `null-source` → `path-guards` |
-| **这个函数强制了什么不变量？** | `extract-invariants` → `find-invariants` → `apply-invariants` |
-| **哪个 Python/Go/Rust 函数调到 C？** | `ffi-detect` → `ffi-list` → `ffi-trace` → `ffi-types` |
-| **哪个 commit 引入了这个？** | `blame-node` → `describe-commit` → `node-history` → `graph-provenance` → `find-commits` |
-| **谁分配 / 释放了这个资源？** | `who-allocates` → `who-frees` → `unbalanced-alloc-free` → `add-semantic-edges` |
-| **语义 + FTS 混合搜索？** | `hybrid-search` → `code-slice` → `key-paths` |
+| **这个函数强制了什么不变量？** | `invariants extract` → `find` → `invariants apply` |
+| **哪个 Python/Go/Rust 函数调到 C？** | `ffi detect` → `ffi list` → `ffi trace` → `ffi types` |
+| **哪个 commit 引入了这个？** | `blame-node` → `describe-commit` → `node-history` → `graph provenance` → `find-commits` |
+| **谁分配 / 释放了这个资源？** | `who allocates` → `who frees` → `who unbalanced` → `add-semantic-edges` |
+| **语义 + FTS 混合搜索？** | `search hybrid` → `code-slice` → `key-paths` |
 | **直接查询 cgdb 表（clang 后端）** | 使用 19 个 `cgdb_*` MCP 工具——见下方"cgdb MCP 工具"节 |
 
 ## cgdb MCP 工具（clang 后端 — 19 个工具）
@@ -81,7 +81,7 @@ parent_skill: Code2Database
 
 - `think-chain` — 完整调用链思考与结论
 - `intent-query` — 意图驱动的图谱查询
-- `extract-invariants-llm` — LLM 驱动的不变量提取
+- `invariants extract-llm` — LLM 驱动的不变量提取
 - `explain-label` — 解释某节点为何得到某标签
 - `why-ambiguous` — 解释某边为何标记为 AMBIGUOUS
 - `extract-semantics` / `apply-semantics` — 从文档提取并应用语义描述
@@ -105,9 +105,9 @@ parent_skill: Code2Database
 - **路径可行性**：仅安装 Z3 时可靠；无 Z3 时启发式回退可能误报——结果标注为临时
 - **值流**：DATA_FLOW 边追踪参数→返回值传播；若某节点缺少 DATA_FLOW 边，链路断裂——不得无证据推断流
 - **FFI 追踪**：需要源语言和目标语言扫描器同时检测到绑定位置
-- **不变量置信度**：禁止应用 AMBIGUOUS 不变量；INFERRED 在 `apply-invariants` 前需用户确认
+- **不变量置信度**：禁止应用 AMBIGUOUS 不变量；INFERRED 在 `invariants apply` 前需用户确认
 - **提交来源**：每个节点/边带 `commit_meta.source_commit`（git/svn 哈希）。用 `git show <hash>` 校验，而非时间戳
-- **数据库写入约束**：任何修改数据库的命令（`apply-invariants`、`add-semantic-edges`、`apply-semantics`）**必须先获得用户确认**。完整协议见 `references/analysis_commands.md`
+- **数据库写入约束**：任何修改数据库的命令（`invariants apply`、`add-semantic-edges`、`apply-semantics`）**必须先获得用户确认**。完整协议见 `references/analysis_commands.md`
 - **禁止预加载** `references/analysis_commands.md`——仅在需要某命令的详细语法时按需读取
 - **cgdb clang 后端是推荐项，非必装**——tree-sitter-only 模式仍然完全可用；该模式下 cgdb_* MCP 工具返回空结果
 

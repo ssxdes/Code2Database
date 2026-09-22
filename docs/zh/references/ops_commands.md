@@ -6,7 +6,7 @@
 
 ## 事务
 
-### `tx-begin`
+### `tx begin`
 
 开启事务。创建当前图状态的快照并获取写锁。
 
@@ -16,7 +16,7 @@ python3 scripts/code2database_builder.py tx-begin \
   [--label "描述性标签"]
 ```
 
-### `tx-commit`  [write]
+### `tx commit`  [write]
 
 提交当前事务。持久化已提交状态；事务内的编辑变为持久，快照保留至修剪。写入**需用户确认**。
 
@@ -26,16 +26,16 @@ python3 scripts/code2database_builder.py tx-commit \
   [--yes]  # 不推荐——绕过确认
 ```
 
-### `tx-rollback`
+### `tx rollback`
 
-回滚当前事务。恢复 `tx-begin` 时取的快照。
+回滚当前事务。恢复 `tx begin` 时取的快照。
 
 ```bash
 python3 scripts/code2database_builder.py tx-rollback \
   --graph code2db-out/
 ```
 
-### `tx-status`
+### `tx status`
 
 显示当前事务状态（活动 / 已提交 / 已回滚、快照路径、WAL 条目数）。
 
@@ -44,7 +44,7 @@ python3 scripts/code2database_builder.py tx-status \
   --graph code2db-out/
 ```
 
-### `tx-snapshot`
+### `tx snapshot`
 
 创建当前图状态的命名快照（不开启事务）。
 
@@ -54,7 +54,7 @@ python3 scripts/code2database_builder.py tx-snapshot \
   --name SNAPSHOT_NAME
 ```
 
-### `tx-restore`
+### `tx restore`
 
 从命名快照恢复图。**需用户确认**（覆盖当前状态）。
 
@@ -65,7 +65,7 @@ python3 scripts/code2database_builder.py tx-restore \
   [--yes]
 ```
 
-### `tx-list-snapshots`
+### `tx list-snapshots`
 
 列出所有命名快照。
 
@@ -74,7 +74,7 @@ python3 scripts/code2database_builder.py tx-list-snapshots \
   --graph code2db-out/
 ```
 
-### `tx-replay-wal`
+### `tx replay-wal`
 
 基于快照的崩溃恢复：把中断（仍处于活动状态）的事务从其快照回滚，并清理残留恢复边车条目。当之前的事务被中断时使用。
 
@@ -220,7 +220,7 @@ python3 scripts/code2database_builder.py audit-log \
 
 ## 守护进程
 
-### `daemon-start`
+### `daemon start`
 
 启动后台守护进程（前台运行；阻塞）。通过 inotify（或轮询回退）监视源文件，并通过事务自动同步变更。
 
@@ -231,7 +231,7 @@ python3 scripts/code2database_builder.py daemon-start \
   [--polling-interval SEC]
 ```
 
-### `daemon-stop`
+### `daemon stop`
 
 停止运行中的守护进程。
 
@@ -240,7 +240,7 @@ python3 scripts/code2database_builder.py daemon-stop \
   --graph code2db-out/
 ```
 
-### `daemon-status`
+### `daemon status`
 
 获取守护进程状态：pid、last_sync、待处理事件、陈旧节点、断路器状态，以及启动宽限期状态（`sync.startup_grace_active`、`sync.startup_grace_remaining_sec`——宽限期内观察到的事件会被持有、不触发同步）。JSON 外层结构在存活与停止两种状态下完全一致：`{"running": <bool>, "state": {...}}`（存活时的负载额外在 `state.sync` 下携带同步工作线程报告）。
 
@@ -249,7 +249,7 @@ python3 scripts/code2database_builder.py daemon-status \
   --graph code2db-out/
 ```
 
-### `daemon-force-refresh`
+### `daemon force-refresh`
 
 强制重新扫描某文件（绕过变更检测）。
 
@@ -259,7 +259,7 @@ python3 scripts/code2database_builder.py daemon-force-refresh \
   --path src/foo.c
 ```
 
-### `daemon-pause`
+### `daemon pause`
 
 暂停守护进程（例如手动更新前）。
 
@@ -269,7 +269,7 @@ python3 scripts/code2database_builder.py daemon-pause \
   --reason "手动更新"
 ```
 
-### `daemon-resume`
+### `daemon resume`
 
 暂停后恢复守护进程。
 
@@ -278,7 +278,7 @@ python3 scripts/code2database_builder.py daemon-resume \
   --graph code2db-out/
 ```
 
-### `daemon-wait-sync`
+### `daemon wait-sync`
 
 阻塞至当前同步完成。**重要查询前调用**确保图谱最新。
 
@@ -288,7 +288,7 @@ python3 scripts/code2database_builder.py daemon-wait-sync \
   --timeout 30
 ```
 
-### `daemon-logs`
+### `daemon logs`
 
 查看守护进程日志文件。`--follow` 流式输出。
 
@@ -298,7 +298,7 @@ python3 scripts/code2database_builder.py daemon-logs \
   [--follow] [--lines N]
 ```
 
-### `daemon-reload`
+### `daemon reload`
 
 重载守护进程配置（重新读取 profile）。
 
@@ -307,7 +307,7 @@ python3 scripts/code2database_builder.py daemon-reload \
   --graph code2db-out/
 ```
 
-### `daemon-list-projects`
+### `daemon list-projects`
 
 列出所有有守护进程状态文件的项目。
 
@@ -431,7 +431,7 @@ python3 scripts/code2database_builder.py merge-changes \
 
 ## profile 与文档-代码
 
-### `profile-health`
+### `profile health`
 
 计算 7 个维度 0-100 健康度评分（回调覆盖、vtable 覆盖、域规则、锁模式、FFI 绑定、守护进程配置、文档-代码对齐）。
 
@@ -441,7 +441,7 @@ python3 scripts/code2database_builder.py profile-health \
   [--json]
 ```
 
-### `profile-evolve`  [write]
+### `profile evolve`  [write]
 
 检测新回调模式和其他值得 profile 的结构。`--apply` 应用 EXTRACTED 置信度建议；INFERRED 需用户确认。
 
@@ -453,7 +453,7 @@ python3 scripts/code2database_builder.py profile-evolve \
   [--json]
 ```
 
-### `profile-bind-version`
+### `profile bind-version`
 
 绑定 profile 到当前 git/svn HEAD 提交（记录 commit 哈希，便于之后检测 profile 漂移）。
 
@@ -463,7 +463,7 @@ python3 scripts/code2database_builder.py profile-bind-version \
   [--source /path/to/repo]
 ```
 
-### `doc-code-check`
+### `doc code-check`
 
 检查文档-代码对齐；检测返回值 / 参数 / 签名 / 陈旧文档不匹配。
 
@@ -474,7 +474,7 @@ python3 scripts/code2database_builder.py doc-code-check \
   [--json]
 ```
 
-### `doc-mark-stale`  [write]
+### `doc mark-stale`  [write]
 
 标记某节点文档为陈旧（非破坏性但可见——`describe-node` 会警告用户）。
 
@@ -486,7 +486,7 @@ python3 scripts/code2database_builder.py doc-mark-stale \
   [--yes]
 ```
 
-### `doc-alignment-report`
+### `doc alignment-report`
 
 生成完整 Markdown 文档-代码对齐报告。
 
@@ -496,7 +496,7 @@ python3 scripts/code2database_builder.py doc-alignment-report \
   --output /path/to/report.md
 ```
 
-### `doc-signature-diff`
+### `doc signature-diff`
 
 检测两个图版本之间的签名变更。
 
@@ -513,7 +513,7 @@ python3 scripts/code2database_builder.py doc-signature-diff \
 追加一行（时间戳、源码 commit、节点/边计数）。下列命令读取该历史，并可在
 其上追加命名检查点。
 
-### `graph-record-version`
+### `graph record-version`
 
 记录命名图谱版本（供后续 diff 的快照）。
 
@@ -524,7 +524,7 @@ python3 scripts/code2database_builder.py graph-record-version \
   [--notes "Release 1.2.3"]
 ```
 
-### `graph-history`
+### `graph history`
 
 显示图谱的版本历史（自动记录的构建/同步行 + 命名检查点——节点/边计数随
 时间的演化）。
@@ -534,7 +534,7 @@ python3 scripts/code2database_builder.py graph-history \
   --graph code2db-out/
 ```
 
-### `graph-diff`
+### `graph diff`
 
 对比两个图谱版本。
 
@@ -547,7 +547,7 @@ python3 scripts/code2database_builder.py graph-diff \
 
 ## 记忆管理
 
-### `save-memory`  [write]
+### `save`  [write]
 
 保存 Q&A 到持久记忆。**需用户确认。**
 
@@ -563,7 +563,7 @@ python3 scripts/code2database_builder.py save-memory \
 `--symbol`（可重复）把记忆锚定到代码符号，`search-memory --symbol`
 可按符号过滤。
 
-### `search-memory`
+### `recall`
 
 按查询或标签搜索持久记忆。
 
@@ -576,7 +576,7 @@ python3 scripts/code2database_builder.py search-memory \
   [--limit N]
 ```
 
-### `manage-memory`  [write]
+### `memory manage`  [write]
 
 高级记忆 CRUD 和衰减。动作：`add`、`correct`、`reshape`、`promote`、`refine`、`decay`。**需用户确认。**
 
@@ -589,7 +589,7 @@ python3 scripts/code2database_builder.py manage-memory \
   [--yes]
 ```
 
-### `memory-health`
+### `memory health`
 
 检查记忆系统健康（计数、衰减状态、覆盖）。
 
@@ -598,7 +598,7 @@ python3 scripts/code2database_builder.py memory-health \
   --graph code2db-out/
 ```
 
-### `validate-memory`
+### `memory validate`
 
 验证记忆条目的准确性和新鲜度。
 
@@ -640,7 +640,7 @@ python3 scripts/code2database_builder.py bug-benchmark \
 
 ## Embeddings（实验性）
 
-### `embeddings-build`
+### `embeddings build`
 
 为图谱构建语义嵌入（实验性）。
 
@@ -650,7 +650,7 @@ python3 scripts/code2database_builder.py embeddings-build \
   [--model all-MiniLM-L6-v2]
 ```
 
-### `embeddings-search`
+### `embeddings search`
 
 使用嵌入在图上做语义搜索。
 
@@ -685,7 +685,7 @@ python3 scripts/code2database_builder.py serve \
 
 ## 知识库（kb-* 命令）
 
-### `kb-rebuild-index`
+### `kb rebuild-index`
 
 从 `memory/memory.db` 条目 + 知识库（`knowledge/knowledge.db`）重建统一 FTS5 索引。
 每次 `build` / `update` 后或手动修改 memory/knowledge 后运行。
@@ -695,7 +695,7 @@ python3 scripts/code2database_builder.py kb-rebuild-index \
   --graph code2db-out/
 ```
 
-### `kb-query`
+### `kb query`
 
 跨 memory + knowledge 的统一 FTS5+BM25 查询。返回带 `source_kind`、
 `score`、`body`、`see_also` 的排序结果。中文查询（unicode61 分词器
@@ -714,7 +714,7 @@ python3 scripts/code2database_builder.py kb-query \
 不可用时自动降级到 FTS5）。
 `--global`：项目 KB 无命中时回退到 `~/.code2database_global_kb/global.db`。
 
-### `kb-cluster`
+### `kb cluster`
 
 按 FTS5 BM25 > 阈值用 union-find 聚类相似 kb 条目。每 cluster 选
 canonical（最高 weight × confidence）并链接
@@ -726,7 +726,7 @@ python3 scripts/code2database_builder.py kb-cluster \
   [--threshold 0.5]
 ```
 
-### `kb-migrate`
+### `kb migrate`
 
 把 `kb_paragraphs` 行迁移到 `kb_items`（fact 级 + `versions_json` +
 `decay_class` + `provenance_commit`）。两表共存；kb_items 是长期后继。
@@ -736,7 +736,7 @@ python3 scripts/code2database_builder.py kb-migrate \
   --graph code2db-out/
 ```
 
-### `kb-known-unknowns`
+### `kb known-unknowns`
 
 列出未命中的查询（从 `kb_query_log` 聚合）。帮助识别知识缺口。
 
@@ -746,7 +746,7 @@ python3 scripts/code2database_builder.py kb-known-unknowns \
   [--top 20] [--min-occurrences 2]
 ```
 
-### `kb-audit`
+### `kb audit`
 
 核查项目 KB：按 kind 计数、过期条目（>90 天未访问）、低置信度
 （<0.5）、高引用（top access_count）、最被链接的 principles。
@@ -758,7 +758,7 @@ python3 scripts/code2database_builder.py kb-audit \
   [--topic "bdev 注册"]
 ```
 
-### `kb-conflict`
+### `kb conflict`
 
 检测同 cluster 内矛盾条目（pairwise 检查 14 个矛盾词对：
 yes/no、must/must not、always/never、safe/unsafe 等）。
@@ -768,7 +768,7 @@ python3 scripts/code2database_builder.py kb-conflict \
   --graph code2db-out/
 ```
 
-### `kb-rollback`
+### `kb rollback`
 
 把 `kb_item` 回滚到旧版本（先把当前状态保存为新版本条目，
 所以回滚本身可逆）。
@@ -779,7 +779,7 @@ python3 scripts/code2database_builder.py kb-rollback \
   --id 42 [--to-version 3]
 ```
 
-### `kb-forget`  [write]
+### `kb forget`  [write]
 
 立即删除某条 `kb_paragraph`（不等 decay）。写 audit_log 条目
 （操作者、时间戳、原因）以备追溯。
@@ -791,7 +791,7 @@ python3 scripts/code2database_builder.py kb-forget \
   --reason "incorrect: bdev_register 不调用 io_device_register"
 ```
 
-### `kb-global-add` / `kb-global-search` / `kb-global-share` / `kb-global-import`
+### `kb-global add` / `kb-global search` / `kb-global share` / `kb-global import`
 
 跨项目全局 KB（`~/.code2database_global_kb/global.db`）。存储项目无关
 知识（调试方法论、协议标准、工具用法），可跨所有项目复用。
@@ -864,7 +864,7 @@ python3 scripts/code2database_builder.py c2d-unpin-foreign \
 
 ## 多项目命令
 
-### `build-multi`
+### `build multi`
 
 通过 manifest JSON 从多个有依赖关系的项目（A→B→C）构建统一 C2D。强制项目名 domain 前缀防止冲突。
 
@@ -946,7 +946,7 @@ python3 scripts/code2database_builder.py c2d-add-foreign-stub \
   --graph B/c2db-out/ --stub-c2d glibc_stub/ --project-name glibc
 ```
 
-### `ffi-auto-link`
+### `ffi auto-link`
 
 自动链接 FFI 绑定（ctypes/cgo/extern C）到被监听的外部 C2D。
 
@@ -983,7 +983,7 @@ python3 scripts/code2database_builder.py domain \
   [--json]
 ```
 
-### `extract-invariants-llm`
+### `invariants extract-llm`
 
 LLM 驱动的不变量提取（分析子技能中也有）。
 
@@ -991,7 +991,7 @@ LLM 驱动的不变量提取（分析子技能中也有）。
 
 LLM 驱动的推理助手（分析子技能中也有）。
 
-### `unbalanced-alloc-free`
+### `who unbalanced`
 
 查找不平衡的分配/释放对（分析子技能中也有）。
 

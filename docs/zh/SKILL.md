@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "将代码库转为可查询的代码数据库，专答 grep 几次调用答不了的问题：反向查询（调用方、影响面）、全局聚合（领域、关键路径、值流）、竞争检测、跨会话记忆。扫描一次，永久查询。C/C++/Go/Python/Java/Rust/ASM 调用图：条件路径、并发分析、数据流、FFI 追踪、13 层强类型 cgdb 语义库。通过 c2d 总入口一键生命周期（setup → session → ask → capture）。83 个 MCP 工具 + 263 个 CLI 命令。当代码提问涉及结构、调用链、影响分析、并发或数据流时使用 /Code2Database。"
+description: "将代码库转为可查询的代码数据库，专答 grep 几次调用答不了的问题：反向查询（调用方、影响面）、全局聚合（领域、关键路径、值流）、竞争检测、跨会话记忆。扫描一次，永久查询。C/C++/Go/Python/Java/Rust/ASM 调用图：条件路径、并发分析、数据流、FFI 追踪、13 层强类型 cgdb 语义库。通过 c2d 总入口一键生命周期（setup → session → ask → capture）。83 个 MCP 工具 + 120 个可见 CLI 命令（伞形家族；155 个旧拼写仍可解析）。当代码提问涉及结构、调用链、影响分析、并发或数据流时使用 /Code2Database。"
 trigger: /Code2Database
 ---
 
@@ -10,7 +10,7 @@ trigger: /Code2Database
 
 ## 一键式生命周期 — `c2d` 总入口
 
-不需要记住 263 个命令。一个命令覆盖完整工作流 — 只需掌握 4 个动词：
+不需要记住 120 个可见命令。一个命令覆盖完整工作流 — 只需掌握 4 个动词：
 
 | 动词 | 用途 | 示例 |
 |------|------|------|
@@ -34,20 +34,20 @@ python3 scripts/code2database_builder.py session-init   # --graph 自动发现 c
 # 总入口形式：c2d session
 ```
 
-此命令加载完整的项目知识底蕴（brief — 架构规则、hard_rules、陷阱、query_paths）+ 前辈记忆摘要 + 图状态 + 已知未知。**如果不执行此步骤，项目的知识底蕴完全不可见** — 后续所有查询都在无视强制规则和前辈经验的情况下盲操作。session-init 是唯一返回完整 brief 的命令；`query` 和 `describe` 只显示 FTS5 匹配的片段。它在纯知识/记忆存储上同样可用——没有图谱的目录先运行一次 `kb-init`，之后所有知识库命令均可独立运行（见 `/Code2Database-kb`）。
+此命令加载完整的项目知识底蕴（brief — 架构规则、hard_rules、陷阱、query_paths）+ 前辈记忆摘要 + 图状态 + 已知未知。**如果不执行此步骤，项目的知识底蕴完全不可见** — 后续所有查询都在无视强制规则和前辈经验的情况下盲操作。session-init 是唯一返回完整 brief 的命令；`query` 和 `describe` 只显示 FTS5 匹配的片段。它在纯知识/记忆存储上同样可用——没有图谱的目录先运行一次 `kb init`，之后所有知识库命令均可独立运行（见 `/Code2Database-kb`）。
 
 ## 查询优先级链
 
 提问时，按以下优先级查询：
 
 ```
-1. Memory (recall / kb-query) — 之前回答过这个提问吗？→ 最快
-2. Knowledge (know / kb-query) — 有架构级不变式/约束记录吗？
+1. Memory (recall / kb query) — 之前回答过这个提问吗？→ 最快
+2. Knowledge (know / kb query) — 有架构级不变式/约束记录吗？
 3. Graph (query / describe / trace) — 查询代码图
 4. Source (describe --code) — 最后才读源码
 ```
 
-`kb-query` 是跨越 memory + knowledge 两套存储的统一 FTS5+BM25
+`kb query` 是跨越 memory + knowledge 两套存储的统一 FTS5+BM25
 查询接口。`query`（Cypher）命令会自动把 top kb 命中作为 `_hints`
 字段注入到图查询结果中。
 
@@ -101,12 +101,14 @@ python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_s
 
 - **生命周期**：`c2d`、`make`、`build`、`update`
 - **查询**：`query`（Cypher；自然语言用 `intent-query`）、`describe`、`trace`、`impact`、`context`、`find`、`flow`、`concurrency`
-- **记忆与知识**：`session-init`、`kb-query`、`save-memory`、`search-memory`、`knowledge-brief`——kb 治理命令归 ops 与 kb 子技能
-- **服务与运维**：`serve`（MCP，83 工具）、`tx-begin`、`daemon`、`health`
+- **记忆与知识**：`session-init`、`kb query`、`memory save/search`、`brief`——kb 治理命令归 ops 与 kb 子技能
+- **服务与运维**：`serve`（MCP，83 工具）、`tx`、`daemon`、`health`
 
 别名：`describe`/`context` → describe-node、`trace` → trace-chain、`find` → find-invariants、`flow` → value-flow、`concurrency` → concurrency-risks、`save` → save-memory、`recall` → search-memory、`brief` → knowledge-brief、`health` → profile-health、`daemon` → daemon-status、`export` → export-mermaid。
 
-全部 263 个 CLI 命令仍可访问。
+伞形家族（`tx begin`、`kb query`、`cgdb find-invokers`……）把 27 个前缀族收拢为 120 个可见命令；155 个旧拼写仍可解析——完整映射见 `references/usage_reference.md`。
+
+全部 275 个 CLI 命令拼写仍可访问（120 可见 + 155 隐藏旧拼写）。
 
 ## 支持语言
 
@@ -125,11 +127,11 @@ C/C++ | Go | Python | Java | Rust | ASM（6 + ASM，C/C++ 共享扫描器）
 ## 约束
 
 - **会话启动**：先运行 `session-init`（别名 `init`）— 简报（强制规则/模式/坑）+ 记忆摘要（前辈经验）+ 图状态（含源码新鲜度告警——图过期先重建再信任）+ 未解答疑问，一次输出
-- **纠错协议**：回答项目疑问前先 `search-memory`；答案错了用 `save-memory --correct`（原地重塑最相似条目——不产生重复变体）；缺答案用 `save-memory --category ... --author ... --symbol fn`；查询反复未命中（known-unknowns）时把答案沉淀进记忆
-- **符号锚定**：记忆关于某个具体函数/类型时，传 `--symbol <name>`（可重复），`search-memory --symbol` 可按符号过滤；合并时记忆吸收符号，`--correct` 时可重新锚定
+- **纠错协议**：回答项目疑问前先 `recall`；答案错了用 `save --correct`（原地重塑最相似条目——不产生重复变体）；缺答案用 `save --category ... --author ... --symbol fn`；查询反复未命中（known-unknowns）时把答案沉淀进记忆
+- **符号锚定**：记忆关于某个具体函数/类型时，传 `--symbol <name>`（可重复），`recall --symbol` 可按符号过滤；合并时记忆吸收符号，`--correct` 时可重新锚定
 - **沉淀触发**：(a) 解决了非平凡疑问——排查路径本身就是答案；(b) 踩了耗费真实调试时间的坑；(c) 发现简报未覆盖的强制规则/约束；(d) 纠正了错误答案（`--correct`）；(e) 回答了 session-init 中的 known-unknowns。图谱一次查询就能回答的不要存。
-- `build`/`update` 或修改 memory/brief 后运行 `kb-rebuild-index`；记忆治理用 `manage-memory --action split/merge/move/compact/categories`（compact 在每次 build 后自动运行）；`brief-suggest` 建议把最有价值的记忆毕业进简报；简报必须精简（`brief-validate` 超过 3000 字符告警，溢出放入 memory）
+- `build`/`update` 或修改 memory/brief 后运行 `kb rebuild-index`；记忆治理用 `memory manage --action split/merge/move/compact/categories`（compact 在每次 build 后自动运行）；`brief suggest` 建议把最有价值的记忆毕业进简报；简报必须精简（`brief validate` 超过 3000 字符告警，溢出放入 memory）
 - 从 `context_pack_micro` → `context_pack_lite` → `describe`/`trace` 开始；不批量读取输出文件
 - 只有 7 个标签：API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end；边置信度 EXTRACTED / INFERRED / AMBIGUOUS
-- DB 写入需用户确认；重要查询前检查 `daemon-status`（守护进程在启动宽限期 `startup_grace_active` 内持有事件而不同步）
+- DB 写入需用户确认；重要查询前检查 `daemon`（守护进程在启动宽限期 `startup_grace_active` 内持有事件而不同步）
 - **精度边界**（函数级并发分析、C++ 虚派发、`build-update` 跨文件边、`--scan-subsystems`）：见 `references/usage_reference.md` 的行为细则

@@ -4,7 +4,7 @@ Code2Database 的详细命令语法、参数和输出说明。
 
 仅在需要特定命令详情时按需读取。无需时不加载到上下文。
 
-> **这带来的转变**：下面的每条命令都是*对持久代码数据库的查询*，不是逐文件搜索。`explore-flow` 一次调用返回相关节点 + 路径（vs. N 次 grep/Read 往返）。`trace-chain` 返回带条件标注的 A→B（vs. 手动走调用点）。`detect-races` 返回跨线程隐患（vs. 阅读共享资源的每个调用者）。`field-access` 返回谁读写了某字段（vs. 全代码库 grep）。图谱是索引；命令是查询语言。
+> **这带来的转变**：下面的每条命令都是*对持久代码数据库的查询*，不是逐文件搜索。`explore-flow` 一次调用返回相关节点 + 路径（vs. N 次 grep/Read 往返）。`trace` 返回带条件标注的 A→B（vs. 手动走调用点）。`concurrency detect-races` 返回跨线程隐患（vs. 阅读共享资源的每个调用者）。`field-access` 返回谁读写了某字段（vs. 全代码库 grep）。图谱是索引；命令是查询语言。
 
 ## 一键式入口 — `c2d` 总入口
 
@@ -20,7 +20,7 @@ $BUILDER c2d ask --question "is bdev_start thread safe?"
 $BUILDER c2d ask --recipe impact --target bdev_start
 $BUILDER c2d capture --question "..." --answer "..." --category bdev --author you
 $BUILDER c2d freshen                           # 新鲜度检查 + 更新路由
-$BUILDER c2d report --kind design --module fs  # design|diagnose|html|mermaid|plantuml
+$BUILDER c2d report --kind design --module fs  # design|diagnose|mermaid|plantuml
 
 # 自文档化
 $BUILDER c2d recipes                           # 列出路由配方
@@ -30,6 +30,42 @@ $BUILDER c2d ask --question "..." --dry-run    # 预览翻译后的命令
 ```
 
 `ask` 用 `--question` 对配方注册表分类 — 内置 13 个配方：thread-safety、race-scan、value-origin、impact、call-path、path-feasibility、invariants、ffi、provenance、resource、quality、doc-alignment、explore — 并执行匹配的只读命令序列（分步横幅 + 聚合摘要，`--json` 输出结构化结果）。显式参数（`--target/--from/--to/--query/--source`）优先于提问提取；无匹配时回退到单命令意图路由。配方步骤永远只读（引擎拒绝写命令与写标志）；每步执行前回显，任意动词可用 `--dry-run` 预览。
+
+## 家族命令映射 — 120 个可见命令面
+
+CLI 把 27 个前缀族各收拢为一个可见的伞形命令：**120 个可见命令**取代原 255 个。`tx begin`、`kb query`、`cgdb find-invokers`、`daemon start` 是教学拼写；155 个旧拼写（`tx-begin`、`kb-query`……）**解析行为完全相同**——仅从 `--help` 隐藏，既有脚本与肌肉记忆不受影响。`--graph` 与所有旗标不变；`tx begin --help` 与 `tx-begin --help` 输出完全一致。
+
+| 伞形 | 裸形式（=） | 隐藏的旧拼写（全部仍可解析） |
+|------|-------------|------------------------------|
+| `brief` | `brief`（= knowledge-brief，show） | `brief-extract`、`brief-migrate-legacy`、`brief-suggest`、`brief-update`、`brief-validate`、`knowledge-brief` |
+| `build` | `build`（= 从抽取 JSON 建图） | `build-diff`、`build-multi`、`build-update` |
+| `cgdb` | 需要动作 | `cgdb-cfg-paths`、`cgdb-compare`、`cgdb-configs-for`、`cgdb-coverage`、`cgdb-data-flow`、`cgdb-definition`、`cgdb-find-invoked`、`cgdb-find-invokers`、`cgdb-freshness`、`cgdb-function-body`、`cgdb-get-source`、`cgdb-index-status`、`cgdb-layer-summary`、`cgdb-merge-knowledge`、`cgdb-nodes-under-config`、`cgdb-ops-impls`、`cgdb-path`、`cgdb-path-feasible`、`cgdb-query`、`cgdb-race-check`、`cgdb-schema-version`、`cgdb-sql`、`cgdb-struct-layout`、`cgdb-suggest`、`cgdb-time-travel`、`cgdb-tour`、`cgdb-type-definition`、`cgdb-versions`、`cgdb-views`、`cgdb-write-coverage` |
+| `check` | 需要动作 | `check-bounds`、`check-clones`、`check-cycles`、`check-infinite-loop`、`check-recursion` |
+| `concurrency` | `concurrency`（= concurrency-risks） | `concurrency-analyze`、`concurrency-risks`、`detect-races`、`happens-before`、`memory-ordering` |
+| `daemon` | `daemon`（= daemon-status） | `daemon-force-refresh`、`daemon-list-projects`、`daemon-logs`、`daemon-pause`、`daemon-reload`、`daemon-resume`、`daemon-start`、`daemon-status`、`daemon-stop`、`daemon-wait-sync` |
+| `doc` | 需要动作 | `doc-alignment-report`、`doc-code-check`、`doc-mark-stale`、`doc-signature-diff` |
+| `embeddings` | 需要动作 | `embeddings-build`、`embeddings-search` |
+| `export` | `export`（= export-mermaid） | `export-mermaid`、`export-plantuml`、`sarif-export` |
+| `fed` | 需要动作 | `fed-neighbors`、`fed-path`、`fed-search`、`federate-list`、`federate-register`、`federate-remove` |
+| `ffi` | 需要动作 | `ffi-auto-link`、`ffi-detect`、`ffi-list`、`ffi-persist`、`ffi-trace`、`ffi-types` |
+| `foreign` | 需要动作 | `c2d-add-foreign`、`c2d-add-foreign-stub`、`c2d-check-compat`、`c2d-list-foreign`、`c2d-pin-foreign`、`c2d-prune-foreign`、`c2d-remove-foreign`、`c2d-resolve-foreign`、`c2d-sync-foreign`、`c2d-unpin-foreign` |
+| `graph` | 需要动作 | `graph-diff`、`graph-history`、`graph-provenance`、`graph-record-version` |
+| `invariants` | 需要动作 | `apply-invariants`、`extract-invariants`、`extract-invariants-llm`、`find-invariants` |
+| `kb` | 需要动作 | `kb-audit`、`kb-cluster`、`kb-conflict`、`kb-forget`、`kb-init`、`kb-known-unknowns`、`kb-migrate`、`kb-query`、`kb-rebuild-index`、`kb-rollback` |
+| `kb-domain` | 需要动作 | `kb-domain-add`、`kb-domain-list`、`kb-domain-name`、`kb-domain-remove` |
+| `kb-global` | 需要动作 | `kb-global-add`、`kb-global-import`、`kb-global-import-memory`、`kb-global-search`、`kb-global-search-memory`、`kb-global-share`、`kb-global-share-memory` |
+| `memory` | 需要动作 | `manage-memory`、`memory-health`、`save-memory`、`search-memory`、`validate-memory` |
+| `node` | 需要动作 | `add-function`、`delete-node`、`insert-node-after` |
+| `pp` | 需要动作 | `find-macros`、`get-pp-branches`、`get-string-literals` |
+| `profile` | 需要动作 | `profile-bind-version`、`profile-evolve`、`profile-health` |
+| `search` | `search`（= 关键词搜索） | `hybrid-search`、`semantic-search` |
+| `token` | 需要动作 | `delete-token`、`edit-token`、`insert-token` |
+| `trace` | `trace`（= trace-chain，正向） | `diff-chains`、`reverse-trace`、`trace-chain` |
+| `tx` | 需要动作 | `tx-begin`、`tx-commit`、`tx-list-snapshots`、`tx-replay-wal`、`tx-restore`、`tx-rollback`、`tx-snapshot`、`tx-status` |
+| `who` | 需要动作 | `unbalanced-alloc-free`、`who-allocates`、`who-frees`、`who-locks` |
+| `writeback` | 需要动作 | `commit-db-transaction`、`rollback-db-transaction` |
+
+短别名（memory 的 `save`/`recall`、invariants 的 `find`、profile 的 `health`、`describe`/`context`、`flow`、`init`）保持可见不变。
 
 ## 意图索引 — 任务 → 一键调用 → 直接命令
 
@@ -42,27 +78,27 @@ $BUILDER c2d ask --question "..." --dry-run    # 预览翻译后的命令
 
 | 任务 | 一键调用 | 直接命令 |
 |------|----------|----------|
-| 某函数是否线程安全 | `c2d ask --recipe thread-safety --target FN` | `concurrency-analyze` → `detect-races` → `lock-coverage` → `memory-ordering` |
-| 全图数据竞态扫描 | `c2d ask --recipe race-scan` | `concurrency-risks` → `detect-races` |
+| 某函数是否线程安全 | `c2d ask --recipe thread-safety --target FN` | `concurrency analyze` → `concurrency detect-races` → `lock-coverage` → `concurrency memory-ordering` |
+| 全图数据竞态扫描 | `c2d ask --recipe race-scan` | `concurrency` → `concurrency detect-races` |
 | 某值来自哪里、如何流动 | `c2d ask --recipe value-origin --target VAR` | `value-flow` → `data-dep` |
 | 修改某函数的影响面 | `c2d ask --recipe impact --target FN` | `impact` → `blast-radius` → `neighbors` |
 | A → B 的调用链 | `c2d ask --recipe call-path --from A --to B` | `path` |
-| 带守卫路径的可达性 | `c2d ask --recipe path-feasibility --from A --to B` | `path-guards` → `path-feasible` |
-| 某函数强制的不变量 | `c2d ask --recipe invariants --target FN` | `extract-invariants` → `find-invariants` |
-| 跨语言 FFI 边界 | `c2d ask --recipe ffi` | `ffi-detect` → `ffi-list` → `ffi-trace` |
+| 带守卫路径的可达性 | `c2d ask --recipe path-feasible --from A --to B` | `path-guards` → `path-feasible` |
+| 某函数强制的不变量 | `c2d ask --recipe invariants --target FN` | `invariants extract` → `invariants find` |
+| 跨语言 FFI 边界 | `c2d ask --recipe ffi` | `ffi detect` → `ffi list` → `ffi trace` |
 | 哪些提交引入/修改了 X | `c2d ask --recipe provenance --target FN` | `blame-node` → `node-history` → `find-commits` |
-| 谁分配/释放某资源 | `c2d ask --recipe resource --target RES` | `who-allocates` → `who-frees` → `unbalanced-alloc-free` |
-| 质量扫描（调用环、递归、越界、死循环、克隆） | `c2d ask --recipe quality` | `check-cycles` → `check-recursion` → `check-bounds` → `check-infinite-loop` → `check-clones` |
-| 文档与代码一致性 | `c2d ask --recipe doc-alignment` | `doc-code-check` → `doc-alignment-report` |
-| 探索某个主题 | `c2d ask --recipe explore --query TOPIC` | `hybrid-search` → `explore-flow` |
+| 谁分配/释放某资源 | `c2d ask --recipe resource --target RES` | `who allocates` → `who frees` → `who unbalanced` |
+| 质量扫描（调用环、递归、越界、死循环、克隆） | `c2d ask --recipe quality` | `check cycles` → `check recursion` → `check bounds` → `check infinite-loop` → `check clones` |
+| 文档与代码一致性 | `c2d ask --recipe doc-alignment` | `doc code-check` → `doc alignment-report` |
+| 探索某个主题 | `c2d ask --recipe explore --query TOPIC` | `search hybrid` → `explore-flow` |
 | 首次建库 | `c2d setup --source DIR` | `make`（env-check → scan → build → 派生产物 → exports） |
 | 加载会话上下文 | `c2d session` | `session-init` |
-| 新鲜度检查与同步路由 | `c2d freshen` | `cgdb-freshness` → `make` / `daemon-start` / `build-update` |
-| 生成报告工件 | `c2d report --kind KIND` | `design-doc` / `diagnose` / `export-mermaid` / `export-plantuml` |
-| 沉淀问答到记忆 | `c2d capture --question .. --answer ..` | `save-memory` |
-| 安全的图编辑 | — | `tx-begin` → `update-node` / `update-edge` / `patch-profile` → `tx-commit` |
-| 保持图谱最新 | — | `daemon-start` → `daemon-status` → `daemon-wait-sync`，或 `build-update` |
-| 记忆与知识管理 | — | `kb-query`、`search-memory`、`manage-memory`、`brief-*` |
+| 新鲜度检查与同步路由 | `c2d freshen` | `cgdb freshness` → `make` / `daemon start` / `build update` |
+| 生成报告工件 | `c2d report --kind KIND` | `design-doc` / `diagnose` / `export mermaid` / `export plantuml` |
+| 沉淀问答到记忆 | `c2d capture --question .. --answer ..` | `memory save` |
+| 安全的图编辑 | — | `tx begin` → `update-node` / `update-edge` / `patch-profile` → `tx commit` |
+| 保持图谱最新 | — | `daemon start` → `daemon status` → `daemon wait-sync`，或 `build update` |
+| 记忆与知识管理 | — | `kb query`、`memory search`、`memory manage`、`brief update\|extract\|validate\|suggest` |
 
 ## 行为细则 — power 使用注意事项
 
@@ -877,9 +913,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## 完整 CLI 命令参考（263 个命令）
+## 完整 CLI 命令参考（builder 275 个拼写：120 可见 + 155 隐藏旧拼写）
 
-全部 263 个 CLI 子命令，涵盖 `code2database_builder.py`（255 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。另有 13 个短别名（`describe`、`context`、`trace`、`concurrency`、`save`、`recall`、`brief`、`flow`、`find`、`health`、`daemon`、`export`、`init`）映射到下表中的完整命令，计入 builder 总数。
+共 283 个 CLI 子命令：`code2database_builder.py`（275 个）+ `code2database_scanner.py`（8 个）。builder 面教学 120 个可见命令（见上方家族命令映射）；此处列出的 155 个旧拼写解析行为完全相同——本节是它们的旗标级参考。另有 13 个短别名（`describe`、`context`、`trace`、`concurrency`、`save`、`recall`、`brief`、`flow`、`find`、`health`、`daemon`、`export`、`init`）映射到下表中的完整命令，计入 builder 总数。
 
 | 命令 | 说明 |
 |------|------|

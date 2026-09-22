@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "Turn a codebase into a queryable code database for the questions grep cannot answer in a few calls: reverse queries (callers, impact), global aggregates (domains, key paths, value flow), races, and cross-session memory. Scan once, query forever. C/C++/Go/Python/Java/Rust/ASM invocation graphs: conditional paths, concurrency analysis, data flow, FFI tracing, a 13-layer typed cgdb semantic store. One-shot lifecycle via the c2d umbrella (setup → session → ask → capture). 83 MCP tools + 263 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
+description: "Turn a codebase into a queryable code database for the questions grep cannot answer in a few calls: reverse queries (callers, impact), global aggregates (domains, key paths, value flow), races, and cross-session memory. Scan once, query forever. C/C++/Go/Python/Java/Rust/ASM invocation graphs: conditional paths, concurrency analysis, data flow, FFI tracing, a 13-layer typed cgdb semantic store. One-shot lifecycle via the c2d umbrella (setup → session → ask → capture). 83 MCP tools + 120 visible CLI commands (umbrella families; 155 legacy spellings still parse). Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
 trigger: /Code2Database
 ---
 
@@ -10,7 +10,7 @@ trigger: /Code2Database
 
 ## One-Click Lifecycle — the `c2d` Umbrella
 
-You do not need to memorize the 263-command surface. One command covers the whole workflow — learn 4 verbs:
+You do not need to memorize the 120-command visible surface. One command covers the whole workflow — learn 4 verbs:
 
 | Verb | Purpose | Example |
 |------|---------|---------|
@@ -34,20 +34,20 @@ python3 scripts/code2database_builder.py session-init   # --graph auto-discovers
 # umbrella form: c2d session
 ```
 
-This loads the complete project knowledge (brief — architecture rules, hard_rules, pitfalls, query_paths) + veteran memory digest + graph state + known-unknowns. **Without this step, the project's accumulated knowledge is invisible** — every subsequent query operates blind to mandatory rules and prior experience. Session-init is the only command that surfaces the full brief; `query` and `describe` only show FTS5-matched fragments. It works on knowledge/memory-only stores too — a directory without a graph needs `kb-init` once, then every knowledge-base command runs standalone (see `/Code2Database-kb`).
+This loads the complete project knowledge (brief — architecture rules, hard_rules, pitfalls, query_paths) + veteran memory digest + graph state + known-unknowns. **Without this step, the project's accumulated knowledge is invisible** — every subsequent query operates blind to mandatory rules and prior experience. Session-init is the only command that surfaces the full brief; `query` and `describe` only show FTS5-matched fragments. It works on knowledge/memory-only stores too — a directory without a graph needs `kb init` once, then every knowledge-base command runs standalone (see `/Code2Database-kb`).
 
 ## Query Priority Chain
 
 When a question is asked, follow this priority:
 
 ```
-1. Memory (recall / kb-query) — did we answer this before? → fastest
-2. Knowledge (know / kb-query) — architecture-level invariants recorded?
+1. Memory (recall / kb query) — did we answer this before? → fastest
+2. Knowledge (know / kb query) — architecture-level invariants recorded?
 3. Graph (query / describe / trace) — query the code graph
 4. Source (describe --code) — read source as last resort
 ```
 
-`kb-query` is the unified FTS5+BM25 query surface across both memory
+`kb query` is the unified FTS5+BM25 query surface across both memory
 and knowledge stores. The `query` (Cypher) command automatically surfaces
 top kb hits as a `_hints` field alongside graph rows.
 
@@ -103,12 +103,14 @@ The 21 Tier-1 commands cover ~95% of agent workflows. Task→command navigation:
 
 - **Lifecycle**: `c2d`, `make`, `build`, `update`
 - **Query**: `query` (Cypher; natural language: `intent-query`), `describe`, `trace`, `impact`, `context`, `find`, `flow`, `concurrency`
-- **Memory & knowledge**: `session-init`, `kb-query`, `save-memory`, `search-memory`, `knowledge-brief` — kb governance commands live in the ops and kb sub-skills
-- **Serving & ops**: `serve` (MCP, 83 tools), `tx-begin`, `daemon`, `health`
+- **Memory & knowledge**: `session-init`, `kb query`, `memory save/search`, `brief` — kb governance commands live in the ops and kb sub-skills
+- **Serving & ops**: `serve` (MCP, 83 tools), `tx`, `daemon`, `health`
+
+Umbrella families (`tx begin`, `kb query`, `cgdb find-invokers`, ...) collapse 27 prefix families into the 120-command visible surface; the 155 legacy spellings still parse — full map in `references/usage_reference.md`.
 
 Aliases: `describe`/`context` → describe-node, `trace` → trace-chain, `find` → find-invariants, `flow` → value-flow, `concurrency` → concurrency-risks, `save` → save-memory, `recall` → search-memory, `brief` → knowledge-brief, `health` → profile-health, `daemon` → daemon-status, `export` → export-mermaid.
 
-All 263 CLI commands remain accessible.
+All 275 CLI command spellings remain accessible (120 visible + 155 hidden legacy).
 
 ## Supported Languages
 
@@ -127,11 +129,11 @@ C/C++ | Go | Python | Java | Rust | ASM (6 + ASM, C/C++ share scanner)
 ## Constraints
 
 - **Session start**: run `session-init` FIRST — brief (mandatory rules/modes/pitfalls) + memory digest (veteran experience) + graph state with source-freshness warning + known-unknowns, in one prompt-ready output
-- **Correction protocol**: `search-memory` before answering a project question; WRONG answer → `save-memory --correct` (reshapes the most similar entry in place — no duplicate variant); MISSING → `save-memory --category ... --author ... --symbol fn`; repeatedly-missed queries (known-unknowns in session-init) → capture the answer into memory
-- **Symbol grounding**: memories about a specific function/type pass `--symbol <name>` (repeatable); `search-memory --symbol` filters by it; memories absorb symbols on merge and re-ground on `--correct`
+- **Correction protocol**: `recall` before answering a project question; WRONG answer → `save --correct` (reshapes the most similar entry in place — no duplicate variant); MISSING → `save --category ... --author ... --symbol fn`; repeatedly-missed queries (known-unknowns in session-init) → capture the answer into memory
+- **Symbol grounding**: memories about a specific function/type pass `--symbol <name>` (repeatable); `recall --symbol` filters by it; memories absorb symbols on merge and re-ground on `--correct`
 - **Capture triggers**: save after (a) solving something non-trivial, (b) hitting a pitfall that cost real debugging time, (c) discovering a mandatory rule the brief lacks, (d) correcting a wrong answer, (e) answering a known-unknown; skip anything the graph answers in one query
-- Run `kb-rebuild-index` after `build`/`update` or memory/brief edits; govern memory with `manage-memory --action split/merge/move/compact/categories` (compact auto-runs after every build); `brief-suggest` proposes graduating memories into the brief; keep the brief lean (`brief-validate` warns above 3000 chars — move overflow into memory)
+- Run `kb rebuild-index` after `build`/`update` or memory/brief edits; govern memory with `memory manage --action split/merge/move/compact/categories` (compact auto-runs after every build); `brief suggest` proposes graduating memories into the brief; keep the brief lean (`brief validate` warns above 3000 chars — move overflow into memory)
 - Start with `context_pack_micro` → `context_pack_lite` → `describe`/`trace`; never bulk-read output files
 - Only 7 labels: API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end; every edge carries EXTRACTED / INFERRED / AMBIGUOUS confidence
-- DB writes require user confirmation; check `daemon-status` before important queries (the daemon holds — does not sync — events during its startup grace window)
+- DB writes require user confirmation; check `daemon` before important queries (the daemon holds — does not sync — events during its startup grace window)
 - **Accuracy caveats** (function-level concurrency, C++ virtual dispatch, `build-update` cross-file edges, `--scan-subsystems`): see Behavior Notes in `references/usage_reference.md`

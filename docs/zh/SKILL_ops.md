@@ -35,9 +35,9 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 **需用户确认的命令**（默认 y/N 提示）——按家族分组；逐命令细节见 `references/ops_commands.md`：
 
 - 图编辑：`update-node`、`update-edge`、`patch-profile`、`classify-endpoints`、`apply-semantics`、`merge-changes`
-- 记忆/知识写入：`save-memory`、`manage-memory --action add/correct/reshape/promote/refine/split/merge/move`、`kb-rebuild-index`、`kb-cluster`、`kb-migrate`、`kb-forget`、`kb-rollback`
-- 增强/不变量/profile：`apply-invariants`（**AMBIGUOUS 永不应用**；INFERRED 需确认；EXTRACTED 自动应用）、`auto-enhance`（EXTRACTED+证据自动写入；**INFERRED 需确认**）、`batch-confirm`、`profile-evolve --apply`（**INFERRED 需确认**）、`doc-mark-stale`、`ffi-types`
-- 事务：`tx-commit`（写事务：持久化已提交状态，快照保留至修剪）
+- 记忆/知识写入：`save`、`manage-memory --action add/correct/reshape/promote/refine/split/merge/move`、`kb rebuild-index`、`kb cluster`、`kb migrate`、`kb forget`、`kb rollback`
+- 增强/不变量/profile：`invariants apply`（**AMBIGUOUS 永不应用**；INFERRED 需确认；EXTRACTED 自动应用）、`auto-enhance`（EXTRACTED+证据自动写入；**INFERRED 需确认**）、`batch-confirm`、`profile-evolve --apply`（**INFERRED 需确认**）、`doc mark-stale`、`ffi types`
+- 事务：`tx commit`（写事务：持久化已提交状态，快照保留至修剪）
 
 **LLM 行为准则**：
 
@@ -46,36 +46,36 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 3. **禁止**使用 `--yes` / `-y` 绕过确认提示，除非用户在对话中明确授权
 4. 用户拒绝后不得再次尝试同一写入
 
-**非破坏性写入保证**：`update-node` / `update-edge` / `apply-invariants` / `auto-enhance` / `profile-evolve` 把 LLM 补充存储为 `{key}_supplemented` 字段——原始扫描数据永不覆盖。每条补充带 `_supplement_meta`（source / confidence / timestamp / original），可在 `describe-node` 输出中追溯；`rollback` 按时间或范围回滚。原始扫描事实始终保留，LLM 增量数据可追溯、可回滚。
+**非破坏性写入保证**：`update-node` / `update-edge` / `invariants apply` / `auto-enhance` / `profile evolve` 把 LLM 补充存储为 `{key}_supplemented` 字段——原始扫描数据永不覆盖。每条补充带 `_supplement_meta`（source / confidence / timestamp / original），可在 `describe-node` 输出中追溯；`rollback` 按时间或范围回滚。原始扫描事实始终保留，LLM 增量数据可追溯、可回滚。
 
 ## Tier 1 — 核心命令（速查）
 
 | 命令 | 用途 |
 |------|------|
-| `tx-begin` | 开启事务（快照 + 写锁） |
-| `tx-commit` | 提交当前事务（写入**需用户确认**） |
-| `tx-rollback` | 回滚当前事务（恢复快照） |
-| `tx-status` | 查看事务状态 |
-| `daemon-start` | 启动后台守护进程（前台运行；阻塞）——inotify + 事务性同步 |
-| `daemon-stop` | 停止运行中的守护进程 |
-| `daemon-wait-sync` | 阻塞至当前同步完成（**重要查询前调用**） |
-| `profile-health` | 计算 7 个维度 0-100 健康度评分 |
-| `profile-evolve` | 检测新回调模式；`--apply` 应用 EXTRACTED 建议（INFERRED **需用户确认**） |
-| `profile-bind-version` | 绑定 profile 到当前 git/svn HEAD 提交 |
-| `doc-code-check` | 检查文档-代码对齐；检测返回值/参数/签名不匹配 |
-| `doc-mark-stale` | 标记某节点文档为陈旧（**需用户确认**） |
+| `tx begin` | 开启事务（快照 + 写锁） |
+| `tx commit` | 提交当前事务（写入**需用户确认**） |
+| `tx rollback` | 回滚当前事务（恢复快照） |
+| `tx status` | 查看事务状态 |
+| `daemon start` | 启动后台守护进程（前台运行；阻塞）——inotify + 事务性同步 |
+| `daemon stop` | 停止运行中的守护进程 |
+| `daemon wait-sync` | 阻塞至当前同步完成（**重要查询前调用**） |
+| `profile health` | 计算 7 个维度 0-100 健康度评分 |
+| `profile evolve` | 检测新回调模式；`--apply` 应用 EXTRACTED 建议（INFERRED **需用户确认**） |
+| `profile bind-version` | 绑定 profile 到当前 git/svn HEAD 提交 |
+| `doc code-check` | 检查文档-代码对齐；检测返回值/参数/签名不匹配 |
+| `doc mark-stale` | 标记某节点文档为陈旧（**需用户确认**） |
 | `update-node` | LLM 增量补充节点属性（**需用户确认**，非破坏性） |
 | `update-edge` | LLM 增量补充边属性（**需用户确认**，非破坏性） |
 | `serve` | MCP 服务器模式（stdio 或 HTTP，83 个工具 (55 base + 28 design-report)：36 code2database_* + 19 cgdb_*）。HTTP：`--transport http --host 0.0.0.0 --port 8765 --token SECRET --read-only` |
-| `kb-rebuild-index` | 从 memory.db + brief.json 重建统一 FTS5 索引（build/update 后运行） |
-| `kb-cluster` | 聚类相似 kb 条目 + 链接 principle |
-| `kb-audit` | KB 核查：counts by kind / stale / low-confidence / citations |
-| `kb-known-unknowns` | 列出未命中的查询（feedback loop） |
-| `kb-forget` | 立即删除某条 kb 条目（不靠 decay；**需用户确认**，写 audit_log） |
-| `kb-rollback` | 把 kb_item 回滚到旧版本（保留当前为版本历史） |
-| `kb-conflict` | 检测同 cluster 内矛盾条目（yes/no, must/must not 等） |
-| `kb-global-add` / `kb-global-search` / `kb-global-share` / `kb-global-import` | 跨项目全局 KB（~/.code2database_global_kb/） |
-| `kb-global-share-memory` / `kb-global-search-memory` / `kb-global-import-memory` | 跨项目全局记忆 Q&A：将最有价值的记忆导出到全局 KB、跨项目搜索相似 Q&A、将匹配项导入当前项目的 memory.db（含合并） |
+| `kb rebuild-index` | 从 memory.db + brief.json 重建统一 FTS5 索引（build/update 后运行） |
+| `kb cluster` | 聚类相似 kb 条目 + 链接 principle |
+| `kb audit` | KB 核查：counts by kind / stale / low-confidence / citations |
+| `kb known-unknowns` | 列出未命中的查询（feedback loop） |
+| `kb forget` | 立即删除某条 kb 条目（不靠 decay；**需用户确认**，写 audit_log） |
+| `kb rollback` | 把 kb_item 回滚到旧版本（保留当前为版本历史） |
+| `kb conflict` | 检测同 cluster 内矛盾条目（yes/no, must/must not 等） |
+| `kb-global add` / `kb-global search` / `kb-global share` / `kb-global import` | 跨项目全局 KB（~/.code2database_global_kb/） |
+| `kb-global share-memory` / `kb-global search-memory` / `kb-global import-memory` | 跨项目全局记忆 Q&A：将最有价值的记忆导出到全局 KB、跨项目搜索相似 Q&A、将匹配项导入当前项目的 memory.db（含合并） |
 
 ## 路由表 — 按提问类型分组的情景命令
 
@@ -83,24 +83,24 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 
 | 提问类型 | 命令序列 |
 |---------|---------|
-| **安全图谱编辑** | `tx-begin` → `tx-status` → `update-node` / `update-edge` / `patch-profile` / `classify-endpoints` / `auto-enhance` / `heuristic-enhance` / `batch-confirm` / `rollback` / `fill-request` / `add-semantic-edges` / `semantic-status` / `audit-log` → `tx-commit`（带确认）→ 必要时 `tx-restore` / `tx-list-snapshots` / `tx-replay-wal` |
-| **保持图谱新鲜** | `daemon-start` → `daemon-status` → `daemon-pause` / `daemon-resume` / `daemon-force-refresh` / `daemon-wait-sync` / `daemon-logs` / `daemon-reload` / `daemon-list-projects` → `daemon-stop`；或 `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes`；精确按文件更新：`build-update --source SRC --graph DIR` 或 `quick-update --source SRC --graph DIR` |
-| **profile 与文档-代码** | `profile-health` → `profile-evolve` → `profile-bind-version`；`doc-code-check` → `doc-alignment-report` → `doc-signature-diff` → `doc-mark-stale` |
-| **图谱版本** | `graph-record-version` → `graph-history` → `graph-diff` |
+| **安全图谱编辑** | `tx begin` → `tx status` → `update-node` / `update-edge` / `patch-profile` / `classify-endpoints` / `auto-enhance` / `heuristic-enhance` / `batch-confirm` / `rollback` / `fill-request` / `add-semantic-edges` / `semantic-status` / `audit-log` → `tx commit`（带确认）→ 必要时 `tx restore` / `tx list-snapshots` / `tx replay-wal` |
+| **保持图谱新鲜** | `daemon start` → `daemon status` → `daemon pause` / `daemon resume` / `daemon force-refresh` / `daemon wait-sync` / `daemon logs` / `daemon reload` / `daemon list-projects` → `daemon stop`；或 `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes`；精确按文件更新：`build-update --source SRC --graph DIR` 或 `quick-update --source SRC --graph DIR` |
+| **profile 与文档-代码** | `profile health` → `profile evolve` → `profile bind-version`；`doc code-check` → `doc alignment-report` → `doc signature-diff` → `doc mark-stale` |
+| **图谱版本** | `graph record-version` → `graph history` → `graph diff` |
 | **健康与完整性** | `doctor --graph DIR`（一键：数据库完整性、schema 版本、新鲜度、记忆库、简报、daemon；`--json` + 退出码 0/1/2 用于 CI） |
-| **记忆管理** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory`；知识简报：`brief-extract` → `brief-validate` → `brief-suggest` → `brief-migrate-legacy`；跨项目：`kb-global-share-memory` → `kb-global-search-memory` → `kb-global-import-memory` |
-| **导出 / 插件 / 基准** | `export-mermaid` / `export-plantuml` / `design-doc`；`plugins` / `validate-plugin`；`bug-benchmark` |
-| **Embeddings（实验性）** | `embeddings-build` → `embeddings-search` |
+| **记忆管理** | `save-memory --category` → `recall` → `manage-memory --action split/merge/move/categories` → `memory health` → `memory validate`；知识简报：`brief extract` → `brief validate` → `brief suggest` → `brief migrate-legacy`；跨项目：`kb-global share-memory` → `kb-global search-memory` → `kb-global import-memory` |
+| **导出 / 插件 / 基准** | `export mermaid` / `export plantuml` / `design-doc`；`plugins` / `validate-plugin`；`bug-benchmark` |
+| **Embeddings（实验性）** | `embeddings build` → `embeddings search` |
 
 ## 按需命令（专项 / 罕用）
 
 仅列出**名字**。调用前先读 `references/ops_commands.md`——仅在用户显式要求时使用。
 
-- `embeddings-build`、`embeddings-search` — 语义嵌入（实验性）
-- `extract-invariants-llm`、`intent-query`、`think-chain` — LLM 驱动扩展
+- `embeddings build`、`embeddings search` — 语义嵌入（实验性）
+- `invariants extract-llm`、`intent-query`、`think-chain` — LLM 驱动扩展
 - `domain` — 查看域结构（父技能中也有）
-- `graph-record-version` — 记录命名图谱版本
-- `unbalanced-alloc-free` — 查找不平衡的分配/释放对
+- `graph record-version` — 记录命名图谱版本
+- `who unbalanced` — 查找不平衡的分配/释放对
 - `explain-label`、`why-ambiguous` — 解释标签 / 歧义决策
 
 ## 激活移交
@@ -115,11 +115,11 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 
 ## 约束（继承自父技能）
 
-- **事务性写入**：多步数据库修改需包裹 `tx-begin`/`tx-commit`。`patch-from-diff`/`patch-from-git` 默认已包裹；用 `--no-transaction` 绕过。`tx-rollback` 中止；`tx-replay-wal` 崩溃恢复
-- **守护进程新鲜度**：重要查询前调用 `daemon-status`；若 `syncing` 或 `pending_events > 0`，调用 `daemon-wait-sync` 阻塞至同步完成。断路器在事件率超过 1000/分钟时触发整体重建
-- **文档-代码对齐**：`describe-node`（父技能）暴露 `doc_code_mismatches`——若非空，`semantic_desc` 可能不可靠；查阅 `body_text` 并考虑 `doc-mark-stale` 直到文档重新提取
-- **profile 演化**：`profile-evolve --apply` 只应用 EXTRACTED 置信度建议；INFERRED **需用户确认**。演化后运行 `profile-bind-version` 绑定 git/svn HEAD
-- **记忆管理**：`manage-memory` 写操作（add/correct/reshape/promote/refine/split/merge/move）与 `save-memory` 需用户确认；`brief-update` 修改必载知识简报
+- **事务性写入**：多步数据库修改需包裹 `tx begin`/`tx commit`。`patch-from-diff`/`patch-from-git` 默认已包裹；用 `--no-transaction` 绕过。`tx rollback` 中止；`tx replay-wal` 崩溃恢复
+- **守护进程新鲜度**：重要查询前调用 `daemon status`；若 `syncing` 或 `pending_events > 0`，调用 `daemon wait-sync` 阻塞至同步完成。断路器在事件率超过 1000/分钟时触发整体重建
+- **文档-代码对齐**：`describe-node`（父技能）暴露 `doc_code_mismatches`——若非空，`semantic_desc` 可能不可靠；查阅 `body_text` 并考虑 `doc mark-stale` 直到文档重新提取
+- **profile 演化**：`profile-evolve --apply` 只应用 EXTRACTED 置信度建议；INFERRED **需用户确认**。演化后运行 `profile bind-version` 绑定 git/svn HEAD
+- **记忆管理**：`memory manage` 写操作（add/correct/reshape/promote/refine/split/merge/move）与 `save` 需用户确认；`brief update` 修改必载知识简报
 - **MCP 服务器**：`serve` 暴露 83 个工具 (55 base + 28 design-report)（36 个 `code2database_*` + 19 个 `cgdb_*`）；无论子技能是否激活，全部可访问
 - **禁止预加载** `references/ops_commands.md`——仅在需要某命令的详细语法时按需读取
 - **守护进程日志**位于 `~/.code2database/daemon-<project>.log`；守护进程状态位于 `<graph_dir>/.daemon_status.json`
@@ -129,7 +129,7 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 | 文档 | 内容 |
 |------|------|
 | `references/ops_commands.md` | 所有运维命令（事务、守护进程、profile、文档-代码、导出、插件、记忆、embeddings）的完整语法 |
-| `references/manifest_schema.md` | 多项目图谱的 `build-multi` manifest 清单结构 |
+| `references/manifest_schema.md` | 多项目图谱的 `build multi` manifest 清单结构 |
 | `RUNTIME_CONFIG.md` *（继承——父技能目录）* | 运行时调优（invariants、auto_enhance、transactions、ffi、benchmark、profile_health、doc_code、daemon 各节） |
 | `PROFILE_MANUAL.md` *（继承——父技能目录）* | Profile 编写（skip_names、callback_detection、struct_op_types、registration_macros、domain_rules、threading_models） |
 

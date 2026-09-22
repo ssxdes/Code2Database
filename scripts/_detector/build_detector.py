@@ -970,6 +970,16 @@ def _eval_pp_expr(expr: str, bindings: dict) -> bool:
     if m:
         macro = m.group(1)
         is_negated = expr.startswith('!')
+        # Numeric literal (#if 1, #elif 0, #if 0x1): a bare number is a
+        # value, never a macro lookup — evaluating it against bindings
+        # would mark every `#if 1` region as dead.
+        _num = macro.rstrip('uUlL')
+        if _num and re.match(r'^(0[xX][\da-fA-F]+|0[bB][01]+|\d+)$', _num):
+            try:
+                alive = int(_num, 0) != 0
+            except ValueError:
+                return True  # Conservative
+            return not alive if is_negated else alive
         if macro in bindings:
             val = bindings[macro]
             # Zero is falsy in any base (0x0, 0b0, 0); non-numeric strings fall back to truthiness.

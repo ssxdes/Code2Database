@@ -431,13 +431,22 @@ class BaseScanner(ABC):
         # Support 2-tuple (functions, edges), 3-tuple (functions, edges, extra),
         # 4-tuple (functions, edges, vtable_registrations, fn_ptr_calls),
         # and 5-tuple (functions, edges, vtable_registrations, fn_ptr_calls, macro_registrations).
+        # The "extra" slot carries edge-shaped records (IMPORTS /
+        # IMPLEMENTS relations) for the language scanners, and vtable
+        # registration dicts for the C/C++ legacy shape — classify by
+        # record shape, not by the first relation.
+        def _extra_is_import_edges(lst):
+            return (lst and isinstance(lst, list) and isinstance(lst[0], dict)
+                    and "relation" in lst[0]
+                    and "registrations" not in lst[0])
+
         fn_ptr_calls = {}
         macro_registrations = []
         if len(extract_result) == 5:
             functions, edges, extra, fn_ptr_calls_dict, macro_regs_list = extract_result
             fn_ptr_calls = fn_ptr_calls_dict if isinstance(fn_ptr_calls_dict, dict) else {}
             macro_registrations = macro_regs_list if isinstance(macro_regs_list, list) else []
-            if extra and isinstance(extra, list) and extra and extra[0].get("relation") == "IMPORTS":
+            if _extra_is_import_edges(extra):
                 import_edges = extra
                 vtable_registrations = []
             else:
@@ -449,7 +458,7 @@ class BaseScanner(ABC):
             # NAME (the builder resolves names via its _name_to_nid index)
             # with lists of fn_ptr_call entries
             fn_ptr_calls = fn_ptr_calls_dict if isinstance(fn_ptr_calls_dict, dict) else {}
-            if extra and isinstance(extra, list) and extra and extra[0].get("relation") == "IMPORTS":
+            if _extra_is_import_edges(extra):
                 import_edges = extra
                 vtable_registrations = []
             else:
@@ -457,7 +466,7 @@ class BaseScanner(ABC):
                 import_edges = []
         elif len(extract_result) == 3:
             functions, edges, extra = extract_result
-            if extra and isinstance(extra, list) and extra[0].get("relation") == "IMPORTS":
+            if _extra_is_import_edges(extra):
                 import_edges = extra
                 vtable_registrations = []
             else:

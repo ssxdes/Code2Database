@@ -650,7 +650,7 @@ daemon-wait-sync --graph code2db-out/ --timeout 30
 - **禁止预加载** `scripts/config/profiles/` 或 `docs/*/references/` 到上下文——仅按需读取
 - **全局→本地查询模式**：始终从 micro/lite 上下文包开始，再逐步下钻
 - **仅支持七种标签** (API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end)
-- **找到根因之前不提修复方案**
+- **找到根因之前不提修正方案**
 - **sync/update 后必须验证**
 - **DB 写入需用户确认**：LLM 发起的 `update-node`/`update-edge`/`patch-profile`/`apply-semantics`/`apply-invariants`/`auto-enhance`（EXTRACTED+证据可绕过；INFERRED 需确认）/`profile-evolve --apply`（仅 EXTRACTED）/`doc-mark-stale` 必须提示用户确认，防止幻觉数据污染图谱
 - **事务性写入**：多步 DB 修改应包裹 `tx-begin`/`tx-commit`，失败时原子回滚；`patch-from-diff`/`patch-from-git` 默认已包裹

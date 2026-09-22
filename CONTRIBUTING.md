@@ -64,12 +64,12 @@ When extending Code2Database with a new reasoning, query, or operational capabil
 6. Refresh `docs/<lang>/SKILL.md` Quick Reference and Constraint sections (both EN and ZH)
 7. Refresh `README.md` and `docs/zh/README.md` Capability/Feature tables
 8. Refresh `CLAUDE.md` and `AGENTS.md` if the capability introduces constraints or query entry points
-9. Add a CHANGELOG entry under `### Added` describing the capability and its commands
+9. Add a CHANGELOG entry describing the capability and its commands
 
 Keep the boundary clear: SKILL.md is for AI agents using the tool; CLAUDE.md/AGENTS.md are for developers modifying the tool; reference docs are for on-demand detail; OVERVIEW.md is internal architecture only.
 
-## Reporting Issues
+## Reporting Bugs
 
-- Use GitHub Issues
+- Report bugs on the GitHub tracker
 - Include: OS, Python version, reproduction steps, expected vs actual behavior
-- For scan quality issues, include a small code sample that demonstrates the problem
+- For scan quality defects, include a small code sample that demonstrates the behavior

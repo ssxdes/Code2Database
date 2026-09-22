@@ -661,7 +661,7 @@ This separation lets you:
 - **Never pre-load** `scripts/config/profiles/` or `docs/*/references/` into context — read on demand only
 - **Global-to-local query mode**: always start from micro/lite context packs, then drill down
 - **Only seven labels** supported (API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end)
-- **Do not propose fixes** before finding root cause
+- **Do not propose corrections** before finding root cause
 - **Always verify** after sync operations
 - **DB writes need user confirmation**: LLM-initiated `update-node` / `update-edge` / `patch-profile` / `apply-semantics` / `apply-invariants` / `auto-enhance` (EXTRACTED+evidence bypasses; INFERRED requires confirm) / `profile-evolve --apply` (EXTRACTED only) / `doc-mark-stale` must prompt for user confirmation to prevent hallucinated data poisoning the graph
 - **Transactional writes**: wrap multi-step DB changes in `tx-begin` / `tx-commit` so failures roll back atomically; `patch-from-diff` / `patch-from-git` already wrap by default

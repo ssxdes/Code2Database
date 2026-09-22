@@ -4,7 +4,7 @@ Code2Database separates two long-lived stores with opposite shapes:
 
 | | Memory | Knowledge (project brief) |
 |---|---|---|
-| **Role** | Shared accumulating Q&A brain — many people, many question depths | Lean, fixed description of THIS project: architecture, functionality, design, usage |
+| **Role** | Shared accumulating Q&A brain — many people, many question depths | Lean, stable description of THIS project: architecture, functionality, design, usage |
 | **Storage** | `memory/memory.db` (SQLite WAL + FTS5) | `knowledge/brief.json` |
 | **Size** | Unbounded growth | Budget: warn >3000 chars, error >6000 (`brief validate`) |
 | **When loaded** | On demand (`recall`, `kb query`) | **Every session start** (`brief show`) |

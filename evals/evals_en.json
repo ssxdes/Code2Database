@@ -181,7 +181,7 @@
       "id": 26,
       "category": "concurrency_risk",
       "prompt": "Detect all potential deadlocks in the codebase by finding functions that acquire two or more locks in different orders.",
-      "expected_output": "Should use concurrency-risks to list all risk points, filter for lock-ordering issues. Should report at least 2 functions with inconsistent lock acquisition order (e.g., L1→L2 in one, L2→L1 in another).",
+      "expected_output": "Should use concurrency-risks to list all risk points, filter for lock-ordering inconsistencies. Should report at least 2 functions with inconsistent lock acquisition order (e.g., L1→L2 in one, L2→L1 in another).",
       "files": []
     },
     {

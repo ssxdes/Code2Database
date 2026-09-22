@@ -989,7 +989,7 @@ python3 scripts/code2database_scanner.py scan \
 - **Notes**:
   - You do not need to match the closing parenthesis (the scanner tolerates this)
   - `cb_arg_index` is the 0-based argument position
-  - If the callback argument position is not fixed, you need to write a separate pattern for each usage
+  - If the callback argument position varies, you need to write a separate pattern for each usage
 
 ### 6.3 Concurrency Type Selection Guide
 

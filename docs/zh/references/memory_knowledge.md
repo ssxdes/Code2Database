@@ -4,7 +4,7 @@ Code2Database 用两个形态相反的长期存储：
 
 | | Memory | Knowledge（项目简报） |
 |---|---|---|
-| **角色** | 共享积累的 Q&A 大脑 — 多人、多深度提问 | 本项目的精简固定描述：架构、功能、设计、使用 |
+| **角色** | 共享积累的 Q&A 大脑 — 多人、多深度提问 | 本项目的精简稳定描述：架构、功能、设计、使用 |
 | **存储** | `memory/memory.db`（SQLite WAL + FTS5） | `knowledge/brief.json` |
 | **体积** | 无上限增长 | 预算：>3000 字符告警、>6000 报错（`brief validate`） |
 | **加载时机** | 按需（`recall`、`kb query`） | **每次会话启动**（`brief show`） |

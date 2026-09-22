@@ -57,6 +57,6 @@ This prevents header-only domains from appearing as "shallow modules with bloate
 
 ## Endpoint Type Mapping
 
-While the seven labels remain fixed, endpoint classification supports sub-categories via the `endpoint_type` attribute. Endpoint sub-categories are configurable via the profile `endpoint_types` attribute. Common types include event_handler, plugin_init, callback_entry, message_callback, timer_entry — but these are profile-configured, not hardcoded.
+While the seven labels remain constant, endpoint classification supports sub-categories via the `endpoint_type` attribute. Endpoint sub-categories are configurable via the profile `endpoint_types` attribute. Common types include event_handler, plugin_init, callback_entry, message_callback, timer_entry — but these are profile-configured, not hardcoded.
 
 These are not labels but metadata attributes on `out_end`/`unknown_end` nodes, configured via profile `endpoint_types`. They improve endpoint classification coverage for projects with well-known entry-point conventions.

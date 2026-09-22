@@ -728,7 +728,7 @@ Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/
 - **Use query commands** (explore-flow, describe-node, trace) instead of reading raw JSON output files
 - **Only 7 labels**: API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end
 - **Always annotate** edge confidence (EXTRACTED/INFERRED/AMBIGUOUS) and invocation conditions
-- **Do not propose fixes** before finding root cause
+- **Do not propose corrections** before finding root cause
 - **Verify** after sync operations
 - **Keep diffs minimal** — don't refactor unrelated code
 - Skill instructions are in `SKILL.md`; reference docs in `references/` are on-demand only

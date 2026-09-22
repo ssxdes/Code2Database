@@ -56,6 +56,6 @@
 
 ## 端点子类别
 
-虽然七种标签保持固定，但端点分类支持通过 `endpoint_type` 属性配置子类别。子类别由 profile 的 `endpoint_types` 属性定义。常见类型包括 event_handler、plugin_init、callback_entry、message_callback、timer_entry——但这些是 profile 配置项，而非硬编码。
+虽然七种标签保持恒定，但端点分类支持通过 `endpoint_type` 属性配置子类别。子类别由 profile 的 `endpoint_types` 属性定义。常见类型包括 event_handler、plugin_init、callback_entry、message_callback、timer_entry——但这些是 profile 配置项，而非硬编码。
 
 `endpoint_type` 不是标签，而是 `out_end`/`unknown_end` 节点上的元数据属性。通过配置适当的端点类型模式，可以显著提高端点分类的覆盖率。

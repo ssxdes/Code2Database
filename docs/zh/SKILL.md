@@ -1,12 +1,12 @@
 ---
 name: Code2Database
-description: "将代码库转为可查询的代码数据库，专答 grep 几次调用答不了的问题：反向查询（调用方、影响面）、全局聚合（领域、关键路径、值流）、竞争检测、跨会话记忆。扫描一次，永久查询。C/C++/Go/Python/Java/Rust/ASM 调用图：条件路径、并发分析、数据流、FFI 追踪、13 层强类型 cgdb 语义库。通过 c2d 总入口一键生命周期（setup → session → ask → capture）。83 个 MCP 工具 + 120 个可见 CLI 命令（伞形家族；155 个旧拼写仍可解析）。当代码提问涉及结构、调用链、影响分析、并发或数据流时使用 /Code2Database。"
+description: "将代码库转为可查询的代码数据库，专答 grep 几次调用也答不出的提问：反向查询（调用方、影响面）、全局聚合（领域、关键路径、值流）、竞争检测、跨会话记忆。扫描一次，永久查询。C/C++/Go/Python/Java/Rust/ASM 调用图：条件路径、并发分析、数据流、FFI 追踪、13 层强类型 cgdb 语义库。通过 c2d 总入口一键生命周期（setup → session → ask → capture）。83 个 MCP 工具 + 120 个可见 CLI 命令（伞形家族；155 个旧拼写仍可解析）。当代码提问涉及结构、调用链、影响分析、并发或数据流时使用 /Code2Database。"
 trigger: /Code2Database
 ---
 
 # /Code2Database
 
-**扫描一次 → 持久图 → 一次调用回答反向与全局问题。** 点查询仍归 grep/read；本数据库回答 grep 做不到的：谁调用它、改动破坏哪些下游、一个字段流经哪里、哪些路径有竞争。
+**扫描一次 → 持久图 → 一次调用回答反向与全局提问。** 点查询仍归 grep/read；本数据库回答 grep 做不到的：谁调用它、改动破坏哪些下游、一个字段流经哪里、哪些路径有竞争。
 
 ## 一键式生命周期 — `c2d` 总入口
 
@@ -54,7 +54,7 @@ python3 scripts/code2database_builder.py session-init   # --graph 自动发现 c
 ## 何时激活
 
 - 任何关于调用关系、调用链、架构、影响面、并发的疑问
-- 当 `code2db-out/` 或 `code2database.db` 存在时 — 反向/全局问题查图，点查询用 grep
+- 当 `code2db-out/` 或 `code2database.db` 存在时 — 反向/全局查询走图，点查询用 grep
 - `#ifdef` 条件路径、数据竞争、FFI 边界、数据流
 
 ## 何时不该用本 skill（直接 grep 更好）
@@ -69,7 +69,7 @@ python3 scripts/code2database_builder.py session-init   # --graph 自动发现 c
 - 任何字面字符串/符号的文本搜索 → `rg`
 
 经验法则：**grep + read 能在 ≤3 次工具调用内解决的，就用 grep。**
-问题属于反向、全局或预算受限时才用本 skill——调用方、影响半径、
+提问属于反向、全局或预算受限时才用本 skill——调用方、影响半径、
 竞争、字段流、领域地图、会话记忆。
 
 ## 快速开始

@@ -3511,7 +3511,7 @@ def cmd_validate_profile(args):
         sys.exit(1)
 
     raw = profile.raw
-    issues = []
+    findings = []
     warnings = []
     metrics = {}
 
@@ -3588,7 +3588,7 @@ def cmd_validate_profile(args):
     project_type = raw.get("project", {}).get("project_type", "")
     detected_type = detect_project_type(source_root)
     if project_type != detected_type:
-        issues.append(f"Profile project_type '{project_type}' doesn't match detected type '{detected_type}'")
+        findings.append(f"Profile project_type '{project_type}' doesn't match detected type '{detected_type}'")
     metrics["project_type"] = project_type
 
     # Print results
@@ -3604,20 +3604,20 @@ def cmd_validate_profile(args):
         for w in warnings:
             print(f"  ⚠ {w}")
 
-    if issues:
-        print(f"\n--- Issues ({len(issues)}) ---")
-        for i in issues:
+    if findings:
+        print(f"\n--- Findings ({len(findings)}) ---")
+        for i in findings:
             print(f"  ✗ {i}")
     else:
-        print(f"\n--- No critical issues found ---")
+        print(f"\n--- No blocking findings ---")
 
     # Overall assessment
-    if not issues and not warnings:
+    if not findings and not warnings:
         print("\n✓ Profile looks good!")
-    elif not issues:
+    elif not findings:
         print(f"\n⚠ Profile is valid but has {len(warnings)} warning(s) — consider addressing them for better coverage")
     else:
-        print(f"\n✗ Profile has {len(issues)} issue(s) and {len(warnings)} warning(s)")
+        print(f"\n✗ Profile has {len(findings)} finding(s) and {len(warnings)} warning(s)")
 
 
 if __name__ == "__main__":

@@ -411,7 +411,7 @@ Project profile info:
 - External lib prefix map: {ep.get('lib_prefix_map', {})}
 """
 
-    prompt = f"""Review the following invocation graph extraction results for quality issues.
+    prompt = f"""Review the following invocation graph extraction results for quality defects.
 
 Check for:
 1. Missing call edges: Functions that are called but don't appear as callees, or

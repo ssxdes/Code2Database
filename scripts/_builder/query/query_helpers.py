@@ -111,7 +111,7 @@ def _load_profile_from_graph_dir(graph_dir):
         import logging
         logging.getLogger(__name__).error(
             "Corrupt profile JSON at %s: %s — query results will lack "
-            "profile-driven features. Fix the JSON syntax error and rebuild.",
+            "profile-driven features. Correct the JSON syntax and rebuild.",
             profile_path, e)
         return None
 

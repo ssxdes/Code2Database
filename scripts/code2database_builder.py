@@ -793,7 +793,7 @@ def main():
                          help="Memory usage threshold (0.0-1.0) to trigger critical actions (default: 0.85)")
     p_build.add_argument("--memory-warn-mb", type=float, default=None,
                          help="Absolute warn cap in MB (overrides --memory-warn-threshold when set). "
-                              "Recommended for systems where a fixed fraction would either OOM too "
+                               "Recommended for systems where a constant fraction would either OOM too "
                               "eagerly or never trigger (e.g., 16GB system with 0.85 = 13.6GB).")
     p_build.add_argument("--memory-crit-mb", type=float, default=None,
                          help="Absolute critical cap in MB (overrides --memory-crit-threshold when set). "
@@ -2700,7 +2700,7 @@ def main():
     p_dms.add_argument("--reason", required=True, help="Reason for staleness (e.g., 'signature changed in commit abc123')")
 
     p_dar = sub.add_parser("doc-alignment-report",
-                           help="Generate full Markdown report of doc-code alignment issues")
+                           help="Generate full Markdown report of doc-code mismatches")
     p_dar.add_argument("--graph", required=True, help="Call graph output directory")
     p_dar.add_argument("--source", default="", help="Source root directory")
     p_dar.add_argument("-o", "--output", default="",

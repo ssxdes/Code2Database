@@ -916,7 +916,7 @@ def cmd_patch_profile(args):
             if not isinstance(val, list):
                 print(f"Error: {top}.{sub} must be a list after patch, got {type(val).__name__}",
                       file=sys.stderr)
-                print("Profile NOT saved. Fix the patch and retry.", file=sys.stderr)
+                print("Profile NOT saved. Correct the patch and retry.", file=sys.stderr)
                 sys.exit(1)
 
     _save_profile(graph_dir, profile)

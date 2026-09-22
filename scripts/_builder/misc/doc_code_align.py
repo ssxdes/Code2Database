@@ -521,7 +521,7 @@ def detect_signature_changes(old_graph_dir: str, new_graph_dir: str) -> List[Dic
 # ---------------------------------------------------------------------------
 
 def generate_alignment_report(graph_dir: str, source_root: str = "") -> str:
-    """Generate a Markdown report of doc-code alignment issues."""
+    """Generate a Markdown report of doc-code mismatches."""
     result = check_doc_code_alignment(graph_dir, source_root)
     if "error" in result:
         return f"# Doc-Code Alignment Report\n\n**Error**: {result['error']}\n"

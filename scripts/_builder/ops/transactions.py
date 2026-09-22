@@ -1083,7 +1083,7 @@ def recover_unfinished_wal(graph_dir: str) -> Dict:
                   f"transaction left ACTIVE for retry", file=sys.stderr)
             return {"action": "rollback_failed", "tx_id": state.tx_id,
                     "reason": _restore_result.get("reason", "unknown"),
-                    "hint": "fix the reason and re-run tx-replay-wal "
+                    "hint": "resolve the reason and re-run tx-replay-wal "
                             "or tx-rollback"}
         clear_wal(graph_dir)
         state.status = "rolled_back"
@@ -1369,7 +1369,7 @@ def cmd_tx_rollback(args):
                 "tx_id": state.tx_id, "status": "active",
                 "error": state.error,
                 "hint": "snapshot restore failed — db is NOT rolled back; "
-                        "fix the reason above and retry tx-rollback",
+                        "resolve the reason above and retry tx-rollback",
             }, ensure_ascii=False, indent=2, default=str))
             print(f"Error: rollback failed: "
                   f"{_restore_result.get('reason', 'unknown')}",

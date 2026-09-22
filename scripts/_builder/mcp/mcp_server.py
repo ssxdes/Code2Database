@@ -1126,7 +1126,7 @@ def cmd_serve(args):
                 "ERROR: Starting MCP HTTP server on a public interface "
                 f"({host}) without --token is unsafe — anyone who can reach "
                 f"this port can query your code graph AND write memories.\n"
-                "  Fix: add --token <secret> (or set C2D_MCP_TOKEN env var).\n"
+                "  Action: add --token <secret> (or set C2D_MCP_TOKEN env var).\n"
                 "  Or: use --host 127.0.0.1 for localhost-only.\n"
                 "  Or: pass --allow-no-auth to suppress this check "
                 "(NOT recommended).", file=sys.stderr, flush=True)

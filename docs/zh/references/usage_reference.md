@@ -1011,7 +1011,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `detect-races` | Detect data races between different thread contexts |
 | `diff-chains` | Compare execution paths under two different bindings |
 | `discover` | Discover macro-based registration dispatch patterns from headers |
-| `doc-alignment-report` | Generate full Markdown report of doc-code alignment issues |
+| `doc-alignment-report` | Generate full Markdown report of doc-code mismatches |
 | `doc-code-check` | Check doc-code alignment: detect mismatches between semantic_desc (from docs) and body_text (from code) |
 | `doc-mark-stale` | Mark a node's doc as stale (e.g., after code change detected by daemon) |
 | `doctor` | 一键健康报告：数据库完整性、schema 版本、内容、新鲜度、记忆库、简报、daemon（--json，退出码 0/1/2） |

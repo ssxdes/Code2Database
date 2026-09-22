@@ -186,7 +186,7 @@ class SQLiteStore:
             self._migration_ok = False
             logging.getLogger(__name__).warning(
                 "sqlite_store: schema migration failed — schema_version "
-                "will NOT be bumped; run with a fresh db or fix manually",
+                "will NOT be bumped; run with a fresh db or repair manually",
                 exc_info=True)
 
     def _add_column_if_missing(self, table: str, column: str,

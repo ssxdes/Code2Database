@@ -6,7 +6,7 @@ BUGs with the invocation graph vs without?". Three components:
 
 1. **Benchmark format**: a JSON file listing historical BUGs, each
    with: id, description, root_cause_function, root_cause_file:line,
-   source (CVE id or issue link), expected_keywords (terms the AI
+   source (CVE id or tracker link), expected_keywords (terms the AI
    should mention when it finds the bug).
 
 2. **Evaluation runner**: for each BUG, simulate the AI's investigation
@@ -22,7 +22,7 @@ BUGs with the invocation graph vs without?". Three components:
 
 The "AI" in this framework is a heuristic investigator that mimics
 how an AI would actually use the available tools. We don't run a real
-LLM in the eval — instead, the investigator's strategy is fixed, so
+LLM in the eval — instead, the investigator's strategy is predetermined, so
 the benchmark measures the *tools* (graph vs grep), not the LLM's
 cleverness. A real LLM could be plugged in by replacing the
 Investigator class with one that calls out to Claude/GPT.

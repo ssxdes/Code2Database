@@ -75,8 +75,6 @@
     "embeddings-search",
     "explain-label",
     "export-changes",
-    "export-html",
-    "export-obsidian",
     "export-plantuml",
     "extract-invariants-llm",
     "ffi-types",
@@ -137,7 +135,6 @@
     "validate-memory",
     "validate-plugin",
     "watch",
-    "web-ui",
     "why-ambiguous"
   ],
   "routing_table": {
@@ -211,12 +208,9 @@
     "Export / plugin / benchmark": [
       "bug-benchmark",
       "design-doc",
-      "export-html",
-      "export-obsidian",
       "export-plantuml",
       "plugins",
-      "validate-plugin",
-      "web-ui"
+      "validate-plugin"
     ],
     "Embeddings (experimental)": [
       "embeddings-build",

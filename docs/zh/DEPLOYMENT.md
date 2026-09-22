@@ -11,7 +11,6 @@
 | MCP over stdio | `serve --graph <目录>` | 本地 LLM 代理（Claude Desktop、Cursor 本地模式） |
 | MCP over HTTP | `serve --transport http ...` | TLS + 令牌鉴权后的共享/团队访问 |
 | 同步守护进程 | `daemon-start --graph <目录> --source <源码>` | 工程师持续改代码时保持图谱最新 |
-| Web UI | `web-ui --graph <目录>` | 交互式浏览已构建的图谱 |
 
 ## 前置条件
 

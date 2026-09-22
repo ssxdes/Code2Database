@@ -17,7 +17,7 @@ Implemented verbs (this module grows verb by verb):
     capture  --question ... --answer ...
               save a Q&A into project memory (delegates to save-memory)
     freshen  check graph freshness and route to the right update path
-    report   --kind design|diagnose|html|mermaid|plantuml
+    report   --kind design|diagnose|mermaid|plantuml
               produce an artifact (delegates to the export commands)
     recipes  [NAME]
               list recipes, or show one recipe in detail
@@ -484,7 +484,6 @@ def _action_freshen(args) -> int:
 _REPORT_KINDS = {
     "design": "design-doc",
     "diagnose": "diagnose",
-    "html": "export-html",
     "mermaid": "export-mermaid",
     "plantuml": "export-plantuml",
 }
@@ -592,7 +591,7 @@ def _print_lifecycle() -> None:
     print()
     print("  as needed:  c2d freshen — check graph freshness, route to")
     print("              the right update path")
-    print("              c2d report --kind design|diagnose|html|")
+    print("              c2d report --kind design|diagnose|")
     print("              mermaid|plantuml — produce an artifact")
     print("              c2d recipes — list the ask recipes")
     print("              (self-documenting, with detail views)")

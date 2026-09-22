@@ -560,8 +560,8 @@ python3 scripts/code2database_builder.py save-memory \
   [--yes]
 ```
 
-`--symbol`（可重复）把记忆锚定到代码符号：Web UI 会在该符号的节点页
-展示这条问答，`search-memory --symbol` 可按符号过滤。
+`--symbol`（可重复）把记忆锚定到代码符号，`search-memory --symbol`
+可按符号过滤。
 
 ### `search-memory`
 
@@ -609,38 +609,6 @@ python3 scripts/code2database_builder.py validate-memory \
 ```
 
 ## 导出 / 插件 / 基准
-
-### `export-html`
-
-导出图谱到交互式 HTML 可视化。
-
-```bash
-python3 scripts/code2database_builder.py export-html \
-  --graph code2db-out/ \
-  --output /path/to/visualization.html \
-  [--scope function_name]
-```
-
-### `export-obsidian`
-
-导出图谱到 Obsidian vault（带交叉链接的 markdown 文件）。
-
-```bash
-python3 scripts/code2database_builder.py export-obsidian \
-  --graph code2db-out/ \
-  --output /path/to/vault/
-```
-
-### `web-ui`
-
-启动交互式 Web UI 服务器（默认端口 8765）。
-
-```bash
-python3 scripts/code2database_builder.py web-ui \
-  --graph code2db-out/ \
-  --port 8765 \
-  [--browser]
-```
 
 ### `plugins`
 

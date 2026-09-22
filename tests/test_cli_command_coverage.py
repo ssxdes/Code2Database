@@ -31,8 +31,8 @@ _REPRESENTATIVE_COMMANDS = [
     'tx-begin', 'tx-commit', 'tx-rollback', 'tx-status',
     # FFI
     'ffi-detect', 'ffi-list', 'ffi-trace', 'ffi-types',
-    # Profile / daemon / web-ui
-    'daemon-status', 'web-ui',
+    # Profile / daemon
+    'daemon-status',
 ]
 
 

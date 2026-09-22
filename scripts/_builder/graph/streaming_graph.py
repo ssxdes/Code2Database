@@ -953,7 +953,7 @@ class LazySQLiteGraph:
         self._node_neg_cache_max = 10000
         # Full-edge-list cache for edges(data=True/False). The graph is
         # read-only, so the edge set never changes during the object's
-        # lifetime — but the web UI calls edges(data=True) from multiple
+        # lifetime — but consumers call edges(data=True) from multiple
         # endpoints (summary, domain-breakdown, cycle-detection) and each
         # call was a full SELECT + JSON-parse pass over 97K+ edges.
         self._edges_data_cache = None
@@ -1367,10 +1367,10 @@ class LazySQLiteGraph:
 
     def edges(self, data: bool = False):
         # Cache the full edge list: the graph is read-only so the edge
-        # set never changes. Without this, every web-ui endpoint that
-        # calls G.edges(data=True) (summary, domain-breakdown,
-        # cycle-detection) re-runs SELECT * FROM edges + JSON parse on
-        # 97K+ edges — 3-5s each, all under the GraphCache global lock.
+        # set never changes. Without this, every consumer that calls
+        # G.edges(data=True) (summary, domain-breakdown, cycle-detection)
+        # re-runs SELECT * FROM edges + JSON parse on 97K+ edges — 3-5s
+        # each, all under the GraphCache global lock.
         with self._lock:
             if data:
                 if self._edges_data_cache is None:

@@ -70,8 +70,8 @@ class TestMakeEndToEnd(unittest.TestCase):
                          % (self.proc.stdout[-3000:], self.proc.stderr[-3000:]))
         self.assertIn("0 failed", self.proc.stdout)
 
-    def test_make_reports_all_thirteen_steps(self):
-        self.assertIn("build pipeline (13 steps)", self.proc.stdout)
+    def test_make_reports_all_eleven_steps(self):
+        self.assertIn("build pipeline (11 steps)", self.proc.stdout)
         self.assertIn("[make] done:", self.proc.stdout)
         # env-check phase ran first and passed
         self.assertIn("env-check OK", self.proc.stdout)
@@ -99,20 +99,11 @@ class TestMakeEndToEnd(unittest.TestCase):
                     ".code2database_ffi.json",
                     "embeddings.json",
                     "kb_index.db",
-                    "callgraph.html",
                     os.path.join("knowledge", "brief.json")):
             path = os.path.join(self.graph, rel)
             self.assertTrue(os.path.isfile(path), "missing %s" % rel)
             self.assertGreater(os.path.getsize(path), 0,
                                "empty artifact: %s" % rel)
-
-    def test_exports_exist(self):
-        vault = os.path.join(self.graph, "obsidian-vault")
-        self.assertTrue(os.path.isdir(vault))
-        mds = []
-        for root, _dirs, files in os.walk(vault):
-            mds += [f for f in files if f.endswith(".md")]
-        self.assertGreater(len(mds), 0, "obsidian vault has no notes")
 
     def test_kb_index_tables_created(self):
         # The kb index lives in its own store, and the graph db must

@@ -4249,7 +4249,7 @@ def cmd_build(args):
     conditions_data = data.get("conditions", [])
     # Derive the project name while the extraction dict is still alive;
     # build_graph computes the same value for its FQN prefix but never
-    # persists it, so downstream consumers (briefs, the web UI) had no
+    # persists it, so downstream consumers (briefs) had no
     # way to learn the name. split_by_domain writes it into master.json.
     from _builder.build.build_phases import _derive_project_name as _dpn
     _cmd_project_name = _dpn(data, data.get("functions", []))

@@ -192,7 +192,7 @@ For more general merge conflict handling, search for installed skill matching "m
 
 **Trigger**: User wants to export code graph to other formats (non-HTML)
 
-1. Code2Database: First generate base visualization with export-html
+1. Code2Database: First generate a base visualization with export-mermaid
 2. Search for installed skill matching "diagram/graph/visualize/export":
    - Match found → call skill, passing code graph data
    - No match → prompt user to install relevant visualization skill

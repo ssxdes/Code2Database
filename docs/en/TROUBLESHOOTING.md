@@ -105,14 +105,14 @@ Symptom: answers cite functions that no longer exist.
   `session-init` — capture them with `c2d capture` instead of leaving
   them unanswered
 
-## MCP or Web UI Refuses to Start
+## MCP Server Refuses to Start
 
-Symptom: `serve` or `web-ui` exits immediately.
+Symptom: `serve` exits immediately.
 
 - Binding a public interface without `--token` is refused by design —
   set `--token` or `C2D_MCP_TOKEN`
 - Port already in use: `--port` conflicts surface in the startup error;
-  check `ss -ltnp | grep 8765`
+  check `ss -ltnp` for the bound port
 - `--read-only` hides write tools by design — clients complaining about
   missing tools are connecting to a read-only deployment
 - The HTTP health endpoint (`/health`) answers without auth and is the

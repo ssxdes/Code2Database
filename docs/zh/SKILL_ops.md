@@ -21,7 +21,7 @@ parent_skill: Code2Database
   - "改之前先存个快照" / "回滚这个事务"
   - "检查 profile 健康度" / "演化我的 profile" / "绑定 profile 到 HEAD"
   - "文档说 X，代码做 Y——标记文档为陈旧"
-  - "导出图谱到 HTML / Obsidian / Web UI"
+  - "导出图谱到 Mermaid / PlantUML / 设计文档"
   - "安装 git hook 自动更新"
   - "把 diff / git diff 作为图谱补丁应用"
   - "把这个 Q&A 保存到记忆" / "搜索记忆"
@@ -89,7 +89,7 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 | **图谱版本** | `graph-record-version` → `graph-history` → `graph-diff` |
 | **健康与完整性** | `doctor --graph DIR`（一键：数据库完整性、schema 版本、新鲜度、记忆库、简报、daemon；`--json` + 退出码 0/1/2 用于 CI） |
 | **记忆管理** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory`；知识简报：`brief-extract` → `brief-validate` → `brief-suggest` → `brief-migrate-legacy`；跨项目：`kb-global-share-memory` → `kb-global-search-memory` → `kb-global-import-memory` |
-| **导出 / 插件 / 基准** | `export-html` / `export-obsidian` / `web-ui`；`plugins` / `validate-plugin`；`bug-benchmark` |
+| **导出 / 插件 / 基准** | `export-mermaid` / `export-plantuml` / `design-doc`；`plugins` / `validate-plugin`；`bug-benchmark` |
 | **Embeddings（实验性）** | `embeddings-build` → `embeddings-search` |
 
 ## 按需命令（专项 / 罕用）
@@ -129,9 +129,8 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 | 文档 | 内容 |
 |------|------|
 | `references/ops_commands.md` | 所有运维命令（事务、守护进程、profile、文档-代码、导出、插件、记忆、embeddings）的完整语法 |
-| `references/web_ui.md` | Web UI 使用（HTTP API 端点、快捷键、性能说明） |
 | `references/manifest_schema.md` | 多项目图谱的 `build-multi` manifest 清单结构 |
-| `RUNTIME_CONFIG.md` *（继承——父技能目录）* | 运行时调优（invariants、auto_enhance、transactions、ffi、web_ui、benchmark、profile_health、doc_code、daemon 各节） |
+| `RUNTIME_CONFIG.md` *（继承——父技能目录）* | 运行时调优（invariants、auto_enhance、transactions、ffi、benchmark、profile_health、doc_code、daemon 各节） |
 | `PROFILE_MANUAL.md` *（继承——父技能目录）* | Profile 编写（skip_names、callback_detection、struct_op_types、registration_macros、domain_rules、threading_models） |
 
 **继承自父技能**（`/Code2Database`）：`references/usage_reference.md`、`references/label_rules.md`、`references/data_model.md`、`references/json_schema.md`、`references/usage_examples.md`、`references/memory_knowledge.md`、`RUNTIME_CONFIG.md`、`PROFILE_MANUAL.md`。这些文件位于父技能目录中。

@@ -455,7 +455,7 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
 
     store = SQLiteStore(db_path)
     # WAL recovery on WSL1 can briefly fail the journal-mode PRAGMA when
-    # another process (web UI, a just-exited build) still holds the shm;
+    # another process (a just-exited build) still holds the shm;
     # retry instead of failing the update.
     import time as _time
     for attempt in range(3):
@@ -677,7 +677,7 @@ def _build_update_locked(source_root: str, graph_dir: str, db_path: str,
         _bump_surviving_versions(db_path, _version_id)
 
     # Refresh the fingerprint manifest so freshness checks (session-init,
-    # web UI badge) reflect the synced state instead of reporting stale.
+    # freshness badge) reflect the synced state instead of reporting stale.
     # Preserve the exclude scope the manifest was created with.
     try:
         from _scanner.changes import save_manifest

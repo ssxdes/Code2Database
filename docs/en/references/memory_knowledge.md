@@ -16,7 +16,7 @@ Code2Database separates two long-lived stores with opposite shapes:
 python3 scripts/code2database_builder.py session-init --graph code2db-out/ [--top 10] [--json]
 ```
 
-Loads all four layers in one prompt-ready output: the rendered brief, the memory digest (top active Q&A by weight, with category/author/reads), graph stats + brief drift warning, and known unknowns (recurring unanswered queries — save answers for them). Empty stores degrade to bootstrap hints instead of errors. This is Step 0 of every session (AI) and the fastest project briefing (humans); the web UI renders the same data interactively (Brief / Memory panels). MCP: the same context is exposed as the `code2database_session_init` tool — agents should call it first at session start, before search/describe/trace.
+Loads all four layers in one prompt-ready output: the rendered brief, the memory digest (top active Q&A by weight, with category/author/reads), graph stats + brief drift warning, and known unknowns (recurring unanswered queries — save answers for them). Empty stores degrade to bootstrap hints instead of errors. This is Step 0 of every session (AI) and the fastest project briefing (humans). MCP: the same context is exposed as the `code2database_session_init` tool — agents should call it first at session start, before search/describe/trace.
 
 ## Memory (memory.db)
 
@@ -64,7 +64,7 @@ A memory about a specific function/type can carry the graph symbol names it's ab
 
 - `save-memory ... --symbol nvme_submit_cmd` stores the names in a `symbols` column; merges absorb them into the cluster root, `--correct` re-grounds (pass `--symbol` with the correction).
 - `search-memory --symbol nvme_submit_cmd` filters by exact symbol (case-insensitive); MCP `code2database_memory_search` takes a `symbol` argument.
-- The web UI shows symbol-grounded Q&A ("Veteran Memories") on the symbol's node page — a newcomer reading the code sees its pitfalls in place.
+- Symbol-grounded Q&A ("Veteran Memories") surfaces via `search-memory --symbol` — a newcomer reading the code finds its pitfalls in place.
 - `MemoryStore.entries_for_symbol(name)` is the programmatic view (cluster-deduped, weight-ranked).
 
 ```bash
@@ -114,11 +114,9 @@ python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
   --action authors
 ```
 
-The same lineage graph is rendered interactively in the web UI Memory panel (Lineage button).
-
 ### Read-only sharing
 
-The web UI serves memory read-only (`MemoryStore(read_only=True)`): viewers on a shared mount get full search/digest/lineage/author access — no directory creation, no schema writes, no access-counter bumps — while write operations (save/split/merge/...) stay with the store owner. Author-filtered views (`/api/memory/authors` + the dropdown) answer "what did alice learn about this project".
+A read-only MCP deployment serves memory the same way (`MemoryStore(read_only=True)`): viewers get full search/digest/lineage/author access — no directory creation, no schema writes, no access-counter bumps — while write operations (save/split/merge/...) stay with the store owner. Author-filtered search (`manage-memory --action authors`, `--author` filters) answers "what did alice learn about this project".
 
 
 ### Weight model (unchanged)

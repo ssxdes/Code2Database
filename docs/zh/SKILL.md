@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "将代码库转为可查询的代码数据库。扫描一次，永久查询——不再需要 grep/glob/Read。C/C++/Go/Python/Java/Rust/ASM 调用图：条件路径、并发分析、数据流、FFI 追踪、13 层强类型 cgdb 语义库。通过 c2d 总入口一键生命周期（setup → session → ask → capture）。83 个 MCP 工具 + 266 个 CLI 命令。当代码提问涉及结构、调用链、影响分析、并发或数据流时使用 /Code2Database。"
+description: "将代码库转为可查询的代码数据库。扫描一次，永久查询——不再需要 grep/glob/Read。C/C++/Go/Python/Java/Rust/ASM 调用图：条件路径、并发分析、数据流、FFI 追踪、13 层强类型 cgdb 语义库。通过 c2d 总入口一键生命周期（setup → session → ask → capture）。83 个 MCP 工具 + 263 个 CLI 命令。当代码提问涉及结构、调用链、影响分析、并发或数据流时使用 /Code2Database。"
 trigger: /Code2Database
 ---
 
@@ -10,7 +10,7 @@ trigger: /Code2Database
 
 ## 一键式生命周期 — `c2d` 总入口
 
-不需要记住 266 个命令。一个命令覆盖完整工作流 — 只需掌握 4 个动词：
+不需要记住 263 个命令。一个命令覆盖完整工作流 — 只需掌握 4 个动词：
 
 | 动词 | 用途 | 示例 |
 |------|------|------|
@@ -82,16 +82,16 @@ python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_s
 
 ## 核心命令（Tier-1）
 
-22 个 Tier-1 命令覆盖 ~95% 的 agent 工作流。任务→命令导航：`references/usage_reference.md` 的意图索引，或运行时的 `c2d recipes` / `c2d verbs`。
+21 个 Tier-1 命令覆盖 ~95% 的 agent 工作流。任务→命令导航：`references/usage_reference.md` 的意图索引，或运行时的 `c2d recipes` / `c2d verbs`。
 
 - **生命周期**：`c2d`、`make`、`build`、`update`
 - **查询**：`query`（Cypher；自然语言用 `intent-query`）、`describe`、`trace`、`impact`、`context`、`find`、`flow`、`concurrency`
 - **记忆与知识**：`session-init`、`kb-query`、`save-memory`、`search-memory`、`knowledge-brief`——kb 治理命令归 ops 与 kb 子技能
-- **服务与运维**：`serve`（MCP，83 工具）、`web-ui`、`tx-begin`、`daemon`、`health`
+- **服务与运维**：`serve`（MCP，83 工具）、`tx-begin`、`daemon`、`health`
 
 别名：`describe`/`context` → describe-node、`trace` → trace-chain、`find` → find-invariants、`flow` → value-flow、`concurrency` → concurrency-risks、`save` → save-memory、`recall` → search-memory、`brief` → knowledge-brief、`health` → profile-health、`daemon` → daemon-status、`export` → export-mermaid。
 
-全部 266 个 CLI 命令仍可访问。
+全部 263 个 CLI 命令仍可访问。
 
 ## 支持语言
 
@@ -111,7 +111,7 @@ C/C++ | Go | Python | Java | Rust | ASM（6 + ASM，C/C++ 共享扫描器）
 
 - **会话启动**：先运行 `session-init`（别名 `init`）— 简报（强制规则/模式/坑）+ 记忆摘要（前辈经验）+ 图状态（含源码新鲜度告警——图过期先重建再信任）+ 未解答疑问，一次输出
 - **纠错协议**：回答项目疑问前先 `search-memory`；答案错了用 `save-memory --correct`（原地重塑最相似条目——不产生重复变体）；缺答案用 `save-memory --category ... --author ... --symbol fn`；查询反复未命中（known-unknowns）时把答案沉淀进记忆
-- **符号锚定**：记忆关于某个具体函数/类型时，传 `--symbol <name>`（可重复）——Web UI 在该符号的节点页展示这条问答，`search-memory --symbol` 可按符号过滤；合并时记忆吸收符号，`--correct` 时可重新锚定
+- **符号锚定**：记忆关于某个具体函数/类型时，传 `--symbol <name>`（可重复），`search-memory --symbol` 可按符号过滤；合并时记忆吸收符号，`--correct` 时可重新锚定
 - **沉淀触发**：(a) 解决了非平凡疑问——排查路径本身就是答案；(b) 踩了耗费真实调试时间的坑；(c) 发现简报未覆盖的强制规则/约束；(d) 纠正了错误答案（`--correct`）；(e) 回答了 session-init 中的 known-unknowns。图谱一次查询就能回答的不要存。
 - `build`/`update` 或修改 memory/brief 后运行 `kb-rebuild-index`；记忆治理用 `manage-memory --action split/merge/move/compact/categories`（compact 在每次 build 后自动运行）；`brief-suggest` 建议把最有价值的记忆毕业进简报；简报必须精简（`brief-validate` 超过 3000 字符告警，溢出放入 memory）
 - 从 `context_pack_micro` → `context_pack_lite` → `describe`/`trace` 开始；不批量读取输出文件

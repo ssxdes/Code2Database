@@ -8,7 +8,7 @@
 
 [![Languages](https://img.shields.io/badge/languages-6%20%2B%20ASM-orange)](#language-support)
 [![MCP Tools](https://img.shields.io/badge/MCP_tools-83-blueviolet)](#mcp-server)
-[![Query Commands](https://img.shields.io/badge/query_commands-266-success)](#command-reference)
+[![Query Commands](https://img.shields.io/badge/query_commands-263-success)](#command-reference)
 [![Sub-skills](https://img.shields.io/badge/sub_skills-3-9cf)](#skill-activation)
 [![Backend](https://img.shields.io/badge/backend-dual%20clang%20%2B%20tree--sitter-blue)](#extraction-backend)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -200,7 +200,6 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **LLM auto-semantic enhancement** | Confidence-threshold auto-write (EXTRACTED+evidence auto-applies; INFERRED requires confirm; AMBIGUOUS rejected) with batch-confirm and rollback — `auto-enhance`, `batch-confirm`, `rollback`, `fill-request`. |
 | **Transactional updates** | Snapshots + fcntl file locks for atomic multi-step updates — `tx-begin`/`commit`/`rollback`/`status`/`snapshot`/`restore`/`list-snapshots`/`replay-wal`. |
 | **Cross-language FFI** | Python ctypes / Go cgo / Rust `extern "C"` boundary tracing with type marshalling — `ffi-detect`, `ffi-list`, `ffi-trace`, `ffi-types`. |
-| **Interactive Web UI** | Single-file HTML/cytoscape.js/JS with pan/zoom, click-to-focus, focus+context fading, real Leiden communities, search disambiguation (file:line), 5 layout algorithms (flow/force/rings/circle/grid), cycle highlight, node-label filter, staleness badge, dark/light mode, PNG export, right-click context menu — `web-ui`. |
 | **BUG benchmark** | GraphInvestigator vs GrepInvestigator — measures recall, precision, tool calls, tokens, time — `bug-benchmark`. |
 | **Profile health & auto-evolution** | 0-100 score across 7 categories; auto-detects new callback patterns; binds to git/svn HEAD — `profile-health`, `profile-evolve`, `profile-bind-version`. |
 | **Doc-code alignment** | Detects return-value / param / signature / stale-doc mismatches between docs and code — `doc-code-check`, `doc-mark-stale`, `doc-alignment-report`, `doc-signature-diff`. `describe-node` surfaces `doc_code_mismatches`. |
@@ -237,7 +236,6 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **Auto-enhancement** | `auto-enhance` / `batch-confirm` / `rollback` — confidence-threshold auto-write |
 | **Transactions** | `tx-begin`/`commit`/`rollback` — snapshots + fcntl locks |
 | **FFI tracing** | `ffi-detect`/`list`/`trace`/`types` — Python ctypes / Go cgo / Rust extern "C" |
-| **Web UI** | `web-ui` — single-file HTML/cytoscape.js/JS interactive browser |
 | **BUG benchmark** | `bug-benchmark` — GraphInvestigator vs GrepInvestigator recall/precision |
 | **Profile health** | `profile-health`/`evolve`/`bind-version` — 0-100 score + auto-evolution |
 | **Doc-code alignment** | `doc-code-check`/`mark-stale`/`alignment-report`/`signature-diff` — detect doc-code mismatches |
@@ -282,7 +280,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
                                      │
                                      ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  [Query]     micro → lite → local · 83 MCP tools (55 base + 28 design-report) · 266 CLI commands     │
+│  [Query]     micro → lite → local · 83 MCP tools (55 base + 28 design-report) · 263 CLI commands     │
 │              explore-flow · trace-chain · detect-races · param-flow      │
 │              value-flow · lock-coverage · path-feasible · data-dep       │
 │              extract-invariants · ffi-trace · doc-code-check · query     │
@@ -308,7 +306,7 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **Languages** | 6 + ASM — C/C++ (shared scanner), Go, Python, Java, Rust, ASM (regex — no tree-sitter grammar) (Python + tree-sitter + ASM regex) |
 | **Storage** | JSON output + optional SQLite backend for large graphs |
 | **MCP server** | stdio transport, **83 query tools** (36 `code2database_*` + 19 `cgdb_*` + 28 design-report) for LLM agents |
-| **CLI commands** | **258 builder subcommands + 8 scanner subcommands** organized into 4 sub-skills (`/Code2Database` core, `/Code2Database-analysis`, `/Code2Database-ops`, `/Code2Database-kb`) — Build, Query, Trace, Concurrency, Knowledge, Memory, Provenance, Cypher, Data Flow, Lock Analysis, Path Feasibility, Invariants, Auto-Enhance, Transactions, FFI, Web UI, Benchmark, Profile Health, Doc-Code, Daemon, cgdb (clang backend) |
+| **CLI commands** | **255 builder subcommands + 8 scanner subcommands** organized into 4 sub-skills (`/Code2Database` core, `/Code2Database-analysis`, `/Code2Database-ops`, `/Code2Database-kb`) — Build, Query, Trace, Concurrency, Knowledge, Memory, Provenance, Cypher, Data Flow, Lock Analysis, Path Feasibility, Invariants, Auto-Enhance, Transactions, FFI, Benchmark, Profile Health, Doc-Code, Daemon, cgdb (clang backend) |
 | **Call condition parsing** | `if`/`switch`/`#ifdef` branches + empty-node aggregation |
 | **Conditional compilation (`#ifdef`)** | Graph knows which calls exist only under which `CONFIG_*` flags |
 | **Data race detection** | Cross-thread hazard detection — `detect-races` |
@@ -331,7 +329,6 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **LLM auto-enhancement** | Confidence-threshold auto-write + batch-confirm + rollback — `auto-enhance` |
 | **Transactional updates** | Snapshots + fcntl locks for atomic writes — `tx-begin`/`commit`/`rollback` |
 | **FFI tracing** | Python ctypes / Go cgo / Rust extern "C" — `ffi-detect`/`list`/`trace`/`types` |
-| **Interactive Web UI** | Single-file HTML/cytoscape.js/JS browser — `web-ui` |
 | **BUG benchmark** | GraphInvestigator vs GrepInvestigator recall/precision — `bug-benchmark` |
 | **Profile health** | 0-100 score + auto-evolution + git/svn HEAD binding — `profile-health`/`evolve`/`bind-version` |
 | **Doc-code alignment** | Detect doc-code mismatches; surface in `describe-node` — `doc-code-check` |
@@ -454,11 +451,10 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | `ffi-trace` | Trace cross-language invocation chains |
 | `ffi-types` | Show type marshalling for an FFI edge |
 
-### Web UI & Benchmark
+### Benchmark
 
 | Command | Description |
 |---------|-------------|
-| `web-ui` | Start interactive Web UI server (default port 8765) |
 | `bug-benchmark` | Run GraphInvestigator vs GrepInvestigator benchmark |
 
 ### Profile Health & Doc-Code Alignment
@@ -565,11 +561,11 @@ If the cgdb export fails mid-build, the graph is left missing (parts of) its sem
 
 ## Skill Activation (4 sub-skills)
 
-The skill is split into 4 sub-skills to keep LLM context lean. Each sub-skill has its own `SKILL.md` exposing only the commands relevant to its layer. The CLI (`scripts/code2database_builder.py`) is shared — all 258 subcommands are accessible regardless of which sub-skill is active.
+The skill is split into 4 sub-skills to keep LLM context lean. Each sub-skill has its own `SKILL.md` exposing only the commands relevant to its layer. The CLI (`scripts/code2database_builder.py`) is shared — all 255 subcommands are accessible regardless of which sub-skill is active.
 
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|
-| `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded. 22 Tier-1 core commands incl. the `c2d` umbrella (scan, build, explore-flow, describe-node, trace-chain, etc.) |
+| `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded. 21 Tier-1 core commands incl. the `c2d` umbrella (scan, build, explore-flow, describe-node, trace-chain, etc.) |
 | `Code2Database-analysis` | `/Code2Database-analysis` | Deep semantic analysis — concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb tables. 13 Tier-1 commands + 19 `cgdb_*` MCP tools |
 | `Code2Database-ops` | `/Code2Database-ops` | Graph editing + ops — transactions, daemon, profile/doc-code, exports, plugins, memory, embeddings. 23 Tier-1 commands |
 | `Code2Database-kb` | `/Code2Database-kb` | Standalone knowledge/memory base — dedicated SQLite stores, FTS5 retrieval, version-scoped recall, cross-domain queries; no graph required. 8 Tier-1 commands |

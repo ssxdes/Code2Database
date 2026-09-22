@@ -8,7 +8,7 @@
 
 [![语言](https://img.shields.io/badge/语言-6%20%2B%20ASM-orange)](#语言支持)
 [![MCP工具](https://img.shields.io/badge/MCP工具-83-blueviolet)](#mcp-服务器)
-[![查询命令](https://img.shields.io/badge/查询命令-266-success)](#命令参考)
+[![查询命令](https://img.shields.io/badge/查询命令-263-success)](#命令参考)
 [![许可证: MIT](https://img.shields.io/badge/许可证-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](#安装)
 [![tree-sitter](https://img.shields.io/badge/tree--sitter-AST-green?logo=tree-sitter&logoColor=white)](#工作原理)
@@ -198,7 +198,6 @@ bash scripts/setup.sh --languages c,go
 | **LLM 自动语义增强** | 置信度阈值自动写入（EXTRACTED+证据自动应用；INFERRED 需确认；AMBIGUOUS 拒绝）+ 批量确认和回滚——`auto-enhance`、`batch-confirm`、`rollback`、`fill-request` |
 | **事务性更新** | 快照 + fcntl 文件锁的原子多步更新——`tx-begin`/`commit`/`rollback`/`status`/`snapshot`/`restore`/`list-snapshots`/`replay-wal` |
 | **跨语言 FFI** | Python ctypes / Go cgo / Rust `extern "C"` 边界追踪 + 类型 marshalling——`ffi-detect`、`ffi-list`、`ffi-trace`、`ffi-types` |
-| **交互式 Web UI** | 单文件 HTML/cytoscape.js/JS，平移/缩放、点击聚焦、聚焦+上下文淡出、路径高亮、3 种布局算法 (flow/rings/force)、社区复合分组、LOD 标签隐藏、边 `call_condition` 标签、边类型过滤、右键上下文菜单、小地图、FTS5 搜索——`web-ui` |
 | **BUG 基准测试** | GraphInvestigator vs GrepInvestigator——衡量召回、精度、工具调用、token、时间——`bug-benchmark` |
 | **Profile 健康度与自动演化** | 7 类 0-100 评分；自动检测新回调模式；绑定 git/svn HEAD——`profile-health`、`profile-evolve`、`profile-bind-version` |
 | **文档-代码对齐** | 检测返回值/参数/签名/陈旧文档不匹配——`doc-code-check`、`doc-mark-stale`、`doc-alignment-report`、`doc-signature-diff`。`describe-node` 暴露 `doc_code_mismatches` |
@@ -236,7 +235,6 @@ bash scripts/setup.sh --languages c,go
 | **自动增强** | `auto-enhance`/`batch-confirm`/`rollback` — 置信度阈值自动写入 |
 | **事务** | `tx-begin`/`commit`/`rollback` — 快照 + fcntl 锁 |
 | **FFI 追踪** | `ffi-detect`/`list`/`trace`/`types` — Python ctypes / Go cgo / Rust extern "C" |
-| **Web UI** | `web-ui` — 单文件 HTML/cytoscape.js/JS 交互式浏览器 |
 | **BUG 基准** | `bug-benchmark` — GraphInvestigator vs GrepInvestigator 召回/精度 |
 | **Profile 健康度** | `profile-health`/`evolve`/`bind-version` — 0-100 评分 + 自动演化 |
 | **文档-代码对齐** | `doc-code-check`/`mark-stale`/`alignment-report`/`signature-diff` — 检测文档-代码不匹配 |
@@ -281,7 +279,7 @@ bash scripts/setup.sh --languages c,go
                                      │
                                      ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  [Query]     micro → lite → local · 83 个 MCP (55 base + 28 design-report) 工具 · 266 CLI 命令         │
+│  [Query]     micro → lite → local · 83 个 MCP (55 base + 28 design-report) 工具 · 263 CLI 命令         │
 │              explore-flow · trace-chain · detect-races · param-flow      │
 │              value-flow · lock-coverage · path-feasible · data-dep       │
 │              extract-invariants · ffi-trace · doc-code-check · query     │
@@ -307,7 +305,7 @@ bash scripts/setup.sh --languages c,go
 | **语言** | 7 种 — C/C++、Go、Python、Java、Rust、ASM（Python + tree-sitter + ASM 正则）|
 | **存储** | JSON 输出 + 大图可选 SQLite 后端 |
 | **MCP 服务器** | stdio 传输，**83 个查询工具**（36 code2database_* + 19 cgdb_*）供 LLM 代理使用 |
-| **CLI 命令** | **266 命令 (258 builder + 8 scanner)** 分为 4 个子技能（`/Code2Database` 核心、`/Code2Database-analysis`、`/Code2Database-ops`、`/Code2Database-kb`）— Build、Query、Trace、Concurrency、Knowledge、Memory、Provenance、Cypher、Data Flow、Lock Analysis、Path Feasibility、Invariants、Auto-Enhance、Transactions、FFI、Web UI、Benchmark、Profile Health、Doc-Code、Daemon、cgdb（clang 后端） |
+| **CLI 命令** | **263 命令 (255 builder + 8 scanner)** 分为 4 个子技能（`/Code2Database` 核心、`/Code2Database-analysis`、`/Code2Database-ops`、`/Code2Database-kb`）— Build、Query、Trace、Concurrency、Knowledge、Memory、Provenance、Cypher、Data Flow、Lock Analysis、Path Feasibility、Invariants、Auto-Enhance、Transactions、FFI、Benchmark、Profile Health、Doc-Code、Daemon、cgdb（clang 后端） |
 | **调用条件解析** | `if`/`switch`/`#ifdef` 分支 + 空节点聚合 |
 | **条件编译（`#ifdef`）** | 图谱知道哪些调用只在哪些 `CONFIG_*` 标志下存在 |
 | **数据竞争检测** | 跨线程隐患检测 — `detect-races` |
@@ -330,7 +328,6 @@ bash scripts/setup.sh --languages c,go
 | **LLM 自动增强** | 置信度阈值自动写入 + 批量确认 + 回滚 — `auto-enhance` |
 | **事务性更新** | 快照 + fcntl 锁的原子写入 — `tx-begin`/`commit`/`rollback` |
 | **FFI 追踪** | Python ctypes / Go cgo / Rust extern "C" — `ffi-detect`/`list`/`trace`/`types` |
-| **交互式 Web UI** | 单文件 HTML/cytoscape.js/JS 浏览器 — `web-ui` |
 | **BUG 基准测试** | GraphInvestigator vs GrepInvestigator 召回/精度 — `bug-benchmark` |
 | **Profile 健康度** | 0-100 评分 + 自动演化 + git/svn HEAD 绑定 — `profile-health`/`evolve`/`bind-version` |
 | **文档-代码对齐** | 检测文档-代码不匹配；`describe-node` 暴露 — `doc-code-check` |
@@ -456,11 +453,10 @@ bash scripts/setup.sh --languages c,go
 | `ffi-trace` | 追踪跨语言调用链 |
 | `ffi-types` | 显示某条 FFI 边的类型映射 |
 
-### Web UI 与基准测试
+### 基准测试
 
 | 命令 | 说明 |
 |------|------|
-| `web-ui` | 启动交互式 Web UI 服务器（默认端口 8765） |
 | `bug-benchmark` | 运行 GraphInvestigator vs GrepInvestigator 基准测试 |
 
 ### Profile 健康度与文档-代码对齐
@@ -559,7 +555,7 @@ python3 scripts/code2database_scanner.py scan --source /path --extraction-backen
 
 ## 技能激活（4 个子技能）
 
-技能分为 4 个子技能以保持 LLM 上下文精简。每个子技能有自己的 `SKILL.md`，仅暴露与其层相关的命令。CLI（`scripts/code2database_builder.py`）共享——无论哪个子技能激活，全部 266 个命令都可访问。
+技能分为 4 个子技能以保持 LLM 上下文精简。每个子技能有自己的 `SKILL.md`，仅暴露与其层相关的命令。CLI（`scripts/code2database_builder.py`）共享——无论哪个子技能激活，全部 263 个命令都可访问。
 
 | 子技能 | 触发 | 用途 |
 |--------|------|------|

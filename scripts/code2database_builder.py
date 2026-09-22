@@ -42,7 +42,6 @@ from _builder.profile.key_paths import cmd_key_paths
 from _builder.build.update_sync import cmd_merge, cmd_update, cmd_sync
 from _builder.graph.semantics import cmd_classify_endpoints, cmd_extract_semantics, cmd_apply_semantics, cmd_think_chain, cmd_extract_signals
 from _builder.memory.memory_cmd import cmd_save_memory, cmd_search_memory, cmd_validate_memory
-from _builder.export.export import cmd_export_obsidian, cmd_export_html
 from _builder.daemon.watcher import cmd_watch
 from _builder.ops.plugins import cmd_plugins, cmd_validate_plugin
 from _builder.analysis.concurrency import cmd_concurrency_risks, cmd_data_lifecycle
@@ -103,7 +102,7 @@ def _lazy(module_path: str, func_name: str):
     The heavy module is imported only when the command is actually
     invoked, not at CLI startup time. This saves ~200-400ms of import
     overhead for common commands (search, describe, trace) that don't
-    need daemon/web_ui/mcp_server/embeddings/bug_benchmark.
+    need daemon/mcp_server/embeddings/bug_benchmark.
     """
     def wrapper(args):
         mod = __import__(module_path, fromlist=[func_name])
@@ -1283,7 +1282,7 @@ def main():
     p_save_mem.add_argument("--category", default="", help="Category path (e.g. bdev/nvme/pcie; auto-created)")
     p_save_mem.add_argument("--author", default="", help="Author attribution for shared memory stores")
     p_save_mem.add_argument("--symbol", action="append", default=None, metavar="SYM",
-                            help="Graph symbol name this memory is about (repeatable) — grounds the memory to code; the web UI shows it on the symbol's page")
+                            help="Graph symbol name this memory is about (repeatable) — grounds the memory to code")
     p_save_mem.add_argument("--no-merge", action="store_true", help="Don't merge with similar existing entry")
     p_save_mem.add_argument("--correct", action="store_true",
                             help="Correct-first: reshape the most similar existing entry instead of creating a new variant (use when a previous answer was WRONG)")
@@ -1363,16 +1362,6 @@ def main():
     p_bml = sub.add_parser("brief-migrate-legacy",
                            help="Migrate legacy knowledge/*.md into the brief")
     p_bml.add_argument("--graph", required=True, help="Call graph output directory")
-
-    # export-html
-    p_html = sub.add_parser("export-html", help="Export invocation graph as interactive HTML")
-    p_html.add_argument("--graph", required=True, help="Call graph output directory")
-    p_html.add_argument("--output", help="Output HTML file path")
-    p_html.add_argument("--max-nodes", type=int, default=500, help="Max nodes per HTML file before splitting by domain")
-    p_html.add_argument("--format", choices=["vis-network", "mermaid"],
-                        help="HTML format (if omitted, prompts with pros/cons): "
-                             "vis-network=interactive drag/zoom, handles 500+ nodes, needs internet; "
-                             "mermaid=static, self-contained, Git-friendly, best for <200 nodes")
 
     # plugins
     p_plugins = sub.add_parser("plugins", help="List available callgraph plugins")
@@ -2210,12 +2199,6 @@ def main():
     p_grv.add_argument("--commit-short", default=None, help="Short commit hash")
     p_grv.add_argument("--operator", default=None, help="Operator name")
 
-    # export-obsidian
-    p_obs = sub.add_parser("export-obsidian",
-                           help="Export invocation graph as Obsidian vault with [[links]] = calls")
-    p_obs.add_argument("--graph", required=True, help="Call graph output directory")
-    p_obs.add_argument("--output", help="Output directory (default: graph-dir/obsidian-vault)")
-
     # validate-plugin
     p_vplug = sub.add_parser("validate-plugin",
                              help="Validate a plugin file for interface compliance")
@@ -2649,14 +2632,6 @@ def main():
     p_es.add_argument("--graph", required=True, help="Call graph output directory")
     p_es.add_argument("--query", required=True, help="Search query text")
     p_es.add_argument("--top-k", type=int, default=10, help="Max results to return")
-
-    # interactive Web UI
-    p_wui = sub.add_parser("web-ui",
-                           help="Start interactive Web UI server for graph browsing, path highlighting, LOD rendering")
-    p_wui.add_argument("--graph", required=True, help="Call graph output directory")
-    p_wui.add_argument("--port", type=int, default=8765, help="HTTP port (default 8765)")
-    p_wui.add_argument("--open", action="store_true",
-                       help="Open the browser automatically when the server starts")
 
     # BUG benchmark
     p_bb = sub.add_parser("bug-benchmark",
@@ -3115,7 +3090,7 @@ def main():
         "find-invariants", "value-flow", "concurrency-risks", "update",
         "session-init", "save-memory", "search-memory", "knowledge-brief",
         "kb-rebuild-index", "kb-cluster", "kb-known-unknowns", "kb-audit",
-        "kb-forget", "serve", "web-ui", "tx-begin", "daemon-status",
+        "kb-forget", "serve", "tx-begin", "daemon-status",
         "profile-health", "validate-memory", "kb-init",
         "kb-domain-name", "kb-domain-add", "kb-domain-list",
         "kb-domain-remove",
@@ -3193,8 +3168,6 @@ def main():
         "session-init": cmd_session_init,
         "init": cmd_session_init,  # SKILL.md alias
         "validate-memory": cmd_validate_memory,
-        "export-html": cmd_export_html,
-        "export-obsidian": cmd_export_obsidian,
         "plugins": cmd_plugins,
         "trace-chain": cmd_trace_chain,
         "trace": cmd_trace_chain,  # SKILL.md alias
@@ -3356,8 +3329,6 @@ def main():
         # D24 enhancement: TF-IDF char n-gram embeddings
         "embeddings-build": _lazy("_builder.kb.embeddings", "cmd_embeddings_build"),
         "embeddings-search": _lazy("_builder.kb.embeddings", "cmd_embeddings_search"),
-        # interactive Web UI
-        "web-ui": _lazy("_builder.misc.web_ui", "cmd_web_ui"),
         # BUG benchmark
         "bug-benchmark": _lazy("_builder.misc.bug_benchmark", "cmd_bug_benchmark"),
         # profile health + auto-evolution

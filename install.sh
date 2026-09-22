@@ -391,7 +391,7 @@ mkdir -p "$REF_DIR"
 for ref_file in usage_reference.md label_rules.md data_model.md \
     semantic_enhancement.md endpoint_pipeline.md cross_skill_collaboration.md \
     memory_knowledge.md json_schema.md usage_examples.md \
-    web_ui.md manifest_schema.md; do
+    manifest_schema.md; do
     if [ -f "$SCRIPT_DIR/docs/$LANG/references/$ref_file" ]; then
         copy_to "$SCRIPT_DIR/docs/$LANG/references/$ref_file" "$REF_DIR/$ref_file"
     elif [ -f "$SCRIPT_DIR/docs/en/references/$ref_file" ]; then
@@ -399,7 +399,7 @@ for ref_file in usage_reference.md label_rules.md data_model.md \
         copy_to "$SCRIPT_DIR/docs/en/references/$ref_file" "$REF_DIR/$ref_file"
     fi
 done
-ok "References (11 files) [core]"
+ok "References (10 files) [core]"
 
 # RUNTIME_CONFIG.md and PROFILE_MANUAL.md live at
 # docs/<lang>/ (not references/) — install them at the skill root so

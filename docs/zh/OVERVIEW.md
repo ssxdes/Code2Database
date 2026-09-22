@@ -52,11 +52,11 @@ C/C++ 提取后端有两种模式，服务于不同需求：
 
 skill 以 4 个子 skill 形式发布（`/Code2Database` 核心、`/Code2Database-analysis` 深度分析、`/Code2Database-ops` 运维、`/Code2Database-kb` 知识库），让 LLM 代理只加载与当前疑问相关的命令：
 
-- **核心（22 个 Tier-1 命令，含 `c2d` 总入口）**——常驻加载。构建、浏览、基础查询（scan、build、explore-flow、describe-node、trace-chain、neighbors、path、search、key-paths 等）。
+- **核心（21 个 Tier-1 命令，含 `c2d` 总入口）**——常驻加载。构建、浏览、基础查询（scan、build、explore-flow、describe-node、trace-chain、neighbors、path、search、key-paths 等）。
 - **分析（13 个 Tier-1 + 19 个 cgdb_* MCP 工具）**——按需加载。并发、数据流、不变量、FFI、路径可行性、来源、cgdb 表。
 - **运维（23 个 Tier-1 命令）**——按需加载。事务、守护进程、profile 健康、文档-代码对齐、导出、插件、记忆、嵌入。
 
-全部 266 个 CLI 命令都通过共享的 `scripts/code2database_builder.py` 可访问，无论哪个子 skill 激活。这个拆分纯粹是为了 LLM 上下文经济：4K-token 的核心 skill 总是有用；20K-token 的分析 skill 只应在用户问及竞争或不变量时加载。
+全部 263 个 CLI 命令都通过共享的 `scripts/code2database_builder.py` 可访问，无论哪个子 skill 激活。这个拆分纯粹是为了 LLM 上下文经济：4K-token 的核心 skill 总是有用；20K-token 的分析 skill 只应在用户问及竞争或不变量时加载。
 
 ### 为什么是 micro → lite → local 查询模式
 
@@ -196,8 +196,8 @@ micro 包（~200 token） → lite 包（~500 token） → explore-flow → desc
 │        cgdb_versions.py, cgdb_migrations.py, cgdb_records.py,       │
 │        cgdb_sync.py, sqlite_store.py, sqlite_postprocess.py,        │
 │        memory_manager.py, semantics.py,                             │
-│        auto_enhance.py, web_ui.py, bug_benchmark.py 等              │
-│  CLI：scripts/code2database_builder.py（258 个 CLI 命令，含 8 个 scanner 命令共 266）│
+│        auto_enhance.py, bug_benchmark.py 等                         │
+│  CLI：scripts/code2database_builder.py（255 个 CLI 命令，含 8 个 scanner 命令共 263）│
 └──────────────────────────────┬───────────────────────────────────────┘
                                │
                                ▼  （可选）
@@ -390,7 +390,7 @@ Code2Database 在 `scripts/` 下组织成 5 个包，外加 CLI 入口层。总�
 
 ```
 scripts/
-├── code2database_builder.py      ← CLI 入口（258 个 CLI 命令，argparse 路由）
+├── code2database_builder.py      ← CLI 入口（255 个 CLI 命令，argparse 路由）
 ├── code2database_scanner.py      ← 扫描器 CLI 入口（8 个子命令）
 ├── setup.sh                      ← 依赖安装器（支持按语言安装）
 ├── requirements.txt              ← 锁定依赖
@@ -501,8 +501,6 @@ scripts/
 │   ├── update_sync.py            ← update、sync、merge 操作
 │   ├── update_cmd.py             ← update-node、update-edge、patch-profile（LLM 补充）
 │   ├── changelog_update.py       ← quick-update、export-changes、merge-changes、semantic-status
-│   ├── export.py                 ← HTML + Obsidian 导出
-│   ├── web_ui.py                 ← 单文件 HTML/SVG/JS 交互查看器；HTTP 服务器
 │   ├── bug_benchmark.py          ← GraphInvestigator vs GrepInvestigator 召回/精确
 │   ├── profile_health.py         ← 7 类 0-100 评分；演进建议；HEAD 绑定
 │   ├── doc_code_align.py         ← 检测返回/参数/签名/陈旧文档不匹配
@@ -832,7 +830,7 @@ Code2Database 当前能力，按类别组织：
 - 值流（DATA_FLOW 边）+ 跨函数数据依赖（DATA_DEP 边）
 
 ### 查询与分析
-- 266 个 CLI 命令（4 个子 skill：核心 22、分析 13、运维 23、知识库 8 个 Tier-1）
+- 263 个 CLI 命令（4 个子 skill：核心 21、分析 13、运维 23、知识库 8 个 Tier-1）
 - 83 个 MCP (55 base + 28 design-report) 工具（36 code2database_* + 19 cgdb_*）
 - Cypher 子集查询语言（MATCH/WHERE/RETURN）
 - Z3 SMT 路径可行性（启发式回退）
@@ -849,8 +847,6 @@ Code2Database 当前能力，按类别组织：
 - LLM 自动增强，带置信度阈值自动写入 + 回滚
 - 持久化 Q&A 记忆，带衰减 + scratch
 - 知识提取/查询/校验
-- Web UI（单文件 HTML/SVG/JS）
-- HTML/Obsidian 导出
 - BUG benchmark（GraphInvestigator vs GrepInvestigator）
 - 插件系统
 - 嵌入（TF-IDF 字符 n-gram 语义搜索）

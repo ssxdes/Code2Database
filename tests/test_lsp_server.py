@@ -4,7 +4,7 @@ Verifies that LSPServer:
 - initializes with the correct ServerCapabilities handshake
 - resolves definition, references, hover, moniker, callHierarchy
 - handles unknown methods with LSP error code -32601
-- routes through the same GraphCache the Web UI uses
+- routes through the shared GraphCache (graph_cache.py)
 """
 import json
 import os

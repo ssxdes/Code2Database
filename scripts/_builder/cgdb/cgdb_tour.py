@@ -194,7 +194,6 @@ def generate_tour(
     lines.append("- `key-paths` — auto-extract critical execution paths\n")
     lines.append("- `concurrency-risks` — check for data races\n")
     lines.append("- `cgdb-suggest` — get proactive improvement suggestions\n")
-    lines.append("- `web-ui` — start the interactive Web UI\n")
     lines.append("\n---\n\n")
     lines.append("*This tour was auto-generated from the code graph database. "
                  "Run `cgdb-tour` again after rebuilding the graph to update.*\n")

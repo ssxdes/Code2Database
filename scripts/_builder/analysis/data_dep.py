@@ -453,7 +453,7 @@ def cmd_data_dep(args):
         # Guard: the build materializes a registry over every node in
         # memory; on SQLite-backed multi-million-node graphs this gets the
         # process OOM-killed (exit -9, no diagnostics). Exit cleanly like
-        # value-flow --build / export-html do.
+        # value-flow --build does.
         _ensure_mutable_graph(
             G, "data-dep --build",
             reason=("the build step materializes a full in-memory registry "

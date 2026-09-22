@@ -16,7 +16,7 @@ Code2Database 用两个形态相反的长期存储：
 python3 scripts/code2database_builder.py session-init --graph code2db-out/ [--top 10] [--json]
 ```
 
-一次加载四层并输出为 prompt 就绪文本：渲染后的简报、记忆摘要（按权重取 top 活跃 Q&A，含分类/作者/阅读数）、图统计 + 简报漂移告警、known unknowns（反复未命中的查询 — 为它们补答案）。空存储退化为引导提示而非报错。这是每次会话的 Step 0（AI）也是最快的项目简报（人类）；Web UI 以交互方式渲染同样的数据（Brief / Memory 面板）。MCP：同样的上下文以 `code2database_session_init` 工具暴露——代理应在会话开始时最先调用它，先于 search/describe/trace。
+一次加载四层并输出为 prompt 就绪文本：渲染后的简报、记忆摘要（按权重取 top 活跃 Q&A，含分类/作者/阅读数）、图统计 + 简报漂移告警、known unknowns（反复未命中的查询 — 为它们补答案）。空存储退化为引导提示而非报错。这是每次会话的 Step 0（AI）也是最快的项目简报（人类）。MCP：同样的上下文以 `code2database_session_init` 工具暴露——代理应在会话开始时最先调用它，先于 search/describe/trace。
 
 ## Memory（memory.db）
 
@@ -64,7 +64,7 @@ FTS5 无 token 交叠时，token 集相似度回退仍能找到近似项。**中
 
 - `save-memory ... --symbol nvme_submit_cmd` 把符号名存入 `symbols` 列；合并时吸收进簇根，`--correct` 时传 `--symbol` 可重新锚定。
 - `search-memory --symbol nvme_submit_cmd` 按符号精确过滤（大小写不敏感）；MCP `code2database_memory_search` 接受 `symbol` 参数。
-- Web UI 在该符号的节点页展示锚定的问答（"Veteran Memories"）——新人读代码时就地看到这个函数的坑。
+- 锚定到符号的问答（"Veteran Memories"）可通过 `search-memory --symbol` 检索——新人读代码时就地看到这个函数的坑。
 - `MemoryStore.entries_for_symbol(name)` 是编程接口（按簇去重、按权重排序）。
 
 ```bash
@@ -114,11 +114,9 @@ python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
   --action authors
 ```
 
-同一张血缘图也在 Web UI Memory 面板中交互渲染（Lineage 按钮）。
-
 ### 只读共享
 
-Web UI 以只读方式服务 memory（`MemoryStore(read_only=True)`）：共享挂载上的查看者获得完整的检索/摘要/血缘/作者访问——不创建目录、不写 schema、不累加阅读计数——而写操作（save/split/merge/…）仍由库 owner 执行。按 author 过滤的视图（`/api/memory/authors` + 下拉框）回答"alice 在这个项目上沉淀了什么"。
+只读 MCP 部署以同样方式服务 memory（`MemoryStore(read_only=True)`）：查看者获得完整的检索/摘要/血缘/作者访问——不创建目录、不写 schema、不累加阅读计数——而写操作（save/split/merge/…）仍由库 owner 执行。按 author 过滤的检索（`manage-memory --action authors`、`--author` 过滤）回答"alice 在这个项目上沉淀了什么"。
 
 
 ### 权重模型（未变）

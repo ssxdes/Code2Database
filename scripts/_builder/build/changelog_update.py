@@ -528,7 +528,7 @@ def cmd_quick_update(args):
             summary["auto_threshold"] = threshold_val
             # Record the trigger event without claiming a semantic update
             # ran — last_semantic_update must only be set when one did, or
-            # the status file misleads session-init / web UI freshness.
+            # the status file misleads session-init freshness.
             _write_semantic_status(graph_dir,
                                    stale_count=status.get("stale_count", 0),
                                    changed_files=summary.get("changed_files", 0),

@@ -696,7 +696,7 @@ class TestReportVerb(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 rc = entry._action_report(_ns(action="report"))
         self.assertEqual(rc, 2)
-        for kind in ("design", "diagnose", "html", "mermaid", "plantuml"):
+        for kind in ("design", "diagnose", "mermaid", "plantuml"):
             self.assertIn(kind, buf.getvalue())
 
     def test_unknown_kind_rejected(self):
@@ -755,13 +755,6 @@ class TestReportVerb(unittest.TestCase):
         self.assertIn("export-plantuml", argv)
         self.assertIn("--mode", argv)
         self.assertIn("structure", argv)
-
-    def test_html_delegates(self):
-        rc, argv = self._delegate_run(kind="html", graph="/g",
-                                      output="v.html")
-        self.assertEqual(rc, 0)
-        self.assertIn("export-html", argv)
-        self.assertIn("--output", argv)
 
     def test_dry_run_does_not_execute(self):
         with mock.patch.object(entry.subprocess, "run") as run:

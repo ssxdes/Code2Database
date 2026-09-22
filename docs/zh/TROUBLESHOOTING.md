@@ -91,14 +91,14 @@ code2database-builder tx-restore --graph code2db-out/ --snapshot <id>
 - 反复落空的疑问会以 known-unknowns 出现在 `session-init` 里——用
   `c2d capture` 把答案沉淀下来，而不是留着不答
 
-## MCP 或 Web UI 拒绝启动
+## MCP 服务器拒绝启动
 
-现象：`serve` 或 `web-ui` 立即退出。
+现象：`serve` 立即退出。
 
 - 无 `--token` 绑定公网接口被设计性拒绝——设置 `--token` 或
   `C2D_MCP_TOKEN`
-- 端口占用：`--port` 冲突会体现在启动错误里；查
-  `ss -ltnp | grep 8765`
+- 端口占用：`--port` 冲突会体现在启动错误里；用
+  `ss -ltnp` 查看占用端口
 - `--read-only` 依设计隐藏写工具——客户端抱怨缺工具时，先确认它
   连的是只读部署
 - HTTP 健康端点（`/health`）无需鉴权，适合作为编排器的存活探针

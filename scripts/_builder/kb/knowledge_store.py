@@ -11,7 +11,7 @@ question/answer entries), different physical file
 
 The knowledge base is the source of truth. knowledge/brief.json
 stays as a derived, size-budgeted prompt view regenerated after
-every write, so existing brief consumers (session-init, web UI,
+every write, so existing brief consumers (session-init,
 foreign import) keep working unchanged.
 
 Row kinds map onto the brief sections:

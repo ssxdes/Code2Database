@@ -192,7 +192,7 @@ done
 
 **触发**：用户希望将调用图导出为其他格式（非 HTML）
 
-1. Code2Database：首先使用 export-html 生成基础可视化
+1. Code2Database：首先使用 export-mermaid 生成基础可视化
 2. 搜索匹配 "diagram/graph/visualize/export" 的已安装技能：
    - 找到 → 调用技能，传递调用图数据
    - 未找到 → 提示用户安装相关可视化技能

@@ -21,7 +21,7 @@ This sub-skill assumes `code2db-out/` already exists (built by the parent `/Code
   - "Take a snapshot before I change this" / "Roll back this transaction"
   - "Check profile health" / "Evolve my profile" / "Bind profile to HEAD"
   - "Doc says X, code does Y — mark the doc stale"
-  - "Export the graph to HTML / Obsidian / Web UI"
+  - "Export the graph to Mermaid / PlantUML / a design document"
   - "Install a git hook for auto-sync"
   - "Apply a diff/git diff as a graph patch"
   - "Save this Q&A to memory" / "Search memory"
@@ -89,7 +89,7 @@ LLM MUST get user confirmation before any DB-modifying command. This is the core
 | **Graph versioning** | `graph-record-version` → `graph-history` → `graph-diff` |
 | **Health and integrity** | `doctor --graph DIR` (one-shot: db integrity, schema versions, freshness, memory, brief, daemon; `--json` + exit 0/1/2 for CI) |
 | **Memory management** | `save-memory --category` → `search-memory` → `manage-memory --action split/merge/move/categories` → `memory-health` → `validate-memory` ; knowledge brief: `brief-extract` → `brief-validate` → `brief-suggest` → `brief-migrate-legacy` ; cross-project: `kb-global-share-memory` → `kb-global-search-memory` → `kb-global-import-memory` |
-| **Export / plugin / benchmark** | `export-html` / `export-obsidian` / `web-ui` ; `plugins` / `validate-plugin` ; `bug-benchmark` |
+| **Export / plugin / benchmark** | `export-mermaid` / `export-plantuml` / `design-doc` ; `plugins` / `validate-plugin` ; `bug-benchmark` |
 | **Embeddings (experimental)** | `embeddings-build` → `embeddings-search` |
 
 ## On-demand Commands (specialized / rare)
@@ -129,9 +129,8 @@ When you detect a question about **simple browsing, scanning, building, or gener
 | Document | Content |
 |----------|---------|
 | `references/ops_commands.md` | Full syntax for all ops commands (transactions, daemon, profile, doc-code, exports, plugins, memory, embeddings) |
-| `references/web_ui.md` | Web UI usage: HTTP API endpoints, keyboard shortcuts, performance notes |
 | `references/manifest_schema.md` | `build-multi` manifest schema for multi-project graphs |
-| `RUNTIME_CONFIG.md` *(inherited — parent skill dir)* | Runtime tuning (invariants, auto_enhance, transactions, ffi, web_ui, benchmark, profile_health, doc_code, daemon sections) |
+| `RUNTIME_CONFIG.md` *(inherited — parent skill dir)* | Runtime tuning (invariants, auto_enhance, transactions, ffi, benchmark, profile_health, doc_code, daemon sections) |
 | `PROFILE_MANUAL.md` *(inherited — parent skill dir)* | Profile authoring (skip_names, callback_detection, struct_op_types, registration_macros, domain_rules, threading_models) |
 
 **Inherited from parent** (`/Code2Database`): `references/usage_reference.md`, `references/label_rules.md`, `references/data_model.md`, `references/json_schema.md`, `references/usage_examples.md`, `references/memory_knowledge.md`, `RUNTIME_CONFIG.md`, `PROFILE_MANUAL.md`. These are available at the parent skill's directory.

@@ -53,7 +53,7 @@ Start here: find the task, use the one call, or drop to the direct command seque
 | Ingest a project (first time) | `c2d setup --source DIR` | `make` (env-check → scan → build → derived artifacts → exports) |
 | Load session context | `c2d session` | `session-init` |
 | Freshness check + sync routing | `c2d freshen` | `cgdb-freshness` → `make` / `daemon-start` / `build-update` |
-| Generate a report artifact | `c2d report --kind KIND` | `design-doc` / `diagnose` / `export-html` / `export-mermaid` / `export-plantuml` |
+| Generate a report artifact | `c2d report --kind KIND` | `design-doc` / `diagnose` / `export-mermaid` / `export-plantuml` |
 | Save a Q&A into memory | `c2d capture --question .. --answer ..` | `save-memory` |
 | Safe graph editing | — | `tx-begin` → `update-node` / `update-edge` / `patch-profile` → `tx-commit` |
 | Keep the graph current | — | `daemon-start` → `daemon-status` → `daemon-wait-sync`, or `build-update` |
@@ -664,11 +664,8 @@ Weight decay: recency x importance x access, decayed entries auto-archived as ex
 ## Step 9 — Export
 
 ```bash
-# HTML visualization (vis-network/mermaid)
-python3 "$SKILL_DIR/scripts/code2database_builder.py" export-html --graph code2db-out/
-
-# Obsidian vault export
-python3 "$SKILL_DIR/scripts/code2database_builder.py" export-obsidian --graph code2db-out/
+# Mermaid flowchart (text output; renders in GitHub/Markdown previews)
+python3 "$SKILL_DIR/scripts/code2database_builder.py" export-mermaid --graph code2db-out/
 ```
 
 ## Step 0 — Session Context
@@ -876,9 +873,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (266 commands)
+## Complete CLI Command Reference (263 commands)
 
-All 266 CLI subparsers across `code2database_builder.py` (258) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary. 13 short aliases (`describe`, `context`, `trace`, `concurrency`, `save`, `recall`, `brief`, `flow`, `find`, `health`, `daemon`, `export`, `init`) map to the full commands listed below and count toward the builder total.
+All 263 CLI subparsers across `code2database_builder.py` (255) and `code2database_scanner.py` (8). Each entry shows the command name and its `--help` summary. 13 short aliases (`describe`, `context`, `trace`, `concurrency`, `save`, `recall`, `brief`, `flow`, `find`, `health`, `daemon`, `export`, `init`) map to the full commands listed below and count toward the builder total.
 
 | Command | Description |
 |---------|-------------|
@@ -986,10 +983,8 @@ All 266 CLI subparsers across `code2database_builder.py` (258) and `code2databas
 | `explain-label` | Explain why a node has a given label (dead_code, API_entry, race_risk, etc.) |
 | `explore-flow` | One-shot context retrieval: query → nodes + paths + conditions |
 | `export-changes` | Export change graph from git/svn changelog |
-| `export-html` | Export invocation graph as interactive HTML |
 | `export-mermaid` | Export call chains as Mermaid flowchart diagrams |
 | `export-plantuml` | Export the code graph as PlantUML text diagrams (`--mode call|module|impact|structure`) |
-| `export-obsidian` | Export invocation graph as Obsidian vault with [[links]] = calls |
 | `extract-invariants` | Extract preconditions/postconditions/loop_invariants + state machines from function bodies |
 | `extract-invariants-llm` | Extract invariants with LLM consensus and continuous confidence |
 | `brief-extract` | Initialize/refresh the brief template from graph stats |
@@ -1127,7 +1122,6 @@ All 266 CLI subparsers across `code2database_builder.py` (258) and `code2databas
 | `value-flow` | Build and query value-flow edges (where does this value come from / go to?) |
 | `verify-consistency` | Verify DB render matches disk sha256 |
 | `watch` | Auto-sync: watch source directory and sync incrementally |
-| `web-ui` | Start interactive Web UI server for graph browsing, path highlighting, LOD rendering |
 | `who-allocates` | Find functions that allocate a resource (ALLOCATES edges) |
 | `who-frees` | Find functions that free a resource (FREES edges) |
 | `who-locks` | Find functions that acquire a lock (LOCKS edges) |

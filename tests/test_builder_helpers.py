@@ -716,13 +716,6 @@ class TestNewCommands(unittest.TestCase):
             main()
         self.assertEqual(cm.exception.code, 0)
 
-    def test_export_obsidian_help(self):
-        sys.argv = ["code2database_builder.py", "export-obsidian", "--help"]
-        with self.assertRaises(SystemExit) as cm:
-            from code2database_builder import main
-            main()
-        self.assertEqual(cm.exception.code, 0)
-
     def test_validate_plugin_help(self):
         sys.argv = ["code2database_builder.py", "validate-plugin", "--help"]
         with self.assertRaises(SystemExit) as cm:

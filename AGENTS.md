@@ -23,15 +23,15 @@ Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/
 - **cgdb layer** (clang backend only) — typed semantic tables alongside the legacy `functions`/`edges`: AST nodes, types, config predicates, CFG, data flow, alias (stub), ops_bindings (typed vtable dispatch), sync_primitives + happens_before, provenance + time-travel versions. Queried via 19 `cgdb_*` MCP tools or the `cgdb-*` CLI family.
 - **Dual knowledge/memory stores** — knowledge = typed rows in `knowledge/knowledge.db` (source of truth; `knowledge/brief.json` is the derived size-budgeted prompt view); memory = shared accumulating SQLite store (`memory/memory.db`, hierarchical categories, FTS5 BM25 retrieval, split/merge/move/compact governance; compact merges near-duplicate roots after every build). `session-init` is the one-shot entry (brief + memory digest + graph state incl. freshness + known-unknowns); `save-memory --correct` is the correct-first save; `brief-suggest` mines graduation candidates (no auto-write). Both stores run with or without a built graph (`kb-init` provisions a standalone store); every entry carries a version scope (branch/release tag) that queries use for current-version-first ranking, and `kb-query --cross` searches other watched kb domains.
 
-Full capability catalog with per-command detail: `docs/en/references/usage_reference.md` (intent index → pipeline walkthrough → complete 266-command reference). Do not duplicate it here.
+Full capability catalog with per-command detail: `docs/en/references/usage_reference.md` (intent index → pipeline walkthrough → complete 263-command reference). Do not duplicate it here.
 
 ## Skill Structure (4 sub-skills)
 
-The skill is split into 4 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 258 subcommands + 8 scanner subcommands) is shared — all commands are accessible regardless of sub-skill activation.
+The skill is split into 4 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 255 subcommands + 8 scanner subcommands) is shared — all commands are accessible regardless of sub-skill activation.
 
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|
-| `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded. 22 Tier-1 commands + the `c2d` umbrella. |
+| `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded. 21 Tier-1 commands + the `c2d` umbrella. |
 | `Code2Database-analysis` | `/Code2Database-analysis` | Deep semantic analysis (concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb tables). 13 Tier-1 commands + 19 `cgdb_*` MCP tools. |
 | `Code2Database-ops` | `/Code2Database-ops` | Graph editing + ops (transactions, daemon, profile/doc-code, exports, plugins, memory, embeddings). 23 Tier-1 commands. |
 | `Code2Database-kb` | `/Code2Database-kb` | Standalone knowledge/memory base (own SQLite stores, FTS5 retrieval, version-scoped recall, cross-domain queries; no graph required). 8 Tier-1 commands. |
@@ -77,9 +77,9 @@ Full usage constraints (daemon freshness, doc-code alignment, invariants confide
 python3 -m pytest tests/ -v
 ```
 
-Capability modules have dedicated unit tests in `tests/` (177 files) covering invariants, auto-enhance thresholds, transactions, FFI, Web UI (HTTP + JS), daemon, LSP, hybrid search, embeddings, SARIF, AST pattern matching, taint analysis, code intelligence, concurrency, data dependencies, commit provenance, updates, and profile generation.
+Capability modules have dedicated unit tests in `tests/` (174 files) covering invariants, auto-enhance thresholds, transactions, FFI, daemon, LSP, hybrid search, embeddings, SARIF, AST pattern matching, taint analysis, code intelligence, concurrency, data dependencies, commit provenance, updates, and profile generation.
 
-**Test suite**: 3400+ tests across 177 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails. Tests that drive a real scanner subprocess must pin `--memory-limit 9999` (and raised `--memory-warn/crit-threshold`) — MemoryGuard reads SYSTEM memory, so its auto cap (total RAM × 0.8) can cancel even a tiny scan on a busy machine, and make now fails fast on the leftover checkpoint. tests/test_web_ui_js.py extracts the shipped `<script>` block and runs it under Node.js — skipped when node is not on PATH. tests/test_skill_manifest.py introspects both argparse trees and pins skill.json/skill_analysis.json/skill_ops.json command lists against them — so adding a CLI command without updating the manifests fails CI.)
+**Test suite**: 3300+ tests across 174 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails. Tests that drive a real scanner subprocess must pin `--memory-limit 9999` (and raised `--memory-warn/crit-threshold`) — MemoryGuard reads SYSTEM memory, so its auto cap (total RAM × 0.8) can cancel even a tiny scan on a busy machine, and make now fails fast on the leftover checkpoint. tests/test_skill_manifest.py introspects both argparse trees and pins skill.json/skill_analysis.json/skill_ops.json command lists against them — so adding a CLI command without updating the manifests fails CI.)
 
 ## Language Support
 
@@ -107,7 +107,7 @@ Documentation is available in English (`docs/en/`) and Chinese (`docs/zh/`); `sc
 | `scripts/_builder/daemon/` | Background daemon (inotify + polling + Unix socket API) |
 | `scripts/_builder/mcp/` | MCP server (83 tools, stdio + Streamable HTTP) |
 | `scripts/_builder/flow/` | `c2d` umbrella engine + ask recipes |
-| `scripts/_builder/misc/` | FFI bridge, Web UI, bug benchmark, doc-code alignment, intent router |
+| `scripts/_builder/misc/` | FFI bridge, bug benchmark, doc-code alignment, intent router |
 | `scripts/_detector/` / `scripts/_profile/` | Build/framework/community detection; profile schema + generation |
 | `scripts/config/profiles/` | Built-in project profiles (DO NOT read into context) |
 | `docs/en/` / `docs/zh/` | Documentation (en/zh parity enforced) |

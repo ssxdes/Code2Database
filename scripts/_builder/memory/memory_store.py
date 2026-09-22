@@ -1701,7 +1701,7 @@ class MemoryStore:
           split        parent --split--> child   (child.split_from)
           merged_into  canonical <--merge-- absorbed tombstone
           variant      root --variant--> variant (active, root_id != id)
-        Pure read — safe for the read-only web UI.
+        Pure read — safe for read-only callers.
         """
         conn = self._connect()
         try:
@@ -1846,7 +1846,7 @@ class MemoryStore:
         Groups by author (empty/NULL/'anonymous' all attributed as
         'anonymous' for unified display):
         [{author, entries, active}] ordered by total entries. Pure
-        read; used by the read-only web UI author filter.
+        read; used by the read-only author filter.
         """
         conn = self._connect()
         try:

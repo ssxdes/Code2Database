@@ -5,8 +5,8 @@ Regression guard for a bug where 70% of a real project's call edges
 dropped: split_by_domain() filtered cross-domain edges with
 ``'.' not in v``, but real scanner node IDs NEVER contain dots
 (_make_func_id builds them as domain.replace('.', '_') + '_' + name),
-so every cross-domain call edge was discarded. Downstream, the Web UI
-loads domain JSONs + master cross_domain_edges — with them dropped, a
+so every cross-domain call edge was discarded. Downstream, graph
+loaders read domain JSONs + master cross_domain_edges — with them dropped, a
 node like spdk_nvme_qpair_process_completions rendered as an isolated
 node with no call edges.
 
@@ -178,7 +178,7 @@ class TestCrossDomainEndToEnd(unittest.TestCase):
     a_public (liba) calls b_public (libb) and b_entry (libb) calls
     a_public (liba): both calls cross domains, so they must appear in
     master cross_domain_edges, and load() must reconstruct them so
-    neighbor queries can walk across domains (what the Web UI does).
+    neighbor queries can walk across domains.
     """
 
     @classmethod
@@ -249,7 +249,7 @@ class TestCrossDomainEndToEnd(unittest.TestCase):
         self.assertTrue(a_pub and b_pub, "nodes missing after load")
         self.assertTrue(G.has_edge(a_pub[0], b_pub[0]),
                         "load() lost the a_public -> b_public edge; "
-                        "neighbors/Web UI would show an isolated node")
+                        "neighbors would show an isolated node")
 
 
 if __name__ == "__main__":

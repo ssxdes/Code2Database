@@ -53,10 +53,10 @@ def _write_graph_dir(graph_dir: str):
 
 
 class TestGraphCacheImport(unittest.TestCase):
-    """Verify the web_ui module imports cleanly."""
+    """Verify the graph_cache module imports cleanly."""
 
     def test_module_imports_cleanly(self):
-        from _builder.misc.web_ui import GraphCache
+        from _builder.misc.graph_cache import GraphCache
         self.assertTrue(callable(GraphCache))
         # Verify the 8+ public methods exist
         for name in ('reload', 'summary', 'get_node', 'neighbors',
@@ -71,7 +71,7 @@ class TestGraphCacheSmoke(unittest.TestCase):
     """Smoke test 8 GraphCache public methods."""
 
     def setUp(self):
-        from _builder.misc.web_ui import GraphCache
+        from _builder.misc.graph_cache import GraphCache
         self.tmpdir = tempfile.mkdtemp()
         self.addCleanup(self._cleanup)
         _write_graph_dir(self.tmpdir)
@@ -179,7 +179,7 @@ class TestGraphCacheExtended(unittest.TestCase):
     """Reload, list_domains, get_code_snippet — supporting methods."""
 
     def setUp(self):
-        from _builder.misc.web_ui import GraphCache
+        from _builder.misc.graph_cache import GraphCache
         self.tmpdir = tempfile.mkdtemp()
         self.addCleanup(self._cleanup)
         _write_graph_dir(self.tmpdir)
@@ -226,7 +226,7 @@ class TestGraphCacheCodePayload(unittest.TestCase):
     """
 
     def setUp(self):
-        from _builder.misc.web_ui import GraphCache
+        from _builder.misc.graph_cache import GraphCache
         self.tmpdir = tempfile.mkdtemp()
         self.addCleanup(self._cleanup)
         # Create a real source file with a long function (50 lines)
@@ -298,7 +298,7 @@ class TestGraphCacheCodePayload(unittest.TestCase):
         }
         with open(os.path.join(d2, 'code2database_test.json'), 'w') as f:
             json.dump(domain, f)
-        from _builder.misc.web_ui import GraphCache
+        from _builder.misc.graph_cache import GraphCache
         cache2 = GraphCache(d2)
         payload = cache2.get_code_payload('nb')
         # body_text is 5000 chars — old cap was 2000, new cap is 50000.
@@ -332,7 +332,7 @@ class TestGraphCacheCodePayload(unittest.TestCase):
                 self._body_calls += 1
                 return 'decompressed body for ' + nid
 
-        from _builder.misc.web_ui import GraphCache
+        from _builder.misc.graph_cache import GraphCache
         cache = GraphCache(self.tmpdir)
         cache.G = FakeLazyGraph()
         payload = cache.get_code_payload('lazy_node')
@@ -352,7 +352,7 @@ class TestGraphCacheDegrees(unittest.TestCase):
     """
 
     def setUp(self):
-        from _builder.misc.web_ui import GraphCache
+        from _builder.misc.graph_cache import GraphCache
         self.tmpdir = tempfile.mkdtemp()
         self.addCleanup(self._cleanup)
         self.GraphCache = GraphCache
@@ -449,7 +449,7 @@ class TestImpactAnalysis(unittest.TestCase):
     """impact_analysis correctness + truncation surfacing."""
 
     def setUp(self):
-        from _builder.misc.web_ui import GraphCache
+        from _builder.misc.graph_cache import GraphCache
         self.tmpdir = tempfile.mkdtemp()
         self.addCleanup(self._cleanup)
         nodes = [
@@ -498,7 +498,7 @@ class TestRealCommunities(unittest.TestCase):
     the precomputed .code2database_communities.json was never read."""
 
     def setUp(self):
-        from _builder.misc.web_ui import GraphCache
+        from _builder.misc.graph_cache import GraphCache
         self.tmpdir = tempfile.mkdtemp()
         self.addCleanup(self._cleanup)
         self.GraphCache = GraphCache
@@ -563,7 +563,7 @@ class TestSearchResultsLocation(unittest.TestCase):
     """search() results carry location info for disambiguation."""
 
     def setUp(self):
-        from _builder.misc.web_ui import GraphCache
+        from _builder.misc.graph_cache import GraphCache
         self.tmpdir = tempfile.mkdtemp()
         self.addCleanup(self._cleanup)
         nodes = [

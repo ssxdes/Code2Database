@@ -35,7 +35,6 @@ Fields marked **wired** seed the corresponding CLI default and are overridden by
 | `auto_enhance.*` | reserved |
 | `transactions.*` | reserved |
 | `ffi.*` | reserved |
-| `web_ui.*` | reserved (the Web UI port is set via `web-ui --port`; bind host via `C2D_WEB_UI_HOST`) |
 | `benchmark.*` | reserved |
 | `profile_health.*` | reserved |
 | `doc_code.*` | reserved |
@@ -126,15 +125,6 @@ Edit this file when you need to tune pipeline behavior without modifying source 
 | `detect_go_cgo` | bool | `true` | Detect Go `import "C"` cgo bindings. |
 | `detect_rust_extern` | bool | `true` | Detect Rust `extern "C"` / `#[no_mangle]` bindings. |
 | `flag_lossy_conversions` | bool | `true` | Mark type marshalling edges as `lossy: true` when conversion may lose data (e.g., int64 → int32). |
-
-### `web_ui` — Web UI Parameters
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `port` | int | `8765` | HTTP port for the interactive Web UI. |
-| `host` | string | `"127.0.0.1"` | Bind host. Use `"0.0.0.0"` for shared access (not recommended). |
-| `open_browser` | bool | `false` | Auto-open the browser on start. |
-| `max_nodes_render` | int | `5000` | Maximum nodes rendered in the SVG; larger graphs are sampled. |
 
 ### `benchmark` — BUG Benchmark Parameters
 

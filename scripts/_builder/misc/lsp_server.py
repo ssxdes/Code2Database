@@ -12,8 +12,8 @@ Architecture:
 - Methods: definition, references, callHierarchy/incomingCalls+outgoingCalls,
   hover, documentSymbol, workspaceSymbol, moniker
 
-All methods are wired to GraphCache (the same in-memory graph cache used by
-the Web UI). Start with: `code2database_builder.py lsp-server --graph
+All methods are wired to GraphCache (the shared in-memory graph cache).
+Start with: `code2database_builder.py lsp-server --graph
 /path/to/graph` and configure your editor to spawn it as a language
 server for the codebase's language.
 
@@ -48,7 +48,7 @@ class LSPServer:
 
     def _ensure_cache(self):
         if self._cache is None:
-            from _builder.misc.web_ui import GraphCache
+            from _builder.misc.graph_cache import GraphCache
             self._cache = GraphCache(self.graph_dir)
 
     def initialize(self, params: Dict) -> Dict:

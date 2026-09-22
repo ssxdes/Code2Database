@@ -92,12 +92,6 @@ _SPEC: Dict[str, Dict[str, type]] = {
         "detect_rust_extern": bool,
         "flag_lossy_conversions": bool,
     },
-    "web_ui": {
-        "port": int,
-        "host": str,
-        "open_browser": bool,
-        "max_nodes_render": int,
-    },
     "benchmark": {
         "recall_target": float,
         "max_tool_calls": int,

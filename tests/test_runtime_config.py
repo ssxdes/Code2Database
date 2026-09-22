@@ -212,7 +212,6 @@ _PENDING_KEYS = {
     "transactions": ("snapshot_keep_count", "lock_timeout_seconds"),
     "ffi": ("detect_python_ctypes", "detect_go_cgo", "detect_rust_extern",
             "flag_lossy_conversions"),
-    "web_ui": ("port", "host", "open_browser", "max_nodes_render"),
     "benchmark": ("recall_target", "max_tool_calls", "max_tokens"),
     "profile_health": ("min_score", "auto_apply_extracted",
                        "require_confirm_inferred", "bind_to_head"),

@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. C/C++/Go/Python/Java/Rust/ASM invocation graphs: conditional paths, concurrency analysis, data flow, FFI tracing, a 13-layer typed cgdb semantic store. One-shot lifecycle via the c2d umbrella (setup → session → ask → capture). 83 MCP tools + 266 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
+description: "Turn a codebase into a queryable code database. Scan once, query forever — no more grep/glob/Read. C/C++/Go/Python/Java/Rust/ASM invocation graphs: conditional paths, concurrency analysis, data flow, FFI tracing, a 13-layer typed cgdb semantic store. One-shot lifecycle via the c2d umbrella (setup → session → ask → capture). 83 MCP tools + 263 CLI commands. Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
 trigger: /Code2Database
 ---
 
@@ -10,7 +10,7 @@ trigger: /Code2Database
 
 ## One-Click Lifecycle — the `c2d` Umbrella
 
-You do not need to memorize the 266-command surface. One command covers the whole workflow — learn 4 verbs:
+You do not need to memorize the 263-command surface. One command covers the whole workflow — learn 4 verbs:
 
 | Verb | Purpose | Example |
 |------|---------|---------|
@@ -82,16 +82,16 @@ python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_s
 
 ## Core Commands (Tier-1)
 
-The 22 Tier-1 commands cover ~95% of agent workflows. Task→command navigation: the intent index in `references/usage_reference.md`, or `c2d recipes` / `c2d verbs` at runtime.
+The 21 Tier-1 commands cover ~95% of agent workflows. Task→command navigation: the intent index in `references/usage_reference.md`, or `c2d recipes` / `c2d verbs` at runtime.
 
 - **Lifecycle**: `c2d`, `make`, `build`, `update`
 - **Query**: `query` (Cypher; natural language: `intent-query`), `describe`, `trace`, `impact`, `context`, `find`, `flow`, `concurrency`
 - **Memory & knowledge**: `session-init`, `kb-query`, `save-memory`, `search-memory`, `knowledge-brief` — kb governance commands live in the ops and kb sub-skills
-- **Serving & ops**: `serve` (MCP, 83 tools), `web-ui`, `tx-begin`, `daemon`, `health`
+- **Serving & ops**: `serve` (MCP, 83 tools), `tx-begin`, `daemon`, `health`
 
 Aliases: `describe`/`context` → describe-node, `trace` → trace-chain, `find` → find-invariants, `flow` → value-flow, `concurrency` → concurrency-risks, `save` → save-memory, `recall` → search-memory, `brief` → knowledge-brief, `health` → profile-health, `daemon` → daemon-status, `export` → export-mermaid.
 
-All 266 CLI commands remain accessible.
+All 263 CLI commands remain accessible.
 
 ## Supported Languages
 
@@ -111,7 +111,7 @@ C/C++ | Go | Python | Java | Rust | ASM (6 + ASM, C/C++ share scanner)
 
 - **Session start**: run `session-init` FIRST — brief (mandatory rules/modes/pitfalls) + memory digest (veteran experience) + graph state with source-freshness warning + known-unknowns, in one prompt-ready output
 - **Correction protocol**: `search-memory` before answering a project question; WRONG answer → `save-memory --correct` (reshapes the most similar entry in place — no duplicate variant); MISSING → `save-memory --category ... --author ... --symbol fn`; repeatedly-missed queries (known-unknowns in session-init) → capture the answer into memory
-- **Symbol grounding**: memories about a specific function/type pass `--symbol <name>` (repeatable) — shown on the symbol's node page in the web UI; `search-memory --symbol` filters by it; memories absorb symbols on merge and re-ground on `--correct`
+- **Symbol grounding**: memories about a specific function/type pass `--symbol <name>` (repeatable); `search-memory --symbol` filters by it; memories absorb symbols on merge and re-ground on `--correct`
 - **Capture triggers**: save after (a) solving something non-trivial, (b) hitting a pitfall that cost real debugging time, (c) discovering a mandatory rule the brief lacks, (d) correcting a wrong answer, (e) answering a known-unknown; skip anything the graph answers in one query
 - Run `kb-rebuild-index` after `build`/`update` or memory/brief edits; govern memory with `manage-memory --action split/merge/move/compact/categories` (compact auto-runs after every build); `brief-suggest` proposes graduating memories into the brief; keep the brief lean (`brief-validate` warns above 3000 chars — move overflow into memory)
 - Start with `context_pack_micro` → `context_pack_lite` → `describe`/`trace`; never bulk-read output files

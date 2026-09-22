@@ -561,9 +561,8 @@ python3 scripts/code2database_builder.py save-memory \
   [--yes]
 ```
 
-`--symbol` (repeatable) grounds the memory to graph symbols: the web UI
-shows it on that symbol's node page, and `search-memory --symbol`
-filters by it.
+`--symbol` (repeatable) grounds the memory to graph symbols;
+`search-memory --symbol` filters by it.
 
 ### `search-memory`
 
@@ -611,38 +610,6 @@ python3 scripts/code2database_builder.py validate-memory \
 ```
 
 ## Exports / Plugins / Benchmark
-
-### `export-html`
-
-Export the graph to an interactive HTML visualization.
-
-```bash
-python3 scripts/code2database_builder.py export-html \
-  --graph code2db-out/ \
-  --output /path/to/visualization.html \
-  [--scope function_name]
-```
-
-### `export-obsidian`
-
-Export the graph to an Obsidian vault (markdown files with cross-links).
-
-```bash
-python3 scripts/code2database_builder.py export-obsidian \
-  --graph code2db-out/ \
-  --output /path/to/vault/
-```
-
-### `web-ui`
-
-Start the interactive Web UI server (default port 8765).
-
-```bash
-python3 scripts/code2database_builder.py web-ui \
-  --graph code2db-out/ \
-  --port 8765 \
-  [--browser]
-```
 
 ### `plugins`
 

@@ -12,7 +12,6 @@ health monitoring.
 | MCP over stdio | `serve --graph <dir>` | Local LLM agents (Claude Desktop, Cursor local mode) |
 | MCP over HTTP | `serve --transport http ...` | Shared/team access behind TLS + token auth |
 | Sync daemon | `daemon-start --graph <dir> --source <src>` | Keeping a graph current while engineers edit code |
-| Web UI | `web-ui --graph <dir>` | Interactive browsing of a built graph |
 
 ## Prerequisites
 

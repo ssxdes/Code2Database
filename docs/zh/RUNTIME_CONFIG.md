@@ -35,7 +35,6 @@
 | `auto_enhance.*` | 保留 |
 | `transactions.*` | 保留 |
 | `ffi.*` | 保留 |
-| `web_ui.*` | 保留（Web UI 端口通过 `web-ui --port` 设置；绑定主机通过 `C2D_WEB_UI_HOST`） |
 | `benchmark.*` | 保留 |
 | `profile_health.*` | 保留 |
 | `doc_code.*` | 保留 |
@@ -126,15 +125,6 @@
 | `detect_go_cgo` | bool | `true` | 检测 Go `import "C"` cgo 绑定。 |
 | `detect_rust_extern` | bool | `true` | 检测 Rust `extern "C"` / `#[no_mangle]` 绑定。 |
 | `flag_lossy_conversions` | bool | `true` | 当类型转换可能丢失数据（如 int64 → int32）时，将类型marshalling边标记为 `lossy: true`。 |
-
-### `web_ui` — Web UI 参数
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `port` | int | `8765` | 交互式 Web UI 的 HTTP 端口。 |
-| `host` | string | `"127.0.0.1"` | 绑定主机。使用 `"0.0.0.0"` 可共享访问（不推荐）。 |
-| `open_browser` | bool | `false` | 启动时自动打开浏览器。 |
-| `max_nodes_render` | int | `5000` | SVG 中渲染的最大节点数；更大的图谱会被采样。 |
 
 ### `benchmark` — BUG 基准测试参数
 

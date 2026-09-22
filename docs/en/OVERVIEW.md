@@ -52,11 +52,11 @@ This design lets Code2Database scale from a quick install (`pip install tree-sit
 
 The skill ships as 4 sub-skills (`/Code2Database` core, `/Code2Database-analysis` deep analysis, `/Code2Database-ops` operations, `/Code2Database-kb` knowledge base) so the LLM agent loads only the commands relevant to its current question:
 
-- **Core (22 Tier-1 commands, incl. the `c2d` umbrella)** — always loaded. Build, browse, basic query (scan, build, explore-flow, describe-node, trace-chain, neighbors, path, search, key-paths, etc.)
+- **Core (21 Tier-1 commands, incl. the `c2d` umbrella)** — always loaded. Build, browse, basic query (scan, build, explore-flow, describe-node, trace-chain, neighbors, path, search, key-paths, etc.)
 - **Analysis (13 Tier-1 + 19 cgdb_* MCP tools)** — loaded on demand. Concurrency, data flow, invariants, FFI, path feasibility, provenance, cgdb tables.
 - **Ops (23 Tier-1 commands)** — loaded on demand. Transactions, daemon, profile health, doc-code alignment, exports, plugins, memory, embeddings.
 
-All 266 CLI commands are accessible via the shared `scripts/code2database_builder.py` regardless of which sub-skill is active. The split is purely about LLM context economy: a 4K-token core skill is always useful; a 20K-token analysis skill should only be loaded when the user asks about races or invariants.
+All 263 CLI commands are accessible via the shared `scripts/code2database_builder.py` regardless of which sub-skill is active. The split is purely about LLM context economy: a 4K-token core skill is always useful; a 20K-token analysis skill should only be loaded when the user asks about races or invariants.
 
 ### Why micro → lite → local Query Mode
 
@@ -198,8 +198,8 @@ The daemon coordinates with manual updates via `pause`/`resume` socket commands 
 │         cgdb_versions.py, cgdb_migrations.py, cgdb_records.py,      │
 │         cgdb_sync.py, sqlite_store.py, sqlite_postprocess.py,       │
 │         memory_manager.py, semantics.py,                            │
-│         auto_enhance.py, web_ui.py, bug_benchmark.py, etc.          │
-│  CLI: scripts/code2database_builder.py (258 CLI commands, 266 total with 8 scanner) │
+│         auto_enhance.py, bug_benchmark.py, etc.                     │
+│  CLI: scripts/code2database_builder.py (255 CLI commands, 263 total with 8 scanner) │
 └──────────────────────────────┬───────────────────────────────────────┘
                                │
                                ▼  (optional)
@@ -392,7 +392,7 @@ Code2Database is organized into 5 packages under `scripts/`, plus a CLI entry la
 
 ```
 scripts/
-├── code2database_builder.py      ← CLI entry point (258 CLI commands, argparse routing)
+├── code2database_builder.py      ← CLI entry point (255 CLI commands, argparse routing)
 ├── code2database_scanner.py      ← Scanner CLI entry point (8 subcommands)
 ├── setup.sh                      ← Dependency installer (per-language option)
 ├── requirements.txt              ← Pinned dependencies
@@ -506,8 +506,6 @@ scripts/
 │   ├── update_sync.py            ← Incremental sync and merge commands
 │   ├── update_cmd.py             ← update-node, update-edge, patch-profile (LLM supplements)
 │   ├── changelog_update.py       ← quick-update, export-changes, merge-changes, semantic-status
-│   ├── export.py                 ← HTML + Obsidian export
-│   ├── web_ui.py                 ← Single-file HTML/SVG/JS interactive viewer; HTTP server
 │   ├── bug_benchmark.py          ← GraphInvestigator vs GrepInvestigator recall/precision
 │   ├── profile_health.py         ← 7-category 0-100 score; evolution suggestions; HEAD binding
 │   ├── doc_code_align.py         ← Detect return/param/signature/stale-doc mismatches
@@ -837,7 +835,7 @@ Code2Database's current capabilities, organized by category:
 - Value flow (DATA_FLOW edges) + cross-function data dependency (DATA_DEP edges)
 
 ### Query & Analysis
-- 266 CLI commands (4 sub-skills: core 22, analysis 13, ops 23, kb 8 Tier-1)
+- 263 CLI commands (4 sub-skills: core 21, analysis 13, ops 23, kb 8 Tier-1)
 - 83 MCP tools (55 base + 28 design-report) (36 code2database_* + 19 cgdb_*)
 - Cypher-subset query language (MATCH/WHERE/RETURN)
 - Z3 SMT path feasibility (heuristic fallback)
@@ -854,8 +852,6 @@ Code2Database's current capabilities, organized by category:
 - LLM auto-enhancement with confidence-threshold auto-write + rollback
 - Persistent Q&A memory with decay + scratch
 - Knowledge extraction/query/validation
-- Web UI (single-file HTML/SVG/JS)
-- HTML/Obsidian export
 - BUG benchmark (GraphInvestigator vs GrepInvestigator)
 - Plugin system
 - Embeddings (TF-IDF char n-gram semantic search)

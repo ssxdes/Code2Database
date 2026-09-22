@@ -1,15 +1,13 @@
-"""Tests for export-html on large (SQLite-backed) graphs.
+"""Tests for per-domain page assembly on large (SQLite-backed) graphs.
 
-export-html used to exit 2 on any graph loaded via LazySQLiteGraph as
-soon as a communities file existed: the community attach wrote node
-attributes, which the read-only view rejects. Large graphs are also
-exported per domain, and the per-domain assembly re-scanned the full
-edge list once per domain — ~10 billion edge visits on a 2.3M-node,
-5K-domain graph. These tests pin the fixed behavior: lazy views export
-successfully, community labels reach the pages, and the single-pass
-assembly produces the same pages the per-domain scan produced.
+Large graphs are exported per domain, and the per-domain assembly
+(_domain_pages) used to re-scan the full edge list once per domain —
+~10 billion edge visits on a 2.3M-node, 5K-domain graph. These tests
+pin the fixed behavior: the single-pass assembly produces the same
+pages the per-domain scan produced, lazy views feed it, community
+labels reach the pages, and the mermaid export path completes on a
+read-only lazy view.
 """
-import argparse
 import contextlib
 import io
 import json
@@ -24,7 +22,7 @@ sys.path.insert(0, SCRIPTS_DIR)
 import networkx as nx  # noqa: E402
 
 from _builder.export.export import (  # noqa: E402
-    _domain_pages, cmd_export_html,
+    _domain_pages, _export_mermaid,
 )
 
 
@@ -125,30 +123,29 @@ class TestDomainPagesEquivalence(unittest.TestCase):
                          ["fs", "net"])
 
 
-class TestExportHtmlOnLazyGraph(unittest.TestCase):
-    """The command must complete on a read-only lazy view."""
+class TestMermaidExportOnLazyGraph(unittest.TestCase):
+    """The mermaid export path must complete on a read-only lazy view."""
 
     def _run(self, with_communities):
-        from _builder.export import export as export_mod
         G = _make_graph()
         graph_dir = _make_graph_dir(G, with_communities)
-        original = export_mod._load_full_graph
-        export_mod._load_full_graph = lambda _dir: _FakeLazyGraph(G)
-        try:
-            with tempfile.TemporaryDirectory() as out:
-                args = argparse.Namespace(
-                    graph=graph_dir, output=os.path.join(out, "cg.html"),
-                    format="mermaid", max_nodes=2)
-                stdout = io.StringIO()
-                with contextlib.redirect_stdout(stdout):
-                    cmd_export_html(args)  # must NOT raise SystemExit
-                files = []
-                for root, _dirs, names in os.walk(out):
-                    for n in names:
-                        files.append(os.path.join(root, n))
-                return stdout.getvalue(), files
-        finally:
-            export_mod._load_full_graph = original
+        domain_nodes = {}
+        lazy = _FakeLazyGraph(G)
+        for nid, ndata in lazy.nodes(data=True):
+            domain_nodes.setdefault(ndata.get("domain", "root"),
+                                    []).append((nid, ndata))
+        with tempfile.TemporaryDirectory() as out:
+            output = os.path.join(out, "cg.html")
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                _export_mermaid(lazy, output, max_nodes=2,
+                                domain_nodes=domain_nodes,
+                                total_nodes=lazy.number_of_nodes())
+            files = []
+            for root, _dirs, names in os.walk(out):
+                for n in names:
+                    files.append(os.path.join(root, n))
+            return stdout.getvalue(), files
 
     def test_lazy_graph_with_communities_exports(self):
         stdout, files = self._run(with_communities=True)

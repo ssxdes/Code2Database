@@ -492,12 +492,6 @@ def _build_steps(rep, args):
                               "--graph", graph], False,
          "TF-IDF n-gram embeddings -> embeddings.json "
          "(powers hybrid/semantic search)", None, ""),
-        ("export-obsidian", [py, _BUILDER, "export-obsidian",
-                             "--graph", graph], False,
-         "Obsidian vault -> obsidian-vault/", None, ""),
-        ("export-html", [py, _BUILDER, "export-html",
-                         "--graph", graph, "--format", "vis-network"],
-         False, "interactive HTML -> callgraph.html", None, ""),
         ("profile-health", [py, _BUILDER, "profile-health",
                             "--graph", graph, "--source", src]
          + (["--profile", args.profile] if getattr(args, "profile", "") else []),
@@ -619,7 +613,7 @@ def _do_make(rep, args):
     # inter-step dependency) — safe to run concurrently.
     _PARALLEL = frozenset({
         "value-flow", "data-dep", "extract-signals",
-        "embeddings-build", "export-obsidian", "export-html",
+        "embeddings-build",
         "profile-health",
     })
 
@@ -755,8 +749,6 @@ def _do_make(rep, args):
     print("  session context: %s session-init --graph %s"
           % (_BUILDER, graph))
     print("  MCP server     : %s serve --graph %s   (83 tools)"
-          % (_BUILDER, graph))
-    print("  web UI         : %s web-ui --graph %s"
           % (_BUILDER, graph))
     if not rep["existing_brief"]:
         print("  brief curation : %s brief-update --set one_liner "

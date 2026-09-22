@@ -53,7 +53,7 @@ $BUILDER c2d ask --question "..." --dry-run    # 预览翻译后的命令
 | 首次建库 | `c2d setup --source DIR` | `make`（env-check → scan → build → 派生产物 → exports） |
 | 加载会话上下文 | `c2d session` | `session-init` |
 | 新鲜度检查与同步路由 | `c2d freshen` | `cgdb-freshness` → `make` / `daemon-start` / `build-update` |
-| 生成报告工件 | `c2d report --kind KIND` | `design-doc` / `diagnose` / `export-html` / `export-mermaid` / `export-plantuml` |
+| 生成报告工件 | `c2d report --kind KIND` | `design-doc` / `diagnose` / `export-mermaid` / `export-plantuml` |
 | 沉淀问答到记忆 | `c2d capture --question .. --answer ..` | `save-memory` |
 | 安全的图编辑 | — | `tx-begin` → `update-node` / `update-edge` / `patch-profile` → `tx-commit` |
 | 保持图谱最新 | — | `daemon-start` → `daemon-status` → `daemon-wait-sync`，或 `build-update` |
@@ -663,11 +663,8 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" manage-memory \
 ## 第9步 — 导出
 
 ```bash
-# HTML可视化(vis-network/mermaid)
-python3 "$SKILL_DIR/scripts/code2database_builder.py" export-html --graph code2db-out/
-
-# Obsidian vault导出
-python3 "$SKILL_DIR/scripts/code2database_builder.py" export-obsidian --graph code2db-out/
+# Mermaid 流程图（文本输出；GitHub/Markdown 预览可直接渲染）
+python3 "$SKILL_DIR/scripts/code2database_builder.py" export-mermaid --graph code2db-out/
 ```
 
 ## 第0步 — 会话上下文
@@ -875,9 +872,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## 完整 CLI 命令参考（266 个命令）
+## 完整 CLI 命令参考（263 个命令）
 
-全部 266 个 CLI 子命令，涵盖 `code2database_builder.py`（258 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。另有 13 个短别名（`describe`、`context`、`trace`、`concurrency`、`save`、`recall`、`brief`、`flow`、`find`、`health`、`daemon`、`export`、`init`）映射到下表中的完整命令，计入 builder 总数。
+全部 263 个 CLI 子命令，涵盖 `code2database_builder.py`（255 个）和 `code2database_scanner.py`（8 个）。每条目显示命令名及其 `--help` 摘要。另有 13 个短别名（`describe`、`context`、`trace`、`concurrency`、`save`、`recall`、`brief`、`flow`、`find`、`health`、`daemon`、`export`、`init`）映射到下表中的完整命令，计入 builder 总数。
 
 | 命令 | 说明 |
 |------|------|
@@ -985,10 +982,8 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `explain-label` | Explain why a node has a given label (dead_code, API_entry, race_risk, etc.) |
 | `explore-flow` | One-shot context retrieval: query → nodes + paths + conditions |
 | `export-changes` | Export change graph from git/svn changelog |
-| `export-html` | Export invocation graph as interactive HTML |
 | `export-mermaid` | Export call chains as Mermaid flowchart diagrams |
 | `export-plantuml` | 将代码图导出为 PlantUML 文本图（`--mode call|module|impact|structure`） |
-| `export-obsidian` | Export invocation graph as Obsidian vault with [[links]] = calls |
 | `extract-invariants` | Extract preconditions/postconditions/loop_invariants + state machines from function bodies |
 | `extract-invariants-llm` | Extract invariants with LLM consensus and continuous confidence |
 | `brief-extract` | 从图谱统计自举/刷新简报模板 |
@@ -1126,7 +1121,6 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `value-flow` | Build and query value-flow edges (where does this value come from / go to?) |
 | `verify-consistency` | Verify DB render matches disk sha256 |
 | `watch` | Auto-sync: watch source directory and sync incrementally |
-| `web-ui` | Start interactive Web UI server for graph browsing, path highlighting, LOD rendering |
 | `who-allocates` | Find functions that allocate a resource (ALLOCATES edges) |
 | `who-frees` | Find functions that free a resource (FREES edges) |
 | `who-locks` | Find functions that acquire a lock (LOCKS edges) |

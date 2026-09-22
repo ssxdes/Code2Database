@@ -367,7 +367,7 @@ class TestCmdMake(unittest.TestCase):
         mode runs the JSON-only steps in a thread pool — order is
         non-deterministic there). No condition index in the graph dir
         (build is mocked) -> extract-signals runs its requires() check
-        at execution time, decides SKIP, so 12 real subprocess calls.
+        at execution time, decides SKIP, so 10 real subprocess calls.
         """
         self._patch_env()
         calls = []
@@ -379,8 +379,7 @@ class TestCmdMake(unittest.TestCase):
         self.assertEqual(names, [
             "scan", "build", "value-flow", "data-dep", "ffi-detect",
             "brief-extract", "kb-rebuild-index", "lock-coverage",
-            "embeddings-build", "export-obsidian", "export-html",
-            "profile-health",
+            "embeddings-build", "profile-health",
         ])
         # scan: [python, scanner.py, scan, ...]
         scan = calls[0]
@@ -403,10 +402,9 @@ class TestCmdMake(unittest.TestCase):
         # ffi-detect applies to both JSON + SQLite
         self.assertIn("--apply", calls[4])
         self.assertIn("--source", calls[4])
-        # exports + report
-        self.assertIn("--format", calls[10])
-        self.assertIn("vis-network", calls[10])
-        self.assertIn("--source", calls[11])
+        # profile-health is the last derived step
+        self.assertEqual(calls[9][2], "profile-health")
+        self.assertIn("--source", calls[9])
 
     def test_extract_signals_runs_when_condition_index_has_data(self):
         self._patch_env()
@@ -423,8 +421,7 @@ class TestCmdMake(unittest.TestCase):
         self.assertEqual(names, [
             "scan", "build", "value-flow", "data-dep", "extract-signals",
             "ffi-detect", "brief-extract", "kb-rebuild-index",
-            "lock-coverage", "embeddings-build", "export-obsidian",
-            "export-html", "profile-health",
+            "lock-coverage", "embeddings-build", "profile-health",
         ])
         # extract-signals needs no --build flag (it always writes)
         self.assertNotIn("--build", calls[4])
@@ -460,12 +457,11 @@ class TestCmdMake(unittest.TestCase):
                 self._run({"serial_derived": True})
             # Derived-step failures exit 2 (distinct from fatal-step rc).
             self.assertEqual(cm.exception.code, 2)
-        # Pipeline was NOT aborted: all 12 steps still ran.
+        # Pipeline was NOT aborted: all 10 steps still ran.
         self.assertEqual([c[2] for c in calls],
                          ["scan", "build", "value-flow", "data-dep",
                           "ffi-detect", "brief-extract", "kb-rebuild-index",
-                          "lock-coverage", "embeddings-build", "export-obsidian",
-                          "export-html", "profile-health"])
+                          "lock-coverage", "embeddings-build", "profile-health"])
 
     def test_profile_flag_skips_auto_profile(self):
         self._patch_env()

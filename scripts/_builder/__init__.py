@@ -83,8 +83,6 @@ _LAZY_IMPORTS = {
     "cmd_impact": ("_builder.query.search_cmd", "cmd_impact"),
     "cmd_domain": ("_builder.query.search_cmd", "cmd_domain"),
     # export
-    "cmd_export_html": ("_builder.export.export", "cmd_export_html"),
-    "cmd_export_obsidian": ("_builder.export.export", "cmd_export_obsidian"),
     # memory_cmd
     "cmd_save_memory": ("_builder.memory.memory_cmd", "cmd_save_memory"),
     "cmd_search_memory": ("_builder.memory.memory_cmd", "cmd_search_memory"),

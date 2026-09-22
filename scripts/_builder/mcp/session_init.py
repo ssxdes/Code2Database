@@ -6,8 +6,7 @@ The session-start entry point for BOTH audiences:
   a project across sessions — the project brief (mandatory rules,
   modes), the memory digest (veteran experience), graph state, and the
   questions nobody has answered yet (known unknowns).
-- Humans: the same output is a "project context" briefing; the web UI
-  renders the same data interactively.
+- Humans: the same output doubles as a "project context" briefing.
 
 Why this exists: the brief alone doesn't carry accumulated experience,
 memory search requires knowing what to ask, and the known-unknowns

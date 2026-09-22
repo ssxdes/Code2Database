@@ -1,4 +1,4 @@
-"""Graph cache for Web UI — split from web_ui.py.
+"""In-memory graph cache shared by the LSP server and query cache.
 
 In-memory cache of the loaded graph + indices, with thread-safe
 refresh on demand.
@@ -19,9 +19,9 @@ _log = logging.getLogger(__name__)
 class GraphCache:
     """In-memory cache of the loaded graph + indices.
 
-    The web UI does many small queries per second (one per click); we
-    don't want to hit the disk for each. Cache the graph and pre-build
-    neighbor indices.
+    Interactive consumers (LSP, cached queries) do many small reads per
+    second; we don't want to hit the disk for each. Cache the graph and
+    pre-build neighbor indices.
     """
 
     def __init__(self, graph_dir: str):

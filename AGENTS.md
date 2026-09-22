@@ -13,7 +13,7 @@ This file provides instructions for AI coding agents (Codex, Copilot, etc.) work
 | **Reads** | `scripts/`, `docs/`, `config/`, `evals/`, and target source directories as needed |
 | **Writes** | Only paths required for the requested change; keep diffs minimal |
 | **Executes** | `python3` for scanner/builder CLI, `pip` for dependencies, `bash` for setup |
-| **Off-limits** | `.code2database_*` output files (use query commands instead), `scripts/config/profiles/` (internal templates), `.code2database_wal.log` / `.code2database_snapshots/` (transaction internals — use `tx-restore` instead) |
+| **Off-limits** | `.code2database_*` output files (use query commands instead), `scripts/config/profiles/` (internal templates), `.code2database_wal.log` / `.code2database_snapshots/` (transaction internals — use `tx restore` instead) |
 
 ## Project Overview
 
@@ -21,7 +21,7 @@ Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/
 
 - **Dual extraction backend** — `auto` (default: clang when libclang is installed, tree-sitter fallback), `clang` (forces clang, populates the cgdb layer; libclang 17+), `tree-sitter` (no libclang dep). Selected via `--extraction-backend` at scan time. libclang is recommended, NOT required — tree-sitter-only mode is fully functional.
 - **cgdb layer** (clang backend only) — typed semantic tables alongside the legacy `functions`/`edges`: AST nodes, types, config predicates, CFG, data flow, alias (stub), ops_bindings (typed vtable dispatch), sync_primitives + happens_before, provenance + time-travel versions. Queried via 19 `cgdb_*` MCP tools or the `cgdb-*` CLI family.
-- **Dual knowledge/memory stores** — knowledge = typed rows in `knowledge/knowledge.db` (source of truth; `knowledge/brief.json` is the derived size-budgeted prompt view); memory = shared accumulating SQLite store (`memory/memory.db`, hierarchical categories, FTS5 BM25 retrieval, split/merge/move/compact governance; compact merges near-duplicate roots after every build). `session-init` is the one-shot entry (brief + memory digest + graph state incl. freshness + known-unknowns); `save-memory --correct` is the correct-first save; `brief-suggest` mines graduation candidates (no auto-write). Both stores run with or without a built graph (`kb-init` provisions a standalone store); every entry carries a version scope (branch/release tag) that queries use for current-version-first ranking, and `kb-query --cross` searches other watched kb domains.
+- **Dual knowledge/memory stores** — knowledge = typed rows in `knowledge/knowledge.db` (source of truth; `knowledge/brief.json` is the derived size-budgeted prompt view); memory = shared accumulating SQLite store (`memory/memory.db`, hierarchical categories, FTS5 BM25 retrieval, split/merge/move/compact governance; compact merges near-duplicate roots after every build). `session-init` is the one-shot entry (brief + memory digest + graph state incl. freshness + known-unknowns); `memory save --correct` is the correct-first save; `brief suggest` mines graduation candidates (no auto-write). Both stores run with or without a built graph (`kb init` provisions a standalone store); every entry carries a version scope (branch/release tag) that queries use for current-version-first ranking, and `kb query --cross` searches other watched kb domains.
 
 Full capability catalog with per-command detail: `docs/en/references/usage_reference.md` (intent index → family command map → pipeline walkthrough → complete spelling reference). Do not duplicate it here.
 
@@ -66,7 +66,7 @@ Behavior contracts that a change must not break:
 - **Only 7 labels** allowed: API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end
 - **Edge confidence** must always be annotated: EXTRACTED / INFERRED / AMBIGUOUS; never treat AMBIGUOUS as fact
 - **DB writes need user confirmation** (update/patch/apply/auto-enhance/doc-mark-stale/tx-commit family); EXTRACTED+evidence may bypass for auto-enhance/apply-invariants/profile-evolve, INFERRED never
-- **Transactional writes**: wrap multi-step DB changes in `tx-begin`/`tx-commit`; `patch-from-diff`/`patch-from-git` already wrap by default (`--no-transaction` to bypass)
+- **Transactional writes**: wrap multi-step DB changes in `tx begin`/`tx commit`; `patch-from-diff`/`patch-from-git` already wrap by default (`--no-transaction` to bypass)
 - **Do not pre-load** `scripts/config/profiles/` or `docs/*/references/` into context
 
 Full usage constraints (daemon freshness, doc-code alignment, invariants confidence, FFI, profile evolution): `docs/en/SKILL.md`.

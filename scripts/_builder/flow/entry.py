@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """c2d umbrella command: goal-oriented entry into the Code2Database CLI.
 
-The builder CLI has 250+ subcommands — powerful, but neither humans nor
-agents can hold that surface in their heads. `c2d` exposes a small set
-of lifecycle verbs and executes multi-step "recipes" (see recipes.py)
-so a single natural-language question turns into the right read-only
-command sequence with aggregated output.
+The builder CLI teaches ~120 visible commands (275 spellings) — still
+too much to hold in your head. `c2d` exposes a small set of lifecycle
+verbs and executes multi-step "recipes" (see recipes.py) so a single
+natural-language question turns into the right read-only command
+sequence with aggregated output.
 
 Implemented verbs (this module grows verb by verb):
 
@@ -15,7 +15,7 @@ Implemented verbs (this module grows verb by verb):
     ask      --question "..." | --recipe NAME [explicit params]
               classify the question, run the matched recipe
     capture  --question ... --answer ...
-              save a Q&A into project memory (delegates to save-memory)
+              save a Q&A into project memory (delegates to `memory save`)
     freshen  check graph freshness and route to the right update path
     report   --kind design|diagnose|mermaid|plantuml
               produce an artifact (delegates to the export commands)
@@ -25,10 +25,12 @@ Implemented verbs (this module grows verb by verb):
 
 Every recipe step and every delegation runs as a subprocess of this
 same CLI (same model as `make`), so steps are isolated, streaming, and
-use the exact same code paths as manual invocations. Recipe steps are
-restricted to read-only commands: WRITE_COMMANDS is refused at
-execution time, and the test suite pins every recipe step against the
-real argparse tree.
+use the exact same code paths as manual invocations. Steps echo and
+execute the umbrella spelling (`concurrency analyze`, `ffi trace`); the
+builder rewrites it to the legacy command before argparse, so behavior
+is identical. Recipe steps are restricted to read-only commands:
+WRITE_COMMANDS is refused at execution time, and the test suite pins
+every recipe step against the real argparse tree.
 """
 import json
 import os
@@ -39,6 +41,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from _builder.flow.recipes import (
     KNOWN_PARAMS, RECIPES, classify_question, get_recipe, missing_params,
 )
+from _builder.umbrella import umbrella_argv, umbrella_display
 
 _SCRIPTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                             "..", ".."))
@@ -162,7 +165,7 @@ def execute_recipe(recipe: Dict[str, Any], params: Dict[str, str],
     for i, step in enumerate(steps, 1):
         argv_extra, unresolved = resolve_step_args(step.get("args", []),
                                                    params)
-        label = "%d/%d: %s" % (i, total, step["cmd"])
+        label = "%d/%d: %s" % (i, total, umbrella_display(step["cmd"]))
         if unresolved:
             reason = "missing param: %s" % ", ".join(sorted(unresolved))
             if step.get("optional"):
@@ -196,7 +199,8 @@ def execute_recipe(recipe: Dict[str, Any], params: Dict[str, str],
             report["steps"].append({"cmd": step["cmd"], "skipped": reason})
             report["skipped"] += 1
             continue
-        cmd_argv = [sys.executable, _BUILDER, step["cmd"]] + argv_extra
+        cmd_argv = ([sys.executable, _BUILDER]
+                    + umbrella_argv(step["cmd"]) + argv_extra)
         if graph:
             cmd_argv += ["--graph", graph]
         print("[c2d] step %s — %s" % (label, step.get("note", "")))
@@ -252,7 +256,8 @@ def _run_intent_fallback(question: str, graph: str,
     cmd = routing["command"]
     if cmd in WRITE_COMMANDS:
         print("[c2d] intent routed to %s, which is not read-only; "
-              "refusing to auto-run it" % cmd, file=sys.stderr)
+              "refusing to auto-run it" % umbrella_display(cmd),
+              file=sys.stderr)
         return 1
     argv_extra = []
     for k, v in sorted(routing.get("args", {}).items()):
@@ -265,7 +270,8 @@ def _run_intent_fallback(question: str, graph: str,
         return 1
     print("[c2d] no recipe matched; single-command intent: %s (%s)"
           % (routing["matched_intent"], routing["reason"]))
-    cmd_argv = [sys.executable, _BUILDER, cmd] + argv_extra
+    cmd_argv = ([sys.executable, _BUILDER]
+                + umbrella_argv(cmd) + argv_extra)
     if graph:
         cmd_argv += ["--graph", graph]
     print("  $ %s" % " ".join(cmd_argv))
@@ -360,7 +366,7 @@ def _action_session(args) -> int:
 
 
 def _action_capture(args) -> int:
-    """Save a Q&A into project memory: delegate to save-memory."""
+    """Save a Q&A into project memory: delegate to `memory save`."""
     question = getattr(args, "question", "") or ""
     answer = getattr(args, "answer", "") or ""
     if not question or not answer:
@@ -370,8 +376,8 @@ def _action_capture(args) -> int:
               "--answer \"...\" --category bdev --author you",
               file=sys.stderr)
         return 2
-    argv = _builder_argv("save-memory", "--question", question,
-                         "--answer", answer)
+    argv = _builder_argv(*umbrella_argv("save-memory"),
+                         "--question", question, "--answer", answer)
     graph = getattr(args, "graph", "") or ""
     if graph:
         argv += ["--graph", graph]
@@ -424,10 +430,11 @@ def _action_freshen(args) -> int:
             print("[c2d] daemon is active for this graph and keeps it "
                   "fresh")
             print("[c2d] before important queries, block on any in-flight "
-                  "sync with daemon-wait-sync")
-            return _delegate(_builder_argv("daemon-status", "--graph",
-                                           graph),
-                             bool(getattr(args, "dry_run", False)))
+                  "sync with daemon wait-sync")
+            return _delegate(
+                _builder_argv(*umbrella_argv("daemon-status"),
+                              "--graph", graph),
+                bool(getattr(args, "dry_run", False)))
     except ImportError:
         pass  # daemon module unavailable — fall through to the check
     # Derive the source root the same way session-init does: the
@@ -474,9 +481,9 @@ def _action_freshen(args) -> int:
     print("[c2d] pick an update path:")
     print("[c2d]   c2d setup --source %s      (full rebuild, safest)"
           % src_root)
-    print("[c2d]   daemon-start --graph %s    (watch + auto-sync)"
+    print("[c2d]   daemon start --graph %s    (watch + auto-sync)"
           % graph)
-    print("[c2d]   build-update --source %s --graph %s  (per-file)"
+    print("[c2d]   build update --source %s --graph %s  (per-file)"
           % (src_root, graph))
     return 1
 
@@ -507,7 +514,8 @@ def _action_report(args) -> int:
         graph = _resolve_graph_dir()
         print("[graph] --graph not given; using %s" % graph,
               file=sys.stderr)
-    argv = _builder_argv(_REPORT_KINDS[kind], "--graph", graph)
+    argv = _builder_argv(*umbrella_argv(_REPORT_KINDS[kind]),
+                         "--graph", graph)
     module = getattr(args, "module", "") or ""
     if module:
         argv += ["--module", module]
@@ -554,7 +562,7 @@ def _action_recipes(args) -> int:
             note = (" — " + step["note"]) if step.get("note") else ""
             opt = " [optional]" if step.get("optional") else ""
             print("  %d. %s %s%s%s"
-                  % (i, step["cmd"],
+                  % (i, umbrella_display(step["cmd"]),
                      " ".join(step.get("args", [])), note, opt))
         print("patterns (used by --question classification):")
         for pat in recipe["patterns"]:

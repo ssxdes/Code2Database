@@ -11,7 +11,7 @@ The commands are grouped by question type, mirroring the routing table in `SKILL
 List all global concurrency risk hot-spots detected during the build stage.
 
 ```bash
-python3 scripts/code2database_builder.py concurrency-risks --graph code2db-out/ [--threshold high|medium|low]
+python3 scripts/code2database_builder.py concurrency risks --graph code2db-out/ [--threshold high|medium|low]
 ```
 
 Output: ranked list of functions with risk score, shared state count, lock count, thread model annotation.
@@ -21,7 +21,7 @@ Output: ranked list of functions with risk score, shared state count, lock count
 Pair-wise concurrency safety analysis between two functions or two invocation chains.
 
 ```bash
-python3 scripts/code2database_builder.py concurrency-analyze \
+python3 scripts/code2database_builder.py concurrency analyze \
   --graph code2db-out/ \
   --fn-a function_a --fn-b function_b \
   [--shared-state VAR_NAME] [--json]
@@ -34,7 +34,7 @@ Output: thread model per function, shared state intersection, lock-held overlap,
 Cross-thread data race detection across the whole graph or a scoped subset.
 
 ```bash
-python3 scripts/code2database_builder.py detect-races \
+python3 scripts/code2database_builder.py concurrency detect-races \
   --graph code2db-out/ \
   [--scope function_name | --scope domain_name] \
   [--json]
@@ -62,7 +62,7 @@ Output: per-lock event stream (acquire at line:col, release at line:col), uncove
 Compute happens-before relationships between two events across threads (uses cgdb sync_primitives + happens_before tables when clang backend is enabled).
 
 ```bash
-python3 scripts/code2database_builder.py happens-before \
+python3 scripts/code2database_builder.py concurrency happens-before \
   --graph code2db-out/ \
   --event-a "function_a:line:col" \
   --event-b "function_b:line:col" \
@@ -76,7 +76,7 @@ Output: ordered / concurrent / undetermined verdict, ordering edges, evidence.
 Analyze memory ordering constraints (atomic operations, memory barriers, READ_ONCE / WRITE_ONCE, smp_mb).
 
 ```bash
-python3 scripts/code2database_builder.py memory-ordering \
+python3 scripts/code2database_builder.py concurrency memory-ordering \
   --graph code2db-out/ \
   --function function_name \
   [--json]
@@ -89,7 +89,7 @@ Output: list of ordering points with location, operation type, ordering strength
 Find all functions that acquire a specific lock variable.
 
 ```bash
-python3 scripts/code2database_builder.py who-locks \
+python3 scripts/code2database_builder.py who locks \
   --graph code2db-out/ \
   --lock LOCK_VAR_NAME \
   [--json]
@@ -226,7 +226,7 @@ python3 scripts/code2database_builder.py path \
 Reverse BFS from a crash point along INVOKES edges, listing all paths from entry points to the crash point. Prioritizes paths starting from `API_entry` / `thread_processor`.
 
 ```bash
-python3 scripts/code2database_builder.py reverse-trace \
+python3 scripts/code2database_builder.py trace reverse \
   --graph code2db-out/ \
   --crash-point function_name \
   [--max-depth N] [--max-paths N] [--macros CONFIG_X] \
@@ -249,7 +249,7 @@ JSON output includes a `field_write_suspects` array and `field_write_suspects_su
 Compare invocation paths under two macro configurations.
 
 ```bash
-python3 scripts/code2database_builder.py diff-chains \
+python3 scripts/code2database_builder.py trace diff \
   --graph code2db-out/ \
   --from function_a --to function_b \
   --config-a CONFIG_A --config-b CONFIG_B \
@@ -349,7 +349,7 @@ Output: signal map — for each `#ifdef` macro, list of functions and edges gate
 Extract preconditions, postconditions, loop invariants, and state machine from function bodies.
 
 ```bash
-python3 scripts/code2database_builder.py extract-invariants \
+python3 scripts/code2database_builder.py invariants extract \
   --graph code2db-out/ \
   --function function_name \
   [--json]
@@ -362,7 +362,7 @@ Output: list of invariants with kind (precondition / postcondition / loop_invari
 Find invariants matching a pattern across the graph.
 
 ```bash
-python3 scripts/code2database_builder.py find-invariants \
+python3 scripts/code2database_builder.py invariants find \
   --graph code2db-out/ \
   --pattern "kind=precondition,var=PTR_NAME" \
   [--json]
@@ -373,7 +373,7 @@ python3 scripts/code2database_builder.py find-invariants \
 Apply extracted invariants to the graph. **AMBIGUOUS never applied; INFERRED require user confirmation; EXTRACTED auto-applied.**
 
 ```bash
-python3 scripts/code2database_builder.py apply-invariants \
+python3 scripts/code2database_builder.py invariants apply \
   --graph code2db-out/ \
   --function function_name \
   [--confidence EXTRACTED|INFERRED] \
@@ -389,7 +389,7 @@ python3 scripts/code2database_builder.py apply-invariants \
 Detect FFI bindings across the codebase (Python ctypes, Go cgo, Rust extern "C").
 
 ```bash
-python3 scripts/code2database_builder.py ffi-detect \
+python3 scripts/code2database_builder.py ffi detect \
   --graph code2db-out/ \
   [--json]
 ```
@@ -401,7 +401,7 @@ Output: list of FFI binding sites with source language, target language, binding
 List all FFI binding sites with details.
 
 ```bash
-python3 scripts/code2database_builder.py ffi-list \
+python3 scripts/code2database_builder.py ffi list \
   --graph code2db-out/ \
   [--source-lang python|go|rust] \
   [--json]
@@ -412,7 +412,7 @@ python3 scripts/code2database_builder.py ffi-list \
 Trace a cross-language invocation chain.
 
 ```bash
-python3 scripts/code2database_builder.py ffi-trace \
+python3 scripts/code2database_builder.py ffi trace \
   --graph code2db-out/ \
   --from function_name \
   [--max-depth N] [--json]
@@ -425,7 +425,7 @@ Output: chain crossing language boundaries with FFI binding points annotated.
 Show type marshalling for an FFI edge. **Updating the type marshalling table requires user confirmation.**
 
 ```bash
-python3 scripts/code2database_builder.py ffi-types \
+python3 scripts/code2database_builder.py ffi types \
   --graph code2db-out/ \
   --edge EDGE_ID \
   [--update]  # requires user confirmation
@@ -476,7 +476,7 @@ python3 scripts/code2database_builder.py node-history \
 Show graph-wide provenance summary.
 
 ```bash
-python3 scripts/code2database_builder.py graph-provenance \
+python3 scripts/code2database_builder.py graph provenance \
   --graph code2db-out/ \
   [--json]
 ```
@@ -499,7 +499,7 @@ python3 scripts/code2database_builder.py find-commits \
 Find all functions that allocate a resource.
 
 ```bash
-python3 scripts/code2database_builder.py who-allocates \
+python3 scripts/code2database_builder.py who allocates \
   --graph code2db-out/ \
   --resource RESOURCE_NAME \
   [--json]
@@ -510,7 +510,7 @@ python3 scripts/code2database_builder.py who-allocates \
 Find all functions that free a resource.
 
 ```bash
-python3 scripts/code2database_builder.py who-frees \
+python3 scripts/code2database_builder.py who frees \
   --graph code2db-out/ \
   --resource RESOURCE_NAME \
   [--json]
@@ -521,7 +521,7 @@ python3 scripts/code2database_builder.py who-frees \
 Find unbalanced allocation/free pairs (potential leak or double-free).
 
 ```bash
-python3 scripts/code2database_builder.py unbalanced-alloc-free \
+python3 scripts/code2database_builder.py who unbalanced \
   --graph code2db-out/ \
   [--scope function_name] \
   [--json]
@@ -614,7 +614,7 @@ python3 scripts/code2database_builder.py intent-query \
 LLM-driven invariant extraction (uses an LLM to propose invariants from function bodies).
 
 ```bash
-python3 scripts/code2database_builder.py extract-invariants-llm \
+python3 scripts/code2database_builder.py invariants extract-llm \
   --graph code2db-out/ \
   --function function_name \
   [--json]
@@ -658,17 +658,17 @@ python3 scripts/code2database_builder.py apply-semantics \
   [--yes]  # NOT recommended — requires user confirmation
 ```
 
-### `knowledge-brief` / `brief update` / `brief extract` / `brief validate`
+### `brief show` / `brief update` / `brief extract` / `brief validate`
 
 Project brief commands (knowledge = the lean, mandatory-load brief). Load the brief at every session start; adjust it in small scope when the architecture changes.
 
 ```bash
-python3 scripts/code2database_builder.py knowledge-brief --graph code2db-out/ [--json]
-python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --set one_liner --value "..."
-python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --add hard_rules --json '{"rule": "强制开启 XXX 宏", "type": "macro"}'
-python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --add modes --json '{"name": "pcie", "when": "...", "differences": "..."}'
-python3 scripts/code2database_builder.py brief-extract --graph code2db-out/
-python3 scripts/code2database_builder.py brief-validate --graph code2db-out/
+python3 scripts/code2database_builder.py brief show --graph code2db-out/ [--json]
+python3 scripts/code2database_builder.py brief update --graph code2db-out/ --set one_liner --value "..."
+python3 scripts/code2database_builder.py brief update --graph code2db-out/ --add hard_rules --json '{"rule": "强制开启 XXX 宏", "type": "macro"}'
+python3 scripts/code2database_builder.py brief update --graph code2db-out/ --add modes --json '{"name": "pcie", "when": "...", "differences": "..."}'
+python3 scripts/code2database_builder.py brief extract --graph code2db-out/
+python3 scripts/code2database_builder.py brief validate --graph code2db-out/
 ```
 
 ## cgdb MCP Tools (19 tools, clang backend)

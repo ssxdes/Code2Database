@@ -33,7 +33,7 @@ The kb sub-skill runs standalone or alongside the code graph — they share the 
 ## Session start
 
 ```bash
-python3 scripts/code2database_builder.py kb-init --name my-project   # once
+python3 scripts/code2database_builder.py kb init --name my-project   # once
 python3 scripts/code2database_builder.py session-init               # every session
 ```
 
@@ -58,15 +58,15 @@ Save a memory ONLY when it would help analyze a similar problem **from a blank c
 Anchor to code: pass `--symbol fn_name` when the memory is about a concrete function/type. Tag the version it was learned on: `--version-scope <branch-or-tag>` (default `default`).
 
 ```bash
-python3 scripts/code2database_builder.py save-memory \
+python3 scripts/code2database_builder.py memory save \
   --question "is bdev_start thread safe?" --answer "no — poller-owned, ..." \
   --category bdev/nvme --author you --symbol bdev_start --version-scope main
 ```
 
 ## Refinement rules (memory stays sharp)
 
-- **wrong answer** → `save-memory --correct` reshapes the most similar entry in place (version history kept, no duplicate variants)
-- **similar memories** → they merge on save (threshold 0.7); `manage-memory --action merge/split/move` reorganizes; `compact` runs after every build
+- **wrong answer** → `memory save --correct` reshapes the most similar entry in place (version history kept, no duplicate variants)
+- **similar memories** → they merge on save (threshold 0.7); `memory manage --action merge/split/move` reorganizes; `compact` runs after every build
 - **better wording** → `--correct` with the same question and an improved answer
 - **stale against code** → `memory validate` demotes entries whose `node_ids` left the graph (skipped gracefully when no graph exists)
 
@@ -77,21 +77,21 @@ When a memory keeps proving useful, it becomes a fact: `brief suggest` mines gra
 ## Expansion rules (how the boundary grows)
 
 - **adjacent domains**: when a new subsystem/language keeps showing up in questions but no memory covers it, add a memory first (cheap to be wrong); create a new `--category` level only after repeated hits — hierarchy follows memories, never the reverse
-- **cross-domain reuse**: an explanation already validated in another domain gets attached via `kb-domain add` (`kb-query --cross` labels the source domain) instead of copied — copies drift
+- **cross-domain reuse**: an explanation already validated in another domain gets attached via `kb-domain add` (`kb query --cross` labels the source domain) instead of copied — copies drift
 - **knowledge deepens, never widens**: expanding knowledge means `revise`-ing an existing hard_rule / abstraction with a sharper wording, not appending new items; horizontal growth belongs to memory
 - **shrinking is expanding too**: two hard_rules saying the same thing merge into one (`brief update` rewrite); knowledge is valued by density, not entry count
 
 ## Domain partitioning
 
 - **within a store**: `--category path/to/topic` builds a hierarchy (`bdev/nvme/pcie`), auto-created; choose the path by the symbols/subsystem the memory is about
-- **across stores**: every kb `.db` is one domain. `kb-domain-add <store-dir>` registers another knowledge base; `kb-query --cross` searches all watched domains and labels each hit with `source_domain`
+- **across stores**: every kb `.db` is one domain. `kb-domain-add <store-dir>` registers another knowledge base; `kb query --cross` searches all watched domains and labels each hit with `source_domain`
 
 ## Version-scoped recall
 
 Every memory and knowledge item carries the code version it was learned on. Queries state the version being worked on:
 
 ```bash
-python3 scripts/code2database_builder.py kb-query \
+python3 scripts/code2database_builder.py kb query \
   --query "queue doorbell" --version-scope release/2.0 --cross
 ```
 
@@ -110,4 +110,4 @@ Entries learned on `release/2.0` rank first; entries from other versions follow,
 
 ## Command surface (Tier-1)
 
-`kb init`, `session-init`, `save`, `recall`, `kb query`, `knowledge-brief`, `kb rebuild-index`, `kb known-unknowns` — plus `brief-*` curation, `memory manage` governance, `kb cluster`, `kb-domain-*` registry, `search semantic`. The full CLI remains accessible.
+`kb init`, `session-init`, `save`, `recall`, `kb query`, `brief show`, `kb rebuild-index`, `kb known-unknowns` — plus `brief-*` curation, `memory manage` governance, `kb cluster`, `kb-domain-*` registry, `search semantic`. The full CLI remains accessible.

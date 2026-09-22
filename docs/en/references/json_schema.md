@@ -417,7 +417,7 @@ When a memory's `node_ids` reference nodes that no longer exist in the graph (e.
 }
 ```
 
-**Trust lifecycle:** `trusted` (all node_ids present) → `experience` (some node_ids missing) after `update` or `validate-memory`. Experience entries are still searchable but with reduced weight (0.5-0.7x).
+**Trust lifecycle:** `trusted` (all node_ids present) → `experience` (some node_ids missing) after `update` or `memory validate`. Experience entries are still searchable but with reduced weight (0.5-0.7x).
 
 ## Globals File: `.code2database_globals.json`
 

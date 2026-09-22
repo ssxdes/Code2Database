@@ -33,37 +33,37 @@ $BUILDER c2d ask --question "..." --dry-run    # preview the translated commands
 
 ## Family Command Map — the 120-command visible surface
 
-The CLI collapses 27 prefix families into one visible umbrella command each: **120 visible commands** instead of 255. `tx begin`, `kb query`, `cgdb find-invokers`, `daemon start` are the taught spellings; the 155 legacy spellings (`tx-begin`, `kb-query`, ...) **still parse identically** — they are hidden from `--help` only, so existing scripts and muscle memory keep working. `--graph` and every flag are unchanged; `tx begin --help` prints exactly what `tx-begin --help` prints.
+The CLI collapses 27 prefix families into one visible umbrella command each: **120 visible commands** instead of 255. `tx begin`, `kb query`, `cgdb find-invokers`, `daemon start` are the taught spellings; the 155 legacy spellings (`tx begin`, `kb query`, ...) **still parse identically** — they are hidden from `--help` only, so existing scripts and muscle memory keep working. `--graph` and every flag are unchanged; `tx begin --help` prints exactly what `tx begin --help` prints.
 
 | Umbrella | Bare form (=) | Hidden legacy spellings (all still parse) |
 |----------|---------------|-------------------------------------------|
-| `brief` | `brief` (= knowledge-brief, show) | `brief-extract`, `brief-migrate-legacy`, `brief-suggest`, `brief-update`, `brief-validate`, `knowledge-brief` |
-| `build` | `build` (= build from extraction JSON) | `build-diff`, `build-multi`, `build-update` |
-| `cgdb` | action required | `cgdb-cfg-paths`, `cgdb-compare`, `cgdb-configs-for`, `cgdb-coverage`, `cgdb-data-flow`, `cgdb-definition`, `cgdb-find-invoked`, `cgdb-find-invokers`, `cgdb-freshness`, `cgdb-function-body`, `cgdb-get-source`, `cgdb-index-status`, `cgdb-layer-summary`, `cgdb-merge-knowledge`, `cgdb-nodes-under-config`, `cgdb-ops-impls`, `cgdb-path`, `cgdb-path-feasible`, `cgdb-query`, `cgdb-race-check`, `cgdb-schema-version`, `cgdb-sql`, `cgdb-struct-layout`, `cgdb-suggest`, `cgdb-time-travel`, `cgdb-tour`, `cgdb-type-definition`, `cgdb-versions`, `cgdb-views`, `cgdb-write-coverage` |
-| `check` | action required | `check-bounds`, `check-clones`, `check-cycles`, `check-infinite-loop`, `check-recursion` |
-| `concurrency` | `concurrency` (= concurrency-risks) | `concurrency-analyze`, `concurrency-risks`, `detect-races`, `happens-before`, `memory-ordering` |
-| `daemon` | `daemon` (= daemon-status) | `daemon-force-refresh`, `daemon-list-projects`, `daemon-logs`, `daemon-pause`, `daemon-reload`, `daemon-resume`, `daemon-start`, `daemon-status`, `daemon-stop`, `daemon-wait-sync` |
-| `doc` | action required | `doc-alignment-report`, `doc-code-check`, `doc-mark-stale`, `doc-signature-diff` |
-| `embeddings` | action required | `embeddings-build`, `embeddings-search` |
-| `export` | `export` (= export-mermaid) | `export-mermaid`, `export-plantuml`, `sarif-export` |
-| `fed` | action required | `fed-neighbors`, `fed-path`, `fed-search`, `federate-list`, `federate-register`, `federate-remove` |
-| `ffi` | action required | `ffi-auto-link`, `ffi-detect`, `ffi-list`, `ffi-persist`, `ffi-trace`, `ffi-types` |
-| `foreign` | action required | `c2d-add-foreign`, `c2d-add-foreign-stub`, `c2d-check-compat`, `c2d-list-foreign`, `c2d-pin-foreign`, `c2d-prune-foreign`, `c2d-remove-foreign`, `c2d-resolve-foreign`, `c2d-sync-foreign`, `c2d-unpin-foreign` |
-| `graph` | action required | `graph-diff`, `graph-history`, `graph-provenance`, `graph-record-version` |
-| `invariants` | action required | `apply-invariants`, `extract-invariants`, `extract-invariants-llm`, `find-invariants` |
-| `kb` | action required | `kb-audit`, `kb-cluster`, `kb-conflict`, `kb-forget`, `kb-init`, `kb-known-unknowns`, `kb-migrate`, `kb-query`, `kb-rebuild-index`, `kb-rollback` |
-| `kb-domain` | action required | `kb-domain-add`, `kb-domain-list`, `kb-domain-name`, `kb-domain-remove` |
-| `kb-global` | action required | `kb-global-add`, `kb-global-import`, `kb-global-import-memory`, `kb-global-search`, `kb-global-search-memory`, `kb-global-share`, `kb-global-share-memory` |
-| `memory` | action required | `manage-memory`, `memory-health`, `save-memory`, `search-memory`, `validate-memory` |
-| `node` | action required | `add-function`, `delete-node`, `insert-node-after` |
-| `pp` | action required | `find-macros`, `get-pp-branches`, `get-string-literals` |
-| `profile` | action required | `profile-bind-version`, `profile-evolve`, `profile-health` |
-| `search` | `search` (= keyword search) | `hybrid-search`, `semantic-search` |
-| `token` | action required | `delete-token`, `edit-token`, `insert-token` |
-| `trace` | `trace` (= trace-chain, forward) | `diff-chains`, `reverse-trace`, `trace-chain` |
-| `tx` | action required | `tx-begin`, `tx-commit`, `tx-list-snapshots`, `tx-replay-wal`, `tx-restore`, `tx-rollback`, `tx-snapshot`, `tx-status` |
-| `who` | action required | `unbalanced-alloc-free`, `who-allocates`, `who-frees`, `who-locks` |
-| `writeback` | action required | `commit-db-transaction`, `rollback-db-transaction` |
+| `brief` | `brief` (= knowledge-brief, show) | `brief extract`, `brief migrate-legacy`, `brief suggest`, `brief update`, `brief validate`, `brief show` |
+| `build` | `build` (= build from extraction JSON) | `build diff`, `build multi`, `build update` |
+| `cgdb` | action required | `cgdb cfg-paths`, `cgdb compare`, `cgdb configs-for`, `cgdb coverage`, `cgdb data-flow`, `cgdb definition`, `cgdb find-invoked`, `cgdb find-invokers`, `cgdb freshness`, `cgdb function-body`, `cgdb get-source`, `cgdb index-status`, `cgdb layer-summary`, `cgdb merge-knowledge`, `cgdb nodes-under-config`, `cgdb ops-impls`, `cgdb path`, `cgdb path-feasible`, `cgdb query`, `cgdb race-check`, `cgdb schema-version`, `cgdb sql`, `cgdb struct-layout`, `cgdb suggest`, `cgdb time-travel`, `cgdb tour`, `cgdb type-definition`, `cgdb versions`, `cgdb views`, `cgdb write-coverage` |
+| `check` | action required | `check bounds`, `check clones`, `check cycles`, `check infinite-loop`, `check recursion` |
+| `concurrency` | `concurrency` (= concurrency-risks) | `concurrency analyze`, `concurrency risks`, `concurrency detect-races`, `concurrency happens-before`, `concurrency memory-ordering` |
+| `daemon` | `daemon` (= daemon-status) | `daemon force-refresh`, `daemon list-projects`, `daemon logs`, `daemon pause`, `daemon reload`, `daemon resume`, `daemon start`, `daemon status`, `daemon stop`, `daemon wait-sync` |
+| `doc` | action required | `doc alignment-report`, `doc code-check`, `doc mark-stale`, `doc signature-diff` |
+| `embeddings` | action required | `embeddings build`, `embeddings search` |
+| `export` | `export` (= export-mermaid) | `export mermaid`, `export plantuml`, `export sarif` |
+| `fed` | action required | `fed neighbors`, `fed path`, `fed search`, `fed list`, `fed register`, `fed remove` |
+| `ffi` | action required | `ffi auto-link`, `ffi detect`, `ffi list`, `ffi persist`, `ffi trace`, `ffi types` |
+| `foreign` | action required | `foreign add`, `foreign add-stub`, `foreign check-compat`, `foreign list`, `foreign pin`, `foreign prune`, `foreign remove`, `foreign resolve`, `foreign sync`, `foreign unpin` |
+| `graph` | action required | `graph diff`, `graph history`, `graph provenance`, `graph record-version` |
+| `invariants` | action required | `invariants apply`, `invariants extract`, `invariants extract-llm`, `invariants find` |
+| `kb` | action required | `kb audit`, `kb cluster`, `kb conflict`, `kb forget`, `kb init`, `kb known-unknowns`, `kb migrate`, `kb query`, `kb rebuild-index`, `kb rollback` |
+| `kb-domain` | action required | `kb-domain add`, `kb-domain list`, `kb-domain name`, `kb-domain remove` |
+| `kb-global` | action required | `kb-global add`, `kb-global import`, `kb-global import-memory`, `kb-global search`, `kb-global search-memory`, `kb-global share`, `kb-global share-memory` |
+| `memory` | action required | `memory manage`, `memory health`, `memory save`, `memory search`, `memory validate` |
+| `node` | action required | `node add-function`, `node delete`, `node insert-after` |
+| `pp` | action required | `pp macros`, `pp branches`, `pp strings` |
+| `profile` | action required | `profile bind-version`, `profile evolve`, `profile health` |
+| `search` | `search` (= keyword search) | `search hybrid`, `search semantic` |
+| `token` | action required | `token delete`, `token edit`, `token insert` |
+| `trace` | `trace` (= trace-chain, forward) | `trace diff`, `trace reverse`, `trace forward` |
+| `tx` | action required | `tx begin`, `tx commit`, `tx list-snapshots`, `tx replay-wal`, `tx restore`, `tx rollback`, `tx snapshot`, `tx status` |
+| `who` | action required | `who unbalanced`, `who allocates`, `who frees`, `who locks` |
+| `writeback` | action required | `writeback commit`, `writeback rollback` |
 
 Short aliases (`save`/`recall` for memory, `find` for invariants, `health` for profile, `describe`/`context`, `flow`, `init`) remain visible and unchanged.
 
@@ -105,12 +105,12 @@ Start here: find the task, use the one call, or drop to the direct command seque
 
 Accuracy boundaries of the analysis layer, consolidated here for on-demand reading:
 
-- **Large graphs (>=50K functions)**: `update`/`merge`/`sync` require an in-memory graph and fall back to LazySQLiteGraph (read-only); they print a friendly error pointing to `daemon-start` or `build`. Use `daemon-start` for incremental sync or `build-update --source SRC --graph DIR` for precise per-file syncs (content-hash detection + `#include` closure; format-only edits skipped structurally).
-- **`build-update` cross-file edge limitation**: only changed files are rescanned. When a function is renamed/deleted in file A, cross-file call edges into A are deleted but not recreated — the calling files are not rescanned, so the new function ID (which embeds the file path) will not match. Cross-file edges into the changed file are lost until a full `build`. For frequent cross-file refactors prefer `daemon-start` (transactional sync) or schedule periodic full builds.
+- **Large graphs (>=50K functions)**: `update`/`merge`/`sync` require an in-memory graph and fall back to LazySQLiteGraph (read-only); they print a friendly error pointing to `daemon start` or `build`. Use `daemon start` for incremental sync or `build update --source SRC --graph DIR` for precise per-file syncs (content-hash detection + `#include` closure; format-only edits skipped structurally).
+- **`build update` cross-file edge limitation**: only changed files are rescanned. When a function is renamed/deleted in file A, cross-file call edges into A are deleted but not recreated — the calling files are not rescanned, so the new function ID (which embeds the file path) will not match. Cross-file edges into the changed file are lost until a full `build`. For frequent cross-file refactors prefer `daemon start` (transactional sync) or schedule periodic full builds.
 - **Concurrency analysis is function-level, not access-site-level**: TOCTOU races are NOT detected; lock detection uses regex, not CFG. Results may contain false positives/negatives — use `lock-coverage` for finer-grained analysis.
-- **`path`/`trace-chain` same-name ambiguity**: functions with the same name in different files need `--source-file` to disambiguate. With `--source-file`, `--from`/`--to` accept function names (resolved by name+file); without it they must be node IDs. Multiple resolutions print a warning listing candidate source files. `path --domain-filter fs,block` hard-restricts traversal to allowlisted domains (+ `root`) for cross-subsystem reachability queries.
-- **C++ virtual dispatch not resolved**: tree-sitter C++ parses virtual method calls as regular `call_expression` — they resolve to the statically-typed method only. C-style ops-table vtable dispatch IS handled (`vtable_dispatch` edges). For C++ class hierarchies with `virtual`/`override`, use `concurrency-analyze` or inspect override sets manually.
-- **FFI edges need `make`**: the standalone `build` command does NOT run FFI detection — run `ffi-detect --apply` after a bare `build` on multi-language projects (the `make` pipeline runs it automatically).
+- **`path`/`trace forward` same-name ambiguity**: functions with the same name in different files need `--source-file` to disambiguate. With `--source-file`, `--from`/`--to` accept function names (resolved by name+file); without it they must be node IDs. Multiple resolutions print a warning listing candidate source files. `path --domain-filter fs,block` hard-restricts traversal to allowlisted domains (+ `root`) for cross-subsystem reachability queries.
+- **C++ virtual dispatch not resolved**: tree-sitter C++ parses virtual method calls as regular `call_expression` — they resolve to the statically-typed method only. C-style ops-table vtable dispatch IS handled (`vtable_dispatch` edges). For C++ class hierarchies with `virtual`/`override`, use `concurrency analyze` or inspect override sets manually.
+- **FFI edges need `make`**: the standalone `build` command does NOT run FFI detection — run `ffi detect --apply` after a bare `build` on multi-language projects (the `make` pipeline runs it automatically).
 - **`--scan-subsystems` drops cross-subsystem edges**: subsystem filtering restricts the scan to top-level directories; shared headers and calls into unscanned subsystems become phantom external nodes (edge preserved, target unresolved). Omit the flag or include `include` for full cross-subsystem fidelity.
 
 ## Step 0 — Check Prerequisites
@@ -533,7 +533,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" reverse-trace \
 
 JSON output includes a `field_write_suspects` array and `field_write_suspects_summary` block (suspect_count, unguarded_count, field, value_filter, struct_filter). Text output appends a "Field write suspects:" section after "Concurrency entry points:".
 
-This closes the gap that `reverse-trace` could see callers of the crash point but not the field-write suspects that may have caused the crash (see the follow-up review report). For full field-flow analysis (readers + writers + race windows), use `field-flow` directly.
+This closes the gap that `trace reverse` could see callers of the crash point but not the field-write suspects that may have caused the crash (see the follow-up review report). For full field-flow analysis (readers + writers + race windows), use `field-flow` directly.
 
 ### 4k — Data Lifecycle Tracking
 

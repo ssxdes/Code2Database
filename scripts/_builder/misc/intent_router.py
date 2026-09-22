@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """Intent router: classify a natural-language question and route to a command.
 
-Instead of forcing the user (or LLM) to pick among 105+ CLI commands, this
-module maps a free-form question like "why is this function dead code?" to
-the right command (e.g., `describe-node --explain-label dead_code`).
+Instead of forcing the user (or LLM) to pick among the builder's 275
+command spellings, this module maps a free-form question like "why is
+this function dead code?" to the right command (e.g.,
+`describe-node --explain-label dead_code`).
 
 Design:
 - Keyword + intent-pattern based classification (no ML dependencies).
 - Each intent has a list of trigger patterns (regex/keyword) and a target
   command template with parameter extraction.
 - Returns a structured suggestion: {command, args, confidence, reason}.
+  `command` is the legacy spelling (executable, used for write-command
+  checks); the rendered suggestion teaches the umbrella spelling
+  (`daemon status`, `concurrency detect-races`) via umbrella_display.
 - Lightweight and extensible — new intents are added to INTENT_RULES.
 
 CLI command:
@@ -17,6 +21,8 @@ CLI command:
 """
 import re
 from typing import Optional, List, Dict, Any
+
+from _builder.umbrella import umbrella_display
 
 
 # Each rule has:
@@ -300,7 +306,7 @@ def intent_query(question: str, graph_dir: str = "") -> Dict[str, Any]:
         }
     args_str = " ".join(f"--{k} {v}" for k, v in routing["args"].items()
                         if v)
-    cmd = routing["command"]
+    cmd = umbrella_display(routing["command"])
     if args_str:
         suggestion = f"code2database_builder.py {cmd} {args_str}"
     else:

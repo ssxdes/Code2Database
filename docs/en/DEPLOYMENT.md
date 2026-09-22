@@ -163,7 +163,7 @@ It checks SQLite integrity and foreign keys, schema versions, content
 counts, source freshness, the memory store, the knowledge brief and the
 daemon state. For drift over time, `graph history` reads the
 accumulated version rows (node/edge counts per build and sync), and
-`graph-provenance` reports which source commit and tool version
+`graph provenance` reports which source commit and tool version
 produced the current database.
 
 ## Data Sensitivity

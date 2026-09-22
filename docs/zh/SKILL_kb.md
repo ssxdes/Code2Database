@@ -33,7 +33,7 @@ kb 子 skill 可独立部署，也可与代码图谱同机部署——共享 CLI
 ## 会话启动
 
 ```bash
-python3 scripts/code2database_builder.py kb-init --name my-project   # 一次
+python3 scripts/code2database_builder.py kb init --name my-project   # 一次
 python3 scripts/code2database_builder.py session-init               # 每次会话
 ```
 
@@ -58,15 +58,15 @@ python3 scripts/code2database_builder.py session-init               # 每次会�
 锚定到代码：记忆关于具体函数/类型时传 `--symbol fn_name`。标注学习时的版本：`--version-scope <分支或标签>`（默认 `default`）。
 
 ```bash
-python3 scripts/code2database_builder.py save-memory \
+python3 scripts/code2database_builder.py memory save \
   --question "bdev_start 线程安全吗?" --answer "不安全——poller 独占，..." \
   --category bdev/nvme --author you --symbol bdev_start --version-scope main
 ```
 
 ## 修正规则（记忆保持锋利）
 
-- **答案错了** → `save-memory --correct` 原地重塑最相似条目（保留版本历史，不产生重复变体）
-- **相似记忆** → 保存时自动合并（阈值 0.7）；`manage-memory --action merge/split/move` 重组；每次构建后自动 `compact`
+- **答案错了** → `memory save --correct` 原地重塑最相似条目（保留版本历史，不产生重复变体）
+- **相似记忆** → 保存时自动合并（阈值 0.7）；`memory manage --action merge/split/move` 重组；每次构建后自动 `compact`
 - **更好的表述** → 同一提问 `--correct` 加改进后的答案
 - **相对代码过期** → `memory validate` 将 `node_ids` 已离开图谱的条目降级（无图谱时优雅跳过）
 
@@ -77,21 +77,21 @@ python3 scripts/code2database_builder.py save-memory \
 ## 扩展规则（知识边界怎么生长）
 
 - **相邻域**：当一个新子系统/新语言反复出现在提问里但没有任何记忆覆盖，先补 memory（低成本试错），连续命中后再考虑是否需要新的 `--category` 层级——层级为记忆而生，不预先铺设
-- **跨域复用**：另一个域里已验证的解释优先用 `kb-domain add` 挂过来（`kb-query --cross` 标注来源域），而不是复制一份；副本会漂移
+- **跨域复用**：另一个域里已验证的解释优先用 `kb-domain add` 挂过来（`kb query --cross` 标注来源域），而不是复制一份；副本会漂移
 - **knowledge 只纵向加深**：扩展 = 给已有 hard_rule / abstraction 补更准的表述（`revise`），而不是横向加新条目；横向增长的内容属于 memory
 - **收缩也是扩展**：两条 hard_rule 说的其实是同一件事时合并为一条（`brief update` 重写）；knowledge 的价值密度比条数重要
 
 ## 分域分层
 
 - **存储内**：`--category path/to/topic` 构建层级（`bdev/nvme/pcie`），自动创建；按记忆涉及的符号/子系统选择路径
-- **跨存储**：每个 kb `.db` 就是一个域。`kb-domain-add <store-dir>` 注册另一个知识库；`kb-query --cross` 搜索所有已关注域并为每条命中标注 `source_domain`
+- **跨存储**：每个 kb `.db` 就是一个域。`kb-domain-add <store-dir>` 注册另一个知识库；`kb query --cross` 搜索所有已关注域并为每条命中标注 `source_domain`
 
 ## 版本感知召回
 
 每条记忆和知识条目都携带学习时的代码版本。查询时声明当前工作的版本：
 
 ```bash
-python3 scripts/code2database_builder.py kb-query \
+python3 scripts/code2database_builder.py kb query \
   --query "queue doorbell" --version-scope release/2.0 --cross
 ```
 
@@ -110,4 +110,4 @@ python3 scripts/code2database_builder.py kb-query \
 
 ## 命令面（Tier-1）
 
-`kb init`、`session-init`、`save`、`recall`、`kb query`、`knowledge-brief`、`kb rebuild-index`、`kb known-unknowns`——另有 `brief-*` 整理、`memory manage` 治理、`kb cluster`、`kb-domain-*` 注册、`search semantic`。完整 CLI 保持可访问。
+`kb init`、`session-init`、`save`、`recall`、`kb query`、`brief show`、`kb rebuild-index`、`kb known-unknowns`——另有 `brief-*` 整理、`memory manage` 治理、`kb cluster`、`kb-domain-*` 注册、`search semantic`。完整 CLI 保持可访问。

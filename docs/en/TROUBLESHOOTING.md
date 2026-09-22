@@ -96,9 +96,9 @@ Symptom: answers cite functions that no longer exist.
 
 - Memory entries whose `node_ids` vanish from the graph are demoted
   automatically (the daemon re-validates after each sync); check
-  `manage-memory --action query` for demoted entries and re-ground
-  with `save-memory --correct`
-- `brief-validate` warns when brief statistics drift more than 20% from
+  `memory manage --action query` for demoted entries and re-ground
+  with `memory save --correct`
+- `brief validate` warns when brief statistics drift more than 20% from
   the graph, and when the brief exceeds its size budget (overflow
   belongs in memory)
 - Repeatedly-missed questions appear as known-unknowns in

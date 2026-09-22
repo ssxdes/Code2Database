@@ -35,8 +35,8 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 **需用户确认的命令**（默认 y/N 提示）——按家族分组；逐命令细节见 `references/ops_commands.md`：
 
 - 图编辑：`update-node`、`update-edge`、`patch-profile`、`classify-endpoints`、`apply-semantics`、`merge-changes`
-- 记忆/知识写入：`save`、`manage-memory --action add/correct/reshape/promote/refine/split/merge/move`、`kb rebuild-index`、`kb cluster`、`kb migrate`、`kb forget`、`kb rollback`
-- 增强/不变量/profile：`invariants apply`（**AMBIGUOUS 永不应用**；INFERRED 需确认；EXTRACTED 自动应用）、`auto-enhance`（EXTRACTED+证据自动写入；**INFERRED 需确认**）、`batch-confirm`、`profile-evolve --apply`（**INFERRED 需确认**）、`doc mark-stale`、`ffi types`
+- 记忆/知识写入：`save`、`memory manage --action add/correct/reshape/promote/refine/split/merge/move`、`kb rebuild-index`、`kb cluster`、`kb migrate`、`kb forget`、`kb rollback`
+- 增强/不变量/profile：`invariants apply`（**AMBIGUOUS 永不应用**；INFERRED 需确认；EXTRACTED 自动应用）、`auto-enhance`（EXTRACTED+证据自动写入；**INFERRED 需确认**）、`batch-confirm`、`profile evolve --apply`（**INFERRED 需确认**）、`doc mark-stale`、`ffi types`
 - 事务：`tx commit`（写事务：持久化已提交状态，快照保留至修剪）
 
 **LLM 行为准则**：
@@ -84,11 +84,11 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 | 提问类型 | 命令序列 |
 |---------|---------|
 | **安全图谱编辑** | `tx begin` → `tx status` → `update-node` / `update-edge` / `patch-profile` / `classify-endpoints` / `auto-enhance` / `heuristic-enhance` / `batch-confirm` / `rollback` / `fill-request` / `add-semantic-edges` / `semantic-status` / `audit-log` → `tx commit`（带确认）→ 必要时 `tx restore` / `tx list-snapshots` / `tx replay-wal` |
-| **保持图谱新鲜** | `daemon start` → `daemon status` → `daemon pause` / `daemon resume` / `daemon force-refresh` / `daemon wait-sync` / `daemon logs` / `daemon reload` / `daemon list-projects` → `daemon stop`；或 `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes`；精确按文件更新：`build-update --source SRC --graph DIR` 或 `quick-update --source SRC --graph DIR` |
+| **保持图谱新鲜** | `daemon start` → `daemon status` → `daemon pause` / `daemon resume` / `daemon force-refresh` / `daemon wait-sync` / `daemon logs` / `daemon reload` / `daemon list-projects` → `daemon stop`；或 `watch` / `sync` / `merge` / `light-scan` / `patch-from-diff` / `patch-from-git` / `install-hook` / `export-changes` / `merge-changes`；精确按文件更新：`build update --source SRC --graph DIR` 或 `quick-update --source SRC --graph DIR` |
 | **profile 与文档-代码** | `profile health` → `profile evolve` → `profile bind-version`；`doc code-check` → `doc alignment-report` → `doc signature-diff` → `doc mark-stale` |
 | **图谱版本** | `graph record-version` → `graph history` → `graph diff` |
 | **健康与完整性** | `doctor --graph DIR`（一键：数据库完整性、schema 版本、新鲜度、记忆库、简报、daemon；`--json` + 退出码 0/1/2 用于 CI） |
-| **记忆管理** | `save-memory --category` → `recall` → `manage-memory --action split/merge/move/categories` → `memory health` → `memory validate`；知识简报：`brief extract` → `brief validate` → `brief suggest` → `brief migrate-legacy`；跨项目：`kb-global share-memory` → `kb-global search-memory` → `kb-global import-memory` |
+| **记忆管理** | `memory save --category` → `recall` → `memory manage --action split/merge/move/categories` → `memory health` → `memory validate`；知识简报：`brief extract` → `brief validate` → `brief suggest` → `brief migrate-legacy`；跨项目：`kb-global share-memory` → `kb-global search-memory` → `kb-global import-memory` |
 | **导出 / 插件 / 基准** | `export mermaid` / `export plantuml` / `design-doc`；`plugins` / `validate-plugin`；`bug-benchmark` |
 | **Embeddings（实验性）** | `embeddings build` → `embeddings search` |
 
@@ -118,7 +118,7 @@ LLM 执行任何修改数据库的命令前，**必须先获得用户确认**。
 - **事务性写入**：多步数据库修改需包裹 `tx begin`/`tx commit`。`patch-from-diff`/`patch-from-git` 默认已包裹；用 `--no-transaction` 绕过。`tx rollback` 中止；`tx replay-wal` 崩溃恢复
 - **守护进程新鲜度**：重要查询前调用 `daemon status`；若 `syncing` 或 `pending_events > 0`，调用 `daemon wait-sync` 阻塞至同步完成。断路器在事件率超过 1000/分钟时触发整体重建
 - **文档-代码对齐**：`describe-node`（父技能）暴露 `doc_code_mismatches`——若非空，`semantic_desc` 可能不可靠；查阅 `body_text` 并考虑 `doc mark-stale` 直到文档重新提取
-- **profile 演化**：`profile-evolve --apply` 只应用 EXTRACTED 置信度建议；INFERRED **需用户确认**。演化后运行 `profile bind-version` 绑定 git/svn HEAD
+- **profile 演化**：`profile evolve --apply` 只应用 EXTRACTED 置信度建议；INFERRED **需用户确认**。演化后运行 `profile bind-version` 绑定 git/svn HEAD
 - **记忆管理**：`memory manage` 写操作（add/correct/reshape/promote/refine/split/merge/move）与 `save` 需用户确认；`brief update` 修改必载知识简报
 - **MCP 服务器**：`serve` 暴露 83 个工具 (55 base + 28 design-report)（36 个 `code2database_*` + 19 个 `cgdb_*`）；无论子技能是否激活，全部可访问
 - **禁止预加载** `references/ops_commands.md`——仅在需要某命令的详细语法时按需读取

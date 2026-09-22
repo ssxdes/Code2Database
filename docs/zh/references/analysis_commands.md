@@ -11,7 +11,7 @@
 列出构建阶段检测到的全局并发风险热点。
 
 ```bash
-python3 scripts/code2database_builder.py concurrency-risks --graph code2db-out/ [--threshold high|medium|low]
+python3 scripts/code2database_builder.py concurrency risks --graph code2db-out/ [--threshold high|medium|low]
 ```
 
 输出：按风险评分排序的函数列表，含共享状态数、锁数、线程模型标注。
@@ -21,7 +21,7 @@ python3 scripts/code2database_builder.py concurrency-risks --graph code2db-out/ 
 两个函数或两条调用链之间的成对并发安全分析。
 
 ```bash
-python3 scripts/code2database_builder.py concurrency-analyze \
+python3 scripts/code2database_builder.py concurrency analyze \
   --graph code2db-out/ \
   --fn-a function_a --fn-b function_b \
   [--shared-state VAR_NAME] [--json]
@@ -34,7 +34,7 @@ python3 scripts/code2database_builder.py concurrency-analyze \
 跨线程数据竞争检测（全图或某子集）。
 
 ```bash
-python3 scripts/code2database_builder.py detect-races \
+python3 scripts/code2database_builder.py concurrency detect-races \
   --graph code2db-out/ \
   [--scope function_name | --scope domain_name] \
   [--json]
@@ -62,7 +62,7 @@ python3 scripts/code2database_builder.py lock-coverage \
 计算两个跨线程事件之间的 happens-before 关系（启用 clang 后端时使用 cgdb sync_primitives + happens_before 表）。
 
 ```bash
-python3 scripts/code2database_builder.py happens-before \
+python3 scripts/code2database_builder.py concurrency happens-before \
   --graph code2db-out/ \
   --event-a "function_a:line:col" \
   --event-b "function_b:line:col" \
@@ -76,7 +76,7 @@ python3 scripts/code2database_builder.py happens-before \
 分析内存序约束（原子操作、内存屏障、READ_ONCE / WRITE_ONCE、smp_mb）。
 
 ```bash
-python3 scripts/code2database_builder.py memory-ordering \
+python3 scripts/code2database_builder.py concurrency memory-ordering \
   --graph code2db-out/ \
   --function function_name \
   [--json]
@@ -89,7 +89,7 @@ python3 scripts/code2database_builder.py memory-ordering \
 查找所有获取某锁变量的函数。
 
 ```bash
-python3 scripts/code2database_builder.py who-locks \
+python3 scripts/code2database_builder.py who locks \
   --graph code2db-out/ \
   --lock LOCK_VAR_NAME \
   [--json]
@@ -226,7 +226,7 @@ python3 scripts/code2database_builder.py path \
 从崩溃点沿 INVOKES 边反向 BFS，列出所有从入口点到崩溃点的路径。优先展示从 `API_entry` / `thread_processor` 出发的路径。
 
 ```bash
-python3 scripts/code2database_builder.py reverse-trace \
+python3 scripts/code2database_builder.py trace reverse \
   --graph code2db-out/ \
   --crash-point function_name \
   [--max-depth N] [--max-paths N] [--macros CONFIG_X] \
@@ -249,7 +249,7 @@ JSON 输出包含 `field_write_suspects` 数组和 `field_write_suspects_summary
 对比两种宏配置下的调用路径。
 
 ```bash
-python3 scripts/code2database_builder.py diff-chains \
+python3 scripts/code2database_builder.py trace diff \
   --graph code2db-out/ \
   --from function_a --to function_b \
   --config-a CONFIG_A --config-b CONFIG_B \
@@ -349,7 +349,7 @@ python3 scripts/code2database_builder.py extract-signals \
 从函数体提取前置条件、后置条件、循环不变量、状态机。
 
 ```bash
-python3 scripts/code2database_builder.py extract-invariants \
+python3 scripts/code2database_builder.py invariants extract \
   --graph code2db-out/ \
   --function function_name \
   [--json]
@@ -362,7 +362,7 @@ python3 scripts/code2database_builder.py extract-invariants \
 跨图查找匹配某模式的不变量。
 
 ```bash
-python3 scripts/code2database_builder.py find-invariants \
+python3 scripts/code2database_builder.py invariants find \
   --graph code2db-out/ \
   --pattern "kind=precondition,var=PTR_NAME" \
   [--json]
@@ -373,7 +373,7 @@ python3 scripts/code2database_builder.py find-invariants \
 应用提取的不变量到图。**AMBIGUOUS 永不应用；INFERRED 需用户确认；EXTRACTED 自动应用。**
 
 ```bash
-python3 scripts/code2database_builder.py apply-invariants \
+python3 scripts/code2database_builder.py invariants apply \
   --graph code2db-out/ \
   --function function_name \
   [--confidence EXTRACTED|INFERRED] \
@@ -389,7 +389,7 @@ python3 scripts/code2database_builder.py apply-invariants \
 跨代码库检测 FFI 绑定（Python ctypes、Go cgo、Rust extern "C"）。
 
 ```bash
-python3 scripts/code2database_builder.py ffi-detect \
+python3 scripts/code2database_builder.py ffi detect \
   --graph code2db-out/ \
   [--json]
 ```
@@ -401,7 +401,7 @@ python3 scripts/code2database_builder.py ffi-detect \
 列出所有 FFI 绑定位置及详情。
 
 ```bash
-python3 scripts/code2database_builder.py ffi-list \
+python3 scripts/code2database_builder.py ffi list \
   --graph code2db-out/ \
   [--source-lang python|go|rust] \
   [--json]
@@ -412,7 +412,7 @@ python3 scripts/code2database_builder.py ffi-list \
 追踪跨语言调用链。
 
 ```bash
-python3 scripts/code2database_builder.py ffi-trace \
+python3 scripts/code2database_builder.py ffi trace \
   --graph code2db-out/ \
   --from function_name \
   [--max-depth N] [--json]
@@ -425,7 +425,7 @@ python3 scripts/code2database_builder.py ffi-trace \
 显示某条 FFI 边的类型映射。**更新类型映射表需用户确认。**
 
 ```bash
-python3 scripts/code2database_builder.py ffi-types \
+python3 scripts/code2database_builder.py ffi types \
   --graph code2db-out/ \
   --edge EDGE_ID \
   [--update]  # 需用户确认
@@ -476,7 +476,7 @@ python3 scripts/code2database_builder.py node-history \
 显示图级别的来源摘要。
 
 ```bash
-python3 scripts/code2database_builder.py graph-provenance \
+python3 scripts/code2database_builder.py graph provenance \
   --graph code2db-out/ \
   [--json]
 ```
@@ -499,7 +499,7 @@ python3 scripts/code2database_builder.py find-commits \
 查找所有分配某资源的函数。
 
 ```bash
-python3 scripts/code2database_builder.py who-allocates \
+python3 scripts/code2database_builder.py who allocates \
   --graph code2db-out/ \
   --resource RESOURCE_NAME \
   [--json]
@@ -510,7 +510,7 @@ python3 scripts/code2database_builder.py who-allocates \
 查找所有释放某资源的函数。
 
 ```bash
-python3 scripts/code2database_builder.py who-frees \
+python3 scripts/code2database_builder.py who frees \
   --graph code2db-out/ \
   --resource RESOURCE_NAME \
   [--json]
@@ -521,7 +521,7 @@ python3 scripts/code2database_builder.py who-frees \
 查找不平衡的分配/释放对（潜在泄漏或双重释放）。
 
 ```bash
-python3 scripts/code2database_builder.py unbalanced-alloc-free \
+python3 scripts/code2database_builder.py who unbalanced \
   --graph code2db-out/ \
   [--scope function_name] \
   [--json]
@@ -614,7 +614,7 @@ python3 scripts/code2database_builder.py intent-query \
 LLM 驱动的不变量提取（用 LLM 从函数体提议不变量）。
 
 ```bash
-python3 scripts/code2database_builder.py extract-invariants-llm \
+python3 scripts/code2database_builder.py invariants extract-llm \
   --graph code2db-out/ \
   --function function_name \
   [--json]
@@ -658,17 +658,17 @@ python3 scripts/code2database_builder.py apply-semantics \
   [--yes]  # 不推荐——需用户确认
 ```
 
-### `knowledge-brief` / `brief update` / `brief extract` / `brief validate`
+### `brief show` / `brief update` / `brief extract` / `brief validate`
 
 项目简报命令（知识 = 精简必载简报）。每次会话启动加载简报；架构变化时小范围调整。
 
 ```bash
-python3 scripts/code2database_builder.py knowledge-brief --graph code2db-out/ [--json]
-python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --set one_liner --value "..."
-python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --add hard_rules --json '{"rule": "强制开启 XXX 宏", "type": "macro"}'
-python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --add modes --json '{"name": "pcie", "when": "...", "differences": "..."}'
-python3 scripts/code2database_builder.py brief-extract --graph code2db-out/
-python3 scripts/code2database_builder.py brief-validate --graph code2db-out/
+python3 scripts/code2database_builder.py brief show --graph code2db-out/ [--json]
+python3 scripts/code2database_builder.py brief update --graph code2db-out/ --set one_liner --value "..."
+python3 scripts/code2database_builder.py brief update --graph code2db-out/ --add hard_rules --json '{"rule": "强制开启 XXX 宏", "type": "macro"}'
+python3 scripts/code2database_builder.py brief update --graph code2db-out/ --add modes --json '{"name": "pcie", "when": "...", "differences": "..."}'
+python3 scripts/code2database_builder.py brief extract --graph code2db-out/
+python3 scripts/code2database_builder.py brief validate --graph code2db-out/
 ```
 
 ## cgdb MCP 工具（19 个，clang 后端）

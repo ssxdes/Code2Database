@@ -1,6 +1,6 @@
 # build-multi Manifest 清单结构
 
-`build-multi` 命令通过 JSON manifest 文件从多个有依赖关系的项目构建统一 C2D。
+`build multi` 命令通过 JSON manifest 文件从多个有依赖关系的项目构建统一 C2D。
 
 ## Manifest 格式
 
@@ -81,7 +81,7 @@ B depends_on A
 ## CLI
 
 ```bash
-python3 scripts/code2database_builder.py build-multi \
+python3 scripts/code2database_builder.py build multi \
   --manifest projects.json \
   --outdir /tmp/joint_c2db-out/ \
   [-j 8] \

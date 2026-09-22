@@ -36,11 +36,11 @@ AI agents today understand a codebase the slow way — `grep`, `glob`, `Read`, o
 | Read-only code text          |  →  | Queryable code database                |
 | :--------------------------- | :-: | :-------------------------------------- |
 | `grep` / `glob` / `Read`     | →   | `explore-flow`  → nodes + paths         |
-| one file at a time           | →   | `trace-chain`   → A → B with conditions |
-| re-discover on every question | →  | `detect-races`  → cross-thread hazards  |
+| one file at a time           | →   | `trace forward`   → A → B with conditions |
+| re-discover on every question | →  | `concurrency detect-races`  → cross-thread hazards  |
 | manual call-path tracing     | →   | `param-flow`    → data flow across funcs |
 | no concurrency visibility    | →   | `field-access`  → who reads/writes X    |
-| no `#ifdef` awareness        | →   | `reverse-trace` → all paths to crash point |
+| no `#ifdef` awareness        | →   | `trace reverse` → all paths to crash point |
 
 ---
 
@@ -88,7 +88,7 @@ python3 scripts/code2database_builder.py explore-flow \
   --graph code2db-out/ --query "initialization" --max-tokens 2000
 
 # 6. (Optional) Start background daemon for real-time auto-sync
-python3 scripts/code2database_builder.py daemon-start \
+python3 scripts/code2database_builder.py daemon start \
   --graph code2db-out/ --source /path/to/code
 ```
 
@@ -190,20 +190,20 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **Edge confidence** | Every edge tagged `EXTRACTED` (1.0) / `INFERRED` (0.7–0.95) / `AMBIGUOUS` (0.1–0.3) — you always know what was found vs. guessed. |
 | **Profile → Scan → Build separation** | Scan stage produces immutable AST facts; Build stage does inference. Extraction bug? Verify scan independently. Improve inference? Re-run Build in seconds, no re-scan. |
 | **Bilingual docs (EN/中文)** | Skill instructions, references, and usage guides in both English and Chinese. |
-| **Commit-based provenance** | Every node/edge carries `commit_meta.source_commit` (git/svn hash). Engineers verify with `git show <hash>`, not timestamps. See `describe-commit`, `node-history`, `graph-provenance`, `blame-node`, `find-commits`. |
+| **Commit-based provenance** | Every node/edge carries `commit_meta.source_commit` (git/svn hash). Engineers verify with `git show <hash>`, not timestamps. See `describe-commit`, `node-history`, `graph provenance`, `blame-node`, `find-commits`. |
 | **Cypher-subset queries** | Declarative graph queries with `MATCH`/`WHERE`/`RETURN` — `query "MATCH (n)-[r:INVOKES]->(m) WHERE n.name =~ 'foo.*' RETURN n,m"`. |
 | **Value flow & DATA_FLOW edges** | Trace parameter→return-value propagation across functions. Solves "where does this NULL come from?" — `value-flow`, `param-flow`. |
 | **Lock-held region analysis** | Precise lock-held ranges with event-stream + char positions, not just "lock exists" — `lock-coverage`. Reduces false positives in race detection. |
 | **Z3 path feasibility** | Auto-solve path feasibility with Z3 SMT solver; heuristic fallback when unavailable — `path-feasible`. Optional `z3-solver` dep. |
 | **Cross-function data dependencies** | DATA_DEP edges scan ALL nodes for readers/writers, not just call-reachable successors — `data-dep`. |
-| **Invariant extraction** | Preconditions, postconditions, loop_invariants, state_machine per function — `extract-invariants`, `find-invariants`, `apply-invariants`. |
+| **Invariant extraction** | Preconditions, postconditions, loop_invariants, state_machine per function — `invariants extract`, `invariants find`, `invariants apply`. |
 | **LLM auto-semantic enhancement** | Confidence-threshold auto-write (EXTRACTED+evidence auto-applies; INFERRED requires confirm; AMBIGUOUS rejected) with batch-confirm and rollback — `auto-enhance`, `batch-confirm`, `rollback`, `fill-request`. |
-| **Transactional updates** | Snapshots + fcntl file locks for atomic multi-step updates — `tx-begin`/`commit`/`rollback`/`status`/`snapshot`/`restore`/`list-snapshots`/`replay-wal`. |
-| **Cross-language FFI** | Python ctypes / Go cgo / Rust `extern "C"` boundary tracing with type marshalling — `ffi-detect`, `ffi-list`, `ffi-trace`, `ffi-types`. |
+| **Transactional updates** | Snapshots + fcntl file locks for atomic multi-step updates — `tx begin`/`commit`/`rollback`/`status`/`snapshot`/`restore`/`list-snapshots`/`replay-wal`. |
+| **Cross-language FFI** | Python ctypes / Go cgo / Rust `extern "C"` boundary tracing with type marshalling — `ffi detect`, `ffi list`, `ffi trace`, `ffi types`. |
 | **BUG benchmark** | GraphInvestigator vs GrepInvestigator — measures recall, precision, tool calls, tokens, time — `bug-benchmark`. |
-| **Profile health & auto-evolution** | 0-100 score across 7 categories; auto-detects new callback patterns; binds to git/svn HEAD — `profile-health`, `profile-evolve`, `profile-bind-version`. |
-| **Doc-code alignment** | Detects return-value / param / signature / stale-doc mismatches between docs and code — `doc-code-check`, `doc-mark-stale`, `doc-alignment-report`, `doc-signature-diff`. `describe-node` surfaces `doc_code_mismatches`. |
-| **Background daemon** | Long-running process monitors source files (inotify/polling) and auto-updates graph in transactions — `daemon-start`/`stop`/`status`/`force-refresh`/`pause`/`resume`/`wait-sync`/`logs`/`reload`/`list-projects`. Unix socket API at `/tmp/code2database-daemon-<project>.sock`. |
+| **Profile health & auto-evolution** | 0-100 score across 7 categories; auto-detects new callback patterns; binds to git/svn HEAD — `profile health`, `profile evolve`, `profile bind-version`. |
+| **Doc-code alignment** | Detects return-value / param / signature / stale-doc mismatches between docs and code — `doc code-check`, `doc mark-stale`, `doc alignment-report`, `doc signature-diff`. `describe-node` surfaces `doc_code_mismatches`. |
+| **Background daemon** | Long-running process monitors source files (inotify/polling) and auto-updates graph in transactions — `daemon start`/`stop`/`status`/`force-refresh`/`pause`/`resume`/`wait-sync`/`logs`/`reload`/`list-projects`. Unix socket API at `/tmp/code2database-daemon-<project>.sock`. |
 
 ---
 
@@ -218,10 +218,10 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **One-shot exploration** | `explore-flow` — single query to get relevant nodes, paths, and conditions |
 | **Incremental syncs** | `quick-update` — patch graph without LLM; `light-scan` / `patch-from-git` for zero-token syncs |
 | **MCP server mode** | `serve` — expose 83 MCP tools (55 base + 28 design-report) (36 `code2database_*` + 19 `cgdb_*`) for LLM agents (stdio transport) |
-| **Memory system** | `save-memory` / `search-memory` / `manage-memory` — persistent Q&A memory with decay |
+| **Memory system** | `memory save` / `memory search` / `memory manage` — persistent Q&A memory with decay |
 | **Blast radius analysis** | `blast-radius` — what functions, APIs, and tests are affected by a change |
-| **Data race detection** | `detect-races` / `concurrency-analyze` — cross-thread data race and deadlock detection |
-| **Crash reverse-trace** | `reverse-trace` — trace all paths reaching a crash point from entry points |
+| **Data race detection** | `concurrency detect-races` / `concurrency analyze` — cross-thread data race and deadlock detection |
+| **Crash reverse-trace** | `trace reverse` — trace all paths reaching a crash point from entry points |
 | **Field-level access** | `field-access` — query which functions read/write specific struct fields or globals |
 | **Parameter flow** | `param-flow` — track how a value flows across function boundaries |
 | **External code separation** | Automatic detection of third-party / vendored code — keeps the graph about *your* code |
@@ -232,14 +232,14 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **Lock coverage** | `lock-coverage` — precise lock-held ranges with event-stream + char positions |
 | **Path feasibility** | `path-feasible` — Z3 SMT solver for sound path feasibility |
 | **Data dependencies** | `data-dep` — cross-function DATA_DEP edges; scans ALL nodes for readers/writers |
-| **Invariants** | `extract-invariants` / `find-invariants` / `apply-invariants` — preconditions/postconditions/loop_invariants/state_machine |
+| **Invariants** | `invariants extract` / `invariants find` / `invariants apply` — preconditions/postconditions/loop_invariants/state_machine |
 | **Auto-enhancement** | `auto-enhance` / `batch-confirm` / `rollback` — confidence-threshold auto-write |
-| **Transactions** | `tx-begin`/`commit`/`rollback` — snapshots + fcntl locks |
-| **FFI tracing** | `ffi-detect`/`list`/`trace`/`types` — Python ctypes / Go cgo / Rust extern "C" |
+| **Transactions** | `tx begin`/`commit`/`rollback` — snapshots + fcntl locks |
+| **FFI tracing** | `ffi detect`/`list`/`trace`/`types` — Python ctypes / Go cgo / Rust extern "C" |
 | **BUG benchmark** | `bug-benchmark` — GraphInvestigator vs GrepInvestigator recall/precision |
-| **Profile health** | `profile-health`/`evolve`/`bind-version` — 0-100 score + auto-evolution |
-| **Doc-code alignment** | `doc-code-check`/`mark-stale`/`alignment-report`/`signature-diff` — detect doc-code mismatches |
-| **Background daemon** | `daemon-start`/`stop`/`status`/... — inotify + Unix socket + transactional sync |
+| **Profile health** | `profile health`/`evolve`/`bind-version` — 0-100 score + auto-evolution |
+| **Doc-code alignment** | `doc code-check`/`mark-stale`/`alignment-report`/`signature-diff` — detect doc-code mismatches |
+| **Background daemon** | `daemon start`/`stop`/`status`/... — inotify + Unix socket + transactional sync |
 
 ---
 
@@ -309,30 +309,30 @@ Most code-graph tools stop at "function calls function." Code2Database goes deep
 | **CLI commands** | **120 visible builder commands** (275 spellings incl. hidden legacy) + 8 scanner subcommands, organized into 4 sub-skills (`/Code2Database` core, `/Code2Database-analysis`, `/Code2Database-ops`, `/Code2Database-kb`) — Build, Query, Trace, Concurrency, Knowledge, Memory, Provenance, Cypher, Data Flow, Lock Analysis, Path Feasibility, Invariants, Auto-Enhance, Transactions, FFI, Benchmark, Profile Health, Doc-Code, Daemon, cgdb (clang backend) |
 | **Call condition parsing** | `if`/`switch`/`#ifdef` branches + empty-node aggregation |
 | **Conditional compilation (`#ifdef`)** | Graph knows which calls exist only under which `CONFIG_*` flags |
-| **Data race detection** | Cross-thread hazard detection — `detect-races` |
-| **Concurrency safety analysis** | Can these two chains actually run in parallel? — `concurrency-analyze` |
+| **Data race detection** | Cross-thread hazard detection — `concurrency detect-races` |
+| **Concurrency safety analysis** | Can these two chains actually run in parallel? — `concurrency analyze` |
 | **Field-level access tracking** | "Who reads/writes `task_struct->pid`" across the whole graph — `field-access` |
-| **Crash reverse-trace** | All paths from entry points to a crash point — `reverse-trace` |
+| **Crash reverse-trace** | All paths from entry points to a crash point — `trace reverse` |
 | **Execution scenarios** | End-to-end execution flow tracking from API entry to leaves |
 | **Build-system macro resolution** | `compile_commands.json` + `#ifdef` macro expansion |
 | **LLM context packs** | 4 tiers — `micro` (~200 tokens) → `lite` → `std` → `full` |
 | **Blast radius analysis** | What breaks if I change this function? — `blast-radius` |
 | **External code separation** | Auto-detect vendor/third-party code — graph is about *your* code |
 | **Parameter flow tracking** | How a value flows across function boundaries — `param-flow` |
-| **Commit provenance** | Every node/edge has `source_commit` (git/svn hash) — `describe-commit`, `node-history`, `graph-provenance`, `blame-node`, `find-commits` |
+| **Commit provenance** | Every node/edge has `source_commit` (git/svn hash) — `describe-commit`, `node-history`, `graph provenance`, `blame-node`, `find-commits` |
 | **Cypher-subset queries** | Declarative graph queries — `query "MATCH ... WHERE ... RETURN ..."` |
 | **Value flow** | Parameter→return-value propagation, DATA_FLOW edges — `value-flow` |
 | **Lock coverage** | Precise lock-held ranges with event-stream + char positions — `lock-coverage` |
 | **Path feasibility** | Z3 SMT solver for sound feasibility — `path-feasible` |
 | **Data dependencies** | Cross-function DATA_DEP edges — `data-dep` |
-| **Invariant extraction** | Preconditions/postconditions/loop_invariants/state_machine — `extract-invariants` |
+| **Invariant extraction** | Preconditions/postconditions/loop_invariants/state_machine — `invariants extract` |
 | **LLM auto-enhancement** | Confidence-threshold auto-write + batch-confirm + rollback — `auto-enhance` |
-| **Transactional updates** | Snapshots + fcntl locks for atomic writes — `tx-begin`/`commit`/`rollback` |
-| **FFI tracing** | Python ctypes / Go cgo / Rust extern "C" — `ffi-detect`/`list`/`trace`/`types` |
+| **Transactional updates** | Snapshots + fcntl locks for atomic writes — `tx begin`/`commit`/`rollback` |
+| **FFI tracing** | Python ctypes / Go cgo / Rust extern "C" — `ffi detect`/`list`/`trace`/`types` |
 | **BUG benchmark** | GraphInvestigator vs GrepInvestigator recall/precision — `bug-benchmark` |
-| **Profile health** | 0-100 score + auto-evolution + git/svn HEAD binding — `profile-health`/`evolve`/`bind-version` |
-| **Doc-code alignment** | Detect doc-code mismatches; surface in `describe-node` — `doc-code-check` |
-| **Background daemon** | Real-time file monitoring + transactional auto-sync — `daemon-start` |
+| **Profile health** | 0-100 score + auto-evolution + git/svn HEAD binding — `profile health`/`evolve`/`bind-version` |
+| **Doc-code alignment** | Detect doc-code mismatches; surface in `describe-node` — `doc code-check` |
+| **Background daemon** | Real-time file monitoring + transactional auto-sync — `daemon start` |
 
 > **The design intent:** Code2Database isn't "more languages" or "more tools" — it's *deeper program semantics*. Conditions, concurrency, field access, `#ifdef`, crash tracing. The graph captures what an engineer actually needs to reason about, not just what's easy to extract.
 

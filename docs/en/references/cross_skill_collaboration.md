@@ -31,8 +31,8 @@ done
 | Merge conflict | merge, conflict, resolve | code2db-out JSON conflict → sync command |
 | Code review | review, code review | Change-affected domains + affected function list |
 | Visual export | diagram, graph, visualize, export | Code graph data → HTML/SVG/PNG |
-| **Security/vulnerability analysis** | **security, vulnerability, exploit, crash** | **reverse-trace crash paths + detect-races + concurrency-analyze** |
-| **Race condition analysis** | **race, concurrency, data race** | **detect-races + field-access + concurrency-risks** |
+| **Security/vulnerability analysis** | **security, vulnerability, exploit, crash** | **trace reverse crash paths + concurrency detect-races + concurrency analyze** |
+| **Race condition analysis** | **race, concurrency, data race** | **concurrency detect-races + field-access + concurrency risks** |
 | **Indirect call tracing** | **function pointer, dispatch, indirect call** | **explore-flow + describe-node --context for dispatch targets + callback_dispatch edges** |
 | **I/O path analysis** | **io, input, output, data flow** | **io-path for I/O path tracing** |
 
@@ -192,7 +192,7 @@ For more general merge conflict handling, search for installed skill matching "m
 
 **Trigger**: User wants to export code graph to other formats (non-HTML)
 
-1. Code2Database: First generate a base visualization with export-mermaid
+1. Code2Database: First generate a base visualization with export mermaid
 2. Search for installed skill matching "diagram/graph/visualize/export":
    - Match found → call skill, passing code graph data
    - No match → prompt user to install relevant visualization skill
@@ -205,13 +205,13 @@ For more general merge conflict handling, search for installed skill matching "m
 
 1. Code2Database: Reverse-trace from crash point
    ```bash
-   python3 code2database_builder.py reverse-trace --graph code2db-out/ --crash-point CRASH_FUNC --max-depth 15 --max-paths 30
+   python3 code2database_builder.py trace reverse --graph code2db-out/ --crash-point CRASH_FUNC --max-depth 15 --max-paths 30
    ```
    → Get all paths from entry points to crash point
 
 2. Analyze race conditions (if bug involves concurrency):
    ```bash
-   python3 code2database_builder.py detect-races --graph code2db-out/ --func CRASH_FUNC
+   python3 code2database_builder.py concurrency detect-races --graph code2db-out/ --func CRASH_FUNC
    ```
    → Get cross-thread data race analysis, shared resource access, lock scopes
 
@@ -227,8 +227,8 @@ For more general merge conflict handling, search for installed skill matching "m
    - Bug involves specific exploit technique → search for installed skill matching "exploit/pwn"
 
 5. Context to pass to matched skill:
-   - Full reverse-trace output (all paths from entry to crash)
-   - detect-races output (concurrent access analysis)
+   - Full trace reverse output (all paths from entry to crash)
+   - concurrency detect-races output (concurrent access analysis)
    - Indirect dispatch targets on the crash path (from describe-node --context)
    - Field-access output for shared data structures
 
@@ -245,10 +245,10 @@ For more general merge conflict handling, search for installed skill matching "m
 1. Code2Database: Run full race analysis pipeline:
    ```bash
    # Detect data races
-   python3 code2database_builder.py detect-races --graph code2db-out/
+   python3 code2database_builder.py concurrency detect-races --graph code2db-out/
 
    # Concurrency safety analysis for specific pair
-   python3 code2database_builder.py concurrency-analyze --graph code2db-out/ --func SUSPECT_FUNC
+   python3 code2database_builder.py concurrency analyze --graph code2db-out/ --func SUSPECT_FUNC
 
    # Field-level access tracking
    python3 code2database_builder.py field-access --graph code2db-out/ --field SHARED_VAR
@@ -266,9 +266,9 @@ For more general merge conflict handling, search for installed skill matching "m
    - Need runtime validation → search for installed skill matching "thread sanitizer/concurrency sanitizer"
 
 4. Context to pass:
-   - detect-races output (cross-thread data race analysis)
+   - concurrency detect-races output (cross-thread data race analysis)
    - Field-access report for contested fields
-   - concurrency-risks output for spawn points
+   - concurrency risks output for spawn points
 
 ## 10j - Indirect Call Tracing Collaboration
 

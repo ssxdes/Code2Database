@@ -331,13 +331,13 @@ Each predicate carries a `status` field:
 
 `SQLiteStore.SCHEMA_VERSION` (currently **13**, on the legacy tables side of the same db) tracks the non-cgdb schema. The kb tables below historically arrived as v9-v12 schema steps; since the kb became a standalone sub-skill they live in the kb store's own **`kb_index.db`** (a legacy db carrying them is copied across once on first open):
 
-- **kb_paragraphs**  — unified FTS5+BM25 index across `memory/memory.db` + the knowledge store (`knowledge/knowledge.db` is the fact source; `knowledge/brief.json` is the derived prompt view); replaces per-store Jaccard / substring search. Rebuildable via `kb-rebuild-index`.
+- **kb_paragraphs**  — unified FTS5+BM25 index across `memory/memory.db` + the knowledge store (`knowledge/knowledge.db` is the fact source; `knowledge/brief.json` is the derived prompt view); replaces per-store Jaccard / substring search. Rebuildable via `kb rebuild-index`.
 - **kb_paragraphs_fts** — FTS5 virtual table (porter + unicode61 tokenizer) over title/body/tags with AI/AD/AU triggers.
 - **scope_id / canonical_id / principle_ref** columns  — clustering + cross-kind linking.
 - **embedding BLOB** column  — optional 384-dim float32 for semantic search; NULL when sentence-transformers unavailable.
 - **kb_items**  — fact-level table with versions_json, decay_class, provenance_commit, provenance_operator; long-term successor to kb_paragraphs (both coexist during migration).
 - **kb_items_fts** — FTS5 over kb_items.
-- **kb_query_log**  — records every `kb-query` call for feedback-loop analysis; powers `kb-known-unknowns`.
+- **kb_query_log**  — records every `kb query` call for feedback-loop analysis; powers `kb known-unknowns`.
 
 ### Knowledge Base Tables (kb_index.db)
 
@@ -363,11 +363,11 @@ The `foreign_refs` table stores B's cross-C2D references: each row is
 an edge from B's `local_node_id` to A's `foreign_node_id` (cached from
 A's `functions` table). Status transitions: `unresolved` → `resolved`
 → `stale` (A changed) → `deleted` (A removed function) or →
-`orphaned` (user ran `c2d-remove-foreign`).
+`orphaned` (user ran `foreign remove`).
 
 The `watched_c2ds` table tracks each registered foreign C2D's db
 mtime/size/functions_count for change detection. The daemon polls
-these every 60s; if mtime changes, `c2d-sync-foreign` is triggered
+these every 60s; if mtime changes, `foreign sync` is triggered
 automatically.
 
 ### Legacy ↔ cgdb Sync

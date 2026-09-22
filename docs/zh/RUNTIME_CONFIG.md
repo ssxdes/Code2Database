@@ -138,10 +138,10 @@
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `min_score` | int | `70` | 可接受的最低 profile 健康度评分。低于此值时，`profile-health` 将 profile 标记为陈旧。 |
-| `auto_apply_extracted` | bool | `true` | `profile-evolve --apply` 自动应用 EXTRACTED 置信度的建议。 |
+| `min_score` | int | `70` | 可接受的最低 profile 健康度评分。低于此值时，`profile health` 将 profile 标记为陈旧。 |
+| `auto_apply_extracted` | bool | `true` | `profile evolve --apply` 自动应用 EXTRACTED 置信度的建议。 |
 | `require_confirm_inferred` | bool | `true` | INFERRED 建议需用户确认。 |
-| `bind_to_head` | bool | `true` | 在 `profile-bind-version` 时将 profile 绑定到 git/svn HEAD。陈旧 profile（HEAD 不匹配）会被标记。 |
+| `bind_to_head` | bool | `true` | 在 `profile bind-version` 时将 profile 绑定到 git/svn HEAD。陈旧 profile（HEAD 不匹配）会被标记。 |
 
 ### `doc_code` — 文档-代码对齐参数
 
@@ -154,7 +154,7 @@
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `enabled` | bool | `false` | 构建后自动启动守护进程。建议：保持 `false` 并显式使用 `daemon-start` 启动。 |
+| `enabled` | bool | `false` | 构建后自动启动守护进程。建议：保持 `false` 并显式使用 `daemon start` 启动。 |
 | `watch_paths` | string[] | `[]` | 要监视的源路径。为空 = 使用最近扫描的 `--source`。 |
 | `exclude_patterns` | string[] | `["*.swp", "*.tmp", ".git/*"]` | 排除监视的 glob 模式。 |
 | `debounce_ms` | int | `500` | 编辑器保存的去抖动窗口。较低的值 = 响应更快但重扫描更多。 |
@@ -163,7 +163,7 @@
 | `idle_sleep_minutes` | int | `30` | 守护进程进入低功耗轮询前的空闲睡眠时间。 |
 | `max_events_per_minute` | int | `1000` | 断路器阈值；超过此值触发整体重建。 |
 | `backend` | string | `"auto"` | `"inotify"`（Linux）、`"polling"` 或 `"auto"`（可用时使用 inotify，否则 polling）。 |
-| `startup_grace_sec` | float | `60` | 启动宽限期：守护进程启动后该窗口内观察到的文件事件会被持有、不触发同步。避免刚完成的构建或守护进程重启引发事件风暴。`daemon-wait-sync` 和 `daemon-force-refresh` 会提前结束宽限期。可通过环境变量 `CALLGRAPH_DAEMON_STARTUP_GRACE_SEC` 覆盖。 |
+| `startup_grace_sec` | float | `60` | 启动宽限期：守护进程启动后该窗口内观察到的文件事件会被持有、不触发同步。避免刚完成的构建或守护进程重启引发事件风暴。`daemon wait-sync` 和 `daemon force-refresh` 会提前结束宽限期。可通过环境变量 `CALLGRAPH_DAEMON_STARTUP_GRACE_SEC` 覆盖。 |
 
 **注意**：守护进程不会监视自己的 `--graph` 输出目录（防止自反馈循环）——除非 graph_dir 与源码根目录相同。
 

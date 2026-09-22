@@ -7,7 +7,7 @@ Code2Database separates two long-lived stores with opposite shapes:
 | **Role** | Shared accumulating Q&A brain — many people, many question depths | Lean, fixed description of THIS project: architecture, functionality, design, usage |
 | **Storage** | `memory/memory.db` (SQLite WAL + FTS5) | `knowledge/brief.json` |
 | **Size** | Unbounded growth | Budget: warn >3000 chars, error >6000 (`brief validate`) |
-| **When loaded** | On demand (`recall`, `kb query`) | **Every session start** (`knowledge-brief`) |
+| **When loaded** | On demand (`recall`, `kb query`) | **Every session start** (`brief show`) |
 | **Refresh cadence** | Continuously (save/merge/split) | Small scope, only when architecture genuinely changes |
 
 ## session-init — the one-shot entry
@@ -36,12 +36,12 @@ Questions are indexed by category paths (`bdev/nvme/pcie`). Missing levels are a
 
 ```bash
 # Save with category + author
-python3 scripts/code2database_builder.py save-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory save --graph code2db-out/ \
   --question "How does nvme submit IO?" --answer "submission queue doorbell" \
   --category bdev/nvme/pcie --author alice
 
 # Browse the category tree
-python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ --action categories
+python3 scripts/code2database_builder.py memory manage --graph code2db-out/ --action categories
 ```
 
 ### Retrieval
@@ -49,7 +49,7 @@ python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ --ac
 `recall` runs FTS5 BM25 × weight with filters; results are grouped by similarity cluster so one popular Q&A can't flood the list:
 
 ```bash
-python3 scripts/code2database_builder.py search-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory search --graph code2db-out/ \
   --query "nvme submit" --category bdev --author alice --top 5
 #   --category  prefix filter (includes ALL subcategories)
 #   --tags      ALL listed tags must be present
@@ -63,12 +63,12 @@ When FTS5 has no token overlap, a token-set similarity fallback still finds near
 A memory about a specific function/type can carry the graph symbol names it's about (`--symbol`, repeatable). This grounds experience to code:
 
 - `save-memory ... --symbol nvme_submit_cmd` stores the names in a `symbols` column; merges absorb them into the cluster root, `--correct` re-grounds (pass `--symbol` with the correction).
-- `search-memory --symbol nvme_submit_cmd` filters by exact symbol (case-insensitive); MCP `code2database_memory_search` takes a `symbol` argument.
-- Symbol-grounded Q&A ("Veteran Memories") surfaces via `search-memory --symbol` — a newcomer reading the code finds its pitfalls in place.
+- `memory search --symbol nvme_submit_cmd` filters by exact symbol (case-insensitive); MCP `code2database_memory_search` takes a `symbol` argument.
+- Symbol-grounded Q&A ("Veteran Memories") surfaces via `memory search --symbol` — a newcomer reading the code finds its pitfalls in place.
 - `MemoryStore.entries_for_symbol(name)` is the programmatic view (cluster-deduped, weight-ranked).
 
 ```bash
-python3 scripts/code2database_builder.py save-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory save --graph code2db-out/ \
   --question "nvme submit 有什么坑?" --answer "doorbell 写错寄存器会 hang" \
   --category bdev/nvme/pcie --author alice --symbol nvme_submit_cmd
 ```
@@ -78,7 +78,7 @@ python3 scripts/code2database_builder.py save-memory --graph code2db-out/ \
 When a stored answer turns out to be WRONG, re-saving the corrected text would create a duplicate variant (and the merge path keeps the higher-weight — i.e. still wrong — answer on top). `--correct` finds the most similar active entry and reshapes it in place, preserving the old answer in the version history with corrector attribution:
 
 ```bash
-python3 scripts/code2database_builder.py save-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory save --graph code2db-out/ \
   --question "How does nvme submit IO?" --answer "corrected answer" \
   --correct --author alice
 # → Corrected memory #12 (was: 'How does nvme submit IO?', similarity 0.95)
@@ -93,30 +93,30 @@ Big shared stores accumulate over-broad and duplicate entries. `memory manage` p
 
 ```bash
 # Split an over-broad entry into focused sub-entries
-python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory manage --graph code2db-out/ \
   --action split --id 12 --parts '[{"question": "pcie path", "answer": "..."},
                                    {"question": "tcp path", "answer": "..."}]'
 
 # Merge duplicates into a canonical entry (variants re-point automatically)
-python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory manage --graph code2db-out/ \
   --action merge --ids 12,15 --canonical 12
 
 # Recategorize
-python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory manage --graph code2db-out/ \
   --action move --id 12 --category bdev/nvme/rdma
 
 # View the lineage tree (who split from whom / merged into whom / variants)
-python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory manage --graph code2db-out/ \
   --action lineage
 
 # Contributor index (multi-user stores)
-python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory manage --graph code2db-out/ \
   --action authors
 ```
 
 ### Read-only sharing
 
-A read-only MCP deployment serves memory the same way (`MemoryStore(read_only=True)`): viewers get full search/digest/lineage/author access — no directory creation, no schema writes, no access-counter bumps — while write operations (save/split/merge/...) stay with the store owner. Author-filtered search (`manage-memory --action authors`, `--author` filters) answers "what did alice learn about this project".
+A read-only MCP deployment serves memory the same way (`MemoryStore(read_only=True)`): viewers get full search/digest/lineage/author access — no directory creation, no schema writes, no access-counter bumps — while write operations (save/split/merge/...) stay with the store owner. Author-filtered search (`memory manage --action authors`, `--author` filters) answers "what did alice learn about this project".
 
 
 ### Weight model (unchanged)
@@ -128,7 +128,7 @@ A read-only MCP deployment serves memory the same way (`MemoryStore(read_only=Tr
 ### Session-start protocol
 
 ```bash
-python3 scripts/code2database_builder.py knowledge-brief --graph code2db-out/
+python3 scripts/code2database_builder.py brief show --graph code2db-out/
 ```
 
 Render the brief into your prompt BEFORE working on the project. If it doesn't exist, bootstrap with `brief extract`, then curate.
@@ -148,15 +148,15 @@ Render the brief into your prompt BEFORE working on the project. If it doesn't e
 ### Curation commands
 
 ```bash
-python3 scripts/code2database_builder.py brief-extract --graph code2db-out/      # bootstrap/refresh template
-python3 scripts/code2database_builder.py brief-update --graph code2db-out/ \
+python3 scripts/code2database_builder.py brief extract --graph code2db-out/      # bootstrap/refresh template
+python3 scripts/code2database_builder.py brief update --graph code2db-out/ \
   --set one_liner --value "..."                                                 # scalar sections
-python3 scripts/code2database_builder.py brief-update --graph code2db-out/ \
+python3 scripts/code2database_builder.py brief update --graph code2db-out/ \
   --add hard_rules --json '{"rule": "开启 XXX 宏", "type": "macro", "evidence": "meson.build:12"}'
-python3 scripts/code2database_builder.py brief-update --graph code2db-out/ \
+python3 scripts/code2database_builder.py brief update --graph code2db-out/ \
   --remove modes --index 0                                                      # small-scope removal
-python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --refresh-stats
-python3 scripts/code2database_builder.py brief-validate --graph code2db-out/    # schema + size budget + graph drift
+python3 scripts/code2database_builder.py brief update --graph code2db-out/ --refresh-stats
+python3 scripts/code2database_builder.py brief validate --graph code2db-out/    # schema + size budget + graph drift
 ```
 
 `brief validate` fails above 6000 rendered chars — overflow belongs in memory (`save`) or the graph, not the brief.
@@ -166,12 +166,12 @@ python3 scripts/code2database_builder.py brief-validate --graph code2db-out/    
 `kb rebuild-index` indexes **memory.db entries + knowledge-store rows** into `kb_paragraphs` (FTS5+BM25) inside the kb store's own `kb_index.db` (independent of the graph db):
 
 ```bash
-python3 scripts/code2database_builder.py kb-rebuild-index --graph code2db-out/
-python3 scripts/code2database_builder.py kb-query --graph code2db-out/ --query "bdev register"
+python3 scripts/code2database_builder.py kb rebuild-index --graph code2db-out/
+python3 scripts/code2database_builder.py kb query --graph code2db-out/ --query "bdev register"
 ```
 
 Kinds: `memory_qa`, `memory_experience`, `hard_rule`, `mode`, `abstraction`, `description`, `must_know`, `conventions`, `pitfalls`, `query_paths`. Run after `build`/`update` or after memory/brief edits.
 
 ## Migration note
 
-Old `memory/*.json` (root/leaf layout) and `knowledge/*.md` stores are retired. The JSON data is NOT migrated — memory starts fresh in memory.db; recreate important Q&A via `save-memory --category ...`. Old files on disk are simply ignored.
+Old `memory/*.json` (root/leaf layout) and `knowledge/*.md` stores are retired. The JSON data is NOT migrated — memory starts fresh in memory.db; recreate important Q&A via `memory save --category ...`. Old files on disk are simply ignored.

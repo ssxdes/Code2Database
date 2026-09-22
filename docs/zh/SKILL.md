@@ -134,4 +134,4 @@ C/C++ | Go | Python | Java | Rust | ASM（6 + ASM，C/C++ 共享扫描器）
 - 从 `context_pack_micro` → `context_pack_lite` → `describe`/`trace` 开始；不批量读取输出文件
 - 只有 7 个标签：API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end；边置信度 EXTRACTED / INFERRED / AMBIGUOUS
 - DB 写入需用户确认；重要查询前检查 `daemon`（守护进程在启动宽限期 `startup_grace_active` 内持有事件而不同步）
-- **精度边界**（函数级并发分析、C++ 虚派发、`build-update` 跨文件边、`--scan-subsystems`）：见 `references/usage_reference.md` 的行为细则
+- **精度边界**（函数级并发分析、C++ 虚派发、`build update` 跨文件边、`--scan-subsystems`）：见 `references/usage_reference.md` 的行为细则

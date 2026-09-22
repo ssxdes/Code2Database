@@ -84,9 +84,9 @@ code2database-builder tx restore --graph code2db-out/ --snapshot <id>
 现象：回答引用了已不存在的函数。
 
 - `node_ids` 从图谱消失的记忆条目会被自动降级（守护进程每次同步
-  后重新校验）；用 `manage-memory --action query` 查看被降级条目，
-  再用 `save-memory --correct` 重新锚定
-- brief 统计与图谱漂移超过 20% 时 `brief-validate` 告警，brief 超
+  后重新校验）；用 `memory manage --action query` 查看被降级条目，
+  再用 `memory save --correct` 重新锚定
+- brief 统计与图谱漂移超过 20% 时 `brief validate` 告警，brief 超
   出预算时也告警（溢出内容应放进记忆）
 - 反复落空的疑问会以 known-unknowns 出现在 `session-init` 里——用
   `c2d capture` 把答案沉淀下来，而不是留着不答

@@ -33,37 +33,37 @@ $BUILDER c2d ask --question "..." --dry-run    # 预览翻译后的命令
 
 ## 家族命令映射 — 120 个可见命令面
 
-CLI 把 27 个前缀族各收拢为一个可见的伞形命令：**120 个可见命令**取代原 255 个。`tx begin`、`kb query`、`cgdb find-invokers`、`daemon start` 是教学拼写；155 个旧拼写（`tx-begin`、`kb-query`……）**解析行为完全相同**——仅从 `--help` 隐藏，既有脚本与肌肉记忆不受影响。`--graph` 与所有旗标不变；`tx begin --help` 与 `tx-begin --help` 输出完全一致。
+CLI 把 27 个前缀族各收拢为一个可见的伞形命令：**120 个可见命令**取代原 255 个。`tx begin`、`kb query`、`cgdb find-invokers`、`daemon start` 是教学拼写；155 个旧拼写（`tx begin`、`kb query`……）**解析行为完全相同**——仅从 `--help` 隐藏，既有脚本与肌肉记忆不受影响。`--graph` 与所有旗标不变；`tx begin --help` 与 `tx begin --help` 输出完全一致。
 
 | 伞形 | 裸形式（=） | 隐藏的旧拼写（全部仍可解析） |
 |------|-------------|------------------------------|
-| `brief` | `brief`（= knowledge-brief，show） | `brief-extract`、`brief-migrate-legacy`、`brief-suggest`、`brief-update`、`brief-validate`、`knowledge-brief` |
-| `build` | `build`（= 从抽取 JSON 建图） | `build-diff`、`build-multi`、`build-update` |
-| `cgdb` | 需要动作 | `cgdb-cfg-paths`、`cgdb-compare`、`cgdb-configs-for`、`cgdb-coverage`、`cgdb-data-flow`、`cgdb-definition`、`cgdb-find-invoked`、`cgdb-find-invokers`、`cgdb-freshness`、`cgdb-function-body`、`cgdb-get-source`、`cgdb-index-status`、`cgdb-layer-summary`、`cgdb-merge-knowledge`、`cgdb-nodes-under-config`、`cgdb-ops-impls`、`cgdb-path`、`cgdb-path-feasible`、`cgdb-query`、`cgdb-race-check`、`cgdb-schema-version`、`cgdb-sql`、`cgdb-struct-layout`、`cgdb-suggest`、`cgdb-time-travel`、`cgdb-tour`、`cgdb-type-definition`、`cgdb-versions`、`cgdb-views`、`cgdb-write-coverage` |
-| `check` | 需要动作 | `check-bounds`、`check-clones`、`check-cycles`、`check-infinite-loop`、`check-recursion` |
-| `concurrency` | `concurrency`（= concurrency-risks） | `concurrency-analyze`、`concurrency-risks`、`detect-races`、`happens-before`、`memory-ordering` |
-| `daemon` | `daemon`（= daemon-status） | `daemon-force-refresh`、`daemon-list-projects`、`daemon-logs`、`daemon-pause`、`daemon-reload`、`daemon-resume`、`daemon-start`、`daemon-status`、`daemon-stop`、`daemon-wait-sync` |
-| `doc` | 需要动作 | `doc-alignment-report`、`doc-code-check`、`doc-mark-stale`、`doc-signature-diff` |
-| `embeddings` | 需要动作 | `embeddings-build`、`embeddings-search` |
-| `export` | `export`（= export-mermaid） | `export-mermaid`、`export-plantuml`、`sarif-export` |
-| `fed` | 需要动作 | `fed-neighbors`、`fed-path`、`fed-search`、`federate-list`、`federate-register`、`federate-remove` |
-| `ffi` | 需要动作 | `ffi-auto-link`、`ffi-detect`、`ffi-list`、`ffi-persist`、`ffi-trace`、`ffi-types` |
-| `foreign` | 需要动作 | `c2d-add-foreign`、`c2d-add-foreign-stub`、`c2d-check-compat`、`c2d-list-foreign`、`c2d-pin-foreign`、`c2d-prune-foreign`、`c2d-remove-foreign`、`c2d-resolve-foreign`、`c2d-sync-foreign`、`c2d-unpin-foreign` |
-| `graph` | 需要动作 | `graph-diff`、`graph-history`、`graph-provenance`、`graph-record-version` |
-| `invariants` | 需要动作 | `apply-invariants`、`extract-invariants`、`extract-invariants-llm`、`find-invariants` |
-| `kb` | 需要动作 | `kb-audit`、`kb-cluster`、`kb-conflict`、`kb-forget`、`kb-init`、`kb-known-unknowns`、`kb-migrate`、`kb-query`、`kb-rebuild-index`、`kb-rollback` |
-| `kb-domain` | 需要动作 | `kb-domain-add`、`kb-domain-list`、`kb-domain-name`、`kb-domain-remove` |
-| `kb-global` | 需要动作 | `kb-global-add`、`kb-global-import`、`kb-global-import-memory`、`kb-global-search`、`kb-global-search-memory`、`kb-global-share`、`kb-global-share-memory` |
-| `memory` | 需要动作 | `manage-memory`、`memory-health`、`save-memory`、`search-memory`、`validate-memory` |
-| `node` | 需要动作 | `add-function`、`delete-node`、`insert-node-after` |
-| `pp` | 需要动作 | `find-macros`、`get-pp-branches`、`get-string-literals` |
-| `profile` | 需要动作 | `profile-bind-version`、`profile-evolve`、`profile-health` |
-| `search` | `search`（= 关键词搜索） | `hybrid-search`、`semantic-search` |
-| `token` | 需要动作 | `delete-token`、`edit-token`、`insert-token` |
-| `trace` | `trace`（= trace-chain，正向） | `diff-chains`、`reverse-trace`、`trace-chain` |
-| `tx` | 需要动作 | `tx-begin`、`tx-commit`、`tx-list-snapshots`、`tx-replay-wal`、`tx-restore`、`tx-rollback`、`tx-snapshot`、`tx-status` |
-| `who` | 需要动作 | `unbalanced-alloc-free`、`who-allocates`、`who-frees`、`who-locks` |
-| `writeback` | 需要动作 | `commit-db-transaction`、`rollback-db-transaction` |
+| `brief` | `brief`（= knowledge-brief，show） | `brief extract`、`brief migrate-legacy`、`brief suggest`、`brief update`、`brief validate`、`brief show` |
+| `build` | `build`（= 从抽取 JSON 建图） | `build diff`、`build multi`、`build update` |
+| `cgdb` | 需要动作 | `cgdb cfg-paths`、`cgdb compare`、`cgdb configs-for`、`cgdb coverage`、`cgdb data-flow`、`cgdb definition`、`cgdb find-invoked`、`cgdb find-invokers`、`cgdb freshness`、`cgdb function-body`、`cgdb get-source`、`cgdb index-status`、`cgdb layer-summary`、`cgdb merge-knowledge`、`cgdb nodes-under-config`、`cgdb ops-impls`、`cgdb path`、`cgdb path-feasible`、`cgdb query`、`cgdb race-check`、`cgdb schema-version`、`cgdb sql`、`cgdb struct-layout`、`cgdb suggest`、`cgdb time-travel`、`cgdb tour`、`cgdb type-definition`、`cgdb versions`、`cgdb views`、`cgdb write-coverage` |
+| `check` | 需要动作 | `check bounds`、`check clones`、`check cycles`、`check infinite-loop`、`check recursion` |
+| `concurrency` | `concurrency`（= concurrency-risks） | `concurrency analyze`、`concurrency risks`、`concurrency detect-races`、`concurrency happens-before`、`concurrency memory-ordering` |
+| `daemon` | `daemon`（= daemon-status） | `daemon force-refresh`、`daemon list-projects`、`daemon logs`、`daemon pause`、`daemon reload`、`daemon resume`、`daemon start`、`daemon status`、`daemon stop`、`daemon wait-sync` |
+| `doc` | 需要动作 | `doc alignment-report`、`doc code-check`、`doc mark-stale`、`doc signature-diff` |
+| `embeddings` | 需要动作 | `embeddings build`、`embeddings search` |
+| `export` | `export`（= export-mermaid） | `export mermaid`、`export plantuml`、`export sarif` |
+| `fed` | 需要动作 | `fed neighbors`、`fed path`、`fed search`、`fed list`、`fed register`、`fed remove` |
+| `ffi` | 需要动作 | `ffi auto-link`、`ffi detect`、`ffi list`、`ffi persist`、`ffi trace`、`ffi types` |
+| `foreign` | 需要动作 | `foreign add`、`foreign add-stub`、`foreign check-compat`、`foreign list`、`foreign pin`、`foreign prune`、`foreign remove`、`foreign resolve`、`foreign sync`、`foreign unpin` |
+| `graph` | 需要动作 | `graph diff`、`graph history`、`graph provenance`、`graph record-version` |
+| `invariants` | 需要动作 | `invariants apply`、`invariants extract`、`invariants extract-llm`、`invariants find` |
+| `kb` | 需要动作 | `kb audit`、`kb cluster`、`kb conflict`、`kb forget`、`kb init`、`kb known-unknowns`、`kb migrate`、`kb query`、`kb rebuild-index`、`kb rollback` |
+| `kb-domain` | 需要动作 | `kb-domain add`、`kb-domain list`、`kb-domain name`、`kb-domain remove` |
+| `kb-global` | 需要动作 | `kb-global add`、`kb-global import`、`kb-global import-memory`、`kb-global search`、`kb-global search-memory`、`kb-global share`、`kb-global share-memory` |
+| `memory` | 需要动作 | `memory manage`、`memory health`、`memory save`、`memory search`、`memory validate` |
+| `node` | 需要动作 | `node add-function`、`node delete`、`node insert-after` |
+| `pp` | 需要动作 | `pp macros`、`pp branches`、`pp strings` |
+| `profile` | 需要动作 | `profile bind-version`、`profile evolve`、`profile health` |
+| `search` | `search`（= 关键词搜索） | `search hybrid`、`search semantic` |
+| `token` | 需要动作 | `token delete`、`token edit`、`token insert` |
+| `trace` | `trace`（= trace-chain，正向） | `trace diff`、`trace reverse`、`trace forward` |
+| `tx` | 需要动作 | `tx begin`、`tx commit`、`tx list-snapshots`、`tx replay-wal`、`tx restore`、`tx rollback`、`tx snapshot`、`tx status` |
+| `who` | 需要动作 | `who unbalanced`、`who allocates`、`who frees`、`who locks` |
+| `writeback` | 需要动作 | `writeback commit`、`writeback rollback` |
 
 短别名（memory 的 `save`/`recall`、invariants 的 `find`、profile 的 `health`、`describe`/`context`、`flow`、`init`）保持可见不变。
 
@@ -104,12 +104,12 @@ CLI 把 27 个前缀族各收拢为一个可见的伞形命令：**120 个可见
 
 分析层的精度边界，集中于此按需阅读：
 
-- **大图（>=5 万函数）**：`update`/`merge`/`sync` 需要内存图，回退为 LazySQLiteGraph（只读）并打印友好错误指向 `daemon-start` 或 `build`。增量同步用 `daemon-start`，精确的单文件更新用 `build-update --source SRC --graph DIR`（内容哈希检测 + `#include` 闭包；纯格式修改会被结构性跳过）。
-- **`build-update` 跨文件边局限**：只重扫变更文件。文件 A 中的函数改名/删除后，指向 A 的跨文件调用边会被删除但不会重建 — 调用方文件未重扫，新的函数 ID（内嵌文件路径）不会匹配。跨文件边在完整 `build` 前一直缺失。频繁跨文件重构的项目优先 `daemon-start`（事务化同步）或定期完整构建。
+- **大图（>=5 万函数）**：`update`/`merge`/`sync` 需要内存图，回退为 LazySQLiteGraph（只读）并打印友好错误指向 `daemon start` 或 `build`。增量同步用 `daemon start`，精确的单文件更新用 `build update --source SRC --graph DIR`（内容哈希检测 + `#include` 闭包；纯格式修改会被结构性跳过）。
+- **`build update` 跨文件边局限**：只重扫变更文件。文件 A 中的函数改名/删除后，指向 A 的跨文件调用边会被删除但不会重建 — 调用方文件未重扫，新的函数 ID（内嵌文件路径）不会匹配。跨文件边在完整 `build` 前一直缺失。频繁跨文件重构的项目优先 `daemon start`（事务化同步）或定期完整构建。
 - **并发分析是函数级、非访问点级**：不检测 TOCTOU 竞态；锁检测用正则而非 CFG。结果可能有误报/漏报 — 更细粒度用 `lock-coverage`。
-- **`path`/`trace-chain` 同名歧义**：不同文件中的同名函数需要 `--source-file` 消歧。带 `--source-file` 时 `--from`/`--to` 接受函数名（按名+文件解析）；不带时必须是节点 ID；多处命中会打印候选源文件警告。`path --domain-filter fs,block` 将遍历硬限制在白名单域（+ `root`），用于跨子系统可达性查询。
-- **C++ 虚派发不解析**：tree-sitter C++ 把虚方法调用解析为普通 `call_expression` — 只解析到静态类型方法。C 风格 ops-table vtable 派发已支持（`vtable_dispatch` 边）。C++ 类层次结构的 `virtual`/`override` 用 `concurrency-analyze` 或手工检查 override 集。
-- **FFI 边需要 `make`**：单独的 `build` 命令不运行 FFI 检测 — 多语言项目在裸 `build` 后运行 `ffi-detect --apply`（`make` 流水线自动执行）。
+- **`path`/`trace forward` 同名歧义**：不同文件中的同名函数需要 `--source-file` 消歧。带 `--source-file` 时 `--from`/`--to` 接受函数名（按名+文件解析）；不带时必须是节点 ID；多处命中会打印候选源文件警告。`path --domain-filter fs,block` 将遍历硬限制在白名单域（+ `root`），用于跨子系统可达性查询。
+- **C++ 虚派发不解析**：tree-sitter C++ 把虚方法调用解析为普通 `call_expression` — 只解析到静态类型方法。C 风格 ops-table vtable 派发已支持（`vtable_dispatch` 边）。C++ 类层次结构的 `virtual`/`override` 用 `concurrency analyze` 或手工检查 override 集。
+- **FFI 边需要 `make`**：单独的 `build` 命令不运行 FFI 检测 — 多语言项目在裸 `build` 后运行 `ffi detect --apply`（`make` 流水线自动执行）。
 - **`--scan-subsystems` 丢弃跨子系统边**：子系统过滤把扫描限制在顶层目录；共享头文件与进入未扫描子系统的调用变成幻影外部节点（边保留、目标未解析）。省略该标志或包含 `include` 以获得完整跨子系统保真度。
 
 ## 第0步 — 检查前置条件

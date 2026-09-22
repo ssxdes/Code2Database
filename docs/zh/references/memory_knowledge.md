@@ -7,7 +7,7 @@ Code2Database 用两个形态相反的长期存储：
 | **角色** | 共享积累的 Q&A 大脑 — 多人、多深度提问 | 本项目的精简固定描述：架构、功能、设计、使用 |
 | **存储** | `memory/memory.db`（SQLite WAL + FTS5） | `knowledge/brief.json` |
 | **体积** | 无上限增长 | 预算：>3000 字符告警、>6000 报错（`brief validate`） |
-| **加载时机** | 按需（`recall`、`kb query`） | **每次会话启动**（`knowledge-brief`） |
+| **加载时机** | 按需（`recall`、`kb query`） | **每次会话启动**（`brief show`） |
 | **更新节奏** | 持续（save/merge/split） | 小范围，仅在架构真正变化时 |
 
 ## session-init — 一站式入口
@@ -36,12 +36,12 @@ graph_dir/
 
 ```bash
 # 带分类 + 作者保存
-python3 scripts/code2database_builder.py save-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory save --graph code2db-out/ \
   --question "nvme 如何提交 IO？" --answer "submission queue doorbell" \
   --category bdev/nvme/pcie --author alice
 
 # 浏览分类树
-python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ --action categories
+python3 scripts/code2database_builder.py memory manage --graph code2db-out/ --action categories
 ```
 
 ### 检索
@@ -49,7 +49,7 @@ python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ --ac
 `recall` 以 FTS5 BM25 × 权重运行并支持过滤；结果按相似簇聚组，单个热门 Q&A 不会刷屏：
 
 ```bash
-python3 scripts/code2database_builder.py search-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory search --graph code2db-out/ \
   --query "nvme submit" --category bdev --author alice --top 5
 #   --category  前缀过滤（包含所有子分类）
 #   --tags      所列 tags 必须全部命中
@@ -63,12 +63,12 @@ FTS5 无 token 交叠时，token 集相似度回退仍能找到近似项。**中
 关于某个具体函数/类型的记忆可以携带它所属的图谱符号名（`--symbol`，可重复），把经验锚定到代码：
 
 - `save-memory ... --symbol nvme_submit_cmd` 把符号名存入 `symbols` 列；合并时吸收进簇根，`--correct` 时传 `--symbol` 可重新锚定。
-- `search-memory --symbol nvme_submit_cmd` 按符号精确过滤（大小写不敏感）；MCP `code2database_memory_search` 接受 `symbol` 参数。
-- 锚定到符号的问答（"Veteran Memories"）可通过 `search-memory --symbol` 检索——新人读代码时就地看到这个函数的坑。
+- `memory search --symbol nvme_submit_cmd` 按符号精确过滤（大小写不敏感）；MCP `code2database_memory_search` 接受 `symbol` 参数。
+- 锚定到符号的问答（"Veteran Memories"）可通过 `memory search --symbol` 检索——新人读代码时就地看到这个函数的坑。
 - `MemoryStore.entries_for_symbol(name)` 是编程接口（按簇去重、按权重排序）。
 
 ```bash
-python3 scripts/code2database_builder.py save-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory save --graph code2db-out/ \
   --question "nvme submit 有什么坑?" --answer "doorbell 写错寄存器会 hang" \
   --category bdev/nvme/pcie --author alice --symbol nvme_submit_cmd
 ```
@@ -78,7 +78,7 @@ python3 scripts/code2database_builder.py save-memory --graph code2db-out/ \
 当已存的答案被证明是**错的**，直接重存修正文本只会产生重复变体（且合并路径保留权重更高——也就是仍然错误——的答案）。`--correct` 找到最相似的活跃条目并原地重塑，旧答案保留在版本历史中并记录纠正者：
 
 ```bash
-python3 scripts/code2database_builder.py save-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory save --graph code2db-out/ \
   --question "nvme 如何提交 IO？" --answer "修正后的答案" \
   --correct --author alice
 # → Corrected memory #12 (was: 'nvme 如何提交 IO？', similarity 0.95)
@@ -93,30 +93,30 @@ python3 scripts/code2database_builder.py save-memory --graph code2db-out/ \
 
 ```bash
 # 把过泛条目拆解为聚焦子条目
-python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory manage --graph code2db-out/ \
   --action split --id 12 --parts '[{"question": "pcie 路径", "answer": "..."},
                                    {"question": "tcp 路径", "answer": "..."}]'
 
 # 重复条目合并为规范条目（变体自动重指向）
-python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory manage --graph code2db-out/ \
   --action merge --ids 12,15 --canonical 12
 
 # 重新归类
-python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory manage --graph code2db-out/ \
   --action move --id 12 --category bdev/nvme/rdma
 
 # 查看血缘树（谁从谁拆出 / 合并进谁 / 谁是谁的变体）
-python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory manage --graph code2db-out/ \
   --action lineage
 
 # 贡献者索引（多人共享库）
-python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
+python3 scripts/code2database_builder.py memory manage --graph code2db-out/ \
   --action authors
 ```
 
 ### 只读共享
 
-只读 MCP 部署以同样方式服务 memory（`MemoryStore(read_only=True)`）：查看者获得完整的检索/摘要/血缘/作者访问——不创建目录、不写 schema、不累加阅读计数——而写操作（save/split/merge/…）仍由库 owner 执行。按 author 过滤的检索（`manage-memory --action authors`、`--author` 过滤）回答"alice 在这个项目上沉淀了什么"。
+只读 MCP 部署以同样方式服务 memory（`MemoryStore(read_only=True)`）：查看者获得完整的检索/摘要/血缘/作者访问——不创建目录、不写 schema、不累加阅读计数——而写操作（save/split/merge/…）仍由库 owner 执行。按 author 过滤的检索（`memory manage --action authors`、`--author` 过滤）回答"alice 在这个项目上沉淀了什么"。
 
 
 ### 权重模型（未变）
@@ -128,7 +128,7 @@ python3 scripts/code2database_builder.py manage-memory --graph code2db-out/ \
 ### 会话启动协议
 
 ```bash
-python3 scripts/code2database_builder.py knowledge-brief --graph code2db-out/
+python3 scripts/code2database_builder.py brief show --graph code2db-out/
 ```
 
 在开始工作前把简报渲染进 prompt。若不存在，用 `brief extract` 自举后再精炼。
@@ -148,15 +148,15 @@ python3 scripts/code2database_builder.py knowledge-brief --graph code2db-out/
 ### 精炼命令
 
 ```bash
-python3 scripts/code2database_builder.py brief-extract --graph code2db-out/      # 自举/刷新模板
-python3 scripts/code2database_builder.py brief-update --graph code2db-out/ \
+python3 scripts/code2database_builder.py brief extract --graph code2db-out/      # 自举/刷新模板
+python3 scripts/code2database_builder.py brief update --graph code2db-out/ \
   --set one_liner --value "..."                                                 # 标量节
-python3 scripts/code2database_builder.py brief-update --graph code2db-out/ \
+python3 scripts/code2database_builder.py brief update --graph code2db-out/ \
   --add hard_rules --json '{"rule": "开启 XXX 宏", "type": "macro", "evidence": "meson.build:12"}'
-python3 scripts/code2database_builder.py brief-update --graph code2db-out/ \
+python3 scripts/code2database_builder.py brief update --graph code2db-out/ \
   --remove modes --index 0                                                      # 小范围删除
-python3 scripts/code2database_builder.py brief-update --graph code2db-out/ --refresh-stats
-python3 scripts/code2database_builder.py brief-validate --graph code2db-out/    # schema + 体积预算 + 图漂移
+python3 scripts/code2database_builder.py brief update --graph code2db-out/ --refresh-stats
+python3 scripts/code2database_builder.py brief validate --graph code2db-out/    # schema + 体积预算 + 图漂移
 ```
 
 `brief validate` 渲染超 6000 字符即失败 — 溢出内容应放进 memory（`save`）或图里，而不是简报。
@@ -166,12 +166,12 @@ python3 scripts/code2database_builder.py brief-validate --graph code2db-out/    
 `kb rebuild-index` 把 **memory.db 条目 + 知识库行** 索引进 kb 存储自己的 `kb_index.db` 中的 `kb_paragraphs`（FTS5+BM25，与图数据库相互独立）：
 
 ```bash
-python3 scripts/code2database_builder.py kb-rebuild-index --graph code2db-out/
-python3 scripts/code2database_builder.py kb-query --graph code2db-out/ --query "bdev register"
+python3 scripts/code2database_builder.py kb rebuild-index --graph code2db-out/
+python3 scripts/code2database_builder.py kb query --graph code2db-out/ --query "bdev register"
 ```
 
 Kind：`memory_qa`、`memory_experience`、`hard_rule`、`mode`、`abstraction`、`description`、`must_know`、`conventions`、`pitfalls`、`query_paths`。`build`/`update` 或 memory/brief 修改后运行。
 
 ## 迁移说明
 
-旧的 `memory/*.json`（root/leaf 布局）与 `knowledge/*.md` 存储已退役。JSON 数据不做迁移 — memory 在 memory.db 中全新开始；重要 Q&A 用 `save-memory --category ...` 重建。磁盘上的旧文件仅被忽略。
+旧的 `memory/*.json`（root/leaf 布局）与 `knowledge/*.md` 存储已退役。JSON 数据不做迁移 — memory 在 memory.db 中全新开始；重要 Q&A 用 `memory save --category ...` 重建。磁盘上的旧文件仅被忽略。

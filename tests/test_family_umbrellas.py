@@ -65,6 +65,35 @@ class TestFamilyTables(unittest.TestCase):
                     got, [legacy, "--graph", "X"],
                     f"shim mismatch: {fam} {action} -> {got}")
 
+    def test_umbrella_display_roundtrip_for_every_legacy_name(self):
+        """Display form must execute identically to the legacy spelling.
+
+        For every hidden name n: umbrella_argv(n) tokens, when passed
+        through the argv rewrite, collapse back to exactly [n]. This is
+        what lets the c2d recipes and the intent router render AND
+        execute the umbrella spelling.
+        """
+        from _builder.umbrella import umbrella_argv, umbrella_display
+        apply = self.mod._apply_family_umbrella
+        for name in sorted(self.legacy):
+            display = umbrella_display(name)
+            self.assertNotEqual(display, name,
+                                f"{name} has no umbrella spelling")
+            self.assertEqual(
+                apply(umbrella_argv(name) + ["--graph", "X"]),
+                [name, "--graph", "X"],
+                f"umbrella roundtrip failed for {name} ({display})")
+
+    def test_umbrella_display_leaves_visible_commands_alone(self):
+        from _builder.umbrella import umbrella_display
+        for visible in ["impact", "path", "query", "describe-node",
+                        "session-init", "make", "value-flow",
+                        "lock-coverage", "path-feasible", "blast-radius",
+                        "blame-node", "node-history", "find-commits",
+                        "explore-flow", "key-paths", "field-access",
+                        "code-slice", "doctor", "serve"]:
+            self.assertEqual(umbrella_display(visible), visible)
+
     def test_shim_skips_global_flags_correctly(self):
         apply = self.mod._apply_family_umbrella
         # value-taking global flags before the family pair

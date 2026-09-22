@@ -165,8 +165,8 @@ class TestIntentQuery(unittest.TestCase):
         self.assertTrue(result["ok"])
         # daemon-status has empty args dict
         suggestion = result["suggestion"]
-        # Should be just "code2database_builder.py daemon-status"
-        self.assertTrue(suggestion.endswith("daemon-status"))
+        # Suggestions teach the umbrella spelling ("daemon status")
+        self.assertTrue(suggestion.endswith("daemon status"))
 
 
 class TestIntentRules(unittest.TestCase):

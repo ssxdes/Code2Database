@@ -57,12 +57,12 @@
 
 ## "What's the difference between mode=0 and mode=1 execution paths?" (New command)
 
-1. diff-chains --node device_start --bindings-a "mode=0" --bindings-b "mode=1"
+1. trace diff --node device_start --bindings-a "mode=0" --bindings-b "mode=1"
 2. Output: table showing paths only in mode=0, only in mode=1, and common paths
 
 ## "List all concurrency risk points in this project" (New command)
 
-1. concurrency-risks --graph code2db-out/
+1. concurrency risks --graph code2db-out/
 2. Output: all spawn points, concurrent windows, sorted by risk level
 
 ## "Trace the lifecycle of 'buffer' resource" (New command)

@@ -57,12 +57,12 @@
 
 ## "mode=0 和 mode=1 的执行路径有什么区别？"（新命令）
 
-1. diff-chains --node device_start --bindings-a "mode=0" --bindings-b "mode=1"
+1. trace diff --node device_start --bindings-a "mode=0" --bindings-b "mode=1"
 2. 输出：表格展示仅在 mode=0 中的路径、仅在 mode=1 中的路径、以及共同路径
 
 ## "列出项目中所有并发风险点"（新命令）
 
-1. concurrency-risks --graph code2db-out/
+1. concurrency risks --graph code2db-out/
 2. 输出：所有 spawn 点、并发窗口，按风险等级排序
 
 ## "追踪 'buffer' 资源的生命周期"（新命令）

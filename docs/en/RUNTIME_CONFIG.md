@@ -138,10 +138,10 @@ Edit this file when you need to tune pipeline behavior without modifying source 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `min_score` | int | `70` | Minimum acceptable profile health score. Below this, `profile-health` flags the profile as stale. |
-| `auto_apply_extracted` | bool | `true` | `profile-evolve --apply` auto-applies EXTRACTED-confidence suggestions. |
+| `min_score` | int | `70` | Minimum acceptable profile health score. Below this, `profile health` flags the profile as stale. |
+| `auto_apply_extracted` | bool | `true` | `profile evolve --apply` auto-applies EXTRACTED-confidence suggestions. |
 | `require_confirm_inferred` | bool | `true` | INFERRED suggestions require user confirmation. |
-| `bind_to_head` | bool | `true` | Bind profile to git/svn HEAD on `profile-bind-version`. Stale profiles (HEAD mismatch) are flagged. |
+| `bind_to_head` | bool | `true` | Bind profile to git/svn HEAD on `profile bind-version`. Stale profiles (HEAD mismatch) are flagged. |
 
 ### `doc_code` — Doc-Code Alignment Parameters
 
@@ -154,7 +154,7 @@ Edit this file when you need to tune pipeline behavior without modifying source 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | bool | `false` | Auto-start the daemon after build. Recommended: keep `false` and start explicitly with `daemon-start`. |
+| `enabled` | bool | `false` | Auto-start the daemon after build. Recommended: keep `false` and start explicitly with `daemon start`. |
 | `watch_paths` | string[] | `[]` | Source paths to watch. Empty = use the scan `--source` from the most recent scan. |
 | `exclude_patterns` | string[] | `["*.swp", "*.tmp", ".git/*"]` | Glob patterns to exclude from watching. |
 | `debounce_ms` | int | `500` | Debounce window for editor saves. Lower = more responsive but more re-scans. |
@@ -163,7 +163,7 @@ Edit this file when you need to tune pipeline behavior without modifying source 
 | `idle_sleep_minutes` | int | `30` | Idle sleep before daemon enters power-saving polling. |
 | `max_events_per_minute` | int | `1000` | Circuit breaker threshold; above this, bulk rebuild is triggered. |
 | `backend` | string | `"auto"` | `"inotify"` (Linux), `"polling"`, or `"auto"` (inotify if available, else polling). |
-| `startup_grace_sec` | float | `60` | Startup grace period: file events seen during this window after daemon start are held, not synced. Avoids re-syncing a flurry of events from a build that just finished or a daemon restart. `daemon-wait-sync` and `daemon-force-refresh` end the grace early. Overridable via env `CALLGRAPH_DAEMON_STARTUP_GRACE_SEC`. |
+| `startup_grace_sec` | float | `60` | Startup grace period: file events seen during this window after daemon start are held, not synced. Avoids re-syncing a flurry of events from a build that just finished or a daemon restart. `daemon wait-sync` and `daemon force-refresh` end the grace early. Overridable via env `CALLGRAPH_DAEMON_STARTUP_GRACE_SEC`. |
 
 **Note**: the daemon never watches its own `--graph` output directory (self-watch feedback loop) — unless graph_dir equals the source root.
 

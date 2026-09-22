@@ -1,6 +1,6 @@
 # build-multi Manifest Schema
 
-The `build-multi` command builds a unified C2D from multiple interdependent
+The `build multi` command builds a unified C2D from multiple interdependent
 projects via a JSON manifest file.
 
 ## Manifest format
@@ -87,7 +87,7 @@ Use `--force-rescan A,B` to force re-scan of specific projects
 ## CLI
 
 ```bash
-python3 scripts/code2database_builder.py build-multi \
+python3 scripts/code2database_builder.py build multi \
   --manifest projects.json \
   --outdir /tmp/joint_c2db-out/ \
   [-j 8] \

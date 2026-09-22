@@ -321,13 +321,13 @@ CREATE INDEX idx_field_struct ON field_access(struct_name);
 
 `SQLiteStore.SCHEMA_VERSION`（当前 **13**，在同一 db 的遗留表侧）跟踪非-cgdb schema。下列 kb 表历史上以 v9-v12 schema 步骤引入；kb 独立成子 skill 后它们位于 kb 存储自己的 **`kb_index.db`**（携带它们的遗留 db 会在首次打开时一次性拷贝过去）：
 
-- **kb_paragraphs**— 跨 `memory/memory.db` + 知识库的统一 FTS5+BM25 索引（`knowledge/knowledge.db` 为事实源，`knowledge/brief.json` 为派生提示视图）；替代逐存储的 Jaccard / 子串搜索。可通过 `kb-rebuild-index` 重建。
+- **kb_paragraphs**— 跨 `memory/memory.db` + 知识库的统一 FTS5+BM25 索引（`knowledge/knowledge.db` 为事实源，`knowledge/brief.json` 为派生提示视图）；替代逐存储的 Jaccard / 子串搜索。可通过 `kb rebuild-index` 重建。
 - **kb_paragraphs_fts** — title/body/tags 的 FTS5 虚拟表（porter + unicode61 分词器），带 AI/AD/AU 触发器。
 - **scope_id / canonical_id / principle_ref** 列— 聚类 + 跨类型链接。
 - **embedding BLOB** 列— 可选的 384 维 float32 语义搜索；sentence-transformers 不可用时为 NULL。
 - **kb_items**— fact 级表，带 versions_json、decay_class、provenance_commit、provenance_operator；长期替代 kb_paragraphs（迁移期间两者共存）。
 - **kb_items_fts** — kb_items 的 FTS5。
-- **kb_query_log**— 记录每次 `kb-query` 调用，供 feedback loop 分析；驱动 `kb-known-unknowns`。
+- **kb_query_log**— 记录每次 `kb query` 调用，供 feedback loop 分析；驱动 `kb known-unknowns`。
 
 ### 知识库表（kb_index.db）
 
@@ -352,11 +352,11 @@ CREATE INDEX idx_field_struct ON field_access(struct_name);
 `foreign_refs` 表存储 B 的跨 C2D 引用：每行是从 B 的 `local_node_id`
 到 A 的 `foreign_node_id` 的边（从 A 的 `functions` 表缓存）。状态转换：
 `unresolved` → `resolved` → `stale`（A 变了）→ `deleted`（A 删了函数）
-或 → `orphaned`（用户运行了 `c2d-remove-foreign`）。
+或 → `orphaned`（用户运行了 `foreign remove`）。
 
 `watched_c2ds` 表追踪每个注册的外部 C2D 的 db mtime/size/functions_count
 用于变更检测。守护进程每 60s 轮询；若 mtime 变化，自动触发
-`c2d-sync-foreign`。
+`foreign sync`。
 
 ### 遗留 ↔ cgdb 同步
 

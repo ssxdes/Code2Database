@@ -136,4 +136,4 @@ C/C++ | Go | Python | Java | Rust | ASM (6 + ASM, C/C++ share scanner)
 - Start with `context_pack_micro` → `context_pack_lite` → `describe`/`trace`; never bulk-read output files
 - Only 7 labels: API_entry, thread_processor, callback_func, constructor, destructor, out_end, unknown_end; every edge carries EXTRACTED / INFERRED / AMBIGUOUS confidence
 - DB writes require user confirmation; check `daemon` before important queries (the daemon holds — does not sync — events during its startup grace window)
-- **Accuracy caveats** (function-level concurrency, C++ virtual dispatch, `build-update` cross-file edges, `--scan-subsystems`): see Behavior Notes in `references/usage_reference.md`
+- **Accuracy caveats** (function-level concurrency, C++ virtual dispatch, `build update` cross-file edges, `--scan-subsystems`): see Behavior Notes in `references/usage_reference.md`

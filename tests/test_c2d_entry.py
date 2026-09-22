@@ -286,7 +286,9 @@ class TestExecuteRecipe(unittest.TestCase):
         self.assertEqual(rep["failed"], 0)
         self.assertEqual(rep["skipped"], 0)
         out = buf.getvalue()
-        self.assertIn("concurrency-analyze --node bdev_start --graph gdir",
+        # Steps echo the umbrella spelling (`concurrency analyze`), which
+        # the builder rewrites to the legacy command before argparse.
+        self.assertIn("concurrency analyze --node bdev_start --graph gdir",
                       out)
         self.assertIn("recipe complete: 4 steps", out)
 
@@ -534,7 +536,9 @@ class TestDelegationVerbs(unittest.TestCase):
                         symbol=["fn1", "fn2"], correct=True))
         self.assertEqual(rc, 0)
         argv = run.call_args[0][0]
-        self.assertIn("save-memory", argv)
+        # umbrella spelling: "memory save" (rewritten to save-memory)
+        self.assertIn("memory", argv)
+        self.assertIn("save", argv)
         self.assertIn("--question", argv)
         self.assertIn("q?", argv)
         self.assertIn("--answer", argv)
@@ -606,7 +610,9 @@ class TestFreshenVerb(unittest.TestCase):
                             _ns(action="freshen", graph=g))
             self.assertEqual(rc, 0)
             argv = run.call_args[0][0]
-            self.assertIn("daemon-status", argv)
+            # umbrella spelling: "daemon status"
+            self.assertIn("daemon", argv)
+            self.assertIn("status", argv)
             self.assertIn(g, argv)
 
     def test_fresh_graph_returns_zero(self):
@@ -651,8 +657,8 @@ class TestFreshenVerb(unittest.TestCase):
             self.assertIn("git HEAD moved", combined)
             self.assertIn("quick-update", combined)
             self.assertIn("c2d setup --source /my/proj", combined)
-            self.assertIn("daemon-start", combined)
-            self.assertIn("build-update", combined)
+            self.assertIn("daemon start", combined)
+            self.assertIn("build update", combined)
 
     def test_unconfirmed_leads_with_recommendation(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -741,7 +747,9 @@ class TestReportVerb(unittest.TestCase):
                                       target="util_sum", mode="domain",
                                       output="d.mmd")
         self.assertEqual(rc, 0)
-        self.assertIn("export-mermaid", argv)
+        # umbrella spelling: "export mermaid"
+        self.assertIn("export", argv)
+        self.assertIn("mermaid", argv)
         self.assertIn("--node", argv)
         self.assertIn("util_sum", argv)
         self.assertIn("--mode", argv)
@@ -752,7 +760,9 @@ class TestReportVerb(unittest.TestCase):
         rc, argv = self._delegate_run(kind="plantuml", graph="/g",
                                       mode="structure")
         self.assertEqual(rc, 0)
-        self.assertIn("export-plantuml", argv)
+        # umbrella spelling: "export plantuml"
+        self.assertIn("export", argv)
+        self.assertIn("plantuml", argv)
         self.assertIn("--mode", argv)
         self.assertIn("structure", argv)
 

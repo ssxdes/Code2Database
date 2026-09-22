@@ -34,11 +34,11 @@
 | 只读代码文本              |  →  | 可查询代码数据库                |
 | :----------------------- | :-: | :----------------------------- |
 | `grep` / `glob` / `Read` | →   | `explore-flow`  → 节点 + 路径   |
-| 一次一个文件              | →   | `trace-chain`   → A → B（带条件）|
-| 每次提问重新发现          | →   | `detect-races`  → 跨线程隐患    |
+| 一次一个文件              | →   | `trace forward`   → A → B（带条件）|
+| 每次提问重新发现          | →   | `concurrency detect-races`  → 跨线程隐患    |
 | 手动调用链追踪            | →   | `param-flow`    → 跨函数数据流  |
 | 无并发可见性              | →   | `field-access`  → 谁读写了 X    |
-| 无 `#ifdef` 感知          | →   | `reverse-trace` → 到崩溃点的所有路径 |
+| 无 `#ifdef` 感知          | →   | `trace reverse` → 到崩溃点的所有路径 |
 
 ---
 
@@ -86,7 +86,7 @@ python3 scripts/code2database_builder.py explore-flow \
   --graph code2db-out/ --query "初始化" --max-tokens 2000
 
 # 6.（可选）启动后台守护进程实时自动同步
-python3 scripts/code2database_builder.py daemon-start \
+python3 scripts/code2database_builder.py daemon start \
   --graph code2db-out/ --source /path/to/code
 ```
 
@@ -188,20 +188,20 @@ bash scripts/setup.sh --languages c,go
 | **边置信度** | 每条边标注 `EXTRACTED`（1.0）/ `INFERRED`（0.7–0.95）/ `AMBIGUOUS`（0.1–0.3）——你始终知道什么是发现的 vs 推断的 |
 | **Profile → Scan → Build 分离** | Scan 阶段产生不可变 AST 事实；Build 阶段做推理。提取 bug？独立验证 scan。改进推理？秒级重跑 Build，无需重扫 |
 | **双语文档（EN/中文）** | Skill 指令、参考文档、用法指南均有英文和中文版 |
-| **提交级来源** | 每个节点/边携带 `commit_meta.source_commit`（git/svn 哈希）。工程师用 `git show <hash>` 校验，而非时间戳。见 `describe-commit`、`node-history`、`graph-provenance`、`blame-node`、`find-commits` |
+| **提交级来源** | 每个节点/边携带 `commit_meta.source_commit`（git/svn 哈希）。工程师用 `git show <hash>` 校验，而非时间戳。见 `describe-commit`、`node-history`、`graph provenance`、`blame-node`、`find-commits` |
 | **Cypher 子集查询** | 声明式图谱查询 `MATCH`/`WHERE`/`RETURN`——`query "MATCH (n)-[r:INVOKES]->(m) WHERE n.name =~ 'foo.*' RETURN n,m"` |
 | **值流与 DATA_FLOW 边** | 跨函数追踪参数→返回值传播。回答"这个 NULL 从哪来？"——`value-flow`、`param-flow` |
 | **锁持有区域分析** | 基于事件流 + 字符位置的精确锁持有区间，而非仅"锁存在"——`lock-coverage`。降低竞争检测误报 |
 | **Z3 路径可行性** | Z3 SMT 求解器自动求解路径可行性；无 Z3 时启发式回退——`path-feasible`。可选 `z3-solver` 依赖 |
 | **跨函数数据依赖** | DATA_DEP 边扫描所有节点的读写者，而非仅调用可达后继——`data-dep` |
-| **不变量提取** | 每个函数的前置/后置/循环不变量/状态机——`extract-invariants`、`find-invariants`、`apply-invariants` |
+| **不变量提取** | 每个函数的前置/后置/循环不变量/状态机——`invariants extract`、`invariants find`、`invariants apply` |
 | **LLM 自动语义增强** | 置信度阈值自动写入（EXTRACTED+证据自动应用；INFERRED 需确认；AMBIGUOUS 拒绝）+ 批量确认和回滚——`auto-enhance`、`batch-confirm`、`rollback`、`fill-request` |
-| **事务性更新** | 快照 + fcntl 文件锁的原子多步更新——`tx-begin`/`commit`/`rollback`/`status`/`snapshot`/`restore`/`list-snapshots`/`replay-wal` |
-| **跨语言 FFI** | Python ctypes / Go cgo / Rust `extern "C"` 边界追踪 + 类型 marshalling——`ffi-detect`、`ffi-list`、`ffi-trace`、`ffi-types` |
+| **事务性更新** | 快照 + fcntl 文件锁的原子多步更新——`tx begin`/`commit`/`rollback`/`status`/`snapshot`/`restore`/`list-snapshots`/`replay-wal` |
+| **跨语言 FFI** | Python ctypes / Go cgo / Rust `extern "C"` 边界追踪 + 类型 marshalling——`ffi detect`、`ffi list`、`ffi trace`、`ffi types` |
 | **BUG 基准测试** | GraphInvestigator vs GrepInvestigator——衡量召回、精度、工具调用、token、时间——`bug-benchmark` |
-| **Profile 健康度与自动演化** | 7 类 0-100 评分；自动检测新回调模式；绑定 git/svn HEAD——`profile-health`、`profile-evolve`、`profile-bind-version` |
-| **文档-代码对齐** | 检测返回值/参数/签名/陈旧文档不匹配——`doc-code-check`、`doc-mark-stale`、`doc-alignment-report`、`doc-signature-diff`。`describe-node` 暴露 `doc_code_mismatches` |
-| **后台守护进程** | 长驻进程监视源文件（inotify/polling）并以事务自动更新图谱——`daemon-start`/`stop`/`status`/`force-refresh`/`pause`/`resume`/`wait-sync`/`logs`/`reload`/`list-projects`。Unix socket API：`/tmp/code2database-daemon-<project>.sock` |
+| **Profile 健康度与自动演化** | 7 类 0-100 评分；自动检测新回调模式；绑定 git/svn HEAD——`profile health`、`profile evolve`、`profile bind-version` |
+| **文档-代码对齐** | 检测返回值/参数/签名/陈旧文档不匹配——`doc code-check`、`doc mark-stale`、`doc alignment-report`、`doc signature-diff`。`describe-node` 暴露 `doc_code_mismatches` |
+| **后台守护进程** | 长驻进程监视源文件（inotify/polling）并以事务自动更新图谱——`daemon start`/`stop`/`status`/`force-refresh`/`pause`/`resume`/`wait-sync`/`logs`/`reload`/`list-projects`。Unix socket API：`/tmp/code2database-daemon-<project>.sock` |
 
 ---
 
@@ -216,11 +216,11 @@ bash scripts/setup.sh --languages c,go
 | **一键探索** | `explore-flow` — 单次查询获取相关节点、路径和条件 |
 | **增量更新** | `quick-update` 无需 LLM；`light-scan`/`patch-from-git` 零 token 更新 |
 | **MCP 服务器** | `serve` — 通过 stdio 暴露 83 个查询工具（36 code2database_* + 19 cgdb_*）供 LLM 代理使用 |
-| **知识（简报）** | `knowledge-brief`/`brief-update` — 精简必载的项目简报 |
-| **记忆系统** | `save-memory`/`search-memory`/`manage-memory` — 持久 Q&A 记忆 + 衰减 |
+| **知识（简报）** | `brief show`/`brief update` — 精简必载的项目简报 |
+| **记忆系统** | `memory save`/`memory search`/`memory manage` — 持久 Q&A 记忆 + 衰减 |
 | **影响半径** | `blast-radius` — 变更影响的函数/API/测试 |
-| **数据竞争检测** | `detect-races`/`concurrency-analyze` — 跨线程竞争和死锁检测 |
-| **崩溃反向追踪** | `reverse-trace` — 从崩溃点反向追踪所有可达路径 |
+| **数据竞争检测** | `concurrency detect-races`/`concurrency analyze` — 跨线程竞争和死锁检测 |
+| **崩溃反向追踪** | `trace reverse` — 从崩溃点反向追踪所有可达路径 |
 | **字段级访问** | `field-access` — 查询谁读写了特定结构体字段或全局变量 |
 | **参数流** | `param-flow` — 追踪一个值如何跨函数边界流动 |
 | **外部代码分离** | 自动识别第三方/vendor 代码——让图谱只关于*你的*代码 |
@@ -231,14 +231,14 @@ bash scripts/setup.sh --languages c,go
 | **锁覆盖** | `lock-coverage` — 基于事件流 + 字符位置的精确锁持有区间 |
 | **路径可行性** | `path-feasible` — Z3 SMT 求解器，可靠的路径可行性 |
 | **数据依赖** | `data-dep` — 跨函数 DATA_DEP 边；扫描所有节点的读写者 |
-| **不变量** | `extract-invariants`/`find-invariants`/`apply-invariants` — 前置/后置/循环不变量/状态机 |
+| **不变量** | `invariants extract`/`invariants find`/`invariants apply` — 前置/后置/循环不变量/状态机 |
 | **自动增强** | `auto-enhance`/`batch-confirm`/`rollback` — 置信度阈值自动写入 |
-| **事务** | `tx-begin`/`commit`/`rollback` — 快照 + fcntl 锁 |
-| **FFI 追踪** | `ffi-detect`/`list`/`trace`/`types` — Python ctypes / Go cgo / Rust extern "C" |
+| **事务** | `tx begin`/`commit`/`rollback` — 快照 + fcntl 锁 |
+| **FFI 追踪** | `ffi detect`/`list`/`trace`/`types` — Python ctypes / Go cgo / Rust extern "C" |
 | **BUG 基准** | `bug-benchmark` — GraphInvestigator vs GrepInvestigator 召回/精度 |
-| **Profile 健康度** | `profile-health`/`evolve`/`bind-version` — 0-100 评分 + 自动演化 |
-| **文档-代码对齐** | `doc-code-check`/`mark-stale`/`alignment-report`/`signature-diff` — 检测文档-代码不匹配 |
-| **后台守护进程** | `daemon-start`/`stop`/`status`/... — inotify + Unix socket + 事务性同步 |
+| **Profile 健康度** | `profile health`/`evolve`/`bind-version` — 0-100 评分 + 自动演化 |
+| **文档-代码对齐** | `doc code-check`/`mark-stale`/`alignment-report`/`signature-diff` — 检测文档-代码不匹配 |
+| **后台守护进程** | `daemon start`/`stop`/`status`/... — inotify + Unix socket + 事务性同步 |
 
 ---
 
@@ -308,30 +308,30 @@ bash scripts/setup.sh --languages c,go
 | **CLI 命令** | **120 个可见 builder 命令**（含隐藏旧拼写共 275 个）+ 8 个 scanner 命令，分为 4 个子技能（`/Code2Database` 核心、`/Code2Database-analysis`、`/Code2Database-ops`、`/Code2Database-kb`）— Build、Query、Trace、Concurrency、Knowledge、Memory、Provenance、Cypher、Data Flow、Lock Analysis、Path Feasibility、Invariants、Auto-Enhance、Transactions、FFI、Benchmark、Profile Health、Doc-Code、Daemon、cgdb（clang 后端） |
 | **调用条件解析** | `if`/`switch`/`#ifdef` 分支 + 空节点聚合 |
 | **条件编译（`#ifdef`）** | 图谱知道哪些调用只在哪些 `CONFIG_*` 标志下存在 |
-| **数据竞争检测** | 跨线程隐患检测 — `detect-races` |
-| **并发安全分析** | 这两条链真的能并行执行吗？— `concurrency-analyze` |
+| **数据竞争检测** | 跨线程隐患检测 — `concurrency detect-races` |
+| **并发安全分析** | 这两条链真的能并行执行吗？— `concurrency analyze` |
 | **字段级访问追踪** | 跨整张图查询"谁读/写 `task_struct->pid`"— `field-access` |
-| **崩溃反向追踪** | 从入口点到崩溃点的所有路径 — `reverse-trace` |
+| **崩溃反向追踪** | 从入口点到崩溃点的所有路径 — `trace reverse` |
 | **执行场景** | 从 API 入口到叶子的端到端执行流追踪 |
 | **构建系统宏解析** | `compile_commands.json` + `#ifdef` 宏展开 |
 | **LLM 上下文包** | 4 级 — `micro`（~200 tokens）→ `lite` → `std` → `full` |
 | **影响半径分析** | 修改这个函数会影响什么？— `blast-radius` |
 | **外部代码分离** | 自动识别 vendor/第三方代码——图谱只关于*你的*代码 |
 | **参数流追踪** | 一个值如何跨函数边界流动 — `param-flow` |
-| **提交级来源** | 每个节点/边都有 `source_commit`（git/svn 哈希）— `describe-commit`、`node-history`、`graph-provenance`、`blame-node`、`find-commits` |
+| **提交级来源** | 每个节点/边都有 `source_commit`（git/svn 哈希）— `describe-commit`、`node-history`、`graph provenance`、`blame-node`、`find-commits` |
 | **Cypher 子集查询** | 声明式图谱查询 — `query "MATCH ... WHERE ... RETURN ..."` |
 | **值流** | 参数→返回值传播、DATA_FLOW 边 — `value-flow` |
 | **锁覆盖** | 基于事件流 + 字符位置的精确锁持有区间 — `lock-coverage` |
 | **路径可行性** | Z3 SMT 求解器，可靠路径可行性 — `path-feasible` |
 | **数据依赖** | 跨函数 DATA_DEP 边 — `data-dep` |
-| **不变量提取** | 前置/后置/循环不变量/状态机 — `extract-invariants` |
+| **不变量提取** | 前置/后置/循环不变量/状态机 — `invariants extract` |
 | **LLM 自动增强** | 置信度阈值自动写入 + 批量确认 + 回滚 — `auto-enhance` |
-| **事务性更新** | 快照 + fcntl 锁的原子写入 — `tx-begin`/`commit`/`rollback` |
-| **FFI 追踪** | Python ctypes / Go cgo / Rust extern "C" — `ffi-detect`/`list`/`trace`/`types` |
+| **事务性更新** | 快照 + fcntl 锁的原子写入 — `tx begin`/`commit`/`rollback` |
+| **FFI 追踪** | Python ctypes / Go cgo / Rust extern "C" — `ffi detect`/`list`/`trace`/`types` |
 | **BUG 基准测试** | GraphInvestigator vs GrepInvestigator 召回/精度 — `bug-benchmark` |
-| **Profile 健康度** | 0-100 评分 + 自动演化 + git/svn HEAD 绑定 — `profile-health`/`evolve`/`bind-version` |
-| **文档-代码对齐** | 检测文档-代码不匹配；`describe-node` 暴露 — `doc-code-check` |
-| **后台守护进程** | 实时文件监视 + 事务性自动同步 — `daemon-start` |
+| **Profile 健康度** | 0-100 评分 + 自动演化 + git/svn HEAD 绑定 — `profile health`/`evolve`/`bind-version` |
+| **文档-代码对齐** | 检测文档-代码不匹配；`describe-node` 暴露 — `doc code-check` |
+| **后台守护进程** | 实时文件监视 + 事务性自动同步 — `daemon start` |
 
 > **设计意图：** Code2Database 不是"更多语言"或"更多工具"——而是*更深的程序语义*。条件、并发、字段访问、`#ifdef`、崩溃追踪。图谱捕获的是工程师真正需要推理的东西，不只是容易提取的东西。
 

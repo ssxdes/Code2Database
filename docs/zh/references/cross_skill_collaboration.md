@@ -32,7 +32,7 @@ done
 | 代码评审 | review, code review | 变更影响的域 + 受影响的函数列表 |
 | 可视化导出 | diagram, graph, visualize, export | 调用图数据 → HTML/SVG/PNG |
 | **安全/漏洞分析** | **security, vulnerability, exploit, crash** | **reverse-trace 崩溃路径 + detect-races + concurrency-analyze** |
-| **竞态条件分析** | **race, concurrency, data race** | **detect-races + field-access + concurrency-risks** |
+| **竞态条件分析** | **race, concurrency, data race** | **concurrency detect-races + field-access + concurrency risks** |
 | **间接调用追踪** | **function pointer, dispatch, indirect call** | **explore-flow + describe-node --context 查看派发目标 + callback_dispatch 边** |
 | **I/O路径分析** | **io, input, output, data flow** | **io-path 追踪I/O路径** |
 
@@ -205,13 +205,13 @@ done
 
 1. Code2Database：从崩溃点反向追踪
    ```bash
-   python3 code2database_builder.py reverse-trace --graph code2db-out/ --crash-point CRASH_FUNC --max-depth 15 --max-paths 30
+   python3 code2database_builder.py trace reverse --graph code2db-out/ --crash-point CRASH_FUNC --max-depth 15 --max-paths 30
    ```
    → 获取所有从入口点到崩溃点的路径
 
 2. 分析竞态条件（若缺陷涉及并发）：
    ```bash
-   python3 code2database_builder.py detect-races --graph code2db-out/ --func CRASH_FUNC
+   python3 code2database_builder.py concurrency detect-races --graph code2db-out/ --func CRASH_FUNC
    ```
    → 获取跨线程数据竞争分析、共享资源访问、锁范围
 
@@ -245,10 +245,10 @@ done
 1. Code2Database：运行完整竞态分析流水线：
    ```bash
    # 检测数据竞争
-   python3 code2database_builder.py detect-races --graph code2db-out/
+   python3 code2database_builder.py concurrency detect-races --graph code2db-out/
 
    # 特定函数的并发安全分析
-   python3 code2database_builder.py concurrency-analyze --graph code2db-out/ --func SUSPECT_FUNC
+   python3 code2database_builder.py concurrency analyze --graph code2db-out/ --func SUSPECT_FUNC
 
    # 字段级访问追踪
    python3 code2database_builder.py field-access --graph code2db-out/ --field SHARED_VAR

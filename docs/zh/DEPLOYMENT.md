@@ -153,7 +153,7 @@ echo $?   # 0 = 健康，1 = 有告警，2 = 失败
 它检查 SQLite 完整性与外键、schema 版本、内容计数、源码新鲜度、
 记忆库、知识 brief 与守护进程状态。时间维度上的漂移看
 `graph history`（累积的版本行：每次构建/同步的节点/边计数），
-`graph-provenance` 报告当前数据库对应的源码 commit 与工具版本。
+`graph provenance` 报告当前数据库对应的源码 commit 与工具版本。
 
 ## 数据敏感性
 

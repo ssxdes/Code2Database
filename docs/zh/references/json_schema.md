@@ -417,7 +417,7 @@ LLM 为每个节点填写 `semantic_desc`，然后 `apply-semantics` 写回。
 }
 ```
 
-**信任生命周期：** `trusted`（所有 node_ids 存在）→ `experience`（部分 node_ids 缺失），在 `update` 或 `validate-memory` 后触发。经验条目仍可搜索，但权重降低（0.5-0.7 倍）。
+**信任生命周期：** `trusted`（所有 node_ids 存在）→ `experience`（部分 node_ids 缺失），在 `update` 或 `memory validate` 后触发。经验条目仍可搜索，但权重降低（0.5-0.7 倍）。
 
 ## 全局变量文件：`.code2database_globals.json`
 

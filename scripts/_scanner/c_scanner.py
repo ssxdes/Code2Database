@@ -1035,7 +1035,12 @@ class CTreeSitterScanner(BaseScanner):
         all_pp = list(pp_conds)
         all_pp.sort(key=lambda x: x[0])
 
-        # Walk directives to build dead ranges
+        # Walk directives to build dead ranges. Each stack entry is
+        # (pos, directive, condition, is_alive, chain_taken): is_alive
+        # describes the CURRENT arm only; chain_taken records whether
+        # any arm of this #if chain has already been selected — once a
+        # chain takes an arm, every later #elif AND the trailing #else
+        # stay dead.
         dead_ranges = []
         pp_stack2 = []
         cur_range_start = None
@@ -1052,14 +1057,14 @@ class CTreeSitterScanner(BaseScanner):
                 elif is_alive and cur_range_start is not None:
                     # Nested: don't close yet — parent still dead
                     pass
-                pp_stack2.append((pos, directive, condition, is_alive))
+                pp_stack2.append((pos, directive, condition, is_alive, is_alive))
             elif directive in ('elif', 'else'):
                 if pp_stack2:
-                    prev_start, prev_dir, prev_cond, prev_alive = pp_stack2[-1]
+                    prev_start, prev_dir, prev_cond, prev_alive, prev_taken = pp_stack2[-1]
                     parent_dead = len(pp_stack2) >= 2 and not pp_stack2[-2][3]
                     if parent_dead:
                         is_alive = False
-                    elif prev_alive:
+                    elif prev_taken:
                         is_alive = False
                     elif directive == 'elif':
                         is_alive = self._evaluate_preproc_condition(condition, 'elif')
@@ -1071,11 +1076,11 @@ class CTreeSitterScanner(BaseScanner):
                         cur_range_start = None
                     elif prev_alive and not is_alive:
                         cur_range_start = pos
-                    pp_stack2[-1] = (prev_start, directive, condition, is_alive)
+                    pp_stack2[-1] = (prev_start, directive, condition,
+                                     is_alive, prev_taken or is_alive)
             elif directive == 'endif':
                 if pp_stack2:
-                    prev_start, prev_dir, prev_cond, prev_alive = pp_stack2[-1]
-                    pp_stack2.pop()
+                    prev_start, prev_dir, prev_cond, prev_alive, prev_taken = pp_stack2.pop()
                     # If popping a dead range and no parent is dead
                     if not prev_alive and cur_range_start is not None:
                         parent_dead = pp_stack2 and not pp_stack2[-1][3]

@@ -78,11 +78,29 @@ class TestBuildPpLivenessDeadRanges(unittest.TestCase):
                 "#else\nint d;\n#endif\n")
         ranges = self._ranges(code)
         joined = [(s, e) for s, e in ranges]
-        # Branch A is dead until the first #elif takes the branch;
-        # arms after the taken #elif are dead again.
+        # Branch A is dead until the first #elif takes the branch; arms
+        # after the taken #elif are dead again — including the trailing
+        # #else (the chain already selected an arm).
         self.assertTrue(all(e <= len(code) for s, e in joined))
         dead_text = "".join(code[s:e] for s, e in joined)
         self.assertIn("int a", dead_text)
+        self.assertNotIn("int b", dead_text)
+        self.assertIn("int c", dead_text)
+        self.assertIn("int d", dead_text)
+
+    def test_else_after_taken_elif_is_dead(self):
+        code = ("#ifdef FEATURE_A\nint a;\n#elif 1\nint b;\n"
+                "#else\nint c;\n#endif\n")
+        ranges = self._ranges(code)
+        dead_text = "".join(code[s:e] for s, e in ranges)
+        self.assertNotIn("int a", dead_text)
+        self.assertIn("int b", dead_text)
+        self.assertIn("int c", dead_text)
+
+    def test_second_elif_condition_not_evaluated_after_taken_arm(self):
+        code = ("#if 0\nint a;\n#elif 1\nint b;\n#elif 1\nint c;\n#endif\n")
+        ranges = self._ranges(code)
+        dead_text = "".join(code[s:e] for s, e in ranges)
         self.assertNotIn("int b", dead_text)
         self.assertIn("int c", dead_text)
 

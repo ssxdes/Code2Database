@@ -462,12 +462,22 @@ class CTreeSitterScanner(BaseScanner):
         class_nodes = []
         concept_nodes = []  # C++20 concepts
         self._ifdef_stack = []  # Reset for this file
+        # Enclosing class name per member function node (in-class
+        # definitions): id(node) -> "Base". Used to qualify member
+        # names so they match out-of-class spellings (void Base::init()).
+        self._class_of = {}
+        self._class_stack = []
         # Per-function template metadata (keyed by id(node))
         if not hasattr(self, '_template_meta') or self._template_meta is None:
             self._template_meta = {}
         self._template_meta.clear()
         # Extract macro definitions for MACRO_EXPANDS_TO edges
         self._macro_defs = self._extract_macro_definitions(root, source_bytes)
+
+        def _note_func(fnode):
+            if self._class_stack and self._class_stack[-1]:
+                self._class_of[id(fnode)] = self._class_stack[-1]
+            func_nodes.append((fnode, list(self._ifdef_stack)))
 
         def _collect_nodes(node):
             """DFS walk collecting function/class nodes with ifdef context."""
@@ -504,17 +514,27 @@ class CTreeSitterScanner(BaseScanner):
                 if self._ifdef_stack:
                     self._ifdef_stack[-1] = saved_top
             elif node.type == 'function_definition':
-                func_nodes.append((node, list(self._ifdef_stack)))
+                _note_func(node)
             elif self.is_cpp and node.type == 'method_definition':
-                func_nodes.append((node, list(self._ifdef_stack)))
+                _note_func(node)
             elif self.is_cpp and node.type == 'constructor_definition':
-                func_nodes.append((node, list(self._ifdef_stack)))
+                _note_func(node)
             elif self.is_cpp and node.type == 'destructor_definition':
-                func_nodes.append((node, list(self._ifdef_stack)))
-            elif self.is_cpp and node.type == 'class_specifier':
+                _note_func(node)
+            elif self.is_cpp and node.type in ('class_specifier',
+                                               'struct_specifier'):
                 class_nodes.append(node)
-            elif self.is_cpp and node.type == 'struct_specifier':
-                class_nodes.append(node)
+                # Descend so member function definitions are collected;
+                # remember the enclosing class to qualify their names.
+                _cname = ""
+                for child in node.children:
+                    if child.type == 'type_identifier':
+                        _cname = self._node_text(child, source_bytes)
+                        break
+                self._class_stack.append(_cname)
+                for child in node.children:
+                    _collect_nodes(child)
+                self._class_stack.pop()
             # C++ templates, concepts, coroutines
             elif self.is_cpp and node.type == 'template_declaration':
                 # template_declaration wraps a function_definition or
@@ -1130,6 +1150,15 @@ class CTreeSitterScanner(BaseScanner):
         if not func_name:
             return
 
+        # In-class member definitions: qualify with the enclosing class
+        # so the node name matches the out-of-class spelling
+        # (void Base::init() { ... }). Constructors/destructors keep the
+        # Base::Base / Base::~Base shape the label checks rely on.
+        _cls = self._class_of.get(id(func_node)) \
+            if getattr(self, '_class_of', None) else None
+        if _cls and "::" not in func_name:
+            func_name = f"{_cls}::{func_name}"
+
         # Reject functions whose signature contains token-paste (##) — these
         # are macro-body artifacts (e.g., BSD tree.h SPLAY_PROTOTYPE expands
         # to `void name##_SPLAY_MINMAX(...)` inside a #define). Tree-sitter
@@ -1280,9 +1309,15 @@ class CTreeSitterScanner(BaseScanner):
         if declarator.type != 'function_declarator':
             return self._node_text(declarator, source_bytes).strip().lstrip('*& \n\t')
 
-        # Find identifier or field_identifier
+        # Find identifier, field_identifier, qualified name or destructor
         for child in declarator.children:
             if child.type in ('identifier', 'field_identifier'):
+                return self._node_text(child, source_bytes)
+            if child.type == 'qualified_identifier':
+                # Out-of-class member: void Base::step() { ... }
+                return self._node_text(child, source_bytes)
+            if child.type == 'destructor_name':
+                # Destructor declarator: ~Base (text already includes ~)
                 return self._node_text(child, source_bytes)
 
         # Constructor/destructor: declarator has the class name

@@ -14,29 +14,15 @@
     "ASM"
   ],
   "tier_1_commands": [
-    "tx-begin",
-    "tx-commit",
-    "tx-rollback",
-    "tx-status",
-    "daemon-start",
-    "daemon-stop",
-    "daemon-wait-sync",
-    "profile-health",
-    "profile-evolve",
-    "profile-bind-version",
-    "doc-code-check",
-    "doc-mark-stale",
+    "tx",
+    "daemon",
+    "profile",
+    "doc",
     "update-node",
     "update-edge",
     "serve",
-    "kb-rebuild-index",
-    "kb-cluster",
-    "kb-audit",
-    "kb-known-unknowns",
-    "kb-forget",
-    "kb-rollback",
-    "kb-conflict",
-    "kb-global-add"
+    "kb",
+    "kb-global"
   ],
   "commands": [
     "add-semantic-edges",
@@ -45,6 +31,7 @@
     "audit-log",
     "auto-enhance",
     "batch-confirm",
+    "brief",
     "brief-extract",
     "brief-migrate-legacy",
     "brief-suggest",
@@ -52,8 +39,10 @@
     "brief-validate",
     "bug-benchmark",
     "build-update",
+    "check",
     "classify-endpoints",
     "commit-db-transaction",
+    "daemon",
     "daemon-force-refresh",
     "daemon-list-projects",
     "daemon-logs",
@@ -65,30 +54,38 @@
     "daemon-stop",
     "daemon-wait-sync",
     "design-doc",
+    "doc",
     "doc-alignment-report",
     "doc-code-check",
     "doc-mark-stale",
-    "doctor",
     "doc-signature-diff",
+    "doctor",
     "domain",
+    "embeddings",
     "embeddings-build",
     "embeddings-search",
     "explain-label",
+    "export",
     "export-changes",
     "export-plantuml",
     "extract-invariants-llm",
+    "ffi",
     "ffi-types",
     "fill-request",
+    "graph",
     "graph-diff",
     "graph-history",
     "graph-record-version",
     "heuristic-enhance",
     "install-hook",
     "intent-query",
+    "invariants",
+    "kb",
     "kb-audit",
     "kb-cluster",
     "kb-conflict",
     "kb-forget",
+    "kb-global",
     "kb-global-add",
     "kb-global-import",
     "kb-global-import-memory",
@@ -102,13 +99,17 @@
     "kb-rollback",
     "light-scan",
     "manage-memory",
+    "memory",
     "memory-health",
     "merge",
     "merge-changes",
+    "node",
     "patch-from-diff",
     "patch-from-git",
     "patch-profile",
     "plugins",
+    "pp",
+    "profile",
     "profile-bind-version",
     "profile-evolve",
     "profile-health",
@@ -121,6 +122,8 @@
     "serve",
     "sync",
     "think-chain",
+    "token",
+    "tx",
     "tx-begin",
     "tx-commit",
     "tx-list-snapshots",
@@ -135,7 +138,8 @@
     "validate-memory",
     "validate-plugin",
     "watch",
-    "why-ambiguous"
+    "why-ambiguous",
+    "writeback"
   ],
   "routing_table": {
     "Safe graph editing": [
@@ -159,7 +163,11 @@
       "semantic-status",
       "audit-log",
       "rollback-db-transaction",
-      "commit-db-transaction"
+      "commit-db-transaction",
+      "tx",
+      "writeback",
+      "token",
+      "node"
     ],
     "Keep graph up to date": [
       "daemon-start",
@@ -182,7 +190,8 @@
       "export-changes",
       "merge-changes",
       "build-update",
-      "quick-update"
+      "quick-update",
+      "daemon"
     ],
     "Profile and doc-code": [
       "profile-health",
@@ -191,37 +200,44 @@
       "doc-code-check",
       "doc-mark-stale",
       "doc-alignment-report",
-      "doc-signature-diff"
+      "doc-signature-diff",
+      "profile",
+      "doc"
     ],
     "Graph versioning": [
       "graph-history",
       "graph-diff",
-      "graph-record-version"
+      "graph-record-version",
+      "graph"
     ],
     "Memory management": [
       "save-memory",
       "search-memory",
       "manage-memory",
       "memory-health",
-      "validate-memory"
+      "validate-memory",
+      "memory"
     ],
     "Export / plugin / benchmark": [
       "bug-benchmark",
       "design-doc",
       "export-plantuml",
       "plugins",
-      "validate-plugin"
+      "validate-plugin",
+      "export"
     ],
     "Embeddings (experimental)": [
       "embeddings-build",
-      "embeddings-search"
+      "embeddings-search",
+      "embeddings"
     ],
     "Brief management": [
       "brief-extract",
       "brief-validate",
       "brief-suggest",
       "brief-migrate-legacy",
-      "brief-update"
+      "brief-update",
+      "brief"
     ],
     "Knowledge base management": [
       "kb-migrate",
@@ -238,15 +254,19 @@
       "kb-global-share",
       "kb-global-share-memory",
       "kb-global-search-memory",
-      "kb-global-import-memory"
+      "kb-global-import-memory",
+      "kb",
+      "kb-global"
     ],
     "Semantic enhancement": [
       "apply-semantics",
       "apply-invariants",
-      "heuristic-enhance"
+      "heuristic-enhance",
+      "invariants"
     ],
     "FFI tracing": [
-      "ffi-types"
+      "ffi-types",
+      "ffi"
     ],
     "On-demand extras": [
       "domain",
@@ -256,7 +276,9 @@
       "serve",
       "think-chain",
       "unbalanced-alloc-free",
-      "why-ambiguous"
+      "why-ambiguous",
+      "pp",
+      "check"
     ],
     "Health and integrity": [
       "doctor"

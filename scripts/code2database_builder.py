@@ -676,6 +676,222 @@ def _resolve_graph_dir() -> str:
     return resolve_store_dir()
 
 
+# --- Family umbrellas -----------------------------------------------------
+# One visible umbrella per prefix family: `tx begin`, `kb query`,
+# `cgdb find-invokers`, ... The legacy spellings (tx-begin, kb-query,
+# cgdb-find-invokers) stay fully parseable but are hidden from --help,
+# so scripts, tests, c2d recipes and muscle memory keep working while
+# the command surface an agent must learn shrinks from 255 to ~124.
+# Families whose primary is an existing command/alias (build, search,
+# trace, concurrency, export, daemon, brief) only gain the rewrite; the
+# rest get a tiny umbrella parser that prints the action table.
+_FAMILY_UMBRELLAS = {
+    "tx": {
+        "begin": "tx-begin", "commit": "tx-commit", "rollback": "tx-rollback",
+        "status": "tx-status", "snapshot": "tx-snapshot", "restore": "tx-restore",
+        "list-snapshots": "tx-list-snapshots", "replay-wal": "tx-replay-wal",
+    },
+    "kb": {
+        "init": "kb-init", "query": "kb-query",
+        "rebuild-index": "kb-rebuild-index", "cluster": "kb-cluster",
+        "migrate": "kb-migrate", "known-unknowns": "kb-known-unknowns",
+        "audit": "kb-audit", "conflict": "kb-conflict",
+        "rollback": "kb-rollback", "forget": "kb-forget",
+    },
+    "kb-global": {
+        "add": "kb-global-add", "search": "kb-global-search",
+        "share": "kb-global-share", "import": "kb-global-import",
+        "share-memory": "kb-global-share-memory",
+        "search-memory": "kb-global-search-memory",
+        "import-memory": "kb-global-import-memory",
+    },
+    "kb-domain": {
+        "name": "kb-domain-name", "add": "kb-domain-add",
+        "list": "kb-domain-list", "remove": "kb-domain-remove",
+    },
+    "foreign": {
+        "add": "c2d-add-foreign", "sync": "c2d-sync-foreign",
+        "list": "c2d-list-foreign", "remove": "c2d-remove-foreign",
+        "resolve": "c2d-resolve-foreign", "prune": "c2d-prune-foreign",
+        "pin": "c2d-pin-foreign", "unpin": "c2d-unpin-foreign",
+        "check-compat": "c2d-check-compat",
+        "add-stub": "c2d-add-foreign-stub",
+    },
+    "brief": {
+        "show": "knowledge-brief", "update": "brief-update",
+        "extract": "brief-extract", "validate": "brief-validate",
+        "suggest": "brief-suggest", "migrate-legacy": "brief-migrate-legacy",
+    },
+    "check": {
+        "cycles": "check-cycles", "recursion": "check-recursion",
+        "bounds": "check-bounds", "infinite-loop": "check-infinite-loop",
+        "clones": "check-clones",
+    },
+    "doc": {
+        "code-check": "doc-code-check", "mark-stale": "doc-mark-stale",
+        "alignment-report": "doc-alignment-report",
+        "signature-diff": "doc-signature-diff",
+    },
+    "ffi": {
+        "detect": "ffi-detect", "list": "ffi-list", "trace": "ffi-trace",
+        "types": "ffi-types", "auto-link": "ffi-auto-link",
+        "persist": "ffi-persist",
+    },
+    "who": {
+        "allocates": "who-allocates", "frees": "who-frees",
+        "locks": "who-locks", "unbalanced": "unbalanced-alloc-free",
+    },
+    "graph": {
+        "history": "graph-history", "diff": "graph-diff",
+        "record-version": "graph-record-version",
+        "provenance": "graph-provenance",
+    },
+    "cgdb": {
+        "query": "cgdb-query", "time-travel": "cgdb-time-travel",
+        "configs-for": "cgdb-configs-for", "ops-impls": "cgdb-ops-impls",
+        "cfg-paths": "cgdb-cfg-paths", "data-flow": "cgdb-data-flow",
+        "race-check": "cgdb-race-check", "index-status": "cgdb-index-status",
+        "sql": "cgdb-sql", "views": "cgdb-views",
+        "schema-version": "cgdb-schema-version", "versions": "cgdb-versions",
+        "find-invokers": "cgdb-find-invokers", "find-invoked": "cgdb-find-invoked",
+        "path": "cgdb-path", "definition": "cgdb-definition",
+        "function-body": "cgdb-function-body",
+        "struct-layout": "cgdb-struct-layout",
+        "type-definition": "cgdb-type-definition",
+        "nodes-under-config": "cgdb-nodes-under-config",
+        "path-feasible": "cgdb-path-feasible", "get-source": "cgdb-get-source",
+        "layer-summary": "cgdb-layer-summary",
+        "merge-knowledge": "cgdb-merge-knowledge", "suggest": "cgdb-suggest",
+        "tour": "cgdb-tour", "freshness": "cgdb-freshness",
+        "compare": "cgdb-compare", "coverage": "cgdb-coverage",
+        "write-coverage": "cgdb-write-coverage",
+    },
+    "profile": {
+        "health": "profile-health", "evolve": "profile-evolve",
+        "bind-version": "profile-bind-version",
+    },
+    "search": {
+        "hybrid": "hybrid-search", "semantic": "semantic-search",
+    },
+    "embeddings": {
+        "build": "embeddings-build", "search": "embeddings-search",
+    },
+    "memory": {
+        "save": "save-memory", "search": "search-memory",
+        "validate": "validate-memory", "manage": "manage-memory",
+        "health": "memory-health",
+    },
+    "pp": {
+        "macros": "find-macros", "branches": "get-pp-branches",
+        "strings": "get-string-literals",
+    },
+    "token": {
+        "edit": "edit-token", "insert": "insert-token",
+        "delete": "delete-token",
+    },
+    "node": {
+        "insert-after": "insert-node-after", "delete": "delete-node",
+        "add-function": "add-function",
+    },
+    "writeback": {
+        "commit": "commit-db-transaction",
+        "rollback": "rollback-db-transaction",
+    },
+    "fed": {
+        "register": "federate-register", "list": "federate-list",
+        "remove": "federate-remove", "search": "fed-search",
+        "neighbors": "fed-neighbors", "path": "fed-path",
+    },
+    "trace": {
+        "reverse": "reverse-trace", "diff": "diff-chains",
+    },
+    "concurrency": {
+        "detect-races": "detect-races", "analyze": "concurrency-analyze",
+        "happens-before": "happens-before",
+        "memory-ordering": "memory-ordering",
+    },
+    "invariants": {
+        "extract": "extract-invariants", "find": "find-invariants",
+        "apply": "apply-invariants", "extract-llm": "extract-invariants-llm",
+    },
+    "export": {
+        "plantuml": "export-plantuml", "sarif": "sarif-export",
+    },
+    "build": {
+        "update": "build-update", "multi": "build-multi",
+        "diff": "build-diff",
+    },
+    "daemon": {
+        "start": "daemon-start", "stop": "daemon-stop",
+        "status": "daemon-status", "force-refresh": "daemon-force-refresh",
+        "pause": "daemon-pause", "resume": "daemon-resume",
+        "wait-sync": "daemon-wait-sync", "logs": "daemon-logs",
+        "reload": "daemon-reload", "list-projects": "daemon-list-projects",
+    },
+}
+
+# Canonicals hidden because their alias became the family primary.
+_UMBRELLA_HIDDEN_EXTRA = {
+    "trace-chain", "concurrency-risks", "export-mermaid",
+}
+
+
+def _umbrella_legacy_names():
+    """All legacy command names the umbrellas replace (hidden, still parse)."""
+    names = set()
+    for actions in _FAMILY_UMBRELLAS.values():
+        names.update(actions.values())
+    names.update(_UMBRELLA_HIDDEN_EXTRA)
+    return names
+
+
+def _apply_family_umbrella(argv):
+    """Rewrite `<family> <action> ...` to the legacy `<command> ...` form.
+
+    Runs before argparse so every legacy subparser keeps its exact flag
+    surface — no flag-union parsers to maintain. Global flags may precede
+    the subcommand: --log-level/--log-file take a value, --log-json and
+    --version do not.
+    """
+    i, n = 0, len(argv)
+    while i < n:
+        tok = argv[i]
+        if tok in ("--log-level", "--log-file"):
+            i += 2
+        elif tok in ("--log-json", "--version"):
+            i += 1
+        else:
+            break
+    if 0 <= i < n - 1 and argv[i] in _FAMILY_UMBRELLAS:
+        legacy = _FAMILY_UMBRELLAS[argv[i]].get(argv[i + 1])
+        if legacy is not None:
+            return argv[:i] + [legacy] + argv[i + 2:]
+    return argv
+
+
+def _make_umbrella_handler(family, actions):
+    """Bare/invalid umbrella invocation -> action table on stderr, exit 2."""
+
+    def _handler(args):
+        rest = getattr(args, "umbrella_action", None) or []
+        print(f"usage: {family} <action> [flags]", file=sys.stderr)
+        print(file=sys.stderr)
+        print(f"{family} umbrella commands "
+              f"(legacy '{family}-<action>' spellings still work):",
+              file=sys.stderr)
+        for act, legacy in sorted(actions.items()):
+            print(f"  {family} {act:<18} -> {legacy}", file=sys.stderr)
+        if rest:
+            print(f"\nerror: unknown {family} action: {rest[0]!r}",
+                  file=sys.stderr)
+        else:
+            print(f"\nerror: missing {family} action", file=sys.stderr)
+        print(f"Run '{family} <action> --help' for flags.", file=sys.stderr)
+        sys.exit(2)
+
+    return _handler
+
+
 def main():
     parser = argparse.ArgumentParser(description="Call graph builder and query tool")
     # Global logging flags — accepted before the subcommand.
@@ -745,7 +961,7 @@ def main():
     p_fp.add_argument("--registry", default=None, help="Registry JSON path")
     p_fp.add_argument("--json", action="store_true", help="Output JSON")
 
-    p_build = sub.add_parser("build", help="Build invocation graph from extraction JSON")
+    p_build = sub.add_parser("build", help="Build invocation graph from extraction JSON (build update|multi|diff for variants)")
     p_build.add_argument("--extraction", required=True, help="Extraction JSON from code2database_scanner.py")
     p_build.add_argument("--outdir", required=True, help="Output directory for domain-split JSON files")
     p_build.add_argument("--max-domain-files", type=int,
@@ -837,7 +1053,7 @@ def main():
     p_load.add_argument("--summary", action="store_true", help="Show detailed summary")
 
     # search
-    p_search = sub.add_parser("search", help="Search nodes by keywords")
+    p_search = sub.add_parser("search", help="Search nodes by keywords (search hybrid|semantic for fused/neural modes)")
     p_search.add_argument("--graph", required=True)
     p_search.add_argument("--keywords", required=True, help="Space-separated keywords")
     p_search.add_argument("--top", type=int, default=20)
@@ -3071,6 +3287,14 @@ def main():
         "export": "export-mermaid",
         "init": "session-init",
     }
+    # Aliases that double as family umbrellas teach the family surface.
+    _ALIAS_HELP_OVERRIDES = {
+        "daemon": "Daemon control: daemon start|stop|status|force-refresh|pause|resume|wait-sync|logs|reload|list-projects (bare daemon = status)",
+        "brief": "Project brief: bare brief = show; brief update|extract|validate|suggest|migrate-legacy",
+        "trace": "Call-chain tracing: bare trace = forward; trace reverse|diff",
+        "concurrency": "Concurrency: bare concurrency = risk list; concurrency detect-races|analyze|happens-before|memory-ordering",
+        "export": "Export: bare export = mermaid; export plantuml|sarif",
+    }
     for _alias, _canonical in _SKILL_ALIASES.items():
         _cp = sub.choices.get(_canonical)
         if _cp is None:
@@ -3078,7 +3302,47 @@ def main():
                 f"canonical subparser {_canonical!r} missing for alias {_alias!r}"
             )
         sub.add_parser(_alias, parents=[_cp], add_help=False,
-                       help="Alias for " + _canonical)
+                       help=_ALIAS_HELP_OVERRIDES.get(
+                           _alias, "Alias for " + _canonical))
+
+    # --- Family umbrellas: one visible command per prefix family ---
+    # Families whose primary already exists (build/search/trace/
+    # concurrency/export/daemon/brief) only need the argv rewrite in
+    # main(); the rest get a tiny umbrella parser whose description is
+    # the action table. Registered AFTER the aliases so their legacy
+    # helps are still available for description building.
+    _umbrella_helps = {a.dest: a.help for a in sub._choices_actions}
+    for _fam, _actions in _FAMILY_UMBRELLAS.items():
+        if _fam in sub.choices:
+            continue  # existing command/alias is the family primary
+        _summary = "|".join(sorted(_actions))
+        _lines = [
+            f"'{_fam} <action>' umbrella. Actions:",
+            "",
+        ]
+        _lines += [
+            f"  {_fam} {act:<20} -> {legacy}  {_umbrella_helps.get(legacy) or ''}"
+            for act, legacy in sorted(_actions.items())
+        ]
+        _lines += [
+            "",
+            f"Legacy '{_fam}-<action>' spellings still parse. "
+            f"Run '{_fam} <action> --help' for flags.",
+        ]
+        _fp = sub.add_parser(
+            _fam, help=f"{_fam} umbrella: {_summary}",
+            description="\n".join(_lines),
+            formatter_class=argparse.RawDescriptionHelpFormatter)
+        _fp.add_argument("umbrella_action", nargs="*", metavar="action")
+
+    # Hide the legacy spellings from --help; they still parse via the
+    # choices dict (scripts/tests/c2d recipes unaffected). The usage
+    # line collapses to {command} since 275 choice names no longer fit.
+    _legacy_names = _umbrella_legacy_names()
+    sub._choices_actions = [
+        a for a in sub._choices_actions if a.dest not in _legacy_names
+    ]
+    sub.metavar = "{command}"
 
     # --- --graph auto-discovery for read/query commands ---
     # On these commands, omitting --graph resolves to the nearest
@@ -3107,7 +3371,7 @@ def main():
                              + " (default: auto-discover code2db-out/)")
 
     try:
-        args = parser.parse_args()
+        args = parser.parse_args(_apply_family_umbrella(sys.argv[1:]))
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)
         sys.exit(130)
@@ -3404,6 +3668,12 @@ def main():
         "ffi-persist": _lazy("_builder.misc.ffi_bridge", "cmd_ffi_persist"),
         "doctor": _lazy("_builder.misc.doctor", "cmd_doctor"),
     }
+    # Umbrella families that have no pre-existing primary dispatch to a
+    # usage printer; the rewrite in main() handles valid actions before
+    # argparse ever sees them.
+    for _fam, _actions in _FAMILY_UMBRELLAS.items():
+        if _fam not in commands:
+            commands[_fam] = _make_umbrella_handler(_fam, _actions)
     handler = commands.get(args.command)
     if handler is None:
         print(f"Unknown command: {args.command}", file=sys.stderr)

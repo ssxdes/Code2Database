@@ -64,10 +64,22 @@ class TestReportCliRegistration(unittest.TestCase):
         )
         cls.help_output = proc.stdout
 
-    def test_each_report_command_listed_in_help(self):
+    def test_each_report_command_is_registered(self):
+        """Every report command must parse, visible or umbrella-hidden.
+
+        11 of the 13 report commands are hidden behind umbrella families
+        (token/pp/node/writeback) but must stay fully parseable.
+        """
         for cli_name, _ in _REPORT_CLI_COMMANDS:
-            self.assertIn(cli_name, self.help_output,
-                          f'command not registered: {cli_name}')
+            proc = subprocess.run(
+                [sys.executable,
+                 os.path.join(SCRIPTS_DIR, 'code2database_builder.py'),
+                 cli_name, '--help'],
+                capture_output=True, text=True, timeout=30,
+            )
+            self.assertEqual(
+                proc.returncode, 0,
+                f'command not registered: {cli_name}: {proc.stderr[:200]}')
 
     def test_each_command_mapped_in_main_commands_dict(self):
         # Reconstruct the commands dict by inspecting the source — we can't

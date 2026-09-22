@@ -17,22 +17,22 @@ SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'scripts')
 sys.path.insert(0, SCRIPTS_DIR)
 
 
-# A representative 26-command slice spanning all CLI categories.
+# A representative command slice spanning all CLI categories.
 _REPRESENTATIVE_COMMANDS = [
     # Core build/load/query
     'build', 'load', 'search', 'describe-node', 'path', 'query',
     # Value flow + locks + feasibility + data-dep
     'value-flow', 'lock-coverage', 'path-feasible', 'data-dep',
-    # Invariants
-    'extract-invariants', 'find-invariants', 'apply-invariants',
+    # Invariants (umbrella)
+    'invariants',
     # Auto-enhance
     'auto-enhance', 'batch-confirm', 'rollback', 'fill-request',
-    # Transactions
-    'tx-begin', 'tx-commit', 'tx-rollback', 'tx-status',
-    # FFI
-    'ffi-detect', 'ffi-list', 'ffi-trace', 'ffi-types',
-    # Profile / daemon
-    'daemon-status',
+    # Transactions (umbrella)
+    'tx',
+    # FFI (umbrella)
+    'ffi',
+    # Profile / daemon (umbrella alias)
+    'daemon',
 ]
 
 
@@ -62,10 +62,12 @@ class TestBuilderModuleImport(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
 
     def test_daemon_docstring_verbs_are_registered(self):
-        """The daemon docstring's CLI list must match the real parsers.
+        """The daemon docstring's CLI list must match the real dispatch.
 
         A promised-but-missing verb is a silent contract break: readers
         of the module docstring would run a command that does not exist.
+        The docstring teaches the umbrella form (`daemon start`), so each
+        verb is verified end-to-end through the family rewrite.
         """
         import re
         doc = open(os.path.join(
@@ -74,24 +76,20 @@ class TestBuilderModuleImport(unittest.TestCase):
         m = re.search(r"\*\*CLI\*\*: daemon ([a-z/\-]+)", doc)
         self.assertIsNotNone(m, "daemon docstring must list its CLI verbs")
         verbs = m.group(1).split('/')
-        proc = subprocess.run(
-            [sys.executable, os.path.join(SCRIPTS_DIR, 'code2database_builder.py'),
-             '--help'],
-            capture_output=True, text=True, timeout=60)
-        registered = set()
-        for line in proc.stdout.splitlines():
-            for tok in line.split():
-                if tok.startswith('daemon-'):
-                    registered.add(tok.strip(','))
         for verb in verbs:
-            self.assertIn(
-                f"daemon-{verb}", registered,
-                f"daemon docstring promises '{verb}' but the CLI has no "
-                f"daemon-{verb} command")
+            proc = subprocess.run(
+                [sys.executable,
+                 os.path.join(SCRIPTS_DIR, 'code2database_builder.py'),
+                 'daemon', verb, '--help'],
+                capture_output=True, text=True, timeout=60)
+            self.assertEqual(
+                proc.returncode, 0,
+                f"daemon docstring promises 'daemon {verb}' but it does "
+                f"not dispatch (rc={proc.returncode}): {proc.stderr[:200]}")
 
 
 class TestCLICommandRegistration(unittest.TestCase):
-    """Verify 26+ representative commands are registered in --help output."""
+    """Verify representative commands are registered in --help output."""
 
     @classmethod
     def setUpClass(cls):
@@ -107,31 +105,46 @@ class TestCLICommandRegistration(unittest.TestCase):
             self.assertIn(cmd, self.help_output,
                           f'command missing from --help: {cmd}')
 
-    def test_help_lists_at_least_200_commands(self):
-        # Count distinct command names appearing as `  <name>` lines
-        found = set()
-        for line in self.help_output.splitlines():
-            stripped = line.strip()
-            # argparse subparser lines look like "build    Build invocation graph..."
-            if ' ' in stripped:
-                name = stripped.split()[0]
-                if name and not name.startswith('-'):
-                    found.add(name)
-        self.assertGreaterEqual(len(found), 200,
-                                f'expected >=200 commands, found {len(found)}')
+    def test_help_lists_visible_command_surface(self):
+        """The visible surface is the umbrella-family form: ~120 commands.
+
+        155 legacy spellings (tx-begin, cgdb-query, ...) are hidden from
+        --help but still parse. The bounds below catch both directions:
+        an umbrella that stopped hiding its members (surface bloat) and
+        an umbrella that disappeared (lost family).
+        """
+        import re
+        # Command lines are indented exactly 4 spaces; help-text
+        # continuation lines are indented far deeper, option lines
+        # start with a dash after 2 spaces.
+        found = set(re.findall(r"^    ([a-z][a-z0-9_-]*) ", self.help_output,
+                               re.MULTILINE))
+        self.assertGreaterEqual(len(found), 100,
+                                f'expected >=100 visible commands, found {len(found)}')
+        self.assertLessEqual(len(found), 140,
+                             f'expected <=140 visible commands, found {len(found)}')
 
     def test_version_flag_prints_version_and_exits_zero(self):
         proc = subprocess.run(
             [sys.executable, os.path.join(SCRIPTS_DIR, 'code2database_builder.py'),
              '--version'],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10
         )
         self.assertEqual(proc.returncode, 0)
         self.assertIn('code2database_builder', proc.stdout)
 
     def test_help_mentions_cgdb_subcommand_family(self):
-        self.assertIn('cgdb-query', self.help_output)
-        self.assertIn('cgdb-find-invokers', self.help_output)
+        # cgdb-* commands are hidden behind the `cgdb` umbrella; the
+        # main help teaches the family, the umbrella help teaches the
+        # legacy names.
+        self.assertIn('cgdb umbrella', self.help_output)
+        proc = subprocess.run(
+            [sys.executable, os.path.join(SCRIPTS_DIR, 'code2database_builder.py'),
+             'cgdb', '--help'],
+            capture_output=True, text=True, timeout=60)
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn('cgdb find-invokers', proc.stdout)
+        self.assertIn('cgdb-query', proc.stdout)
 
 
 class TestNoDBGracefulError(unittest.TestCase):

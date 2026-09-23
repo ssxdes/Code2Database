@@ -11,6 +11,7 @@ import bisect
 import hashlib
 import os
 import re
+import sys
 from abc import ABC, abstractmethod
 
 from _scanner.utils import classify_domain
@@ -424,10 +425,23 @@ class BaseScanner(ABC):
             return {"file": filepath, "domain": domain, "functions": [], "edges": [], "globals": {}, "error": "ParseError: tree is None", "error_kind": "parse"}
 
         self._macro_bindings = macro_bindings or {}
+        # Guarantee a recursion budget for the extract walk independent
+        # of the entry point: the CLI raises the limit itself, but
+        # in-process callers (daemon refresh, LSP, tests) inherit the
+        # interpreter default, where deep expression chains used to
+        # raise RecursionError and drop the whole file from the scan.
+        _old_limit = sys.getrecursionlimit()
+        _raised_limit = False
+        if _old_limit < 5000:
+            sys.setrecursionlimit(5000)
+            _raised_limit = True
         try:
             extract_result = self._extract(tree, source_bytes, filepath, source_root, domain)
         except Exception as e:
             return {"file": filepath, "domain": domain, "functions": [], "edges": [], "globals": {}, "error": f"ExtractError: {e}", "error_kind": "extract"}
+        finally:
+            if _raised_limit:
+                sys.setrecursionlimit(_old_limit)
         # Support 2-tuple (functions, edges), 3-tuple (functions, edges, extra),
         # 4-tuple (functions, edges, vtable_registrations, fn_ptr_calls),
         # and 5-tuple (functions, edges, vtable_registrations, fn_ptr_calls, macro_registrations).

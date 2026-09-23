@@ -29,6 +29,17 @@ _STATIC_ARRAY_RE = re.compile(
     re.MULTILINE
 )
 
+# Node types with dedicated handling inside _process_node — the generic
+# child descent stays iterative for everything else so deep expression
+# chains cannot exhaust the recursion budget.
+_GENERIC_WALK_SPECIAL_TYPES = frozenset({
+    'declaration', 'assignment_expression', 'call_expression',
+    'gnu_asm_expression', 'if_statement', 'switch_statement',
+    'case_statement', 'preproc_ifdef', 'preproc_if', 'preproc_elif',
+    'preproc_else', 'while_statement', 'do_statement', 'for_statement',
+    'conditional_expression', 'goto_statement', 'labeled_statement',
+})
+
 # Pre-compiled coroutine keyword + static-prefix patterns.
 _COROUTINE_KEYWORD_RES = tuple(
     re.compile(rf'\b{kw}\b') for kw in ('co_await', 'co_yield', 'co_return')
@@ -131,17 +142,23 @@ def _collect_call_expressions(expr_node, out):
     each to _process_node, which handles that call's own arguments
     recursively — nor into lambda bodies (calls there belong to the
     lambda's own function, not the enclosing one).
+
+    Iterative: receiver chains (obj.a().b()...) nest one level per call
+    and a recursive walk here exhausted the recursion budget before the
+    dispatch loop even started.
     """
     if expr_node is None:
         return
-    _t = expr_node.type
-    if _t == 'call_expression':
-        out.append(expr_node)
-        return
-    if _t == 'lambda_expression':
-        return
-    for ch in expr_node.children:
-        _collect_call_expressions(ch, out)
+    _stack = [expr_node]
+    while _stack:
+        node = _stack.pop()
+        _t = node.type
+        if _t == 'call_expression':
+            out.append(node)
+            continue
+        if _t == 'lambda_expression':
+            continue
+        _stack.extend(reversed(node.children))
 
 
 class CTreeSitterScanner(BaseScanner):
@@ -479,50 +496,52 @@ class CTreeSitterScanner(BaseScanner):
                 self._class_of[id(fnode)] = self._class_stack[-1]
             func_nodes.append((fnode, list(self._ifdef_stack)))
 
-        def _collect_nodes(node):
-            """DFS walk collecting function/class nodes with ifdef context."""
+        # Iterative pre-order DFS collecting function/class nodes with
+        # ifdef context. The recursive form blew the recursion budget
+        # on deeply nested expression chains (long macro-expanded
+        # initializer lines) and dropped the whole file from the scan.
+        # Stack entries are nodes or scope-exit sentinels that restore
+        # the ifdef/class context after a subtree completes.
+        _POP_IFDEF = object()
+        _POP_CLASS = object()
+        _RESTORE_IFDEF = object()
+
+        def _collect_visit(node):
+            """Handle one node; return children to walk (may be None)."""
             if node.type in ('preproc_ifdef', 'preproc_if'):
                 condition = self._extract_pp_condition_from_node(node, source_bytes)
                 self._ifdef_stack.append(condition)
-                # Visit all children; preproc_elif/preproc_else are also
-                # children of this node, so they will be visited inside
-                # this push/pop scope.
-                for child in node.children:
-                    _collect_nodes(child)
-                self._ifdef_stack.pop()
-            elif node.type == 'preproc_elif':
-                # #elif: the body executes when the parent condition is false
-                # AND the elif condition is true.
+                return list(node.children) + [_POP_IFDEF]
+            if node.type == 'preproc_elif':
+                # #elif: the body executes when the parent condition is
+                # false AND the elif condition is true.
                 saved_top = self._ifdef_stack[-1] if self._ifdef_stack else ""
                 elif_cond = self._extract_pp_condition_from_node(node, source_bytes)
                 if self._ifdef_stack:
                     self._ifdef_stack[-1] = f"!({saved_top}) && {elif_cond}"
-                for child in node.children:
-                    _collect_nodes(child)
                 # Restore the original condition so subsequent siblings
                 # (next #elif or #else) see the parent condition.
-                if self._ifdef_stack:
-                    self._ifdef_stack[-1] = saved_top
-            elif node.type == 'preproc_else':
+                return list(node.children) + [(_RESTORE_IFDEF, saved_top)]
+            if node.type == 'preproc_else':
                 # #else: the body executes when the parent condition is false.
                 saved_top = self._ifdef_stack[-1] if self._ifdef_stack else ""
                 if self._ifdef_stack:
                     self._ifdef_stack[-1] = f"!({saved_top})"
-                for child in node.children:
-                    _collect_nodes(child)
-                # Restore the original condition for subsequent siblings.
-                if self._ifdef_stack:
-                    self._ifdef_stack[-1] = saved_top
-            elif node.type == 'function_definition':
+                return list(node.children) + [(_RESTORE_IFDEF, saved_top)]
+            if node.type == 'function_definition':
                 _note_func(node)
-            elif self.is_cpp and node.type == 'method_definition':
+                return None
+            if self.is_cpp and node.type == 'method_definition':
                 _note_func(node)
-            elif self.is_cpp and node.type == 'constructor_definition':
+                return None
+            if self.is_cpp and node.type == 'constructor_definition':
                 _note_func(node)
-            elif self.is_cpp and node.type == 'destructor_definition':
+                return None
+            if self.is_cpp and node.type == 'destructor_definition':
                 _note_func(node)
-            elif self.is_cpp and node.type in ('class_specifier',
-                                               'struct_specifier'):
+                return None
+            if self.is_cpp and node.type in ('class_specifier',
+                                             'struct_specifier'):
                 class_nodes.append(node)
                 # Descend so member function definitions are collected;
                 # remember the enclosing class to qualify their names.
@@ -532,11 +551,9 @@ class CTreeSitterScanner(BaseScanner):
                         _cname = self._node_text(child, source_bytes)
                         break
                 self._class_stack.append(_cname)
-                for child in node.children:
-                    _collect_nodes(child)
-                self._class_stack.pop()
+                return list(node.children) + [_POP_CLASS]
             # C++ templates, concepts, coroutines
-            elif self.is_cpp and node.type == 'template_declaration':
+            if self.is_cpp and node.type == 'template_declaration':
                 # template_declaration wraps a function_definition or
                 # class_specifier — descend to find the inner declaration.
                 inner_func = self._find_template_inner_function(node)
@@ -548,13 +565,29 @@ class CTreeSitterScanner(BaseScanner):
                         "template_params": self._extract_template_params(
                             node, source_bytes),
                     }
-            elif self.is_cpp and node.type == 'concept_definition':
+                return None
+            if self.is_cpp and node.type == 'concept_definition':
                 concept_nodes.append(node)
-            else:
-                for child in node.children:
-                    _collect_nodes(child)
+                return None
+            return list(node.children)
 
-        _collect_nodes(root)
+        _walk_stack = [root]
+        while _walk_stack:
+            _item = _walk_stack.pop()
+            if _item is _POP_IFDEF:
+                self._ifdef_stack.pop()
+                continue
+            if _item is _POP_CLASS:
+                self._class_stack.pop()
+                continue
+            if isinstance(_item, tuple) and _item[0] is _RESTORE_IFDEF:
+                _, _saved = _item
+                if self._ifdef_stack:
+                    self._ifdef_stack[-1] = _saved
+                continue
+            _children = _collect_visit(_item)
+            if _children:
+                _walk_stack.extend(reversed(_children))
 
         all_fn_ptr_calls = []  # Collect fn_ptr_calls from all functions
         all_macro_regs = []   # Collect macro_registrations from all functions
@@ -643,8 +676,12 @@ class CTreeSitterScanner(BaseScanner):
         # We detect these orphaned asm nodes and recover the caller function name
         # via regex from the surrounding source text.
 
-        def _find_orphan_asm_nodes(node, depth=0):
-            """Find gnu_asm_expression nodes not inside any function_definition."""
+        def _find_orphan_asm_nodes(root_node):
+            """Find gnu_asm_expression nodes not inside any function_definition.
+
+            Iterative walk (skipping function bodies): deep top-level
+            expression chains must not exhaust the recursion budget.
+            """
             orphans = []
             # Check if this node is inside a known function
             def _is_in_function(n):
@@ -657,15 +694,18 @@ class CTreeSitterScanner(BaseScanner):
                     parent = parent.parent
                 return False
 
-            if node.type == 'gnu_asm_expression' and not _is_in_function(node):
-                orphans.append(node)
-            elif node.type == 'ERROR':
-                # Search inside ERROR nodes for gnu_asm_expression children
-                for child in node.children:
-                    orphans.extend(_find_orphan_asm_nodes(child, depth + 1))
-            elif node.type not in ('function_definition',):
-                for child in node.children:
-                    orphans.extend(_find_orphan_asm_nodes(child, depth + 1))
+            _stack = [root_node]
+            while _stack:
+                node = _stack.pop()
+                if node.type == 'gnu_asm_expression' and not _is_in_function(node):
+                    orphans.append(node)
+                elif node.type == 'ERROR':
+                    # Search inside ERROR nodes for gnu_asm_expression children
+                    for child in node.children:
+                        _stack.append(child)
+                elif node.type not in ('function_definition',):
+                    for child in node.children:
+                        _stack.append(child)
             return orphans
 
         orphan_asms = _find_orphan_asm_nodes(root)
@@ -806,23 +846,30 @@ class CTreeSitterScanner(BaseScanner):
         _macro_asm_edges = []  # (macro_name, edge_dict)
         _macro_asm_funcs = {}  # macro_name → synthetic function entry
 
-        def _collect_preproc_defs(node):
-            """Walk tree to find preproc_function_def / preproc_def with asm bodies."""
+        def _collect_preproc_defs(root_node):
+            """Walk tree to find preproc_function_def / preproc_def with asm bodies.
+
+            Iterative (skipping function bodies): deep top-level
+            expression chains must not exhaust the recursion budget.
+            """
             results = []
-            if node.type in ('preproc_function_def', 'preproc_def'):
-                # Get macro name
-                macro_name = None
-                macro_body = ""
+            _stack = [root_node]
+            while _stack:
+                node = _stack.pop()
+                if node.type in ('preproc_function_def', 'preproc_def'):
+                    # Get macro name
+                    macro_name = None
+                    macro_body = ""
+                    for child in node.children:
+                        if child.type == 'identifier':
+                            macro_name = code_slice(child.start_byte, child.end_byte)
+                        elif child.type == 'preproc_arg':
+                            macro_body = code_slice(child.start_byte, child.end_byte)
+                    if macro_name and macro_body and _MACRO_ASM_RE.search(macro_body):
+                        results.append((macro_name, macro_body))
                 for child in node.children:
-                    if child.type == 'identifier':
-                        macro_name = code_slice(child.start_byte, child.end_byte)
-                    elif child.type == 'preproc_arg':
-                        macro_body = code_slice(child.start_byte, child.end_byte)
-                if macro_name and macro_body and _MACRO_ASM_RE.search(macro_body):
-                    results.append((macro_name, macro_body))
-            for child in node.children:
-                if child.type not in ('function_definition',):
-                    results.extend(_collect_preproc_defs(child))
+                    if child.type not in ('function_definition',):
+                        _stack.append(child)
             return results
 
         # Slice the parse-time BYTES with tree byte offsets (then decode),
@@ -1402,20 +1449,23 @@ class CTreeSitterScanner(BaseScanner):
         if body_node is None:
             return results
 
-        def _walk(node):
+        # Iterative: expression chains inside coroutine bodies can nest
+        # deeper than the recursion budget.
+        _stack = [body_node]
+        while _stack:
+            node = _stack.pop()
             if node.type == 'co_await_expression':
                 # co_await_expression children: [co_await, expression]
                 expr_node = next((c for c in node.children
-                                   if c.type != 'co_await'), None)
+                                  if c.type != 'co_await'), None)
                 if expr_node is not None:
                     results.append({
                         "expr": self._node_text(expr_node, source_bytes).strip(),
                         "line": expr_node.start_point[0] + 1,
                     })
             for child in node.children:
-                _walk(child)
+                _stack.append(child)
 
-        _walk(body_node)
         return results
 
     def _extract_concept(self, concept_node, source_bytes: bytes,
@@ -1456,7 +1506,12 @@ class CTreeSitterScanner(BaseScanner):
         """
         macros = {}
 
-        def _walk(node):
+        # Iterative walk (skipping function_definition bodies) — deep
+        # top-level expression chains must not exhaust the recursion
+        # budget.
+        _stack = [root]
+        while _stack:
+            node = _stack.pop()
             if node.type in ('preproc_function_def', 'preproc_def'):
                 name = ""
                 params = []
@@ -1483,8 +1538,7 @@ class CTreeSitterScanner(BaseScanner):
             # a function is rare and tree-sitter usually doesn't nest them.
             if node.type not in ('function_definition',):
                 for child in node.children:
-                    _walk(child)
-        _walk(root)
+                    _stack.append(child)
         return macros
 
     def _expand_macro(self, macro_def: dict, call_args: list) -> str:
@@ -1792,19 +1846,22 @@ class CTreeSitterScanner(BaseScanner):
 
         # Pre-scan: collect ALL label positions in the body so that
         # forward goto direction can be determined correctly.
-        def _collect_labels(node):
-            """Recursively collect labeled_statement positions."""
-            if node.type == 'labeled_statement':
-                for child in node.children:
+        # Iterative: a single long expression chain (e.g. macro-expanded
+        # arithmetic) nests deep enough to overflow the interpreter's
+        # recursion limit and drop the whole file.
+        _label_stack = [body_node]
+        while _label_stack:
+            _node = _label_stack.pop()
+            if _node.type == 'labeled_statement':
+                for child in _node.children:
                     if child.type == 'statement_identifier':
                         _goto_labels.append({
                             "label": self._node_text(child, source_bytes),
-                            "line": node.start_point[0] + 1,
+                            "line": _node.start_point[0] + 1,
                         })
                         break
-            for child in node.children:
-                _collect_labels(child)
-        _collect_labels(body_node)
+            for child in _node.children:
+                _label_stack.append(child)
 
         # Pre-compute active condition at each pp_cond position for O(log P)
         # lookup per call_expression, replacing the O(P) linear scan that
@@ -2795,9 +2852,22 @@ class CTreeSitterScanner(BaseScanner):
                         _process_node(child)
                 return
 
-            # Recurse into children for other node types
-            for child in node.children:
-                _process_node(child)
+            # Recurse into children for other node types. Plain
+            # expression subtrees (macro-expanded arithmetic, long
+            # receiver chains) nest far deeper than the interpreter's
+            # recursion budget — a recursive walk here raised
+            # RecursionError and the whole file vanished from the
+            # scan. Nodes with dedicated handling above keep the
+            # recursive path (statement nesting is shallow); generic
+            # expressions descend through an explicit stack.
+            _HANDLED_ABOVE = _GENERIC_WALK_SPECIAL_TYPES
+            _pending = list(reversed(node.children))
+            while _pending:
+                child = _pending.pop()
+                if child.type in _HANDLED_ABOVE:
+                    _process_node(child)
+                else:
+                    _pending.extend(reversed(child.children))
 
         for child in body_node.children:
             _process_node(child)

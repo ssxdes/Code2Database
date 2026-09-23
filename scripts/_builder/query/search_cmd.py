@@ -10,6 +10,7 @@ from _builder.graph.graph_build import _load_full_graph
 from _builder.query.query_cache import cached_query
 from _builder.utils import normalize_str_field
 import logging
+from _builder.query.query_helpers import suggest_similar_nodes
 
 
 def cmd_domain(args):
@@ -130,7 +131,7 @@ def cmd_impact(args):
     G = _load_full_graph(args.graph)
 
     if args.node not in G:
-        candidates = [n for n in G.nodes if args.node.lower() in n.lower()]
+        candidates = suggest_similar_nodes(G, args.node)
         print(f"Node '{args.node}' not found. Similar: {candidates[:5]}", file=sys.stderr)
         sys.exit(1)
 
@@ -269,7 +270,7 @@ def cmd_neighbors(args):
 
     if args.node not in G:
         # Try partial match
-        candidates = [n for n in G.nodes if args.node.lower() in n.lower()]
+        candidates = suggest_similar_nodes(G, args.node)
         if candidates:
             print(f"Node '{args.node}' not found. Similar: {candidates[:5]}", file=sys.stderr)
         else:
@@ -579,7 +580,7 @@ def cmd_path(args):
     missing = []
     for node_id, lookup in [(args.from_node, "from"), (args.to_node, "to")]:
         if node_id not in G:
-            candidates = [n for n in G.nodes if node_id.lower() in n.lower()]
+            candidates = suggest_similar_nodes(G, node_id)
             print(f"Node '{node_id}' not found. Similar: {candidates[:5]}", file=sys.stderr)
             missing.append(node_id)
     if missing:

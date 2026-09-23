@@ -417,5 +417,63 @@ class TestLazySQLiteGraphLockDiscipline(unittest.TestCase):
                          [("func_a", "func_b")])
 
 
+class TestSimilarNodeIds(unittest.TestCase):
+    """Substring suggestions for miss lookups: SQL pushdown on the lazy
+    graph, bounded early-exit walk on in-memory graphs."""
+
+    def _lazy_graph(self):
+        tmpdir = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(tmpdir, ignore_errors=True))
+        db_path = os.path.join(tmpdir, "code2database.db")
+        sg = StreamingGraph(db_path)
+        sg.add_node("net_rx_packet", name="net_rx_packet",
+                    source_file="net.c", line=1, domain="root")
+        sg.add_node("net_tx_packet", name="net_tx_packet",
+                    source_file="net.c", line=2, domain="root")
+        sg.add_node("disk_read_sector", name="disk_read_sector",
+                    source_file="disk.c", line=3, domain="root")
+        sg.close()
+        return LazySQLiteGraph(db_path)
+
+    def test_lazy_graph_substring_match(self):
+        with self._lazy_graph() as g:
+            got = g.similar_node_ids("rx_pack")
+            self.assertEqual(got, ["net_rx_packet"])
+
+    def test_lazy_graph_case_insensitive_and_limit(self):
+        with self._lazy_graph() as g:
+            got = g.similar_node_ids("PACKET", limit=1)
+            self.assertEqual(len(got), 1)
+            self.assertIn(got[0], ("net_rx_packet", "net_tx_packet"))
+
+    def test_lazy_graph_no_match_and_empty_fragment(self):
+        with self._lazy_graph() as g:
+            self.assertEqual(g.similar_node_ids("zzz"), [])
+            self.assertEqual(g.similar_node_ids(""), [])
+
+    def test_helper_dispatches_to_lazy_graph(self):
+        from _builder.query.query_helpers import suggest_similar_nodes
+        with self._lazy_graph() as g:
+            self.assertEqual(suggest_similar_nodes(g, "rx_pack"),
+                             ["net_rx_packet"])
+
+    def test_helper_in_memory_graph_early_exit(self):
+        import networkx as nx
+        from _builder.query.query_helpers import suggest_similar_nodes
+        G = nx.DiGraph()
+        for i in range(200):
+            G.add_node(f"mod_{i:03d}_worker")
+        got = suggest_similar_nodes(G, "worker", limit=5)
+        self.assertEqual(len(got), 5)
+        self.assertTrue(all(n.endswith("_worker") for n in got))
+
+    def test_helper_empty_fragment(self):
+        import networkx as nx
+        from _builder.query.query_helpers import suggest_similar_nodes
+        G = nx.DiGraph()
+        G.add_node("x")
+        self.assertEqual(suggest_similar_nodes(G, ""), [])
+
+
 if __name__ == "__main__":
     unittest.main()

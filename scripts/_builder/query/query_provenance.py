@@ -12,6 +12,7 @@ from _builder.utils import _is_condition_alive, _output_result, _find_node_id, _
 from _builder.graph.graph_build import _load_full_graph
 from _builder.token_budget import estimate_tokens, truncate_to_tokens, budget_describe
 from _builder.query.query_cache import cached_query, invalidate_node as _cache_invalidate_node
+from _builder.query.query_helpers import suggest_similar_nodes
 
 
 
@@ -227,7 +228,7 @@ def cmd_blame_node(args):
     # Get the node's source file and line
     G = _load_full_graph(graph_dir)
     if node_id not in G:
-        candidates = [n for n in G.nodes if node_id.lower() in n.lower()]
+        candidates = suggest_similar_nodes(G, node_id)
         if candidates:
             print(f"Node '{node_id}' not found. Similar: {candidates[:5]}",
                   file=sys.stderr)

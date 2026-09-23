@@ -11,7 +11,7 @@ from pathlib import Path
 from collections import defaultdict
 import networkx as nx
 from _builder.utils import _is_condition_alive, _output_result, _find_node_id, _parse_bindings, _load_globals, _streaming_json_lookup, _streaming_json_has_keys
-from _builder.query.query_helpers import _is_vtable_dispatch_alive, _get_code_snippet, _value_is_null_form_match, _load_profile_from_graph_dir, _io_path_bfs, _io_path_score, _collect_dispatch_info, _value_is_null_form
+from _builder.query.query_helpers import suggest_similar_nodes, _is_vtable_dispatch_alive, _get_code_snippet, _value_is_null_form_match, _load_profile_from_graph_dir, _io_path_bfs, _io_path_score, _collect_dispatch_info, _value_is_null_form
 
 from _builder.graph.graph_build import _load_full_graph
 from _builder.token_budget import estimate_tokens, truncate_to_tokens, budget_describe
@@ -35,7 +35,7 @@ def cmd_get_code_snippet(args):
     G = _load_full_graph(graph_dir)
 
     if node_id not in G:
-        candidates = [n for n in G.nodes if node_id.lower() in n.lower()]
+        candidates = suggest_similar_nodes(G, node_id)
         if candidates:
             print(f"Node '{node_id}' not found. Similar: {candidates[:5]}", file=sys.stderr)
         else:
@@ -431,7 +431,7 @@ def cmd_blast_radius(args):
     G = _load_full_graph(graph_dir)
 
     if node_id not in G:
-        candidates = [n for n in G.nodes if node_id.lower() in n.lower()]
+        candidates = suggest_similar_nodes(G, node_id)
         if candidates:
             print(f"Node '{node_id}' not found. Similar: {candidates[:5]}", file=sys.stderr)
         else:
@@ -1099,7 +1099,7 @@ def cmd_reverse_trace(args):
     G = _load_full_graph(graph_dir)
     crash_id = _find_node_id(G, crash_point)
     if not crash_id:
-        candidates = [n for n in G.nodes if crash_point.lower() in n.lower()]
+        candidates = suggest_similar_nodes(G, crash_point)
         if candidates:
             print(f"Node '{crash_point}' not found. Similar: {candidates[:5]}", file=sys.stderr)
         else:

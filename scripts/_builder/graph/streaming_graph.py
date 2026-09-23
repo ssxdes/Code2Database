@@ -1128,6 +1128,22 @@ class LazySQLiteGraph:
         """
         return _LazyNodeView(self)
 
+    def similar_node_ids(self, fragment: str, limit: int = 5) -> list:
+        """Node-id substring suggestions for a miss lookup.
+
+        Pushes the substring match into SQL (LIKE) so a miss on a
+        million-node graph is one bounded C-level scan instead of
+        streaming every id into Python and comparing there.
+        """
+        frag = str(fragment).lower()
+        if not frag:
+            return []
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id FROM functions WHERE lower(id) LIKE ? LIMIT ?",
+                (f"%{frag}%", limit)).fetchall()
+        return [r[0] for r in rows]
+
     def has_edge(self, u: str, v: str) -> bool:
         cache_key = (u, v)
         with self._lock:

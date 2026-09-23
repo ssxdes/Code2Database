@@ -11,7 +11,7 @@ from pathlib import Path
 from collections import defaultdict
 import networkx as nx
 from _builder.utils import _is_condition_alive, _output_result, _find_node_id, _parse_bindings, _load_globals, _streaming_json_lookup, _streaming_json_has_keys
-from _builder.query.query_helpers import _fetch_foreign_refs_for_node, _is_vtable_dispatch_alive, _get_code_snippet, _compute_exec_summary, _resolve_simple_chain, _compute_hub_info, _describe_node_touched
+from _builder.query.query_helpers import suggest_similar_nodes, _fetch_foreign_refs_for_node, _is_vtable_dispatch_alive, _get_code_snippet, _compute_exec_summary, _resolve_simple_chain, _compute_hub_info, _describe_node_touched
 
 from _builder.graph.graph_build import _load_full_graph
 from _builder.token_budget import estimate_tokens, truncate_to_tokens, budget_describe
@@ -33,7 +33,7 @@ def cmd_describe_node(args):
     G = _load_full_graph(graph_dir)
 
     if node_id not in G:
-        candidates = [n for n in G.nodes if node_id.lower() in n.lower()]
+        candidates = suggest_similar_nodes(G, node_id)
         if candidates:
             print(f"Node '{node_id}' not found. Similar: {candidates[:5]}", file=sys.stderr)
         else:
@@ -666,7 +666,7 @@ def cmd_resolve_chain(args):
     G = _load_full_graph(graph_dir)
 
     if node_id not in G:
-        candidates = [n for n in G.nodes if node_id.lower() in n.lower()]
+        candidates = suggest_similar_nodes(G, node_id)
         if candidates:
             print(f"Node '{node_id}' not found. Similar: {candidates[:5]}", file=sys.stderr)
         else:

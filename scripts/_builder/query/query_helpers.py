@@ -42,6 +42,27 @@ _GENERIC_EXTERNAL_METHOD_NAMES = frozenset({
     "loads", "dumps", "load", "dump",
     "exec", "eval", "compile",
 })
+
+
+def suggest_similar_nodes(G, fragment, limit: int = 5) -> list:
+    """Substring-similar node ids for a miss lookup ("Similar: ...").
+
+    On LazySQLiteGraph the match runs inside SQLite (one bounded LIKE
+    scan); on in-memory graphs it walks ids with an early exit at the
+    limit instead of materializing every matching id first.
+    """
+    frag = str(fragment).lower()
+    if not frag:
+        return []
+    if hasattr(G, "similar_node_ids"):
+        return G.similar_node_ids(frag, limit=limit)
+    out = []
+    for n in G.nodes:
+        if frag in n.lower():
+            out.append(n)
+            if len(out) >= limit:
+                break
+    return out
 def _is_scenario_noise_target(name: str) -> bool:
     """Identify leaf targets that should not appear as scenario chain endpoints.
 

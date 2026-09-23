@@ -260,7 +260,21 @@ def map_nodes(
         return []
     workers = resolve_jobs(jobs, max_workers_cap=max_workers_cap)
     if workers <= 1 or n < 2:
-        return [work_fn(nid, nd) for nid, nd in items]
+        # Sequential path isolates per-item failures the same way the
+        # worker paths do (None slot): a build phase's per-node analysis
+        # must not lose every remaining item because one node's
+        # work_fn raised — and the behavior must not differ between
+        # jobs=1 and jobs=N runs.
+        results = []
+        for nid, nd in items:
+            try:
+                results.append(work_fn(nid, nd))
+            except Exception as exc:
+                logging.getLogger(__name__).error(
+                    "map_nodes sequential worker failed for item %s: %s",
+                    nid, exc, exc_info=True)
+                results.append(None)
+        return results
 
     # ProcessPoolExecutor path: for pure-Python CPU-bound workloads.
     # Auto-promote from thread to process when the workload is large,

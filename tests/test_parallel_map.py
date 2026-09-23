@@ -17,7 +17,11 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from _builder.build.parallel import map_nodes, resolve_jobs
+import networkx as nx
+
+from _builder.build.parallel import (
+    map_nodes, resolve_jobs, merge_node_attributes,
+)
 
 
 def _top_level_worker(nid, nd):
@@ -69,6 +73,92 @@ class TestMapNodesProcessMode(unittest.TestCase):
         self.assertEqual(len(results), 1200)
         for i, r in enumerate(results):
             self.assertEqual(r, i * 3)
+
+
+class TestMergeNodeAttributes(unittest.TestCase):
+    """Contract of the merge helper: work_fn returns a dict of attrs to
+    set; falsy values (empty containers, 0, False, None) count as
+    "nothing to set" and are skipped — callers that need to write 0 or
+    False must do so directly on the node. The merge itself runs on the
+    caller thread (no concurrent graph mutation)."""
+
+    def _run(self, results_by_nid):
+        G = nx.DiGraph()
+        items = []
+        for nid in results_by_nid:
+            G.add_node(nid, name=nid)
+            items.append((nid, {}))
+        calls = {nid: i for i, nid in enumerate(results_by_nid)}
+
+        def work(nid, _nd):
+            return results_by_nid[nid]
+
+        count = merge_node_attributes(G, items, work, jobs=1)
+        return G, count, calls
+
+    def test_truthy_values_merged(self):
+        G, count, _ = self._run({
+            "a": {"labels": ["x"], "score": 0.5},
+            "b": None,
+            "c": {"labels": []},
+        })
+        self.assertEqual(G.nodes["a"]["labels"], ["x"])
+        self.assertEqual(G.nodes["a"]["score"], 0.5)
+        # b produced None and c produced only falsy values → untouched
+        self.assertNotIn("labels", G.nodes["b"])
+        self.assertNotIn("labels", G.nodes["c"])
+        self.assertEqual(count, 1)
+
+    def test_falsy_values_skipped_by_contract(self):
+        G, count, _ = self._run({
+            "a": {"zero": 0, "flag": False, "empty": [], "none": None,
+                  "text": ""},
+        })
+        for key in ("zero", "flag", "empty", "none", "text"):
+            self.assertNotIn(key, G.nodes["a"])
+        self.assertEqual(count, 0)
+
+    def test_mixed_result_touches_node_once(self):
+        G, count, _ = self._run({
+            "a": {"zero": 0, "labels": ["keep"]},
+        })
+        self.assertEqual(G.nodes["a"]["labels"], ["keep"])
+        self.assertNotIn("zero", G.nodes["a"])
+        self.assertEqual(count, 1)
+
+
+class TestWorkerFailureSemantics(unittest.TestCase):
+    """A failing worker leaves a None slot at its index — parallel maps
+    never raise through; callers detect per-item loss by checking for
+    None."""
+
+    def test_thread_worker_exception_gives_none_slot(self):
+        def worker(nid, nd):
+            if nd["fail"]:
+                raise RuntimeError("boom")
+            return nid
+
+        items = [(f"n{i}", {"fail": i == 2}) for i in range(5)]
+        results = map_nodes(items, worker, jobs=2)
+        self.assertEqual(results[2], None)
+        self.assertEqual(results[0], "n0")
+        self.assertEqual(results[4], "n4")
+
+    def test_merge_treats_none_result_as_skip(self):
+        G = nx.DiGraph()
+        G.add_node("a")
+        G.add_node("b")
+
+        def worker(nid, _nd):
+            if nid == "a":
+                raise RuntimeError("boom")
+            return {"labels": ["ok"]}
+
+        count = merge_node_attributes(G, [("a", {}), ("b", {})], worker,
+                                      jobs=1)
+        self.assertEqual(count, 1)
+        self.assertNotIn("labels", G.nodes["a"])
+        self.assertEqual(G.nodes["b"]["labels"], ["ok"])
 
 
 class TestResolveJobs(unittest.TestCase):

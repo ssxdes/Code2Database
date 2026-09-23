@@ -573,7 +573,7 @@ class GraphCache:
         """In-degree + out-degree for node sizing (precomputed at reload)."""
         with self._lock:
             if node_id not in self.G:
-                return {"in_degree": 0, "out_degree": 0}
+                return {"in_degree": 0, "out_degree": 0, "total": 0}
             in_deg = self._in_deg.get(node_id, 0)
             out_deg = self._out_deg.get(node_id, 0)
             return {"in_degree": in_deg, "out_degree": out_deg,

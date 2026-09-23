@@ -592,5 +592,109 @@ class TestSearchResultsLocation(unittest.TestCase):
         self.assertIn(('/src/lib_b/util.c', 77), locs)
 
 
+class TestGraphCacheCallHierarchy(unittest.TestCase):
+    """get_callers/get_callees feed the LSP call-hierarchy endpoints —
+    call edges in call_order, structural relations filtered out."""
+
+    def setUp(self):
+        from _builder.misc.graph_cache import GraphCache
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(self._cleanup)
+        # n1 -> n2 (order 2), n1 -> n3 (order 1), n4 -> n1 (order 1),
+        # plus structural edges that must NOT appear in the hierarchy.
+        master = {
+            'version': 'test-1.0',
+            'stats': {'total_functions': 4},
+            'total_nodes': 4,
+            'domains': {'test': 'code2database_test.json'},
+        }
+        with open(os.path.join(self.tmpdir, 'code2database_master.json'), 'w') as f:
+            json.dump(master, f)
+        domain = {
+            'domain': 'test',
+            'nodes': [
+                {'id': 'n1', 'name': 'foo', 'source_file': '/tmp/test.c',
+                 'line': 10, 'domain': 'test', 'labels': [],
+                 'signature': 'int foo()'},
+                {'id': 'n2', 'name': 'bar', 'source_file': '/tmp/test.c',
+                 'line': 20, 'domain': 'test', 'labels': [],
+                 'signature': 'int bar()'},
+                {'id': 'n3', 'name': 'baz', 'source_file': '/tmp/test.c',
+                 'line': 30, 'domain': 'test', 'labels': [],
+                 'signature': 'int baz()'},
+                {'id': 'n4', 'name': 'qux', 'source_file': '/tmp/test.c',
+                 'line': 40, 'domain': 'test', 'labels': [],
+                 'signature': 'int qux()'},
+            ],
+            'edges': [
+                {'source': 'n1', 'target': 'n2', 'relation': 'INVOKES',
+                 'call_order': 2, 'confidence': 'EXTRACTED',
+                 'confidence_score': 1.0, 'call_condition': '', 'concurrency': ''},
+                {'source': 'n1', 'target': 'n3', 'relation': 'INVOKES',
+                 'call_order': 1, 'confidence': 'INFERRED',
+                 'confidence_score': 0.7, 'call_condition': 'if(x)',
+                 'concurrency': ''},
+                {'source': 'n4', 'target': 'n1', 'relation': 'INVOKES',
+                 'call_order': 1, 'confidence': 'EXTRACTED',
+                 'confidence_score': 1.0, 'call_condition': '', 'concurrency': ''},
+                {'source': 'file:test.c', 'target': 'n1',
+                 'relation': 'CONTAINS'},
+            ],
+            'file_nodes': [
+                {'id': 'file:test.c', 'name': 'test.c',
+                 'source_file': '/tmp/test.c', 'line': 0, 'domain': 'test',
+                 'labels': [], 'node_type': 'file'},
+            ],
+        }
+        with open(os.path.join(self.tmpdir, 'code2database_test.json'), 'w') as f:
+            json.dump(domain, f)
+        self.cache = GraphCache(self.tmpdir)
+
+    def _cleanup(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_callees_sorted_by_call_order(self):
+        callees = self.cache.get_callees('n1')
+        self.assertEqual([c['id'] for c in callees], ['n3', 'n2'])
+        self.assertEqual(callees[0]['confidence'], 'INFERRED')
+        self.assertEqual(callees[0]['call_condition'], 'if(x)')
+        self.assertEqual(callees[1]['name'], 'bar')
+
+    def test_callers_include_only_call_edges(self):
+        callers = self.cache.get_callers('n1')
+        self.assertEqual([c['id'] for c in callers], ['n4'])
+        self.assertEqual(callers[0]['name'], 'qux')
+
+    def test_unknown_node_returns_empty(self):
+        self.assertEqual(self.cache.get_callers('missing'), [])
+        self.assertEqual(self.cache.get_callees('missing'), [])
+
+    def test_get_node_degree(self):
+        deg = self.cache.get_node_degree('n1')
+        self.assertGreaterEqual(deg['in_degree'], 1)
+        self.assertGreaterEqual(deg['out_degree'], 2)
+        self.assertEqual(deg['total'], deg['in_degree'] + deg['out_degree'])
+        self.assertEqual(self.cache.get_node_degree('missing'),
+                         {'in_degree': 0, 'out_degree': 0, 'total': 0})
+
+    def test_detect_cycles_self_loop(self):
+        # add a self-loop edge via a fresh graph file
+        domain_path = os.path.join(self.tmpdir, 'code2database_test.json')
+        with open(domain_path) as f:
+            data = json.load(f)
+        data['edges'].append({'source': 'n2', 'target': 'n2',
+                              'relation': 'INVOKES', 'call_order': 1,
+                              'confidence': 'EXTRACTED',
+                              'confidence_score': 1.0,
+                              'call_condition': '', 'concurrency': ''})
+        with open(domain_path, 'w') as f:
+            json.dump(data, f)
+        self.cache.reload()
+        cycles = self.cache.detect_cycles()
+        self.assertTrue(any(c['type'] == 'self_loop' and c['source'] == 'n2'
+                            for c in cycles))
+
+
 if __name__ == '__main__':
     unittest.main()

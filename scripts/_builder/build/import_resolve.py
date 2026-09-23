@@ -299,43 +299,53 @@ def _get_file_includes(source_file: str, source_root: str) -> set:
 
     Reads the actual source file, not function body_text — #include is a
     file-scope directive, so scanning body_text would miss it.
+
+    Cache entries carry the file's (mtime_ns, size) stamp: a long-lived
+    process (daemon auto-refresh, MCP) that resolves after a source edit
+    must see the new include set, not the one from the first read.
     """
     if not source_file or not source_root:
         return set()
     cache_key = f"{source_root}:{source_file}"
-    if cache_key in _file_includes_cache:
-        return _file_includes_cache[cache_key]
-
-    includes = set()
     full_path = os.path.join(source_root, source_file)
     try:
-        with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
-            content = f.read()
+        _st = os.stat(full_path)
+        stamp = (_st.st_mtime_ns, _st.st_size)
     except (IOError, OSError):
-        _file_includes_cache[cache_key] = includes
-        return includes
+        stamp = None
+    cached = _file_includes_cache.get(cache_key)
+    if cached is not None and cached[0] == stamp:
+        return cached[2]
 
-    # C/C++: #include <header> or #include "header"
-    for m in _INCLUDE_RE.finditer(content):
-        includes.add(m.group(1))
-    # Go: import "pkg" or import ( "pkg1" "pkg2" )
-    for m in _PY_IMPORT_PAREN_RE.finditer(content):
-        if m.group(2):
-            includes.add(m.group(2))
-        elif m.group(1):
-            for inner_m in _PY_INNER_STR_RE.finditer(m.group(1)):
-                includes.add(inner_m.group(1))
-    # Python: import X / from X import Y
-    for m in _PY_FROM_IMPORT_RE.finditer(content):
-        includes.add(m.group(1) or m.group(2))
-    # Java: import pkg.Class;
-    for m in _RUST_IMPORT_SEMI_RE.finditer(content):
-        includes.add(m.group(1))
-    # Rust: use path::module;
-    for m in _RUST_USE_RE.finditer(content):
-        includes.add(m.group(1))
+    includes = set()
+    if stamp is not None:
+        try:
+            with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+        except (IOError, OSError):
+            content = ""
 
-    _file_includes_cache[cache_key] = includes
+        # C/C++: #include <header> or #include "header"
+        for m in _INCLUDE_RE.finditer(content):
+            includes.add(m.group(1))
+        # Go: import "pkg" or import ( "pkg1" "pkg2" )
+        for m in _PY_IMPORT_PAREN_RE.finditer(content):
+            if m.group(2):
+                includes.add(m.group(2))
+            elif m.group(1):
+                for inner_m in _PY_INNER_STR_RE.finditer(m.group(1)):
+                    includes.add(inner_m.group(1))
+        # Python: import X / from X import Y
+        for m in _PY_FROM_IMPORT_RE.finditer(content):
+            includes.add(m.group(1) or m.group(2))
+        # Java: import pkg.Class;
+        for m in _RUST_IMPORT_SEMI_RE.finditer(content):
+            includes.add(m.group(1))
+        # Rust: use path::module;
+        for m in _RUST_USE_RE.finditer(content):
+            includes.add(m.group(1))
+
+    _file_includes_cache[cache_key] = (stamp, len(includes), includes)
     return includes
 
 

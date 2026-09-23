@@ -337,18 +337,68 @@ class CTreeSitterScanner(BaseScanner):
                         stack.append(child)
                     continue
 
-                # Extract .field = value pairs from initializer_list
+                # Extract .field = value pairs from initializer_list.
+                # Per-registration arm condition: preprocessor
+                # conditionals inside the initializer break tree-sitter's
+                # pair structure (the #ifdef arm mis-parses as an
+                # assignment_expression whose field_expression swallows
+                # the macro name), so the active arm at each pair's line
+                # is recovered from the directive scan of the source
+                # text, with the same negation conventions the
+                # statement walker uses.
+                _pp_directives = [
+                    (source_text.count('\n', 0, m.start()),
+                     m.group(1), m.group(2).strip())
+                    for m in _PP_COND_RE.finditer(source_text)
+                ]
+
+                def _arm_condition_at(pair_line):
+                    _cstack = []
+                    for dline, ddir, dtext in _pp_directives:
+                        if dline > pair_line:
+                            break
+                        if ddir in ('if', 'ifdef', 'ifndef'):
+                            _cstack.append((ddir, dtext))
+                        elif ddir in ('elif', 'else') and _cstack:
+                            _pd, _pc = _cstack[-1]
+                            if ddir == 'elif':
+                                _cstack[-1] = ('elif', dtext)
+                            elif _pd == 'ifdef':
+                                _cstack[-1] = ('ifndef', _pc)
+                            elif _pd == 'ifndef':
+                                _cstack[-1] = ('ifdef', _pc)
+                            else:
+                                _cstack[-1] = ('ifndef', _pc)
+                        elif ddir == 'endif' and _cstack:
+                            _cstack.pop()
+                    if not _cstack:
+                        return ""
+                    _d, _c = _cstack[-1]
+                    if _d == 'ifndef':
+                        return f"!({_c})" if _c else "else"
+                    if _d == 'elif':
+                        return _c
+                    return _c if _c else _d
+
                 registrations = []
                 for field_init in initializer_node.children:
                     # tree-sitter uses 'initializer_pair' for .field = value
                     # and 'field_initializer' in some language versions
-                    if field_init.type not in ('initializer_pair', 'field_initializer'):
+                    if field_init.type not in ('initializer_pair',
+                                               'field_initializer',
+                                               'assignment_expression'):
                         continue
                     field_name = ""
                     func_name = ""
                     for child in field_init.children:
                         # Field name from field_designator (.name) or field_identifier
                         if child.type == 'field_designator':
+                            for fc in child.children:
+                                if fc.type == 'field_identifier':
+                                    field_name = self._node_text(fc, source_bytes)
+                        elif child.type == 'field_expression':
+                            # #ifdef-arm mis-parse: MACRO\n.field — the
+                            # field identifier still names the slot
                             for fc in child.children:
                                 if fc.type == 'field_identifier':
                                     field_name = self._node_text(fc, source_bytes)
@@ -370,7 +420,8 @@ class CTreeSitterScanner(BaseScanner):
                         registrations.append({
                             "field": field_name,
                             "func_name": func_name,
-                            "condition": "",
+                            "condition": _arm_condition_at(
+                                field_init.start_point[0]),
                             "line": field_init.start_point[0] + 1,
                             "column": field_init.start_point[1] + 1,
                             "start_byte": field_init.start_byte,

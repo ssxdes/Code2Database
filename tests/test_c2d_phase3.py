@@ -143,6 +143,40 @@ class TestAddForeignStub(unittest.TestCase):
             self.assertEqual(r["status"], "resolved")
 
 
+    def test_cli_handler_prints_summary_json(self):
+        """The `foreign add-stub` CLI spelling routes to the same
+        registration summary as the direct API call."""
+        import argparse
+        import io
+        from contextlib import redirect_stdout
+        from code2database_builder import cmd_c2d_add_foreign_stub
+        args = argparse.Namespace(
+            graph=self.b_dir, stub_c2d=self.stub_dir, project_name="glibc")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            cmd_c2d_add_foreign_stub(args)
+        summary = json.loads(out.getvalue())
+        self.assertTrue(summary.get("added"))
+        self.assertEqual(summary.get("mode"), "stub")
+        self.assertEqual(summary.get("project_name"), "glibc")
+        self.assertGreater(summary.get("resolved_count", 0), 0)
+
+    def test_cli_handler_missing_stub_reports_error(self):
+        import argparse
+        import io
+        from contextlib import redirect_stdout
+        from code2database_builder import cmd_c2d_add_foreign_stub
+        missing = os.path.join(self.tmpdir, "no_such_stub")
+        args = argparse.Namespace(
+            graph=self.b_dir, stub_c2d=missing, project_name="")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            cmd_c2d_add_foreign_stub(args)
+        summary = json.loads(out.getvalue())
+        self.assertIn("error", summary)
+        self.assertIn("not found", summary["error"])
+
+
 class TestScanRpcEdges(unittest.TestCase):
     """Test RPC client call detection in source body_text."""
 

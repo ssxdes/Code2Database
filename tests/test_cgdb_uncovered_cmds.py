@@ -179,6 +179,30 @@ class _StoreFixture(unittest.TestCase):
         shutil.rmtree(cls.graph_dir, ignore_errors=True)
 
 
+class TestCgdbConfigsFor(_StoreFixture):
+
+    def test_configs_for_gated_function(self):
+        _, out, _ = _run(cc.cmd_cgdb_configs_for, _ns(
+            graph=self.graph_dir, node="gated_init"))
+        data = _json(out)
+        self.assertEqual(data["node_id"], 1007)
+        self.assertEqual(data["configs"], ["defined(CONFIG_EXT4_FS)"])
+
+    def test_configs_for_ungated_function(self):
+        _, out, _ = _run(cc.cmd_cgdb_configs_for, _ns(
+            graph=self.graph_dir, node="foo"))
+        data = _json(out)
+        self.assertEqual(data["node_id"], 1001)
+        self.assertEqual(data["configs"], [])
+
+    def test_configs_for_unknown_node_exits(self):
+        ret, out, err, code = _capture_call(
+            cc.cmd_cgdb_configs_for,
+            _ns(graph=self.graph_dir, node="missing"))
+        self.assertEqual(code, 1)
+        self.assertIn("not found", err)
+
+
 class TestCgdbDefinition(_StoreFixture):
 
     def test_function_definition(self):

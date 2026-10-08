@@ -12,11 +12,11 @@ concurrency:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -32,7 +32,23 @@ jobs:
       - name: Full test suite
         env:
           PYTHONPATH: scripts
-        run: python3 -m pytest tests/ -q -p no:cacheprovider
+        run: |
+          set +e
+          set -o pipefail
+          python3 -m pytest tests/ -q -p no:cacheprovider 2>&1 | tee pytest-output.log
+          status=$?
+          grep -E "^(FAILED|ERROR)" pytest-output.log | while IFS= read -r line; do
+            echo "::error::$line"
+          done
+          exit $status
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-output
+          path: pytest-output.log
+          if-no-files-found: ignore
 
       - name: Documentation parity (en/zh)
         run: python3 scripts/check_docs_sync.py

@@ -256,5 +256,59 @@ def _flatten(nodes):
     return out
 
 
+class WriteConnectionForeignKeysTest(unittest.TestCase):
+    """Writers must enforce the FKs the schemas declare.
+
+    sqlite only enforces FOREIGN KEY clauses per connection when
+    PRAGMA foreign_keys=ON; a bare sqlite3.connect() accepts orphan
+    rows silently. open_write_conn and MemoryStore's write path must
+    both carry the pragma, or memories.category_id /
+    categories.parent_id stop meaning anything.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db_path = os.path.join(self.tmp.name, "t.db")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_open_write_conn_enforces_declared_foreign_keys(self):
+        import sqlite3
+        from _builder.utils import open_write_conn
+        boot = sqlite3.connect(self.db_path)
+        boot.executescript(
+            "CREATE TABLE parent (id INTEGER PRIMARY KEY);"
+            "CREATE TABLE child (id INTEGER PRIMARY KEY,"
+            " parent_id INTEGER REFERENCES parent(id));")
+        boot.commit()
+        boot.close()
+
+        conn = open_write_conn(self.db_path)
+        try:
+            self.assertEqual(
+                conn.execute("PRAGMA foreign_keys").fetchone()[0], 1)
+            with self.assertRaises(sqlite3.IntegrityError):
+                conn.execute(
+                    "INSERT INTO child (parent_id) VALUES (424242)")
+        finally:
+            conn.close()
+
+    def test_memory_store_write_connection_enforces_category_fk(self):
+        import sqlite3
+        from _builder.memory.memory_store import MemoryStore
+        store = MemoryStore(self.tmp.name)
+        conn = store._connect()
+        try:
+            self.assertEqual(
+                conn.execute("PRAGMA foreign_keys").fetchone()[0], 1)
+            with self.assertRaises(sqlite3.IntegrityError):
+                conn.execute(
+                    "INSERT INTO memories (question, category_id) "
+                    "VALUES ('orphan?', 424242)")
+        finally:
+            conn.close()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -41,6 +41,26 @@ def _safe_domain_component(component: str) -> str:
     return safe
 
 
+def open_write_conn(db_path, timeout=10.0, row_factory=None):
+    """sqlite3 connection for code that writes rows.
+
+    The store schemas declare foreign keys (edges -> functions,
+    memories -> categories), but sqlite enforces them per connection
+    and only when PRAGMA foreign_keys=ON — a bare connect() silently
+    accepts orphan rows. Row-writing call sites go through here so the
+    declared constraints hold. The pragma runs before any transaction
+    starts, as sqlite requires. Bulk build paths keep their own
+    connections: they sequence whole-table loads and swap pages via
+    the backup API, where per-row enforcement only slows the load.
+    """
+    import sqlite3
+    conn = sqlite3.connect(db_path, timeout=timeout)
+    conn.execute("PRAGMA foreign_keys=ON")
+    if row_factory is not None:
+        conn.row_factory = row_factory
+    return conn
+
+
 def _format_step_exit(rc: int) -> str:
     """Human-readable exit descriptor for subprocess-step logs.
 

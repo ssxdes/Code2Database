@@ -51,7 +51,8 @@ except ImportError:
 
 import logging
 
-from _builder.utils import _simple_tokenize, _similarity_score, _has_cjk
+from _builder.utils import (_simple_tokenize, _similarity_score, _has_cjk,
+                            open_write_conn)
 
 # Weight formula constants — unchanged from the JSON store so behavior
 # carries over exactly.
@@ -241,8 +242,8 @@ class MemoryStore:
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA busy_timeout=5000")
             return conn
-        conn = sqlite3.connect(self.db_path, timeout=10.0)
-        conn.row_factory = sqlite3.Row
+        conn = open_write_conn(self.db_path, timeout=10.0,
+                               row_factory=sqlite3.Row)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA busy_timeout=5000")

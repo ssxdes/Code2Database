@@ -53,8 +53,8 @@ This design lets Code2Database scale from a quick install (`pip install tree-sit
 The skill ships as 4 sub-skills (`/Code2Database` core, `/Code2Database-analysis` deep analysis, `/Code2Database-ops` operations, `/Code2Database-kb` knowledge base) so the LLM agent loads only the commands relevant to its current question:
 
 - **Core (21 Tier-1 commands, incl. the `c2d` umbrella)** — always loaded. Build, browse, basic query (scan, build, explore-flow, describe-node, trace-chain, neighbors, path, search, key-paths, etc.)
-- **Analysis (13 Tier-1 + 19 cgdb_* MCP tools)** — loaded on demand. Concurrency, data flow, invariants, FFI, path feasibility, provenance, cgdb tables.
-- **Ops (23 Tier-1 commands)** — loaded on demand. Transactions, daemon, profile health, doc-code alignment, exports, plugins, memory, embeddings.
+- **Analysis (12 Tier-1 + 19 cgdb_* MCP tools)** — loaded on demand. Concurrency, data flow, invariants, FFI, path feasibility, provenance, cgdb tables.
+- **Ops (9 Tier-1 commands)** — loaded on demand. Transactions, daemon, profile health, doc-code alignment, exports, plugins, memory, embeddings.
 
 All 275 CLI spellings (120 visible umbrella commands + 155 hidden legacy) are accessible via the shared `scripts/code2database_builder.py` regardless of which sub-skill is active. The split is purely about LLM context economy: a 4K-token core skill is always useful; a 20K-token analysis skill should only be loaded when the user asks about races or invariants.
 
@@ -392,7 +392,7 @@ Code2Database is organized into 5 packages under `scripts/`, plus a CLI entry la
 
 ```
 scripts/
-├── code2database_builder.py      ← CLI entry point (255 CLI commands, argparse routing)
+├── code2database_builder.py      ← CLI entry point (275 CLI spellings, argparse routing)
 ├── code2database_scanner.py      ← Scanner CLI entry point (8 subcommands)
 ├── setup.sh                      ← Dependency installer (per-language option)
 ├── requirements.txt              ← Pinned dependencies

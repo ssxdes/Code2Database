@@ -1294,7 +1294,7 @@ def main():
 
     # save-memory
     p_save_mem = sub.add_parser("save-memory", help="Save Q&A memory with call chains")
-    p_save_mem.add_argument("--graph", required=True, help="Call graph output directory")
+    p_save_mem.add_argument("--graph", required=True, help="Store directory")
     p_save_mem.add_argument("--question", required=True, help="The question asked")
     p_save_mem.add_argument("--answer", default="", help="The answer given")
     p_save_mem.add_argument("--chains", default="", help="JSON string of call chain data")
@@ -1313,7 +1313,7 @@ def main():
 
     # search-memory
     p_search_mem = sub.add_parser("search-memory", help="Search memory for similar questions (FTS5 + filters)")
-    p_search_mem.add_argument("--graph", required=True, help="Call graph output directory")
+    p_search_mem.add_argument("--graph", required=True, help="Store directory")
     p_search_mem.add_argument("--query", required=True, help="Search query")
     p_search_mem.add_argument("--top", type=int, default=5, help="Max results")
     p_search_mem.add_argument("--category", default="", help="Category prefix filter (includes subcategories)")
@@ -1328,24 +1328,24 @@ def main():
     # validate-memory
     p_val_mem = sub.add_parser("validate-memory",
                                help="Validate memory against current graph; invalidate stale → experience")
-    p_val_mem.add_argument("--graph", required=True, help="Call graph output directory")
+    p_val_mem.add_argument("--graph", required=True, help="Store directory")
 
     # session-init (one-shot session context: brief + memory digest + graph + known-unknowns)
     p_si = sub.add_parser("session-init",
                           help="Load full session context: project brief + memory digest + graph state + known unknowns")
-    p_si.add_argument("--graph", required=True, help="Call graph output directory")
+    p_si.add_argument("--graph", required=True, help="Store directory")
     p_si.add_argument("--top", type=int, default=10, help="Memory digest size")
     p_si.add_argument("--json", action="store_true", help="Output structured JSON")
 
     # knowledge-brief (session-start mandatory load)
     p_kb = sub.add_parser("knowledge-brief",
                           help="Render the project brief as prompt text (load at session start)")
-    p_kb.add_argument("--graph", required=True, help="Call graph output directory")
+    p_kb.add_argument("--graph", required=True, help="Store directory")
     p_kb.add_argument("--json", action="store_true", help="Output raw brief JSON")
 
     # brief-update
     p_bu = sub.add_parser("brief-update", help="Update a section of the project brief")
-    p_bu.add_argument("--graph", required=True, help="Call graph output directory")
+    p_bu.add_argument("--graph", required=True, help="Store directory")
     p_bu.add_argument("--set", default=None,
                       help="Scalar field to set (project/one_liner/description/must_know)")
     p_bu.add_argument("--add", default=None,
@@ -1363,17 +1363,17 @@ def main():
     # brief-extract
     p_be = sub.add_parser("brief-extract",
                           help="Initialize/refresh the brief template from graph stats")
-    p_be.add_argument("--graph", required=True, help="Call graph output directory")
+    p_be.add_argument("--graph", required=True, help="Store directory")
 
     # brief-validate
     p_bv = sub.add_parser("brief-validate",
                           help="Validate the brief (schema, size budget, graph drift)")
-    p_bv.add_argument("--graph", required=True, help="Call graph output directory")
+    p_bv.add_argument("--graph", required=True, help="Store directory")
 
     # brief-suggest
     p_bs = sub.add_parser("brief-suggest",
                           help="Suggest brief additions from high-value memories (no writes)")
-    p_bs.add_argument("--graph", required=True, help="Call graph output directory")
+    p_bs.add_argument("--graph", required=True, help="Store directory")
     p_bs.add_argument("--top", default="10", help="Max suggestions (default 10)")
     p_bs.add_argument("--min-weight", dest="min_weight", default="1.5",
                       help="Weight threshold for candidacy (default 1.5)")
@@ -1382,7 +1382,7 @@ def main():
     # brief-migrate-legacy
     p_bml = sub.add_parser("brief-migrate-legacy",
                            help="Migrate legacy knowledge/*.md into the brief")
-    p_bml.add_argument("--graph", required=True, help="Call graph output directory")
+    p_bml.add_argument("--graph", required=True, help="Store directory")
 
     # plugins
     p_plugins = sub.add_parser("plugins", help="List available callgraph plugins")
@@ -1391,7 +1391,7 @@ def main():
 
     # manage-memory
     p_mgmt = sub.add_parser("manage-memory", help="Manage persistent memory (add/correct/reshape/decay/compact/promote/refine/query/search/get/categories/split/merge/move/lineage/authors/pack/consolidate/export/import/scratch-*)")
-    p_mgmt.add_argument("--graph", required=True, help="Call graph output directory")
+    p_mgmt.add_argument("--graph", required=True, help="Store directory")
     p_mgmt.add_argument("--action", required=True,
                          choices=["add", "correct", "reshape", "decay", "compact", "promote", "refine", "query", "search",
                                   "get", "categories", "split", "merge", "move", "lineage", "authors", "pack",
@@ -1430,18 +1430,18 @@ def main():
 
     # memory-health
     p_mh = sub.add_parser("memory-health", help="Report memory system health statistics")
-    p_mh.add_argument("--graph", required=True, help="Call graph output directory")
+    p_mh.add_argument("--graph", required=True, help="Store directory")
 
     # kb-rebuild-index (unified FTS5 index rebuild)
     p_kri = sub.add_parser("kb-rebuild-index",
                            help="Rebuild the unified kb_paragraphs FTS5 index "
                                 "from memory.db + brief.json")
-    p_kri.add_argument("--graph", required=True, help="Call graph output directory")
+    p_kri.add_argument("--graph", required=True, help="Store directory")
 
     # kb-query (unified FTS5+BM25 query across memory + knowledge)
     p_kq2 = sub.add_parser("kb-query",
                            help="Unified FTS5+BM25 query across memory and knowledge")
-    p_kq2.add_argument("--graph", required=True, help="Call graph output directory")
+    p_kq2.add_argument("--graph", required=True, help="Store directory")
     p_kq2.add_argument("--query", required=True, help="Free-form text query")
     p_kq2.add_argument("--top", type=int, default=10, help="Max results (default 10)")
     p_kq2.add_argument("--kinds", default="",
@@ -1463,19 +1463,19 @@ def main():
     # kb-cluster (union-find clustering + principle_ref)
     p_kc = sub.add_parser("kb-cluster",
                           help="Cluster kb_paragraphs by FTS5 similarity + link principles")
-    p_kc.add_argument("--graph", required=True, help="Call graph output directory")
+    p_kc.add_argument("--graph", required=True, help="Store directory")
     p_kc.add_argument("--threshold", type=float, default=0.5,
                       help="BM25 similarity threshold for clustering (default 0.5)")
 
     # kb-migrate (migrate kb_paragraphs → kb_items fact-level)
     p_km = sub.add_parser("kb-migrate",
                           help="Migrate kb_paragraphs rows into kb_items (fact-level)")
-    p_km.add_argument("--graph", required=True, help="Call graph output directory")
+    p_km.add_argument("--graph", required=True, help="Store directory")
 
     # kb-known-unknowns (aggregate unmatched queries)
     p_kku = sub.add_parser("kb-known-unknowns",
                            help="List queries that returned no matches")
-    p_kku.add_argument("--graph", required=True, help="Call graph output directory")
+    p_kku.add_argument("--graph", required=True, help="Store directory")
     p_kku.add_argument("--top", type=int, default=20, help="Max results")
     p_kku.add_argument("--min-occurrences", type=int, default=2,
                        help="Only show queries asked at least this many times")
@@ -1483,18 +1483,18 @@ def main():
     # kb-audit (knowledge audit)
     p_ka = sub.add_parser("kb-audit",
                           help="Audit KB: counts, stale, low-confidence, citations")
-    p_ka.add_argument("--graph", required=True, help="Call graph output directory")
+    p_ka.add_argument("--graph", required=True, help="Store directory")
     p_ka.add_argument("--topic", default="", help="Optional: 'what do we know about X'")
 
     # kb-conflict (detect contradictions)
     p_kcf = sub.add_parser("kb-conflict",
                            help="Detect contradictory items in the same cluster")
-    p_kcf.add_argument("--graph", required=True, help="Call graph output directory")
+    p_kcf.add_argument("--graph", required=True, help="Store directory")
 
     # kb-rollback (restore kb_item to prior version)
     p_kr = sub.add_parser("kb-rollback",
                           help="Restore a kb_item to a prior version")
-    p_kr.add_argument("--graph", required=True, help="Call graph output directory")
+    p_kr.add_argument("--graph", required=True, help="Store directory")
     p_kr.add_argument("--id", required=True, type=int, help="kb_item id to rollback")
     p_kr.add_argument("--to-version", type=int, default=None,
                        help="Version to restore (default: latest)")
@@ -1502,14 +1502,14 @@ def main():
     # kb-forget (immediate delete)
     p_kf = sub.add_parser("kb-forget",
                           help="Immediately delete a kb_paragraph (no decay)")
-    p_kf.add_argument("--graph", required=True, help="Call graph output directory")
+    p_kf.add_argument("--graph", required=True, help="Store directory")
     p_kf.add_argument("--id", required=True, type=int, help="kb_paragraph id to forget")
     p_kf.add_argument("--reason", default="", help="Reason for forgetting (audit log)")
 
     # kb-init (provision a knowledge/memory store, no graph required)
     p_kbi = sub.add_parser("kb-init",
                            help="Provision a knowledge/memory store (no graph required)")
-    p_kbi.add_argument("--graph", required=True, help="Store directory (auto-discovered)")
+    p_kbi.add_argument("--graph", required=True, help="Store directory")
     p_kbi.add_argument("--name", default="",
                        help="Domain name for this knowledge base (defaults to the store directory's parent name)")
     p_kbi.add_argument("--json", action="store_true", help="Machine-readable summary")
@@ -1517,12 +1517,12 @@ def main():
     # kb-domain-* (cross-KB domain registry)
     p_kdn = sub.add_parser("kb-domain-name",
                            help="Get or set this knowledge base's domain identity")
-    p_kdn.add_argument("--graph", required=True, help="Store directory (auto-discovered)")
+    p_kdn.add_argument("--graph", required=True, help="Store directory")
     p_kdn.add_argument("--name", default="", help="New domain name (omit to read)")
 
     p_kda = sub.add_parser("kb-domain-add",
                            help="Register another knowledge base as a queryable domain")
-    p_kda.add_argument("--graph", required=True, help="Store directory (auto-discovered)")
+    p_kda.add_argument("--graph", required=True, help="Store directory")
     p_kda.add_argument("--path", required=True,
                        help="Path to the other knowledge base's store directory")
     p_kda.add_argument("--name", default="",
@@ -1530,11 +1530,11 @@ def main():
 
     p_kdl = sub.add_parser("kb-domain-list",
                            help="List watched knowledge-base domains")
-    p_kdl.add_argument("--graph", required=True, help="Store directory (auto-discovered)")
+    p_kdl.add_argument("--graph", required=True, help="Store directory")
 
     p_kdr = sub.add_parser("kb-domain-remove",
                            help="Stop querying another knowledge-base domain")
-    p_kdr.add_argument("--graph", required=True, help="Store directory (auto-discovered)")
+    p_kdr.add_argument("--graph", required=True, help="Store directory")
     p_kdr.add_argument("--path", required=True,
                        help="Path to the knowledge base to stop querying")
 
@@ -1564,7 +1564,7 @@ def main():
     # kb-global-share-memory — export project memory to global KB
     p_kgsm = sub.add_parser("kb-global-share-memory",
                             help="Export high-weight project memories to the cross-project global KB (kind=memory_qa)")
-    p_kgsm.add_argument("--graph", required=True)
+    p_kgsm.add_argument("--graph", required=True, help="Store directory")
     p_kgsm.add_argument("--min-weight", type=float, default=1.0,
                         help="Only export entries with weight >= this (default 1.0)")
     p_kgsm.add_argument("--top", type=int, default=50,
@@ -1581,7 +1581,7 @@ def main():
     # kb-global-import-memory — import similar Q&A from global into project
     p_kgim = sub.add_parser("kb-global-import-memory",
                             help="Import similar Q&A from global KB into project memory (with merge)")
-    p_kgim.add_argument("--graph", required=True)
+    p_kgim.add_argument("--graph", required=True, help="Store directory")
     p_kgim.add_argument("--query", required=True)
     p_kgim.add_argument("--top", type=int, default=5)
     p_kgim.add_argument("--no-merge", action="store_true",

@@ -191,5 +191,26 @@ class TestKbOnlyCommandsGraphOptional(_Chdir):
             self.assertNotIn('Traceback', proc.stderr)
 
 
+    def test_kb_family_help_labels_store_directory(self):
+        """kb-family --graph help says store, not call-graph output.
+
+        The old text read "Call graph output directory" (or duplicated
+        the auto-discover hint) on commands that never touch a call
+        graph; the rendered help must name the store directory and
+        carry the default hint at most once.
+        """
+        for cmd in ["kb-init", "kb-domain-add", "memory-health",
+                    "manage-memory", "kb-query", "brief-update",
+                    "kb-global-share-memory", "session-init"]:
+            proc = subprocess.run(
+                [sys.executable, _BUILDER, cmd, '--help'],
+                capture_output=True, text=True, timeout=60,
+            )
+            normalized = ' '.join(proc.stdout.split())
+            self.assertIn('Store directory', normalized, cmd)
+            self.assertNotIn('Call graph output directory', normalized, cmd)
+            self.assertLessEqual(normalized.count('auto-discover'), 1, cmd)
+
+
 if __name__ == '__main__':
     unittest.main()

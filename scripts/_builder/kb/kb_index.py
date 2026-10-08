@@ -606,6 +606,29 @@ def _load_knowledge_paragraphs(graph_dir: str) -> List[dict]:
     return paragraphs
 
 
+def _is_transient_store_artifact(fname: str, fpath: str) -> bool:
+    """True for bookkeeping files sqlite or the flock guard drops next
+    to the real sources in memory/ and knowledge/.
+
+    The incremental-skip signature compares mtimes of the source dirs.
+    A -shm, -journal or .lock sidecar appears and vanishes with connection
+    lifecycle — a reader or writer that was open while the scan ran can
+    leave one behind with the newest mtime in the dir, which made an
+    unchanged store look changed and defeated the skip. A -wal bigger
+    than its 32-byte header carries real frames (a crashed or still
+    active writer) and stays part of the signature so those states
+    still trigger a rebuild.
+    """
+    if fname.endswith(("-shm", "-journal")) or fname.endswith(".lock"):
+        return True
+    if fname.endswith("-wal"):
+        try:
+            return os.path.getsize(fpath) <= 32
+        except OSError:
+            return False
+    return False
+
+
 def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
     """Rebuild the kb_paragraphs index from filesystem sources.
 
@@ -632,7 +655,8 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
             if os.path.isdir(_d):
                 for _fname in os.listdir(_d):
                     _fpath = os.path.join(_d, _fname)
-                    if os.path.isfile(_fpath):
+                    if os.path.isfile(_fpath) and \
+                            not _is_transient_store_artifact(_fname, _fpath):
                         try:
                             _mt = os.path.getmtime(_fpath)
                             if _mt > _max_mtime:

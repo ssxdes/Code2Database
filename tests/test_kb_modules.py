@@ -18,6 +18,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
@@ -74,6 +75,62 @@ def _make_knowledge_md(graph_dir, fname, content):
     }
     with open(os.path.join(know_dir, "brief.json"), "w", encoding="utf-8") as f:
         json.dump(brief, f, ensure_ascii=False, indent=2)
+
+
+def _settle_sqlite_store(db_path):
+    """Fold any transient -wal/-shm sidecars into the main db file.
+
+    A cleanly closed store is settled on most filesystems, but
+    connection lifecycle on a shared runner can leave sidecars behind
+    with the newest mtime in the dir. Tests that pin the skip decision
+    exercise marker logic, not sidecar lifecycle, so they start from a
+    checkpointed store.
+    """
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except sqlite3.Error:
+        pass
+    finally:
+        conn.close()
+
+
+def _signature_state(graph_dir):
+    """Diagnostic context for skip assertions: the stored marker plus
+    every file in the scanned dirs with its mtime, so a skip that did
+    not engage names the file whose timestamp moved."""
+    lines = []
+    conn = _kb_connect(graph_dir)
+    if conn is not None:
+        try:
+            row = conn.execute(
+                "SELECT value FROM kb_meta WHERE key = 'last_rebuild_mtime'"
+            ).fetchone()
+            lines.append(f"marker={row[0] if row else None}")
+        finally:
+            conn.close()
+    for d in ("memory", "knowledge"):
+        p = os.path.join(graph_dir, d)
+        if not os.path.isdir(p):
+            lines.append(f"{d}/ absent")
+            continue
+        for fname in sorted(os.listdir(p)):
+            fp = os.path.join(p, fname)
+            if os.path.isfile(fp):
+                lines.append(f"{d}/{fname} mtime={os.path.getmtime(fp)!r}")
+    return "\n".join(lines)
+
+
+def _drop_sidecar_files(graph_dir, names, size, mtime):
+    """Create sqlite sidecar look-alikes with a chosen size and mtime."""
+    mem_dir = os.path.join(graph_dir, "memory")
+    for name in names:
+        fp = os.path.join(mem_dir, name)
+        with open(fp, "wb") as f:
+            f.write(b"\0" * size)
+        os.utime(fp, (mtime, mtime))
 
 
 class TestFTS5Escape(unittest.TestCase):
@@ -161,6 +218,8 @@ class TestRebuildAndQueryKB(unittest.TestCase):
         _make_memory_entry(self.graph_dir, 1,
                            "How does bdev register io_device?",
                            "bdev_register() calls io_device_register()")
+        _settle_sqlite_store(
+            os.path.join(self.graph_dir, "memory", "memory.db"))
         first = rebuild_kb_index(self.graph_dir, verbose=False)
         self.assertTrue(first["rebuilt"])
         conn = _kb_connect(self.graph_dir)
@@ -171,9 +230,12 @@ class TestRebuildAndQueryKB(unittest.TestCase):
         finally:
             conn.close()
         self.assertIsNotNone(row)
+        stored = row[0]
         second = rebuild_kb_index(self.graph_dir, verbose=False)
-        self.assertFalse(second["rebuilt"])
-        self.assertEqual(second.get("reason"), "unchanged")
+        ctx = (f"stored marker {stored}; second={second}; "
+               f"scan state now:\n{_signature_state(self.graph_dir)}")
+        self.assertFalse(second["rebuilt"], ctx)
+        self.assertEqual(second.get("reason"), "unchanged", ctx)
 
     def test_query_returns_memory_and_knowledge(self):
         _make_memory_entry(self.graph_dir, 1,
@@ -243,6 +305,21 @@ class TestRebuildAndQueryKB(unittest.TestCase):
         results = query_kb(self.graph_dir, "completely_unrelated_topic_xyzzy", top_n=10)
         self.assertEqual(len(results), 0)
 
+    def test_unmatched_queries_surface_as_known_unknowns(self):
+        # The query log feeds the feedback loop: a question asked
+        # repeatedly with zero hits is a gap to fill; a matched query
+        # never counts as one.
+        _make_memory_entry(self.graph_dir, 1, "bdev question", "bdev answer")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        for _ in range(2):
+            query_kb(self.graph_dir, "completely_unrelated_topic_xyzzy",
+                     top_n=5)
+        query_kb(self.graph_dir, "bdev", top_n=5)
+        kus = get_known_unknowns(self.graph_dir, min_occurrences=2)
+        self.assertTrue(any(k["query"] == "completely_unrelated_topic_xyzzy"
+                            for k in kus))
+        self.assertFalse(any(k["query"] == "bdev" for k in kus))
+
     def test_upsert_and_delete(self):
         rid = upsert_kb_paragraph(self.graph_dir, "memory", "test.json",
                                    "test title", "test body", tags=["t1"])
@@ -254,6 +331,130 @@ class TestRebuildAndQueryKB(unittest.TestCase):
         self.assertGreaterEqual(deleted, 1)
         results = query_kb(self.graph_dir, "test", top_n=5)
         self.assertEqual(len(results), 0)
+
+
+class TestRebuildSkipSignature(unittest.TestCase):
+    """The incremental skip decides 'unchanged' from the mtimes of the
+    source dirs; these tests pin which files count toward it."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="kb_skip_test_")
+        self.graph_dir = os.path.join(self.tmpdir, "code2db-out")
+        os.makedirs(self.graph_dir, exist_ok=True)
+        from _builder.graph.sqlite_store import SQLiteStore
+        store = SQLiteStore(os.path.join(self.graph_dir, "code2database.db"))
+        store.connect()
+        store.close()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _seed_memory(self):
+        _make_memory_entry(self.graph_dir, 1,
+                           "How does bdev register io_device?",
+                           "bdev_register() calls io_device_register()")
+        _settle_sqlite_store(
+            os.path.join(self.graph_dir, "memory", "memory.db"))
+
+    def test_new_content_flips_the_decision_back_to_rebuild(self):
+        self._seed_memory()
+        first = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertTrue(first["rebuilt"])
+        second = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertFalse(
+            second["rebuilt"], _signature_state(self.graph_dir))
+        _make_memory_entry(self.graph_dir, 2,
+                           "What does bdev_unregister do?",
+                           "Calls io_device_unregister()")
+        third = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertTrue(third["rebuilt"])
+        self.assertEqual(third["memory_count"], 2)
+
+    def test_sidecars_appearing_after_a_rebuild_do_not_defeat_the_skip(self):
+        self._seed_memory()
+        first = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertTrue(first["rebuilt"])
+        # Bookkeeping a lingering connection leaves behind: newest
+        # mtimes in the dir, zero content signal (the -wal stays at its
+        # 32-byte header, i.e. frameless).
+        _future = time.time() + 60
+        _drop_sidecar_files(
+            self.graph_dir,
+            ("memory.db-shm", "memory.db-journal", "memory.lock"),
+            32768, _future)
+        _drop_sidecar_files(
+            self.graph_dir, ("memory.db-wal",), 32, _future)
+        second = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertFalse(
+            second["rebuilt"], _signature_state(self.graph_dir))
+        self.assertEqual(second.get("reason"), "unchanged")
+
+    def test_sidecars_vanishing_between_rebuilds_still_skips(self):
+        # The shape a shared runner produced: sidecars present when the
+        # marker was stored, cleaned up before the next scan. (The ro
+        # reader inside the first rebuild may clean them up on its own
+        # already, so the removal below is best-effort.)
+        self._seed_memory()
+        _future = time.time() + 60
+        _drop_sidecar_files(
+            self.graph_dir, ("memory.db-shm",), 32768, _future)
+        _drop_sidecar_files(
+            self.graph_dir, ("memory.db-wal",), 32, _future)
+        first = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertTrue(first["rebuilt"])
+        for name in ("memory.db-shm", "memory.db-wal"):
+            fp = os.path.join(self.graph_dir, "memory", name)
+            if os.path.exists(fp):
+                os.remove(fp)
+        second = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertFalse(
+            second["rebuilt"], _signature_state(self.graph_dir))
+        self.assertEqual(second.get("reason"), "unchanged")
+
+    def test_frameless_wal_ignored_but_framed_wal_rebuilds(self):
+        # A -wal at or under its 32-byte header holds no frames and is
+        # bookkeeping; one frame already makes it bigger than 32 bytes,
+        # and that state (crashed or active writer) must rebuild.
+        self._seed_memory()
+        first = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertTrue(first["rebuilt"])
+        _drop_sidecar_files(
+            self.graph_dir, ("memory.db-wal",), 32, time.time() + 60)
+        skipped = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertFalse(
+            skipped["rebuilt"], _signature_state(self.graph_dir))
+        _drop_sidecar_files(
+            self.graph_dir, ("memory.db-wal",), 33, time.time() + 120)
+        rebuilt = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertTrue(
+            rebuilt["rebuilt"], _signature_state(self.graph_dir))
+
+    def test_deleted_source_file_rebuilds_and_drops_its_paragraphs(self):
+        # Strict marker equality (not >=): a shrunken max means a file
+        # went away, and its paragraphs are stale until a rebuild drops
+        # them.
+        _make_memory_entry(self.graph_dir, 1, "mem question", "mem answer")
+        _make_knowledge_md(self.graph_dir, "principles.md",
+                           "## knowledge section\n\nbody text\n")
+        _settle_sqlite_store(
+            os.path.join(self.graph_dir, "memory", "memory.db"))
+        first = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertTrue(first["rebuilt"])
+        self.assertGreaterEqual(first["knowledge_count"], 1)
+        os.remove(os.path.join(self.graph_dir, "knowledge", "brief.json"))
+        second = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertTrue(
+            second["rebuilt"], _signature_state(self.graph_dir))
+        self.assertEqual(second["knowledge_count"], 0)
+        self.assertEqual(second["memory_count"], 1)
+
+    def test_rebuild_without_any_sources_reports_empty(self):
+        # No memory/ and no knowledge/ at all: the max-mtime guard (0
+        # means "nothing scannable") must keep the rebuild on the full
+        # path instead of skipping.
+        summary = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertTrue(summary["rebuilt"])
+        self.assertEqual(summary["total"], 0)
 
 
 class TestKbCluster(unittest.TestCase):

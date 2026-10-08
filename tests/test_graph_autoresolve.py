@@ -146,5 +146,50 @@ class TestGraphFlagOmitted(_Chdir):
             self.assertNotIn('Traceback', proc.stderr)
 
 
+class TestKbOnlyCommandsGraphOptional(_Chdir):
+    """kb-only store commands accept an omitted --graph.
+
+    Their handlers never touch the code graph (memory.db /
+    knowledge.db / kb_index.db only), so the store directory resolves
+    through kb markers exactly like graph stores and a kb-only project
+    is not forced to spell --graph on every call.
+    """
+
+    KB_ONLY_COMMANDS = [
+        "kb-migrate", "kb-conflict", "kb-rollback",
+        "kb-global-share-memory", "kb-global-import-memory",
+        "brief-update", "brief-extract", "brief-validate",
+        "brief-suggest", "brief-migrate-legacy",
+        "manage-memory", "memory-health",
+    ]
+
+    def test_kb_only_commands_have_optional_graph_flag(self):
+        for cmd in self.KB_ONLY_COMMANDS:
+            proc = subprocess.run(
+                [sys.executable, _BUILDER, cmd, '--help'],
+                capture_output=True, text=True, timeout=60,
+            )
+            self.assertEqual(proc.returncode, 0, cmd)
+            # argparse renders optional flags in brackets in the usage
+            # line; required ones render bare
+            self.assertIn('[--graph GRAPH]', proc.stdout, cmd)
+
+    def test_memory_health_omitted_graph_resolves_kb_store(self):
+        with tempfile.TemporaryDirectory() as root:
+            g = os.path.join(root, "store")
+            os.makedirs(os.path.join(g, "memory"))
+            open(os.path.join(g, "memory", "memory.db"), "w").close()
+            os.chdir(g)
+            proc = subprocess.run(
+                [sys.executable, _BUILDER, '--log-level', 'CRITICAL',
+                 'memory-health'],
+                capture_output=True, text=True, timeout=60,
+            )
+            self.assertIn('[graph] --graph not given; using', proc.stderr)
+            self.assertNotIn(
+                'the following arguments are required', proc.stderr)
+            self.assertNotIn('Traceback', proc.stderr)
+
+
 if __name__ == '__main__':
     unittest.main()

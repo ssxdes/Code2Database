@@ -3163,6 +3163,15 @@ def main():
         "profile-health", "validate-memory", "kb-init",
         "kb-domain-name", "kb-domain-add", "kb-domain-list",
         "kb-domain-remove",
+        # kb-only store commands: their handlers never touch the code
+        # graph (memory.db / knowledge.db / kb_index.db only), so a
+        # kb-only project must not be forced to spell --graph for them
+        # either — the store resolves like any other via markers.
+        "kb-migrate", "kb-conflict", "kb-rollback",
+        "kb-global-share-memory", "kb-global-import-memory",
+        "brief-update", "brief-extract", "brief-validate",
+        "brief-suggest", "brief-migrate-legacy",
+        "manage-memory", "memory-health",
     )
     for _name in _GRAPH_AUTO_COMMANDS:
         _sp = sub.choices.get(_name)

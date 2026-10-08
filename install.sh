@@ -388,18 +388,21 @@ fi
 #    docs/<lang>/, not docs/<lang>/references/).
 REF_DIR="$INSTALL_DIR/references"
 mkdir -p "$REF_DIR"
+ref_copied=0
 for ref_file in usage_reference.md label_rules.md data_model.md \
     semantic_enhancement.md endpoint_pipeline.md cross_skill_collaboration.md \
     memory_knowledge.md json_schema.md usage_examples.md \
     manifest_schema.md; do
     if [ -f "$SCRIPT_DIR/docs/$LANG/references/$ref_file" ]; then
         copy_to "$SCRIPT_DIR/docs/$LANG/references/$ref_file" "$REF_DIR/$ref_file"
+        ref_copied=$((ref_copied + 1))
     elif [ -f "$SCRIPT_DIR/docs/en/references/$ref_file" ]; then
         # Fallback to English if language-specific version doesn't exist
         copy_to "$SCRIPT_DIR/docs/en/references/$ref_file" "$REF_DIR/$ref_file"
+        ref_copied=$((ref_copied + 1))
     fi
 done
-ok "References (10 files) [core]"
+ok "References ($ref_copied files) [core]"
 
 # RUNTIME_CONFIG.md and PROFILE_MANUAL.md live at
 # docs/<lang>/ (not references/) — install them at the skill root so

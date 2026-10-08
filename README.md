@@ -9,7 +9,7 @@
 [![Languages](https://img.shields.io/badge/languages-6%20%2B%20ASM-orange)](#language-support)
 [![MCP Tools](https://img.shields.io/badge/MCP_tools-83-blueviolet)](#mcp-server)
 [![Query Commands](https://img.shields.io/badge/query_commands-120_visible-success)](#command-reference)
-[![Sub-skills](https://img.shields.io/badge/sub_skills-3-9cf)](#skill-activation)
+[![Sub-skills](https://img.shields.io/badge/sub_skills-4-9cf)](#skill-activation)
 [![Backend](https://img.shields.io/badge/backend-dual%20clang%20%2B%20tree--sitter-blue)](#extraction-backend)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](#installation)

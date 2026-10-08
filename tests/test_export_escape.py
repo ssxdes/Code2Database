@@ -15,7 +15,7 @@ import unittest
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'scripts')
 sys.path.insert(0, SCRIPTS_DIR)
 
-from _builder.export.export import _esc  # noqa: E402
+from _builder.export.export import _esc, _safe_domain_filename  # noqa: E402
 from _builder.utils import normalize_str_field  # noqa: E402
 
 
@@ -115,6 +115,37 @@ class TestNormalizeStrField(unittest.TestCase):
         for val in [None, [], "", "a|b", ["a|b", "c|d"]]:
             result = normalize_str_field(val).replace("|", "\\|")
             self.assertIsInstance(result, str)
+
+
+class SafeDomainFilenameTest(unittest.TestCase):
+    """_safe_domain_filename must cap length, not just substitute.
+
+    The domain_{name}_mermaid.html export path embeds the sanitized
+    domain in a real filename: an unbounded sanitizer builds a name
+    past NAME_MAX (255) whenever a supplemented domain carries a
+    couple hundred bytes, and the export dies on open(). The helper
+    reuses the shared component budget (120 bytes + digest suffix).
+    """
+
+    def test_empty_domain_maps_to_root(self):
+        self.assertEqual(_safe_domain_filename(""), "root")
+        self.assertEqual(_safe_domain_filename("///"), "root")
+
+    def test_special_characters_substitute(self):
+        self.assertEqual(_safe_domain_filename('a]b"c'), "a_b_c")
+
+    def test_long_domain_truncates_within_budget(self):
+        name = _safe_domain_filename("d" * 500)
+        self.assertLessEqual(len(name.encode("utf-8")), 129)
+        # digest suffix keeps the tail deterministic and collision-free
+        # across distinct over-long domains
+        self.assertNotEqual(name, _safe_domain_filename("e" * 500))
+
+    def test_exported_html_filename_stays_under_name_max(self):
+        for domain in ["short", "x" * 500, "mi" * 300]:
+            safe = _safe_domain_filename(domain)
+            full = f"html/domain_{safe}_mermaid.html"
+            self.assertLess(len(full.encode("utf-8")), 255, domain[:20])
 
 
 if __name__ == "__main__":

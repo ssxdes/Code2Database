@@ -7,6 +7,7 @@ from pathlib import Path
 from collections import defaultdict
 import networkx as nx
 from _builder.graph.graph_build import _load_full_graph
+from _builder.utils import _safe_domain_component
 import logging
 
 # Filesystem- and URL-safe name for a domain: domain names derive from
@@ -36,7 +37,15 @@ def _esc(value) -> str:
 
 
 def _safe_domain_filename(domain: str) -> str:
-    return _DOMAIN_SAFE_RE.sub('_', domain)
+    """Filesystem- and mermaid-safe name for a domain, length-capped.
+
+    The ASCII-only substitution keeps mermaid subgraph IDs portable;
+    the shared component helper then applies the byte budget (120)
+    with a digest suffix, so the domain_{name}_mermaid.html export
+    path cannot blow past NAME_MAX (255) when a supplemented domain
+    carries a very long name.
+    """
+    return _safe_domain_component(_DOMAIN_SAFE_RE.sub('_', domain))
 
 
 def _build_mermaid_graph(G: nx.DiGraph) -> str:

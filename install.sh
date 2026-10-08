@@ -443,8 +443,12 @@ fi
 ok "Scripts (command execution) [core]"
 
 # 4. Skill metadata
-copy_to "$SCRIPT_DIR/skill.json" "$INSTALL_DIR/skill.json"
-ok "skill.json [core]"
+if [ -f "$SCRIPT_DIR/skill.json" ]; then
+    copy_to "$SCRIPT_DIR/skill.json" "$INSTALL_DIR/skill.json"
+    ok "skill.json [core]"
+else
+    die "skill.json not found at $SCRIPT_DIR/skill.json"
+fi
 
 # 5. Agent integration files
 copy_to "$SCRIPT_DIR/AGENTS.md" "$INSTALL_DIR/AGENTS.md"
@@ -478,6 +482,8 @@ fi
 if [ -f "$SCRIPT_DIR/skill_analysis.json" ]; then
     copy_to "$SCRIPT_DIR/skill_analysis.json" "$ANALYSIS_DIR/skill.json"
     ok "skill.json [analysis]"
+else
+    warn "skill_analysis.json not found at $SCRIPT_DIR/skill_analysis.json"
 fi
 
 # Install references/analysis_commands.md in the analysis sub-skill dir
@@ -516,6 +522,8 @@ fi
 if [ -f "$SCRIPT_DIR/skill_ops.json" ]; then
     copy_to "$SCRIPT_DIR/skill_ops.json" "$OPS_DIR/skill.json"
     ok "skill.json [ops]"
+else
+    warn "skill_ops.json not found at $SCRIPT_DIR/skill_ops.json"
 fi
 
 # Install references/ops_commands.md in the ops sub-skill dir
@@ -556,6 +564,8 @@ fi
 if [ -f "$SCRIPT_DIR/skill_kb.json" ]; then
     copy_to "$SCRIPT_DIR/skill_kb.json" "$KB_DIR/skill.json"
     ok "skill.json [kb]"
+else
+    warn "skill_kb.json not found at $SCRIPT_DIR/skill_kb.json"
 fi
 
 # Symlink scripts/ from core skill so kb sub-skill can run commands
@@ -854,6 +864,12 @@ else
     warn "Core references/ missing"
 fi
 
+if [ -f "$INSTALL_DIR/skill.json" ]; then
+    ok "Core skill.json present at $INSTALL_DIR/skill.json"
+else
+    fail "Core skill.json missing"
+fi
+
 # Analysis sub-skill
 if [ -f "$ANALYSIS_DIR/SKILL.md" ]; then
     ok "Analysis SKILL.md present at $ANALYSIS_DIR/SKILL.md"
@@ -864,6 +880,11 @@ if [ -f "$ANALYSIS_DIR/references/analysis_commands.md" ]; then
     ok "Analysis references/analysis_commands.md present"
 else
     warn "Analysis references/analysis_commands.md missing"
+fi
+if [ -f "$ANALYSIS_DIR/skill.json" ]; then
+    ok "Analysis skill.json present"
+else
+    warn "Analysis skill.json missing"
 fi
 
 # Ops sub-skill
@@ -876,6 +897,11 @@ if [ -f "$OPS_DIR/references/ops_commands.md" ]; then
     ok "Ops references/ops_commands.md present"
 else
     warn "Ops references/ops_commands.md missing"
+fi
+if [ -f "$OPS_DIR/skill.json" ]; then
+    ok "Ops skill.json present"
+else
+    warn "Ops skill.json missing"
 fi
 
 # Kb sub-skill

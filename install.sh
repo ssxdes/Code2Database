@@ -950,6 +950,7 @@ info "MCP server: 83 tools (36 code2database_* + 19 cgdb_* + 28 design-report) �
 info "  python3 $INSTALL_DIR/scripts/code2database_builder.py serve --graph code2db-out/"
 echo ""
 info "Knowledge base (kb-*): unified FTS5+BM25 across memory+knowledge+global — start with:"
+info "  python3 $INSTALL_DIR/scripts/code2database_builder.py kb init --graph code2db-out/"
 info "Multi-project: build multi for joint C2D from A→B→C dependencies — start with:"
 info "  python3 $INSTALL_DIR/scripts/code2database_builder.py build multi --manifest projects.json --outdir code2db-out/"
 info "  python3 $INSTALL_DIR/scripts/code2database_builder.py kb rebuild-index --graph code2db-out/"

@@ -29,17 +29,26 @@ jobs:
       - name: Install test dependencies
         run: python3 -m pip install pytest
 
+      - name: Show tool versions
+        run: |
+          python3 - <<'PY'
+          import platform, sqlite3, sys
+          print(sys.version.replace("\n", " "))
+          print("sqlite", sqlite3.sqlite_version)
+          print(platform.platform())
+          PY
+
       - name: Full test suite
         env:
           PYTHONPATH: scripts
         run: |
           set +e
           set -o pipefail
-          python3 -m pytest tests/ -q -p no:cacheprovider 2>&1 | tee pytest-output.log
+          python3 -m pytest tests/ -q -ra -p no:cacheprovider \
+            --junitxml=pytest-results.xml 2>&1 | tee pytest-output.log
           status=$?
-          grep -E "^(FAILED|ERROR)" pytest-output.log | while IFS= read -r line; do
-            echo "::error::$line"
-          done
+          python3 .github/scripts/annotate_failures.py \
+            pytest-results.xml pytest-output.log || true
           exit $status
 
       - name: Upload test log
@@ -47,7 +56,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: pytest-output
-          path: pytest-output.log
+          path: |
+            pytest-output.log
+            pytest-results.xml
           if-no-files-found: ignore
 
       - name: Documentation parity (en/zh)

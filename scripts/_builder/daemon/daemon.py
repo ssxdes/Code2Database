@@ -1567,7 +1567,8 @@ class Daemon:
 
             if db_path.exists():
                 import sqlite3
-                conn = sqlite3.connect(str(db_path))
+                from _builder.utils import open_write_conn
+                conn = open_write_conn(str(db_path))
                 try:
                     # NOTE: there is no `stale` COLUMN on functions — an
                     # earlier "UPDATE functions SET stale = 1" raised

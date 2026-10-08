@@ -47,6 +47,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from _builder.export.source_renderer import SourceRenderer
+from _builder.utils import open_write_conn
 import logging
 
 
@@ -628,7 +629,7 @@ class WritebackPipeline:
                     # Use the SQLite backup API to restore without
                     # file replacement. This keeps the live connection
                     # valid (unlike restore_snapshot's os.replace).
-                    snap_conn = sqlite3.connect(snap_db_path)
+                    snap_conn = open_write_conn(snap_db_path)
                     try:
                         try:
                             self.conn.rollback()

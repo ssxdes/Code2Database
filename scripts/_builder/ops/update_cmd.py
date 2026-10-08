@@ -21,7 +21,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from _builder.utils import _find_node_id
+from _builder.utils import _find_node_id, open_write_conn
 import logging
 
 
@@ -225,8 +225,8 @@ def _json_update_node(graph_dir: str, node_id: str, attrs: Dict,
     db_path = os.path.join(graph_dir, "code2database.db")
     if os.path.exists(db_path) and "semantic_desc" in attrs and attrs["semantic_desc"]:
         try:
-            import sqlite3 as _sqlite3
-            conn = _sqlite3.connect(db_path)
+            from _builder.utils import open_write_conn
+            conn = open_write_conn(db_path)
             try:
                 conn.execute(
                     "UPDATE cgdb_nodes SET description=? WHERE fqn=?",
@@ -315,8 +315,7 @@ def _sqlite_update_node(graph_dir: str, node_id: str, attrs: Dict,
     from datetime import datetime
 
     db_path = os.path.join(graph_dir, "code2database.db")
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = open_write_conn(db_path, row_factory=sqlite3.Row)
     try:
         row = conn.execute(
             "SELECT extra_json FROM functions WHERE id=?", (node_id,)).fetchone()
@@ -401,8 +400,7 @@ def _sqlite_update_edge(graph_dir: str, invoker_id: str, invoked_id: str,
     from datetime import datetime
 
     db_path = os.path.join(graph_dir, "code2database.db")
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = open_write_conn(db_path, row_factory=sqlite3.Row)
     try:
         # Verify edge exists
         row = conn.execute(

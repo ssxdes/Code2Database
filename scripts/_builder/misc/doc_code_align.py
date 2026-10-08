@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Set, Tuple
 import logging
 
-from _builder.utils import normalize_str_field
+from _builder.utils import normalize_str_field, open_write_conn
 
 
 # ---------------------------------------------------------------------------
@@ -413,8 +413,7 @@ def mark_doc_stale(graph_dir: str, node_id: str, reason: str) -> bool:
 def _mark_doc_stale_sqlite(db_path: str, node_id: str, reason: str,
                             timestamp: str) -> bool:
     """SQLite backend: update extra_json directly."""
-    import sqlite3
-    conn = sqlite3.connect(db_path)
+    conn = open_write_conn(db_path)
     try:
         row = conn.execute(
             "SELECT extra_json FROM functions WHERE id=?", (node_id,)).fetchone()

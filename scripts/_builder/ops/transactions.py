@@ -1201,10 +1201,10 @@ def cmd_tx_begin(args):
         # If --file-id given, also register a write-back tx.
         if file_id is not None:
             try:
-                import sqlite3 as _sqlite3
                 from _builder.ops.writeback_pipeline import WritebackPipeline
+                from _builder.utils import open_write_conn
                 db_path = os.path.join(graph_dir, "code2database.db")
-                conn = _sqlite3.connect(db_path)
+                conn = open_write_conn(db_path)
                 try:
                     source_root = ""
                     try:
@@ -1289,10 +1289,10 @@ def cmd_tx_commit(args):
         if writeback_tx_id is not None:
             # Run the write-back pipeline.
             try:
-                import sqlite3 as _sqlite3
                 from _builder.ops.writeback_pipeline import WritebackPipeline
+                from _builder.utils import open_write_conn
                 db_path = os.path.join(graph_dir, "code2database.db")
-                conn = _sqlite3.connect(db_path)
+                conn = open_write_conn(db_path)
                 try:
                     source_root = ""
                     try:

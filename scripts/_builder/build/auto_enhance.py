@@ -631,8 +631,8 @@ def apply_heuristic_enhancement_batch(graph_dir: str,
     has_sqlite = os.path.exists(db_path)
     conn = None
     if has_sqlite:
-        import sqlite3 as _sqlite3
-        conn = _sqlite3.connect(db_path)
+        from _builder.utils import open_write_conn
+        conn = open_write_conn(db_path)
 
     from datetime import datetime as _datetime
     timestamp = _datetime.now().strftime("%Y-%m-%d %H:%M")

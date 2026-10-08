@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 from _builder.cgdb.cgdb_store import SQLiteCGDBStore
 from _builder.cgdb.cgdb_versions import VersionController
-from _builder.utils import resolve_source_file as _resolve_source_file
+from _builder.utils import resolve_source_file as _resolve_source_file, open_write_conn
 import logging
 
 
@@ -488,7 +488,7 @@ def cmd_cgdb_schema_version(args):
         print(f"Error: cgdb_schema/cgdb_migrations not importable.", file=sys.stderr)
         sys.exit(1)
 
-    conn = sqlite3.connect(db_path)
+    conn = open_write_conn(db_path)
     try:
         # Ensure meta table exists
         conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")

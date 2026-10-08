@@ -54,44 +54,62 @@
     "validate-memory"
   ],
   "routing_table": {
-    "init_knowledge_store": [
-      "kb-init"
-    ],
-    "load_session_context": [
-      "session-init"
-    ],
-    "save_learned_experience": [
-      "save-memory"
-    ],
-    "correct_a_wrong_answer": [
-      "save-memory --correct"
-    ],
-    "search_veteran_experience": [
-      "search-memory",
-      "kb-query"
-    ],
-    "search_curated_knowledge": [
-      "kb-query --kinds ...",
+    "Start a session on this project": [
+      "session-init",
       "knowledge-brief"
     ],
-    "version_aware_recall": [
-      "kb-query --version-scope ..."
+    "We just learned something worth keeping": [
+      "save-memory"
     ],
-    "cross_domain_recall": [
-      "kb-query --cross"
+    "What do we remember about X?": [
+      "search-memory",
+      "recall"
     ],
-    "graduate_memory_to_knowledge": [
-      "brief-suggest",
-      "brief-update"
+    "Search the unified knowledge base (memory + curated facts)": [
+      "kb-query"
     ],
-    "govern_memory": [
+    "Curate and govern the stores": [
       "manage-memory",
+      "memory-health",
+      "validate-memory",
+      "kb-audit",
+      "kb-conflict",
       "kb-cluster",
-      "memory-health"
+      "kb-forget",
+      "kb-known-unknowns"
     ],
-    "link_another_kb": [
+    "Grow the project brief": [
+      "brief-extract",
+      "brief-suggest",
+      "brief-update",
+      "brief-validate",
+      "brief-migrate-legacy"
+    ],
+    "Provision or upgrade a store": [
+      "kb-init",
+      "kb-migrate",
+      "kb-rollback",
+      "kb-rebuild-index"
+    ],
+    "Share and recall across projects and domains": [
+      "kb-global-add",
+      "kb-global-search",
+      "kb-global-search-memory",
+      "kb-global-share",
+      "kb-global-share-memory",
+      "kb-global-import",
+      "kb-global-import-memory",
       "kb-domain-add",
-      "kb-domain-list"
+      "kb-domain-list",
+      "kb-domain-name",
+      "kb-domain-remove"
+    ],
+    "Umbrella entry points": [
+      "kb",
+      "kb-global",
+      "kb-domain",
+      "memory",
+      "brief"
     ]
   },
   "storage": {

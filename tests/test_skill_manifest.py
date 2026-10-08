@@ -302,6 +302,28 @@ class TestSkillManifest(unittest.TestCase):
                          % (sorted(set(self.ops["commands"]) - set(routed)),
                             sorted(set(routed) - set(self.ops["commands"]))))
 
+    def test_kb_routing_table_covers_all_commands_exactly_once(self):
+        """Every kb command must be routed in exactly one routing category.
+
+        A command present in commands[] but absent from routing_table is
+        undiscoverable for agents routing by question type; one routed in
+        two categories makes the route ambiguous.
+        """
+        rt = self.kb.get("routing_table", {})
+        self.assertTrue(rt, "kb routing_table missing or empty")
+        for cat, cmds in rt.items():
+            self.assertTrue(cmds, f"kb routing category {cat!r} is empty")
+        routed = [c for cmds in rt.values() for c in cmds]
+        dupes = sorted(c for c, n in Counter(routed).items() if n > 1)
+        self.assertEqual(dupes, [],
+                         f"kb commands in multiple routing categories: "
+                         f"{dupes}")
+        self.assertEqual(set(routed), set(self.kb["commands"]),
+                         "kb routing_table != commands; unrouted: %s, "
+                         "ghosts: %s"
+                         % (sorted(set(self.kb["commands"]) - set(routed)),
+                            sorted(set(routed) - set(self.kb["commands"]))))
+
     # ---- analysis manifest sync ----
     def test_analysis_includes_flow_and_search_commands(self):
         """analysis-domain commands must be in manifest."""

@@ -48,7 +48,7 @@ C/C++ 提取后端有两种模式，服务于不同需求：
 
 这个设计让 Code2Database 能从快速安装（`pip install tree-sitter-c`）扩展到完整语义数据库（`pip install libclang==17.0.6`）而无需改代码。
 
-### 为什么是三个子 skill 而不是一个
+### 为什么是四个子 skill 而不是一个
 
 skill 以 4 个子 skill 形式发布（`/Code2Database` 核心、`/Code2Database-analysis` 深度分析、`/Code2Database-ops` 运维、`/Code2Database-kb` 知识库），让 LLM 代理只加载与当前疑问相关的命令：
 

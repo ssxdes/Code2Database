@@ -48,7 +48,7 @@ The `auto` backend (default) runs both: tree-sitter provides legacy-shape data, 
 
 This design lets Code2Database scale from a quick install (`pip install tree-sitter-c`) to a full semantic database (`pip install libclang==17.0.6`) without code changes.
 
-### Why Three Sub-Skills Instead of One
+### Why Four Sub-Skills Instead of One
 
 The skill ships as 4 sub-skills (`/Code2Database` core, `/Code2Database-analysis` deep analysis, `/Code2Database-ops` operations, `/Code2Database-kb` knowledge base) so the LLM agent loads only the commands relevant to its current question:
 

@@ -90,6 +90,226 @@ def check_english_language(en_dir: Path) -> list:
     return findings
 
 
+# ---------------------------------------------------------------------------
+# Number cross-check: docs cite counts (MCP tools, sub-skills, tier-1
+# commands, CLI spellings) that are derived from code and manifests.
+# Both language trees can carry the same stale number ("mutually in
+# sync but both wrong"), so structural parity alone never catches the
+# drift — every cited number is validated against its canonical source.
+# ---------------------------------------------------------------------------
+
+def _sniff_subcommands(repo_root: Path, entry_script: str) -> set:
+    """Instantiate a CLI entry script and capture its subparser names."""
+    import argparse
+    import contextlib
+    import importlib.util
+    import io
+
+    spec = importlib.util.spec_from_file_location(
+        "_number_probe_" + Path(entry_script).stem,
+        repo_root / "scripts" / entry_script)
+    mod = importlib.util.module_from_spec(spec)
+    captured = set()
+    orig = argparse.ArgumentParser.parse_known_args
+
+    def sniff(self, args=None, namespace=None):
+        for act in self._actions:
+            if isinstance(act, argparse._SubParsersAction):
+                captured.update(act.choices)
+        return orig(self, args, namespace)
+
+    argparse.ArgumentParser.parse_known_args = sniff
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = [entry_script, "--help"]
+        with contextlib.redirect_stdout(io.StringIO()):
+            try:
+                spec.loader.exec_module(mod)
+                mod.main()
+            except SystemExit:
+                pass
+    finally:
+        argparse.ArgumentParser.parse_known_args = orig
+        sys.argv = old_argv
+    return captured
+
+
+def _canonical_numbers(repo_root: Path) -> dict:
+    """Numbers docs cite, derived from the code and manifests."""
+    import json as _json
+
+    scripts_dir = str(repo_root / "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    from _builder.mcp.mcp_server import TOOLS, TOOLS_REPORT
+    from _builder.umbrella import _umbrella_legacy_names
+
+    builder = _sniff_subcommands(repo_root, "code2database_builder.py")
+    scanner = _sniff_subcommands(repo_root, "code2database_scanner.py")
+    if not builder or not scanner:
+        raise RuntimeError("CLI introspection came up empty")
+
+    tier = {}
+    for fname, key in (("skill.json", "core"),
+                       ("skill_analysis.json", "analysis"),
+                       ("skill_ops.json", "ops"),
+                       ("skill_kb.json", "kb")):
+        manifest = _json.loads(
+            (repo_root / fname).read_text(encoding="utf-8"))
+        tier[key] = len(manifest["tier_1_commands"])
+
+    total = len(TOOLS)
+    report = len(TOOLS_REPORT)
+    legacy = len(_umbrella_legacy_names())
+    return {
+        "total": total,
+        "c2d": sum(1 for k in TOOLS if k.startswith("code2database_")),
+        "cgdb": sum(1 for k in TOOLS if k.startswith("cgdb_")),
+        "report": report,
+        "base": total - report,
+        "sub_skills": len(tier),
+        "tier": tier,
+        "spellings": len(builder),
+        "visible": len(builder) - legacy,
+        "scanner": len(scanner),
+    }
+
+
+# (regex, canonical key) pairs where the number is unambiguous.
+# The tools/subcommands rules need window context (cgdb- or
+# scanner-scoped counts) and are handled separately below.
+_NUMBER_RULES = [
+    (re.compile(r'(\d+)\s*(?:个\s*)?`?code2database_\*`?'), "c2d"),
+    (re.compile(r'(\d+)\s*(?:个\s*)?`?cgdb_\*`?'), "cgdb"),
+    (re.compile(r'(\d+)\s*design-report'), "report"),
+    (re.compile(r'sub_skills-(\d+)'), "sub_skills"),
+    (re.compile(r'(\d+)\s+sub-skills'), "sub_skills"),
+    (re.compile(r'(\d+)\s*个子 skill'), "sub_skills"),
+    (re.compile(r'(\d+)\s+(?:CLI\s+)?spellings'), "spellings"),
+    (re.compile(r'(\d+)\s*个 CLI 拼写'), "spellings"),
+    (re.compile(r'(\d+)\s+visible\b'), "visible"),
+    (re.compile(r'(\d+)_visible'), "visible"),
+    (re.compile(r'(\d+)\s*(?:个\s*)?可见'), "visible"),
+    (re.compile(r'(\d+)_可见'), "visible"),
+]
+
+# A tier-1 count belongs to the sub-skill named nearest before it.
+_TIER_KEYWORDS = [
+    ("analysis", "analysis"), ("分析", "analysis"),
+    ("ops", "ops"), ("运维", "ops"),
+    ("kb", "kb"), ("知识库", "kb"),
+    ("core", "core"), ("核心", "core"),
+]
+_TIER_RE = re.compile(r'(\d+)\s*(?:个\s*)?Tier-1')
+_TOOLS_RE = re.compile(r'(\d+)\s*(?:个工具|tools\b)')
+_SUBCMD_RE = re.compile(r'(\d+)\s+subcommands')
+_SCANNER_SUBCMD_RE = re.compile(r'(\d+)\s+scanner\s+subcommands')
+_ZH_SUBCMD_RE = re.compile(r'(\d+)\s*个子命令')
+_BASE_RE = re.compile(r'(\d+)\s*base\s*\+\s*(\d+)\s*design-report')
+
+
+def _nearest_tier_key(window: str):
+    best_pos, best_key = -1, None
+    lowered = window.lower()
+    for needle, key in _TIER_KEYWORDS:
+        pos = lowered.rfind(needle.lower()) if needle.isascii() \
+            else window.rfind(needle)
+        if pos > best_pos:
+            best_pos, best_key = pos, key
+    return best_key
+
+
+def _number_findings_for_line(rel, lineno, line, canon):
+    findings = []
+    # tuple spans first: "55 base + 28 design-report" is validated as a
+    # pair, so the plain design-report rule skips covered matches
+    tuple_spans = [m.span(2) for m in _BASE_RE.finditer(line)]
+    for rule_re, key in _NUMBER_RULES:
+        for m in rule_re.finditer(line):
+            if key == "report" and any(s <= m.start() < e
+                                       for s, e in tuple_spans):
+                continue
+            if int(m.group(1)) != canon[key]:
+                findings.append(
+                    f"  {rel}:{lineno}: cites {m.group(1)} for {key} "
+                    f"(canonical {canon[key]}): ...{line.strip()[:70]}...")
+    for m in _TOOLS_RE.finditer(line):
+        window = line[max(0, m.start() - 60):m.start()].lower()
+        expected = canon["cgdb"] if "cgdb" in window else canon["total"]
+        if int(m.group(1)) != expected:
+            scope = "cgdb tools" if "cgdb" in window else "total tools"
+            findings.append(
+                f"  {rel}:{lineno}: cites {m.group(1)} for {scope} "
+                f"(canonical {expected}): ...{line.strip()[:70]}...")
+    for m in _BASE_RE.finditer(line):
+        for value, key in ((m.group(1), "base"), (m.group(2), "report")):
+            if int(value) != canon[key]:
+                findings.append(
+                    f"  {rel}:{lineno}: cites {value} for {key} tools "
+                    f"(canonical {canon[key]}): ...{line.strip()[:70]}...")
+    for m in _SCANNER_SUBCMD_RE.finditer(line):
+        if int(m.group(1)) != canon["scanner"]:
+            findings.append(
+                f"  {rel}:{lineno}: cites {m.group(1)} for scanner "
+                f"subcommands (canonical {canon['scanner']})")
+    for m in _SUBCMD_RE.finditer(line):
+        window = line[max(0, m.start() - 60):m.start()].lower()
+        if "scanner" in window:
+            expected = canon["scanner"]
+            scope = "scanner subcommands"
+        else:
+            expected = canon["spellings"]
+            scope = "builder subcommands"
+        if int(m.group(1)) != expected:
+            findings.append(
+                f"  {rel}:{lineno}: cites {m.group(1)} for {scope} "
+                f"(canonical {expected})")
+    for m in _ZH_SUBCMD_RE.finditer(line):
+        window = line[max(0, m.start() - 60):m.start()].lower()
+        if ("scanner" in window or "扫描器" in window) \
+                and int(m.group(1)) != canon["scanner"]:
+            findings.append(
+                f"  {rel}:{lineno}: cites {m.group(1)} for scanner "
+                f"subcommands (canonical {canon['scanner']})")
+    for m in _TIER_RE.finditer(line):
+        window = line[max(0, m.start() - 80):m.start()]
+        key = _nearest_tier_key(window)
+        if key is None:
+            continue
+        if int(m.group(1)) != canon["tier"][key]:
+            findings.append(
+                f"  {rel}:{lineno}: cites {m.group(1)} for {key} tier-1 "
+                f"commands (canonical {canon['tier'][key]}): "
+                f"...{line.strip()[:70]}...")
+    return findings
+
+
+def check_numbers(repo_root: Path) -> list:
+    """Cross-check numbers cited in docs against canonical sources."""
+    try:
+        canon = _canonical_numbers(repo_root)
+    except Exception as exc:  # canonical unavailable: report, do not skip
+        return [f"  number cross-check unavailable: {exc}"]
+
+    targets = [repo_root / "README.md", repo_root / "AGENTS.md",
+               repo_root / "install.sh"]
+    docs_dir = repo_root / "docs"
+    targets += sorted((docs_dir / "en").rglob("*.md"))
+    targets += sorted((docs_dir / "zh").rglob("*.md"))
+
+    findings = []
+    for path in targets:
+        if not path.exists():
+            continue
+        rel = str(path.relative_to(repo_root))
+        for lineno, line in enumerate(
+                path.read_text(encoding="utf-8", errors="replace")
+                .splitlines(), start=1):
+            findings.extend(
+                _number_findings_for_line(rel, lineno, line, canon))
+    return findings
+
+
 
 def extract_structure(text: str) -> dict:
     """Extract structural elements from a markdown doc.
@@ -232,6 +452,12 @@ def main():
     language_findings = check_english_language(en_dir)
     if language_findings:
         all_diffs.append(("english-tree language check", language_findings))
+
+    # Number check: cited counts must match the code/manifest sources.
+    number_findings = check_numbers(docs_dir.parent.resolve())
+    if number_findings:
+        all_diffs.append(("cited numbers vs canonical sources",
+                          number_findings))
 
     if not all_diffs:
         print(f"OK: docs/en/ and docs/zh/ are in sync ({len(en_files) + len(zh_only_files)} files checked)")

@@ -561,9 +561,9 @@ python3 scripts/code2database_scanner.py scan --source /path --extraction-backen
 | 子技能 | 触发 | 用途 |
 |--------|------|------|
 | `Code2Database`（核心）| `/Code2Database` | 构建 + 浏览——始终加载。22 个 Tier-1 核心命令（含 `c2d` 总入口；scan、build、explore-flow、describe-node、trace-chain 等）|
-| `Code2Database-analysis` | `/Code2Database-analysis` | 深度语义分析——并发、数据流、不变量、FFI、来源、路径可行性、cgdb 表。13 个 Tier-1 命令 + 19 个 `cgdb_*` MCP 工具 |
-| `Code2Database-ops` | `/Code2Database-ops` | 图谱编辑 + 运维——事务、守护进程、profile/文档-代码、导出、插件、记忆、embeddings。23 个 Tier-1 命令 |
-| `Code2Database-kb` | `/Code2Database-kb` | 独立知识/记忆库——专用 SQLite 存储、FTS5 检索、版本范围召回、跨域查询；无需图谱。8 个 Tier-1 命令 |
+| `Code2Database-analysis` | `/Code2Database-analysis` | 深度语义分析——并发、数据流、不变量、FFI、来源、路径可行性、cgdb 表。12 个 Tier-1 命令 + 19 个 `cgdb_*` MCP 工具 |
+| `Code2Database-ops` | `/Code2Database-ops` | 图谱编辑 + 运维——事务、守护进程、profile/文档-代码、导出、插件、记忆、embeddings。9 个 Tier-1 命令 |
+| `Code2Database-kb` | `/Code2Database-kb` | 独立知识/记忆库——专用 SQLite 存储、FTS5 检索、版本范围召回、跨域查询；无需图谱。6 个 Tier-1 命令 |
 
 当核心技能检测到深度分析或运维类提问时，会显式移交给相应子技能。MCP 服务器（83 个工具 (55 base + 28 design-report)）与技能激活分离——无论哪个子技能激活，全部 83 个工具 (55 base + 28 design-report)都可访问。
 

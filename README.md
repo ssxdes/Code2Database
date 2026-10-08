@@ -566,9 +566,9 @@ The skill is split into 4 sub-skills to keep LLM context lean. Each sub-skill ha
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|
 | `Code2Database` (core) | `/Code2Database` | Build + browse — always loaded. 21 Tier-1 core commands incl. the `c2d` umbrella (scan, build, explore-flow, describe-node, trace-chain, etc.) |
-| `Code2Database-analysis` | `/Code2Database-analysis` | Deep semantic analysis — concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb tables. 13 Tier-1 commands + 19 `cgdb_*` MCP tools |
-| `Code2Database-ops` | `/Code2Database-ops` | Graph editing + ops — transactions, daemon, profile/doc-code, exports, plugins, memory, embeddings. 23 Tier-1 commands |
-| `Code2Database-kb` | `/Code2Database-kb` | Standalone knowledge/memory base — dedicated SQLite stores, FTS5 retrieval, version-scoped recall, cross-domain queries; no graph required. 8 Tier-1 commands |
+| `Code2Database-analysis` | `/Code2Database-analysis` | Deep semantic analysis — concurrency, data flow, invariants, FFI, provenance, path feasibility, cgdb tables. 12 Tier-1 commands + 19 `cgdb_*` MCP tools |
+| `Code2Database-ops` | `/Code2Database-ops` | Graph editing + ops — transactions, daemon, profile/doc-code, exports, plugins, memory, embeddings. 9 Tier-1 commands |
+| `Code2Database-kb` | `/Code2Database-kb` | Standalone knowledge/memory base — dedicated SQLite stores, FTS5 retrieval, version-scoped recall, cross-domain queries; no graph required. 6 Tier-1 commands |
 
 When the core skill detects a deep-analysis or ops question, it explicitly hands off to the appropriate sub-skill. MCP server (83 tools) is separate from skill activation — all 83 tools are accessible regardless of which sub-skill is active.
 

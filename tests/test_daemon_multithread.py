@@ -202,18 +202,22 @@ class TestStartupGracePeriod(unittest.TestCase):
         """Events arriving during grace do NOT dispatch a sync until the
         grace window ends."""
         with tempfile.TemporaryDirectory() as tmp:
-            d = self._make_daemon(tmp, grace_sec=2.0)
+            # A wide grace keeps the held-event check far from the window
+            # end: on a loaded runner the two sleeps below can overshoot
+            # their nominal duration, and an overshoot past a narrow
+            # grace reads as a dispatch that never happened.
+            d = self._make_daemon(tmp, grace_sec=6.0)
             syncs = []
             d._sync_incremental = self._draining_fake_sync(d, syncs)
             t = self._run_daemon(d)
             try:
                 time.sleep(0.4)
                 d._on_file_change(os.path.join(tmp, "a.c"))
-                time.sleep(0.8)  # still inside the 2s grace
+                time.sleep(0.8)  # still deep inside the 6s grace
                 self.assertEqual(syncs, [],
                                  "sync dispatched during startup grace")
                 # Grace expires -> the queued event dispatches.
-                deadline = time.time() + 8.0
+                deadline = time.time() + 20.0
                 while time.time() < deadline and not syncs:
                     time.sleep(0.1)
                 self.assertTrue(syncs, "sync never dispatched after grace")

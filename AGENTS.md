@@ -77,9 +77,9 @@ Full usage constraints (daemon freshness, doc-code alignment, invariants confide
 python3 -m pytest tests/ -v
 ```
 
-Capability modules have dedicated unit tests in `tests/` (175 files) covering invariants, auto-enhance thresholds, transactions, FFI, daemon, LSP, hybrid search, embeddings, SARIF, AST pattern matching, taint analysis, code intelligence, concurrency, data dependencies, commit provenance, updates, and profile generation.
+Capability modules have dedicated unit tests in `tests/` (183 files) covering invariants, auto-enhance thresholds, transactions, FFI, daemon, LSP, hybrid search, embeddings, SARIF, AST pattern matching, taint analysis, code intelligence, concurrency, data dependencies, commit provenance, updates, and profile generation.
 
-**Test suite**: 3300+ tests across 175 files. Run with `python3 -m pytest tests/ -v`. (test_daemon_multithread has one timing-sensitive test that can be flaky under load; rerun in isolation if it fails. Tests that drive a real scanner subprocess must pin `--memory-limit 9999` (and raised `--memory-warn/crit-threshold`) — MemoryGuard reads SYSTEM memory, so its auto cap (total RAM × 0.8) can cancel even a tiny scan on a busy machine, and make now fails fast on the leftover checkpoint. tests/test_skill_manifest.py introspects both argparse trees and pins skill.json/skill_analysis.json/skill_ops.json command lists against them — so adding a CLI command without updating the manifests fails CI.)
+**Test suite**: 3400+ tests across 183 files. Run with `python3 -m pytest tests/ -v`. (The daemon grace test carries a wide timing margin so a loaded runner cannot push its held-event check past the grace end. Tests that drive a real scanner subprocess must pin `--memory-limit 9999` (and raised `--memory-warn/crit-threshold`) — MemoryGuard reads SYSTEM memory, so its auto cap (total RAM × 0.8) can cancel even a tiny scan on a busy machine, and make now fails fast on the leftover checkpoint. tests/test_skill_manifest.py introspects both argparse trees and pins skill.json/skill_analysis.json/skill_ops.json command lists against them — so adding a CLI command without updating the manifests fails CI.)
 
 ## Language Support
 

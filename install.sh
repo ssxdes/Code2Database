@@ -718,7 +718,7 @@ description: Code2Database coding assistant rules
 
 ## Project Context
 
-Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/Rust/ASM codebases. Three-stage pipeline: Profile → Scan → Build.
+Code2Database is a multi-language code graph generator for C/C++/Go/Python/Java/Rust/ASM codebases. Four-stage pipeline: Profile → Scan → Build → Query.
 
 ## Rules
 

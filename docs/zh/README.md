@@ -9,6 +9,7 @@
 [![语言](https://img.shields.io/badge/语言-6%20%2B%20ASM-orange)](#语言支持)
 [![MCP工具](https://img.shields.io/badge/MCP工具-83-blueviolet)](#mcp-服务器)
 [![查询命令](https://img.shields.io/badge/查询命令-120_可见-success)](#命令参考)
+[![子技能](https://img.shields.io/badge/子技能-4-9cf)](#技能激活)
 [![许可证: MIT](https://img.shields.io/badge/许可证-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](#安装)
 [![tree-sitter](https://img.shields.io/badge/tree--sitter-AST-green?logo=tree-sitter&logoColor=white)](#工作原理)

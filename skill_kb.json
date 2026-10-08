@@ -50,7 +50,6 @@
     "recall",
     "save-memory",
     "search-memory",
-    "semantic-search",
     "session-init",
     "validate-memory"
   ],

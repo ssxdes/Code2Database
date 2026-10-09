@@ -9,7 +9,7 @@ from pathlib import Path
 from collections import defaultdict
 import networkx as nx
 import logging
-from typing import Optional
+from typing import Optional, List, Set
 
 
 # Cache source_root per graph_dir to avoid re-reading master.json on every
@@ -1114,7 +1114,98 @@ def _simple_tokenize(text: str) -> set:
     return tokens
 
 
-def _make_call_graph(G: nx.DiGraph, skip_file_nodes: bool = False) -> nx.DiGraph:
+# ---------------------------------------------------------------------------
+# CJK pre-tokenization for FTS5 indexing
+#
+# SQLite FTS5 ``unicode61`` folds each contiguous CJK run into a single
+# token, so ``释放内存`` stored as ``body`` is one token and a MATCH on
+# ``释放`` returns nothing.  Pre-tokenizing on the write side (space-join
+# the words) and on the query side (quote each word) makes FTS5 MATCH
+# work naturally for CJK text.
+#
+# The default tokenizer is jieba (pure-Python, pip-install).  When jieba
+# is unavailable the code falls back to the existing char+bigram scheme
+# so every environment keeps working.
+# ---------------------------------------------------------------------------
+
+_TOKENIZER_CACHE: dict = {}
+
+
+def _load_stopwords() -> Set[str]:
+    """Load the bundled CJK+Latin stopword set (one word per line)."""
+    cache_key = "__stopwords__"
+    if cache_key in _TOKENIZER_CACHE:
+        return _TOKENIZER_CACHE[cache_key]
+    sw: Set[str] = set()
+    sw_path = Path(__file__).resolve().parent.parent / "config" / "stopwords.txt"
+    if sw_path.is_file():
+        for line in sw_path.read_text(encoding="utf-8").splitlines():
+            w = line.strip()
+            if w and not w.startswith("#"):
+                sw.add(w)
+    _TOKENIZER_CACHE[cache_key] = sw
+    return sw
+
+
+def _char_bigram_tokenize(text: str) -> List[str]:
+    """Character + bigram tokenization (the always-available fallback)."""
+    cjk = _CJK_RE.findall(text)
+    tokens: List[str] = list(cjk)
+    for i in range(len(cjk) - 1):
+        tokens.append(cjk[i] + cjk[i + 1])
+    return tokens
+
+
+def _jieba_tokenize(text: str, user_dict: Optional[str] = None) -> List[str]:
+    """Jieba tokenization with optional user dictionary."""
+    cache_key = ("jieba", user_dict)
+    if cache_key not in _TOKENIZER_CACHE:
+        import jieba  # lazy import — optional dependency
+        if user_dict and os.path.isfile(user_dict):
+            jieba.load_userdict(user_dict)
+        _TOKENIZER_CACHE[cache_key] = jieba
+    else:
+        jieba = _TOKENIZER_CACHE[cache_key]
+    return [t for t in jieba.lcut(text) if t.strip()]
+
+
+def _cjk_tokenize(text: str, tokenizer: str = "jieba",
+                  user_dict: Optional[str] = None) -> List[str]:
+    """Tokenize CJK text with the configured tokenizer.
+
+    Falls back to char+bigram when the requested tokenizer is unavailable.
+    Non-CJK text is returned as-is (the caller splits on whitespace).
+    """
+    if tokenizer == "char":
+        return _char_bigram_tokenize(text)
+    if tokenizer == "jieba":
+        try:
+            return _jieba_tokenize(text, user_dict)
+        except ImportError:
+            pass
+    return _char_bigram_tokenize(text)
+
+
+def _cjk_pre_tokenize(text: str, tokenizer: str = "jieba",
+                      user_dict: Optional[str] = None,
+                      use_stopwords: bool = True) -> str:
+    """Pre-tokenize text for FTS5 indexing.
+
+    If *text* contains CJK ideographs, the CJK portions are word-segmented
+    and space-joined so ``unicode61`` splits them into individual tokens.
+    Latin text is left untouched (it is already whitespace-separated).
+    Stopwords are removed when enabled.
+
+    Returns the pre-tokenized string ready to store in a ``*_tokenized``
+    column that an FTS5 external-content table indexes.
+    """
+    if not text or not _has_cjk(text):
+        return text or ""
+    stopwords = _load_stopwords() if use_stopwords else set()
+    tokens = _cjk_tokenize(text, tokenizer, user_dict)
+    if stopwords:
+        tokens = [t for t in tokens if t not in stopwords]
+    return " ".join(tokens)
     """Build a call-only subgraph from G, excluding CONTAINS/IMPORTS edges.
 
     Optionally skip file nodes (node_type=='file' or 'file' in labels)

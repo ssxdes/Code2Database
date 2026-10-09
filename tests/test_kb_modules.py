@@ -646,6 +646,47 @@ class TestKbGlobal(unittest.TestCase):
         self.assertGreater(len(results), 0)
         self.assertEqual(results[0]["title"], "test principle")
 
+    def test_global_migration_segments_cjk_body(self):
+        """Global KB migration backfills body_tokenized with CJK
+        segmentation, not raw body — otherwise CJK entries from before
+        the migration stay as single-token FTS5 blobs forever."""
+        from _builder.kb.kb_global import _global_kb_db_path, _global_kb_connect
+        db_path = _global_kb_db_path()
+        # Create old-format db (no body_tokenized column)
+        old_conn = sqlite3.connect(db_path)
+        old_conn.execute(
+            "CREATE TABLE kb_global (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "title TEXT NOT NULL, body TEXT NOT NULL, tags TEXT, "
+            "kind TEXT NOT NULL DEFAULT 'principle', weight REAL DEFAULT 1.0, "
+            "confidence REAL DEFAULT 1.0, source_project TEXT, source_file TEXT, "
+            "created_at TEXT NOT NULL, accessed_at TEXT, access_count INTEGER DEFAULT 0)")
+        old_conn.execute(
+            "CREATE VIRTUAL TABLE kb_global_fts USING fts5("
+            "title, body, tags, content='kb_global', content_rowid='id', "
+            "tokenize='porter unicode61')")
+        old_conn.execute(
+            "CREATE TRIGGER kb_global_ai AFTER INSERT ON kb_global BEGIN "
+            "INSERT INTO kb_global_fts(rowid, title, body, tags) "
+            "VALUES (new.id, new.title, new.body, COALESCE(new.tags, '')); END")
+        old_conn.execute(
+            "INSERT INTO kb_global (title, body, tags, kind, created_at) "
+            "VALUES ('释放内存', '释放内存释放资源线程安全', '[]', 'principle', '2024-01-01')")
+        old_conn.commit()
+        old_conn.close()
+        # Re-open via _global_kb_connect → triggers migration
+        conn = _global_kb_connect()
+        try:
+            row = conn.execute(
+                "SELECT body, body_tokenized FROM kb_global WHERE title = '释放内存'"
+            ).fetchone()
+            self.assertIsNotNone(row)
+            self.assertNotEqual(row["body_tokenized"], row["body"],
+                                "body_tokenized should be segmented, not raw body")
+            # Segmented text should have spaces between CJK words
+            self.assertIn(" ", row["body_tokenized"])
+        finally:
+            conn.close()
+
     def test_global_share_and_import_roundtrip(self):
         from _builder.kb.kb_global import global_add, global_share, global_import, global_search
         global_add(title="share test", body="body to share", kind="principle")

@@ -332,12 +332,17 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
         if "body_tokenized" not in cols:
             conn.execute(
                 "ALTER TABLE kb_paragraphs ADD COLUMN body_tokenized TEXT")
-            conn.execute(
-                "UPDATE kb_paragraphs SET body_tokenized = body "
-                "WHERE body_tokenized IS NULL")
+            # Drop triggers BEFORE backfilling: the executescript above
+            # may have created new triggers that reference body_tokenized
+            # in the FTS5 table, but the FTS5 table is still in old
+            # format (body).  Firing those triggers during the backfill
+            # UPDATE raises OperationalError.
             conn.execute("DROP TRIGGER IF EXISTS kb_paragraphs_ai")
             conn.execute("DROP TRIGGER IF EXISTS kb_paragraphs_ad")
             conn.execute("DROP TRIGGER IF EXISTS kb_paragraphs_au")
+            conn.execute(
+                "UPDATE kb_paragraphs SET body_tokenized = body "
+                "WHERE body_tokenized IS NULL")
             conn.execute("DROP TABLE IF EXISTS kb_paragraphs_fts")
             conn.execute(
                 "CREATE VIRTUAL TABLE IF NOT EXISTS kb_paragraphs_fts "
@@ -377,12 +382,14 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
         if "body_tokenized" not in icols:
             conn.execute(
                 "ALTER TABLE kb_items ADD COLUMN body_tokenized TEXT")
-            conn.execute(
-                "UPDATE kb_items SET body_tokenized = body "
-                "WHERE body_tokenized IS NULL")
+            # Drop triggers BEFORE backfilling (same rationale as
+            # kb_paragraphs migration above).
             conn.execute("DROP TRIGGER IF EXISTS kb_items_ai")
             conn.execute("DROP TRIGGER IF EXISTS kb_items_ad")
             conn.execute("DROP TRIGGER IF EXISTS kb_items_au")
+            conn.execute(
+                "UPDATE kb_items SET body_tokenized = body "
+                "WHERE body_tokenized IS NULL")
             conn.execute("DROP TABLE IF EXISTS kb_items_fts")
             conn.execute(
                 "CREATE VIRTUAL TABLE IF NOT EXISTS kb_items_fts "

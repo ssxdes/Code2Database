@@ -83,16 +83,30 @@ def _global_kb_connect() -> sqlite3.Connection:
             VALUES (new.id, new.title, COALESCE(new.body_tokenized, new.body), COALESCE(new.tags, ''));
         END;
     """)
-    # Migrate existing global db: add body_tokenized column + recreate FTS5
+    # Migrate existing global db: add body_tokenized column + recreate FTS5.
+    # Unlike the project KB (which defers CJK segmentation to the next
+    # kb-rebuild-index run), the global KB has no rebuild command, so the
+    # migration backfill must segment CJK text here — otherwise existing
+    # CJK entries stay as single-token FTS5 blobs and CJK queries on them
+    # fail silently forever.
     try:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(kb_global)")}
         if "body_tokenized" not in cols:
             conn.execute("ALTER TABLE kb_global ADD COLUMN body_tokenized TEXT")
-            conn.execute("UPDATE kb_global SET body_tokenized = body "
-                         "WHERE body_tokenized IS NULL")
+            # Drop all triggers BEFORE backfilling: the executescript
+            # above may have created new triggers that reference
+            # body_tokenized in the FTS5 table, but the FTS5 table is
+            # still in old format (body).  Firing those triggers during
+            # the backfill UPDATE raises OperationalError.
             conn.execute("DROP TRIGGER IF EXISTS kb_global_ai")
             conn.execute("DROP TRIGGER IF EXISTS kb_global_ad")
             conn.execute("DROP TRIGGER IF EXISTS kb_global_au")
+            for r in conn.execute(
+                "SELECT id, body FROM kb_global WHERE body_tokenized IS NULL"
+            ).fetchall():
+                conn.execute(
+                    "UPDATE kb_global SET body_tokenized = ? WHERE id = ?",
+                    (_cjk_pre_tokenize(r["body"]), r["id"]))
             conn.execute("DROP TABLE IF EXISTS kb_global_fts")
             conn.execute(
                 "CREATE VIRTUAL TABLE IF NOT EXISTS kb_global_fts "

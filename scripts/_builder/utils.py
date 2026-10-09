@@ -120,8 +120,19 @@ def _fts5_escape(query: str) -> str:
     "how does bdev register" matches documents containing all three
     tokens (in any order, any distance). Shared by the kb and cgdb
     search paths so both accept the same free-form input safely.
+
+    For CJK text the ``unicode61`` tokenizer folds contiguous CJK
+    runs into single tokens, so a pure-CJK query like ``释放`` would
+    escape to ``""`` (match nothing) under the Latin-only regex.
+    When the query contains CJK ideographs we additionally segment
+    them with :func:`_cjk_tokenize` so the escaped MATCH expression
+    carries the same word boundaries used on the write side
+    (``body_tokenized`` column).  This makes FTS5 MATCH work
+    natively for CJK without relying on the Jaccard fallback.
     """
     tokens = re.findall(r'[A-Za-z0-9_]+', query)
+    if _has_cjk(query):
+        tokens.extend(_cjk_tokenize(query))
     if not tokens:
         return '""'  # match nothing safely
     return " ".join(f'"{t}"' for t in tokens)

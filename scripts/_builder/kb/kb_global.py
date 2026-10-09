@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 from _builder.kb.kb_index import _fts5_escape
+from _builder.utils import _cjk_pre_tokenize
 import logging
 
 
@@ -48,6 +49,7 @@ def _global_kb_connect() -> sqlite3.Connection:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             body TEXT NOT NULL,
+            body_tokenized TEXT,
             tags TEXT,
             kind TEXT NOT NULL DEFAULT 'principle',
             weight REAL NOT NULL DEFAULT 1.0,
@@ -62,25 +64,65 @@ def _global_kb_connect() -> sqlite3.Connection:
         CREATE INDEX IF NOT EXISTS idx_kb_global_weight
             ON kb_global(weight DESC);
         CREATE VIRTUAL TABLE IF NOT EXISTS kb_global_fts USING fts5(
-            title, body, tags,
+            title, body_tokenized, tags,
             content='kb_global', content_rowid='id',
             tokenize='porter unicode61'
         );
         CREATE TRIGGER IF NOT EXISTS kb_global_ai AFTER INSERT ON kb_global BEGIN
-            INSERT INTO kb_global_fts(rowid, title, body, tags)
-            VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
+            INSERT INTO kb_global_fts(rowid, title, body_tokenized, tags)
+            VALUES (new.id, new.title, COALESCE(new.body_tokenized, new.body), COALESCE(new.tags, ''));
         END;
         CREATE TRIGGER IF NOT EXISTS kb_global_ad AFTER DELETE ON kb_global BEGIN
-            INSERT INTO kb_global_fts(kb_global_fts, rowid, title, body, tags)
-            VALUES ('delete', old.id, old.title, old.body, COALESCE(old.tags, ''));
+            INSERT INTO kb_global_fts(kb_global_fts, rowid, title, body_tokenized, tags)
+            VALUES ('delete', old.id, old.title, COALESCE(old.body_tokenized, old.body), COALESCE(old.tags, ''));
         END;
         CREATE TRIGGER IF NOT EXISTS kb_global_au AFTER UPDATE ON kb_global BEGIN
-            INSERT INTO kb_global_fts(kb_global_fts, rowid, title, body, tags)
-            VALUES ('delete', old.id, old.title, old.body, COALESCE(old.tags, ''));
-            INSERT INTO kb_global_fts(rowid, title, body, tags)
-            VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
+            INSERT INTO kb_global_fts(kb_global_fts, rowid, title, body_tokenized, tags)
+            VALUES ('delete', old.id, old.title, COALESCE(old.body_tokenized, old.body), COALESCE(old.tags, ''));
+            INSERT INTO kb_global_fts(rowid, title, body_tokenized, tags)
+            VALUES (new.id, new.title, COALESCE(new.body_tokenized, new.body), COALESCE(new.tags, ''));
         END;
     """)
+    # Migrate existing global db: add body_tokenized column + recreate FTS5
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(kb_global)")}
+        if "body_tokenized" not in cols:
+            conn.execute("ALTER TABLE kb_global ADD COLUMN body_tokenized TEXT")
+            conn.execute("UPDATE kb_global SET body_tokenized = body "
+                         "WHERE body_tokenized IS NULL")
+            conn.execute("DROP TRIGGER IF EXISTS kb_global_ai")
+            conn.execute("DROP TRIGGER IF EXISTS kb_global_ad")
+            conn.execute("DROP TRIGGER IF EXISTS kb_global_au")
+            conn.execute("DROP TABLE IF EXISTS kb_global_fts")
+            conn.execute(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS kb_global_fts "
+                "USING fts5(title, body_tokenized, tags, "
+                "content='kb_global', content_rowid='id', "
+                "tokenize='porter unicode61')")
+            conn.execute(
+                "CREATE TRIGGER IF NOT EXISTS kb_global_ai "
+                "AFTER INSERT ON kb_global BEGIN "
+                "INSERT INTO kb_global_fts(rowid, title, body_tokenized, tags) "
+                "VALUES (new.id, new.title, COALESCE(new.body_tokenized, new.body), COALESCE(new.tags, '')); END")
+            conn.execute(
+                "CREATE TRIGGER IF NOT EXISTS kb_global_ad "
+                "AFTER DELETE ON kb_global BEGIN "
+                "INSERT INTO kb_global_fts(kb_global_fts, rowid, title, body_tokenized, tags) "
+                "VALUES ('delete', old.id, old.title, COALESCE(old.body_tokenized, old.body), COALESCE(old.tags, '')); END")
+            conn.execute(
+                "CREATE TRIGGER IF NOT EXISTS kb_global_au "
+                "AFTER UPDATE ON kb_global BEGIN "
+                "INSERT INTO kb_global_fts(kb_global_fts, rowid, title, body_tokenized, tags) "
+                "VALUES ('delete', old.id, old.title, COALESCE(old.body_tokenized, old.body), COALESCE(old.tags, '')); "
+                "INSERT INTO kb_global_fts(rowid, title, body_tokenized, tags) "
+                "VALUES (new.id, new.title, COALESCE(new.body_tokenized, new.body), COALESCE(new.tags, '')); END")
+            try:
+                conn.execute("INSERT INTO kb_global_fts(kb_global_fts) VALUES ('rebuild')")
+            except sqlite3.OperationalError:
+                pass
+            conn.commit()
+    except sqlite3.Error:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
     return conn
 
 
@@ -93,11 +135,12 @@ def global_add(title: str, body: str, tags: List[str] = None,
     try:
         tags_json = json.dumps(tags, ensure_ascii=False) if tags else None
         cur = conn.execute(
-            "INSERT INTO kb_global (title, body, tags, kind, weight, "
+            "INSERT INTO kb_global (title, body, body_tokenized, tags, kind, weight, "
             "confidence, source_project, source_file, created_at, access_count) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
-            (title, body, tags_json, kind, weight, confidence,
-             source_project, source_file, datetime.now().isoformat())
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+            (title, body, _cjk_pre_tokenize(body), tags_json, kind, weight,
+             confidence, source_project, source_file,
+             datetime.now().isoformat())
         )
         conn.commit()
         return cur.lastrowid

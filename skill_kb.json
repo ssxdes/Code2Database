@@ -1,6 +1,6 @@
 {
   "name": "Code2Database-kb",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "description": "Knowledge and memory sub-skill for Code2Database: a standalone project knowledge base (curated knowledge + accumulated veteran experience) on its own SQLite stores with FTS5 retrieval, version-scoped recall, and cross-domain queries. Deploys independently of the code graph or alongside it — the kb uses its own .db files and never requires graph artifacts. Use when the task is capturing, refining, searching, or graduating project knowledge and experience rather than querying code structure.",
   "trigger": "/Code2Database-kb",
   "parent_skill": "Code2Database",

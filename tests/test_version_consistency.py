@@ -53,7 +53,8 @@ class TestVersionSingleSource(unittest.TestCase):
         self.assertIn(_version.__version__, out.getvalue())
 
     def test_skill_manifests_share_the_version(self):
-        for name in ("skill.json", "skill_analysis.json", "skill_ops.json"):
+        for name in ("skill.json", "skill_analysis.json",
+                     "skill_ops.json", "skill_kb.json"):
             data = json.loads((REPO / name).read_text())
             self.assertEqual(data["version"], _version.__version__, name)
 

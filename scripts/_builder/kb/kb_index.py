@@ -22,7 +22,8 @@ import re
 import sqlite3
 import sys
 from _builder.scanner_bridge.c2d_foreign import _escape_sql_path
-from _builder.utils import _simple_tokenize, _similarity_score, _has_cjk
+from _builder.utils import (_simple_tokenize, _similarity_score, _has_cjk,
+                           _cjk_pre_tokenize)
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import logging
@@ -78,6 +79,7 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
                 para_index INTEGER NOT NULL,
                 title TEXT,
                 body TEXT NOT NULL,
+                body_tokenized TEXT,
                 tags TEXT,
                 node_ids TEXT,
                 weight REAL NOT NULL DEFAULT 1.0,
@@ -108,23 +110,23 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
             CREATE INDEX IF NOT EXISTS idx_kb_paragraphs_principle_ref
                 ON kb_paragraphs(principle_ref) WHERE principle_ref IS NOT NULL;
             CREATE VIRTUAL TABLE IF NOT EXISTS kb_paragraphs_fts USING fts5(
-                title, body, tags,
+                title, body_tokenized, tags,
                 content='kb_paragraphs', content_rowid='id',
                 tokenize='porter unicode61'
             );
             CREATE TRIGGER IF NOT EXISTS kb_paragraphs_ai AFTER INSERT ON kb_paragraphs BEGIN
-                INSERT INTO kb_paragraphs_fts(rowid, title, body, tags)
-                VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
+                INSERT INTO kb_paragraphs_fts(rowid, title, body_tokenized, tags)
+                VALUES (new.id, new.title, COALESCE(new.body_tokenized, new.body), COALESCE(new.tags, ''));
             END;
             CREATE TRIGGER IF NOT EXISTS kb_paragraphs_ad AFTER DELETE ON kb_paragraphs BEGIN
-                INSERT INTO kb_paragraphs_fts(kb_paragraphs_fts, rowid, title, body, tags)
-                VALUES ('delete', old.id, old.title, old.body, COALESCE(old.tags, ''));
+                INSERT INTO kb_paragraphs_fts(kb_paragraphs_fts, rowid, title, body_tokenized, tags)
+                VALUES ('delete', old.id, old.title, COALESCE(old.body_tokenized, old.body), COALESCE(old.tags, ''));
             END;
             CREATE TRIGGER IF NOT EXISTS kb_paragraphs_au AFTER UPDATE ON kb_paragraphs BEGIN
-                INSERT INTO kb_paragraphs_fts(kb_paragraphs_fts, rowid, title, body, tags)
-                VALUES ('delete', old.id, old.title, old.body, COALESCE(old.tags, ''));
-                INSERT INTO kb_paragraphs_fts(rowid, title, body, tags)
-                VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
+                INSERT INTO kb_paragraphs_fts(kb_paragraphs_fts, rowid, title, body_tokenized, tags)
+                VALUES ('delete', old.id, old.title, COALESCE(old.body_tokenized, old.body), COALESCE(old.tags, ''));
+                INSERT INTO kb_paragraphs_fts(rowid, title, body_tokenized, tags)
+                VALUES (new.id, new.title, COALESCE(new.body_tokenized, new.body), COALESCE(new.tags, ''));
             END;
             CREATE TABLE IF NOT EXISTS kb_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,23 +134,24 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
                 scope_id INTEGER,
                 canonical_id INTEGER,
                 principle_ref INTEGER,
-                title TEXT,
-                body TEXT NOT NULL,
-                tags TEXT,
-                node_ids TEXT,
-                source_refs TEXT,
-                weight REAL NOT NULL DEFAULT 1.0,
-                confidence REAL NOT NULL DEFAULT 1.0,
-                decay_class TEXT NOT NULL DEFAULT 'soft',
-                graph_version TEXT,
-                embedding BLOB,
-                versions_json TEXT,
-                created_at TEXT NOT NULL,
-                accessed_at TEXT,
-                access_count INTEGER DEFAULT 0,
-                provenance_commit TEXT,
-                provenance_operator TEXT
-            );
+                    title TEXT,
+                    body TEXT NOT NULL,
+                    body_tokenized TEXT,
+                    tags TEXT,
+                    node_ids TEXT,
+                    source_refs TEXT,
+                    weight REAL NOT NULL DEFAULT 1.0,
+                    confidence REAL NOT NULL DEFAULT 1.0,
+                    decay_class TEXT NOT NULL DEFAULT 'soft',
+                    graph_version TEXT,
+                    embedding BLOB,
+                    versions_json TEXT,
+                    created_at TEXT NOT NULL,
+                    accessed_at TEXT,
+                    access_count INTEGER DEFAULT 0,
+                    provenance_commit TEXT,
+                    provenance_operator TEXT
+                );
             CREATE INDEX IF NOT EXISTS idx_kb_items_kind ON kb_items(kind);
             CREATE INDEX IF NOT EXISTS idx_kb_items_scope
                 ON kb_items(scope_id) WHERE scope_id IS NOT NULL;
@@ -157,23 +160,23 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
             CREATE INDEX IF NOT EXISTS idx_kb_items_weight
                 ON kb_items(weight DESC);
             CREATE VIRTUAL TABLE IF NOT EXISTS kb_items_fts USING fts5(
-                title, body, tags,
+                title, body_tokenized, tags,
                 content='kb_items', content_rowid='id',
                 tokenize='porter unicode61'
             );
             CREATE TRIGGER IF NOT EXISTS kb_items_ai AFTER INSERT ON kb_items BEGIN
-                INSERT INTO kb_items_fts(rowid, title, body, tags)
-                VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
+                INSERT INTO kb_items_fts(rowid, title, body_tokenized, tags)
+                VALUES (new.id, new.title, COALESCE(new.body_tokenized, new.body), COALESCE(new.tags, ''));
             END;
             CREATE TRIGGER IF NOT EXISTS kb_items_ad AFTER DELETE ON kb_items BEGIN
-                INSERT INTO kb_items_fts(kb_items_fts, rowid, title, body, tags)
-                VALUES ('delete', old.id, old.title, old.body, COALESCE(old.tags, ''));
+                INSERT INTO kb_items_fts(kb_items_fts, rowid, title, body_tokenized, tags)
+                VALUES ('delete', old.id, old.title, COALESCE(old.body_tokenized, old.body), COALESCE(old.tags, ''));
             END;
             CREATE TRIGGER IF NOT EXISTS kb_items_au AFTER UPDATE ON kb_items BEGIN
-                INSERT INTO kb_items_fts(kb_items_fts, rowid, title, body, tags)
-                VALUES ('delete', old.id, old.title, old.body, COALESCE(old.tags, ''));
-                INSERT INTO kb_items_fts(rowid, title, body, tags)
-                VALUES (new.id, new.title, new.body, COALESCE(new.tags, ''));
+                INSERT INTO kb_items_fts(kb_items_fts, rowid, title, body_tokenized, tags)
+                VALUES ('delete', old.id, old.title, COALESCE(old.body_tokenized, old.body), COALESCE(old.tags, ''));
+                INSERT INTO kb_items_fts(rowid, title, body_tokenized, tags)
+                VALUES (new.id, new.title, COALESCE(new.body_tokenized, new.body), COALESCE(new.tags, ''));
             END;
             CREATE TABLE IF NOT EXISTS kb_query_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -273,6 +276,102 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
             conn.execute(
                 "ALTER TABLE kb_paragraphs ADD COLUMN version_scope "
                 "TEXT NOT NULL DEFAULT 'default'")
+            conn.commit()
+    except sqlite3.Error:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+    # Migrate to body_tokenized column (CJK pre-tokenization for FTS5).
+    # Existing stores have FTS5 on `body`; new stores get FTS5 on
+    # `body_tokenized` directly from the schema above. This migration
+    # adds the column, backfills from `body` (raw text, no CJK
+    # segmentation yet — that happens on the next rebuild-index), drops
+    # the old FTS5 table + triggers, recreates them on `body_tokenized`,
+    # and rebuilds the index.
+    try:
+        cols = {r[1] for r in conn.execute(
+            "PRAGMA table_info(kb_paragraphs)")}
+        if "body_tokenized" not in cols:
+            conn.execute(
+                "ALTER TABLE kb_paragraphs ADD COLUMN body_tokenized TEXT")
+            conn.execute(
+                "UPDATE kb_paragraphs SET body_tokenized = body "
+                "WHERE body_tokenized IS NULL")
+            conn.execute("DROP TRIGGER IF EXISTS kb_paragraphs_ai")
+            conn.execute("DROP TRIGGER IF EXISTS kb_paragraphs_ad")
+            conn.execute("DROP TRIGGER IF EXISTS kb_paragraphs_au")
+            conn.execute("DROP TABLE IF EXISTS kb_paragraphs_fts")
+            conn.execute(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS kb_paragraphs_fts "
+                "USING fts5(title, body_tokenized, tags, "
+                "content='kb_paragraphs', content_rowid='id', "
+                "tokenize='porter unicode61')")
+            conn.execute(
+                "CREATE TRIGGER IF NOT EXISTS kb_paragraphs_ai "
+                "AFTER INSERT ON kb_paragraphs BEGIN "
+                "INSERT INTO kb_paragraphs_fts(rowid, title, body_tokenized, tags) "
+                "VALUES (new.id, new.title, COALESCE(new.body_tokenized, new.body), COALESCE(new.tags, '')); END")
+            conn.execute(
+                "CREATE TRIGGER IF NOT EXISTS kb_paragraphs_ad "
+                "AFTER DELETE ON kb_paragraphs BEGIN "
+                "INSERT INTO kb_paragraphs_fts(kb_paragraphs_fts, rowid, title, body_tokenized, tags) "
+                "VALUES ('delete', old.id, old.title, COALESCE(old.body_tokenized, old.body), COALESCE(old.tags, '')); END")
+            conn.execute(
+                "CREATE TRIGGER IF NOT EXISTS kb_paragraphs_au "
+                "AFTER UPDATE ON kb_paragraphs BEGIN "
+                "INSERT INTO kb_paragraphs_fts(kb_paragraphs_fts, rowid, title, body_tokenized, tags) "
+                "VALUES ('delete', old.id, old.title, COALESCE(old.body_tokenized, old.body), COALESCE(old.tags, '')); "
+                "INSERT INTO kb_paragraphs_fts(rowid, title, body_tokenized, tags) "
+                "VALUES (new.id, new.title, COALESCE(new.body_tokenized, new.body), COALESCE(new.tags, '')); END")
+            try:
+                conn.execute(
+                    "INSERT INTO kb_paragraphs_fts(kb_paragraphs_fts) "
+                    "VALUES ('rebuild')")
+            except sqlite3.OperationalError:
+                pass
+            conn.commit()
+    except sqlite3.Error:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+    # Same migration for kb_items
+    try:
+        icols = {r[1] for r in conn.execute(
+            "PRAGMA table_info(kb_items)")}
+        if "body_tokenized" not in icols:
+            conn.execute(
+                "ALTER TABLE kb_items ADD COLUMN body_tokenized TEXT")
+            conn.execute(
+                "UPDATE kb_items SET body_tokenized = body "
+                "WHERE body_tokenized IS NULL")
+            conn.execute("DROP TRIGGER IF EXISTS kb_items_ai")
+            conn.execute("DROP TRIGGER IF EXISTS kb_items_ad")
+            conn.execute("DROP TRIGGER IF EXISTS kb_items_au")
+            conn.execute("DROP TABLE IF EXISTS kb_items_fts")
+            conn.execute(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS kb_items_fts "
+                "USING fts5(title, body_tokenized, tags, "
+                "content='kb_items', content_rowid='id', "
+                "tokenize='porter unicode61')")
+            conn.execute(
+                "CREATE TRIGGER IF NOT EXISTS kb_items_ai "
+                "AFTER INSERT ON kb_items BEGIN "
+                "INSERT INTO kb_items_fts(rowid, title, body_tokenized, tags) "
+                "VALUES (new.id, new.title, COALESCE(new.body_tokenized, new.body), COALESCE(new.tags, '')); END")
+            conn.execute(
+                "CREATE TRIGGER IF NOT EXISTS kb_items_ad "
+                "AFTER DELETE ON kb_items BEGIN "
+                "INSERT INTO kb_items_fts(kb_items_fts, rowid, title, body_tokenized, tags) "
+                "VALUES ('delete', old.id, old.title, COALESCE(old.body_tokenized, old.body), COALESCE(old.tags, '')); END")
+            conn.execute(
+                "CREATE TRIGGER IF NOT EXISTS kb_items_au "
+                "AFTER UPDATE ON kb_items BEGIN "
+                "INSERT INTO kb_items_fts(kb_items_fts, rowid, title, body_tokenized, tags) "
+                "VALUES ('delete', old.id, old.title, COALESCE(old.body_tokenized, old.body), COALESCE(old.tags, '')); "
+                "INSERT INTO kb_items_fts(rowid, title, body_tokenized, tags) "
+                "VALUES (new.id, new.title, COALESCE(new.body_tokenized, new.body), COALESCE(new.tags, '')); END")
+            try:
+                conn.execute(
+                    "INSERT INTO kb_items_fts(kb_items_fts) "
+                    "VALUES ('rebuild')")
+            except sqlite3.OperationalError:
+                pass
             conn.commit()
     except sqlite3.Error:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
@@ -723,15 +822,17 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
                            str(entry.get("id", "")) + ".json")
             rows.append((
                 "memory", source_file, 0,
-                q[:500], a, tags_json, node_ids_json,
+                q[:500], a, _cjk_pre_tokenize(a), tags_json, node_ids_json,
                 weight, 1.0, kind, None, created, None, 0,
                 entry.get("version_scope") or "default",
             ))
         # Knowledge paragraphs → one row per paragraph
         for para in _load_knowledge_paragraphs(graph_dir):
+            pbody = para["body"]
             rows.append((
                 para["source_kind"], para["source_file"], para["para_index"],
-                para["title"], para["body"], para["tags"], para["node_ids"],
+                para["title"], pbody, _cjk_pre_tokenize(pbody),
+                para["tags"], para["node_ids"],
                 para["weight"], para["confidence"], para["kind"],
                 para["graph_version"], para["created_at"],
                 para.get("accessed_at"), para.get("access_count", 0),
@@ -742,10 +843,10 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
             conn.executemany(
                 "INSERT INTO kb_paragraphs "
                 "(source_kind, source_file, para_index, title, body, "
-                " tags, node_ids, weight, confidence, kind, "
+                " body_tokenized, tags, node_ids, weight, confidence, kind, "
                 " graph_version, created_at, accessed_at, access_count, "
                 " version_scope) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 rows,
             )
         conn.commit()
@@ -808,11 +909,13 @@ def upsert_kb_paragraph(graph_dir: str, source_kind: str, source_file: str,
         node_ids_json = json.dumps(node_ids, ensure_ascii=False) if node_ids else None
         cur = conn.execute(
             "INSERT INTO kb_paragraphs "
-            "(source_kind, source_file, para_index, title, body, tags, "
+            "(source_kind, source_file, para_index, title, body, "
+            " body_tokenized, tags, "
             " node_ids, weight, confidence, kind, graph_version, created_at, "
             " access_count, version_scope) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
-            (source_kind, source_file, 0, title, body, tags_json,
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
+            (source_kind, source_file, 0, title, body,
+             _cjk_pre_tokenize(body), tags_json,
              node_ids_json, weight, confidence, kind, graph_version,
              datetime.now().isoformat(),
              version_scope or "default")
@@ -868,14 +971,17 @@ def sync_brief_to_kb(graph_dir: str, brief: dict) -> int:
             ("brief.json",))
         # Insert the new paragraphs.
         for p in paragraphs:
+            pbody = p["body"]
             conn.execute(
                 "INSERT INTO kb_paragraphs "
-                "(source_kind, source_file, para_index, title, body, tags, "
+                "(source_kind, source_file, para_index, title, body, "
+                " body_tokenized, tags, "
                 " node_ids, weight, confidence, kind, graph_version, "
                 " created_at, access_count, version_scope) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
                 (p["source_kind"], p["source_file"], p["para_index"],
-                 p["title"], p["body"], p.get("tags"),
+                 p["title"], pbody, _cjk_pre_tokenize(pbody),
+                 p.get("tags"),
                  p.get("node_ids"), p.get("weight", 1.0),
                  p.get("confidence", 1.0), p.get("kind", "knowledge"),
                  p.get("graph_version"),
@@ -945,12 +1051,13 @@ def sync_memory_entries(graph_dir: str, mem_ids: List[int]) -> int:
             conn.execute(
                 "INSERT INTO kb_paragraphs "
                 "(source_kind, source_file, para_index, title, body, "
-                " tags, node_ids, weight, confidence, kind, "
+                " body_tokenized, tags, node_ids, weight, confidence, kind, "
                 " graph_version, created_at, accessed_at, access_count, "
                 " version_scope) "
-                "VALUES (?, ?, 0, ?, ?, ?, ?, ?, 1.0, ?, NULL, ?, NULL, "
+                "VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, 1.0, ?, NULL, ?, NULL, "
                 "0, ?)",
                 ("memory", source_file, q[:500], a,
+                 _cjk_pre_tokenize(a),
                  json.dumps(tags, ensure_ascii=False) if tags else None,
                  json.dumps(node_ids, ensure_ascii=False) if node_ids else None,
                  float(r["weight"] or 1.0), kind, created,

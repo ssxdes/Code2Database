@@ -162,8 +162,8 @@ def cmd_kb_migrate(args):
         # plus defaults for new columns (decay_class, provenance_*)
         rows = conn.execute(
             "SELECT id, source_kind AS kind_proxy, source_file, "
-            "       para_index, title, body, tags, node_ids, weight, "
-            "       confidence, kind, graph_version, created_at, "
+            "       para_index, title, body, body_tokenized, tags, node_ids, "
+            "       weight, confidence, kind, graph_version, created_at, "
             "       accessed_at, access_count, scope_id, canonical_id, "
             "       principle_ref, embedding FROM kb_paragraphs"
         ).fetchall()
@@ -183,12 +183,13 @@ def cmd_kb_migrate(args):
             try:
                 conn.execute(
                     "INSERT INTO kb_items (id, kind, scope_id, canonical_id, "
-                    "  principle_ref, title, body, tags, node_ids, "
+                    "  principle_ref, title, body, body_tokenized, tags, node_ids, "
                     "  weight, confidence, decay_class, graph_version, "
                     "  embedding, created_at, accessed_at, access_count) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (r["id"], r["kind"], r["scope_id"], r["canonical_id"],
-                     r["principle_ref"], r["title"], r["body"], r["tags"],
+                     r["principle_ref"], r["title"], r["body"],
+                     r["body_tokenized"], r["tags"],
                      r["node_ids"], r["weight"], r["confidence"],
                      decay_class, r["graph_version"], r["embedding"],
                      r["created_at"], r["accessed_at"],

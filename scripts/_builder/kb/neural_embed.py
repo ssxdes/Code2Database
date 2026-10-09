@@ -31,32 +31,48 @@ OPENAI_API_KEY = os.environ.get("C2D_OPENAI_API_KEY", "")
 ST_MODEL = os.environ.get("C2D_ST_MODEL", "all-MiniLM-L6-v2")
 
 _ST_MODEL_CACHE = None
+_PROVIDER_CACHE: Optional[str] = None
 
 
 def _detect_provider() -> str:
-    """Auto-detect available embedding provider."""
+    """Auto-detect available embedding provider.
+
+    The auto-detection result is cached for the process lifetime: the
+    probe makes a network request to the Ollama URL (2 s timeout) and
+    a sentence-transformers import check on every call.  A single
+    semantic_search call invoked _detect_provider up to three times
+    (get_embedding, provider label, get_embedding_batch fallback),
+    wasting up to 6 s of network timeouts when Ollama is absent.
+    """
+    global _PROVIDER_CACHE
     if EMBEDDING_PROVIDER != "auto":
         return EMBEDDING_PROVIDER
+    if _PROVIDER_CACHE is not None:
+        return _PROVIDER_CACHE
 
     # Try Ollama first (local, no pip install needed)
     try:
         req = urllib.request.Request(f"{OLLAMA_URL}/api/tags", method="GET")
         with urllib.request.urlopen(req, timeout=2) as resp:
             if resp.status == 200:
-                return "ollama"
+                _PROVIDER_CACHE = "ollama"
+                return _PROVIDER_CACHE
     except Exception:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     try:
-        import sentence_transformers
-        return "st"
+        import sentence_transformers  # noqa: F401
+        _PROVIDER_CACHE = "st"
+        return _PROVIDER_CACHE
     except ImportError:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
         pass
     if OPENAI_API_KEY:
-        return "openai"
+        _PROVIDER_CACHE = "openai"
+        return _PROVIDER_CACHE
 
-    return "none"
+    _PROVIDER_CACHE = "none"
+    return _PROVIDER_CACHE
 
 
 def _ollama_embed(text: str) -> Optional[List[float]]:

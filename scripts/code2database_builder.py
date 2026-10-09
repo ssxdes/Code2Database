@@ -129,6 +129,22 @@ def cmd_kb_query(args):
     """Unified FTS5+BM25 query across memory + knowledge."""
     from _builder.kb.kb_index import query_kb
     kinds = [k.strip() for k in args.kinds.split(",") if k.strip()] if args.kinds else None
+    engine = getattr(args, 'engine', 'sparse')
+    # --semantic is a backwards-compat alias for --engine semantic
+    if getattr(args, 'semantic', False) and engine == 'sparse':
+        engine = 'semantic'
+    if engine in ('semantic', 'hybrid'):
+        from _builder.kb.neural_embed import semantic_search
+        result = semantic_search(args.graph, args.query, top_n=args.top)
+        results = result.get("results", [])
+        if not results and getattr(args, 'global', False):
+            from _builder.kb.kb_global import global_search
+            results = global_search(args.query, top_n=args.top)
+        if not results:
+            print("No matches found.")
+            return
+        print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+        return
     results = query_kb(
         graph_dir=args.graph,
         query=args.query,
@@ -136,7 +152,6 @@ def cmd_kb_query(args):
         kinds=kinds,
         min_weight=args.min_weight,
         max_tokens=args.max_tokens,
-        semantic=getattr(args, 'semantic', False),
         version_scope=getattr(args, 'version_scope', '') or None,
         cross=bool(getattr(args, 'cross', False)),
     )
@@ -1465,8 +1480,13 @@ def main():
                        help="Skip rows with weight below this (default 0.0 = no filter)")
     p_kq2.add_argument("--max-tokens", type=int, default=4000,
                        help="Approximate character cap on returned bodies")
+    p_kq2.add_argument("--engine", default="sparse",
+                       choices=["sparse", "semantic", "hybrid"],
+                       help="sparse=FTS5 BM25 only (default); "
+                            "semantic=FTS5+dense ANN+RRF; "
+                            "hybrid=semantic+rerank")
     p_kq2.add_argument("--semantic", action="store_true",
-                       help="enable semantic search (requires embeddings)")
+                       help="Backwards-compat alias for --engine semantic")
     p_kq2.add_argument("--global", action="store_true",
                        help="fall back to global KB if project KB has no match")
     p_kq2.add_argument("--version-scope", "--branch", dest="version_scope",

@@ -1126,7 +1126,6 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
              kinds: Optional[List[str]] = None,
              min_weight: float = 0.0,
              max_tokens: int = 4000,
-             semantic: bool = False,
              log_query: bool = True,
              update_access: bool = True,
              version_scope: str = None,
@@ -1139,10 +1138,6 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
         kinds: Optional filter on the `kind` column.
         min_weight: Skip rows with weight below this.
         max_tokens: Approximate character cap on returned bodies.
-        semantic: if True and embeddings are populated,
-                  fall back to cosine similarity for items lacking
-                  FTS5 token overlap. Currently a no-op stub: returns
-                  only FTS5 matches but the interface is in place.
         log_query: record this query in kb_query_log for
                    feedback loop analysis (set False for internal calls).
         version_scope: the code version (branch / release tag) the

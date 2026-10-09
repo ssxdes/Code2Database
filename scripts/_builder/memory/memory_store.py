@@ -52,7 +52,7 @@ except ImportError:
 import logging
 
 from _builder.utils import (_simple_tokenize, _similarity_score, _has_cjk,
-                            open_write_conn)
+                            _fts5_escape, open_write_conn)
 
 # Weight formula constants — unchanged from the JSON store so behavior
 # carries over exactly.
@@ -182,13 +182,6 @@ def _memory_lock(mem_dir: str, timeout: float = 10.0):
     finally:
         fd.close()
 
-
-def _fts5_escape(query: str) -> str:
-    """Escape a free-form query for FTS5 MATCH (same policy as kb_index)."""
-    tokens = re.findall(r'[A-Za-z0-9_]+', query)
-    if not tokens:
-        return '""'
-    return " ".join(f'"{t}"' for t in tokens)
 
 
 class MemoryStore:

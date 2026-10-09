@@ -171,36 +171,49 @@ def semantic_search(graph_dir: str, query: str, top_n: int = 20) -> Dict[str, An
             "provider": "none",
         }
 
-    # Dense channel: cosine similarity against kb_paragraphs embeddings
-    # (this is O(N) for now; k-d tree optimization is a future enhancement)
-    from _builder.kb.kb_index import _kb_connect
+    # Dense channel: try ANN (sqlite-vec) first; fall back to O(N) scan
+    from _builder.kb.kb_index import _kb_connect, query_ann
     conn = _kb_connect(graph_dir)
     dense = []
+    used_ann = False
     if conn is not None:
         try:
-            rows = conn.execute(
-                "SELECT id, title, body, source_kind, source_file, weight, kind "
-                "FROM kb_paragraphs LIMIT 10000"
-            ).fetchall()
-            # Batch the embedding requests instead of calling get_embedding
-            # per row (each call re-ran _detect_provider, making ~2 network
-            # round-trips per row for Ollama auto-mode on 10K rows).
-            texts = [(r["title"] or "") + " " + (r["body"] or "") for r in rows]
-            embeddings = get_embedding_batch([t[:500] for t in texts])
-            for r, emb in zip(rows, embeddings):
-                if emb is not None:
-                    sim = cosine_similarity(query_emb, emb)
-                    if sim > 0.1:
-                        dense.append({
-                            "id": r["id"],
-                            "source_kind": r["source_kind"],
-                            "source_file": r["source_file"],
-                            "title": r["title"] or "",
-                            "body": (r["body"] or "")[:300],
-                            "weight": r["weight"],
-                            "kind": r["kind"],
-                            "score": sim,
-                        })
+            ann_results = query_ann(conn, query_emb, top_n=top_n * 3)
+            if ann_results:
+                used_ann = True
+                for r in ann_results:
+                    dense.append({
+                        "id": r["id"],
+                        "source_kind": r["source_kind"],
+                        "source_file": r["source_file"],
+                        "title": r["title"],
+                        "body": r["body"][:300],
+                        "weight": r["weight"],
+                        "kind": r["kind"],
+                        "score": r["score"],
+                    })
+            else:
+                # Fallback: O(N) linear scan when sqlite-vec unavailable
+                rows = conn.execute(
+                    "SELECT id, title, body, source_kind, source_file, weight, kind "
+                    "FROM kb_paragraphs LIMIT 10000"
+                ).fetchall()
+                texts = [(r["title"] or "") + " " + (r["body"] or "") for r in rows]
+                embeddings = get_embedding_batch([t[:500] for t in texts])
+                for r, emb in zip(rows, embeddings):
+                    if emb is not None:
+                        sim = cosine_similarity(query_emb, emb)
+                        if sim > 0.1:
+                            dense.append({
+                                "id": r["id"],
+                                "source_kind": r["source_kind"],
+                                "source_file": r["source_file"],
+                                "title": r["title"] or "",
+                                "body": (r["body"] or "")[:300],
+                                "weight": r["weight"],
+                                "kind": r["kind"],
+                                "score": sim,
+                            })
         finally:
             conn.close()
 
@@ -235,7 +248,8 @@ def semantic_search(graph_dir: str, query: str, top_n: int = 20) -> Dict[str, An
     return {
         "query": query, "results": results, "engine": "hybrid",
         "provider": provider,
-        "channels": {"sparse": True, "dense": len(dense) > 0},
+        "channels": {"sparse": True, "dense": len(dense) > 0,
+                      "ann": used_ann},
     }
 
 

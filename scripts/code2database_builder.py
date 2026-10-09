@@ -115,6 +115,13 @@ def _lazy(module_path: str, func_name: str):
 def cmd_kb_rebuild_index(args):
     """Rebuild the unified kb_paragraphs FTS5 index from filesystem sources."""
     summary = cmd_kb_rebuild_index_impl(args.graph, verbose=True)
+    if getattr(args, 'ann', False):
+        from _builder.kb.kb_index import build_ann_index
+        ann_summary = build_ann_index(
+            args.graph,
+            model=getattr(args, 'ann_model', '') or '',
+            provider=getattr(args, 'ann_provider', 'auto'))
+        summary["ann"] = ann_summary
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
@@ -1438,6 +1445,13 @@ def main():
                            help="Rebuild the unified kb_paragraphs FTS5 index "
                                 "from memory.db + brief.json")
     p_kri.add_argument("--graph", required=True, help="Store directory")
+    p_kri.add_argument("--ann", action="store_true",
+                       help="Also build the ANN vector index (sqlite-vec)")
+    p_kri.add_argument("--ann-model", default="",
+                       help="Embedding model name (default: auto-detect)")
+    p_kri.add_argument("--ann-provider", default="auto",
+                       choices=["auto", "ollama", "st", "openai", "none"],
+                       help="Embedding provider (default: auto-detect)")
 
     # kb-query (unified FTS5+BM25 query across memory + knowledge)
     p_kq2 = sub.add_parser("kb-query",

@@ -26,7 +26,40 @@ from _builder.utils import (_simple_tokenize, _similarity_score, _has_cjk,
                            _cjk_pre_tokenize)
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+import struct
 import logging
+
+
+_VEC_EXT_LOADED: Optional[bool] = None
+
+
+def _try_load_vec_ext(conn: sqlite3.Connection) -> bool:
+    """Try to load the sqlite-vec extension on *conn*.
+
+    Returns True if the extension loaded successfully (or was already
+    loaded on a previous call).  Returns False when sqlite-vec is not
+    installed — callers fall back to the O(N) linear scan.
+    """
+    global _VEC_EXT_LOADED
+    if _VEC_EXT_LOADED is True:
+        try:
+            conn.enable_load_extension(True)
+            import sqlite_vec
+            sqlite_vec.load(conn)
+            return True
+        except Exception:
+            return True  # already loaded on the db file
+    if _VEC_EXT_LOADED is False:
+        return False
+    try:
+        conn.enable_load_extension(True)
+        import sqlite_vec
+        sqlite_vec.load(conn)
+        _VEC_EXT_LOADED = True
+        return True
+    except Exception:
+        _VEC_EXT_LOADED = False
+        return False
 
 
 def _kb_db_path(graph_dir: str) -> str:
@@ -375,6 +408,24 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
             conn.commit()
     except sqlite3.Error:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)
+    # Try to create the kb_vec virtual table (ANN vector index).
+    # sqlite-vec is optional — when unavailable, semantic search
+    # falls back to the O(N) linear scan in neural_embed.semantic_search.
+    if _try_load_vec_ext(conn):
+        try:
+            dim = 0
+            row = conn.execute(
+                "SELECT value FROM kb_meta WHERE key = 'ann_dim'"
+            ).fetchone()
+            if row:
+                dim = int(row[0])
+            if dim > 0:
+                conn.execute(
+                    f"CREATE VIRTUAL TABLE IF NOT EXISTS kb_vec "
+                    f"USING vec0(embedding float[{dim}])")
+                conn.commit()
+        except Exception:
+            logging.getLogger(__name__).debug("silent exception", exc_info=True)
     if conn is not None:
         _import_legacy_kb(conn, graph_dir)
     return conn
@@ -1341,6 +1392,135 @@ def _foreign_kb_db_path(c2d_path: str) -> Optional[str]:
         if os.path.exists(path):
             return path
     return None
+
+
+def build_ann_index(graph_dir: str, model: str = "",
+                    provider: str = "auto") -> Dict[str, Any]:
+    """Build or refresh the ANN vector index for kb_paragraphs.
+
+    Embeds every paragraph whose ``embedding`` BLOB is NULL, stores
+    the BLOB persistently, and populates the ``kb_vec`` virtual table
+    for O(log N) KNN queries.  Requires the sqlite-vec extension and
+    at least one embedding provider — returns a status dict with
+    ``built: False`` and a reason when either is unavailable.
+    """
+    conn = _kb_connect(graph_dir)
+    if conn is None:
+        return {"built": False, "reason": "no kb store"}
+    if not _try_load_vec_ext(conn):
+        conn.close()
+        return {"built": False, "reason": "sqlite-vec unavailable"}
+    try:
+        from _builder.kb.neural_embed import get_embedding, get_embedding_batch, _detect_provider
+        detected = provider if provider != "auto" else _detect_provider()
+        if detected == "none":
+            return {"built": False, "reason": "no embedding provider"}
+        rows = conn.execute(
+            "SELECT id, title, body FROM kb_paragraphs "
+            "WHERE embedding IS NULL ORDER BY id"
+        ).fetchall()
+        if not rows:
+            return {"built": True, "reason": "all rows already embedded",
+                    "embedded": 0}
+        texts = [((r["title"] or "") + " " + (r["body"] or ""))[:500]
+                 for r in rows]
+        embeddings = get_embedding_batch(texts)
+        dim = 0
+        for r, emb in zip(rows, embeddings):
+            if emb is None:
+                continue
+            if dim == 0:
+                dim = len(emb)
+            blob = struct.pack(f"{dim}f", *emb)
+            conn.execute(
+                "UPDATE kb_paragraphs SET embedding = ? WHERE id = ?",
+                (blob, r["id"]))
+        conn.commit()
+        if dim == 0:
+            return {"built": False, "reason": "no embeddings generated"}
+        conn.execute(
+            "INSERT OR REPLACE INTO kb_meta (key, value) "
+            "VALUES ('ann_dim', ?)", (str(dim),))
+        conn.execute(
+            "INSERT OR REPLACE INTO kb_meta (key, value) "
+            "VALUES ('ann_model', ?)",
+            (model or "all-MiniLM-L6-v2",))
+        conn.execute(
+            "INSERT OR REPLACE INTO kb_meta (key, value) "
+            "VALUES ('ann_built_at', ?)", (datetime.now().isoformat(),))
+        conn.execute("DROP TABLE IF EXISTS kb_vec")
+        conn.execute(
+            f"CREATE VIRTUAL TABLE IF NOT EXISTS kb_vec "
+            f"USING vec0(embedding float[{dim}])")
+        all_rows = conn.execute(
+            "SELECT id, embedding FROM kb_paragraphs "
+            "WHERE embedding IS NOT NULL"
+        ).fetchall()
+        for r in all_rows:
+            conn.execute(
+                "INSERT INTO kb_vec(rowid, embedding) VALUES (?, ?)",
+                (r["id"], r["embedding"]))
+        conn.commit()
+        return {
+            "built": True, "embedded": len(rows),
+            "total_indexed": len(all_rows), "dim": dim,
+            "provider": detected,
+        }
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "build_ann_index failed: %s", exc, exc_info=True)
+        return {"built": False, "reason": str(exc)}
+    finally:
+        conn.close()
+
+
+def query_ann(conn: sqlite3.Connection,
+              query_embedding: List[float],
+              top_n: int = 20) -> List[Dict[str, Any]]:
+    """KNN query against the kb_vec virtual table.
+
+    Returns rows joined with kb_paragraphs for display.  Returns []
+    when sqlite-vec is unavailable or the kb_vec table doesn't exist.
+    """
+    if not _try_load_vec_ext(conn):
+        return []
+    try:
+        dim = len(query_embedding)
+        blob = struct.pack(f"{dim}f", *query_embedding)
+        rows = conn.execute(
+            "SELECT p.id, p.source_kind, p.source_file, p.title, "
+            "       p.body, p.tags, p.weight, p.kind, p.version_scope, "
+            "       v.distance "
+            "FROM kb_vec v "
+            "JOIN kb_paragraphs p ON p.id = v.rowid "
+            "WHERE v.embedding MATCH ? "
+            "ORDER BY v.distance LIMIT ?",
+            (blob, top_n)
+        ).fetchall()
+        results = []
+        for r in rows:
+            tags = r["tags"]
+            if tags:
+                try:
+                    tags = json.loads(tags)
+                except (json.JSONDecodeError, TypeError):
+                    tags = []
+            results.append({
+                "id": r["id"],
+                "source_kind": r["source_kind"],
+                "source_file": r["source_file"],
+                "title": r["title"] or "",
+                "body": r["body"] or "",
+                "tags": tags or [],
+                "weight": r["weight"],
+                "kind": r["kind"],
+                "version_scope": r["version_scope"],
+                "score": -r["distance"],
+            })
+        return results
+    except Exception:
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
+        return []
 
 
 def _query_foreign_kb(conn: sqlite3.Connection, query: str, top_n: int,

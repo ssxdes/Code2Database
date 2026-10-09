@@ -92,6 +92,24 @@ def multi_query_decompose(query: str) -> List[str]:
     return sub_queries if sub_queries else [query]
 
 
+_RERANKER_CACHE = None
+
+
+def _get_reranker():
+    """Load and cache the local cross-encoder reranker.
+
+    Instantiating CrossEncoder("BAAI/bge-reranker-base") downloads and
+    loads a ~560 MB model.  Caching it for the process lifetime avoids
+    re-downloading and re-loading on every rerank() call.
+    """
+    global _RERANKER_CACHE
+    if _RERANKER_CACHE is not None:
+        return _RERANKER_CACHE
+    from sentence_transformers import CrossEncoder
+    _RERANKER_CACHE = CrossEncoder("BAAI/bge-reranker-base")
+    return _RERANKER_CACHE
+
+
 def rerank(results: List[Dict[str, Any]],
            query: str,
            top_n: int = 20) -> List[Dict[str, Any]]:
@@ -104,8 +122,7 @@ def rerank(results: List[Dict[str, Any]],
         return results
     # Try local sentence-transformers reranker
     try:
-        from sentence_transformers import CrossEncoder
-        reranker = CrossEncoder("BAAI/bge-reranker-base")
+        reranker = _get_reranker()
         pairs = [(query, r.get("body", r.get("title", ""))[:500])
                  for r in results]
         scores = reranker.predict(pairs)

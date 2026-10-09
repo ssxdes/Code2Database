@@ -296,6 +296,13 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
                 db_mtime_at_sync TEXT,
                 last_synced_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS kb_cluster_summaries (
+                cluster_id INTEGER PRIMARY KEY,
+                summary TEXT NOT NULL,
+                generated_at TEXT NOT NULL,
+                model TEXT,
+                token_count INTEGER DEFAULT 0
+            );
         """)
     except sqlite3.OperationalError:
         logging.getLogger(__name__).debug("silent exception", exc_info=True)

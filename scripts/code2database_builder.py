@@ -128,18 +128,64 @@ def cmd_kb_rebuild_index(args):
 def cmd_kb_query(args):
     """Unified FTS5+BM25 query across memory + knowledge."""
     from _builder.kb.kb_index import query_kb
+    from _builder.kb.rag_enhance import (hyde_expand, multi_query_decompose,
+                                         rerank as do_rerank, graph_walk,
+                                         two_stage_retrieve)
     kinds = [k.strip() for k in args.kinds.split(",") if k.strip()] if args.kinds else None
     engine = getattr(args, 'engine', 'sparse')
     # --semantic is a backwards-compat alias for --engine semantic
     if getattr(args, 'semantic', False) and engine == 'sparse':
         engine = 'semantic'
+    use_hyde = getattr(args, 'hyde', False)
+    use_multi = getattr(args, 'multi_query', False)
+    use_rerank = getattr(args, 'rerank', None)
+    use_graph_walk = getattr(args, 'graph_walk', None)
+    use_two_stage = getattr(args, 'two_stage', None)
+    # --engine hybrid defaults rerank=True unless --no-rerank explicitly set
+    if use_rerank is None:
+        use_rerank = (engine == 'hybrid')
+
     if engine in ('semantic', 'hybrid'):
-        from _builder.kb.neural_embed import semantic_search
-        result = semantic_search(args.graph, args.query, top_n=args.top)
-        results = result.get("results", [])
+        from _builder.kb.neural_embed import semantic_search, get_embedding
+        # HyDE: expand query with hypothetical answer
+        search_query = args.query
+        hyde_text = hyde_expand(args.query) if use_hyde else None
+        # Multi-query: decompose into sub-queries
+        sub_queries = multi_query_decompose(args.query) if use_multi else [args.query]
+        if hyde_text:
+            sub_queries = [hyde_text] + sub_queries
+        all_results = []
+        for sq in sub_queries:
+            result = semantic_search(args.graph, sq, top_n=args.top)
+            all_results.extend(result.get("results", []))
+        # Deduplicate by id
+        seen = set()
+        deduped = []
+        for r in all_results:
+            rid = r.get("id")
+            if rid and rid not in seen:
+                seen.add(rid)
+                deduped.append(r)
+            elif not rid:
+                deduped.append(r)
+        # Rerank
+        if use_rerank and deduped:
+            deduped = do_rerank(deduped, args.query, top_n=args.top)
+        # Graph walk
+        if use_graph_walk is not False and deduped:
+            deduped = graph_walk(deduped, args.graph)
+        results = deduped[:args.top]
+        result = {"query": args.query, "results": results,
+                  "engine": engine, "enhancements": {
+                      "hyde": bool(hyde_text),
+                      "multi_query": use_multi and len(sub_queries) > 1,
+                      "rerank": use_rerank,
+                      "graph_walk": use_graph_walk is not False,
+                  }}
         if not results and getattr(args, 'global', False):
             from _builder.kb.kb_global import global_search
             results = global_search(args.query, top_n=args.top)
+            result["results"] = results
         if not results:
             print("No matches found.")
             return
@@ -155,6 +201,9 @@ def cmd_kb_query(args):
         version_scope=getattr(args, 'version_scope', '') or None,
         cross=bool(getattr(args, 'cross', False)),
     )
+    # Graph walk for sparse engine too
+    if use_graph_walk and results:
+        results = graph_walk(results, args.graph)
     # fall back to global KB if no project matches
     if not results and getattr(args, 'global', False):
         from _builder.kb.kb_global import global_search
@@ -1494,6 +1543,22 @@ def main():
                        help="Code version being worked on (branch/release tag): its memories rank first, others are labeled non-current")
     p_kq2.add_argument("--cross", action="store_true",
                        help="Also search watched knowledge-base domains (hits carry source_domain)")
+    p_kq2.add_argument("--rerank", action="store_true", default=None,
+                       help="Re-score results with a cross-encoder reranker")
+    p_kq2.add_argument("--no-rerank", action="store_false", dest="rerank",
+                       help="Disable reranker (overrides --engine hybrid default)")
+    p_kq2.add_argument("--hyde", action="store_true",
+                       help="HyDE: generate hypothetical answer for better dense retrieval")
+    p_kq2.add_argument("--multi-query", action="store_true",
+                       help="Decompose query into sub-queries, fuse results via RRF")
+    p_kq2.add_argument("--graph-walk", action="store_true", default=None,
+                       help="Expand hits along the code graph (cgdb) for richer context")
+    p_kq2.add_argument("--no-graph-walk", action="store_false", dest="graph_walk",
+                       help="Disable graph walk")
+    p_kq2.add_argument("--two-stage", action="store_true", default=None,
+                       help="Two-stage retrieval: match cluster summaries first")
+    p_kq2.add_argument("--no-two-stage", action="store_false", dest="two_stage",
+                       help="Disable two-stage retrieval")
 
     # kb-cluster (union-find clustering + principle_ref)
     p_kc = sub.add_parser("kb-cluster",

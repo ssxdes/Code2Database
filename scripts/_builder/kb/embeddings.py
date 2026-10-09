@@ -34,15 +34,29 @@ def _char_ngrams(text: str, n: int = DEFAULT_NGRAM_SIZE) -> List[str]:
 
     "free_pid" with n=3 → ["$fr", "fre", "ree", "ee_", "e_p", "_pi", "pid", "id$"]
     where $ marks word boundaries to distinguish start/end n-grams.
+
+    CJK ideographs are extracted as unigram and bigram tokens (prefixed
+    with ``c:`` to avoid collision with Latin n-grams) so Chinese text
+    produces non-empty vectors.  The previous regex-based normalization
+    replaced every CJK character with a space, making the embedding
+    system completely blind to Chinese content.
     """
     if not text:
         return []
+    ngrams: List[str] = []
+    # Extract CJK unigrams + bigrams (shape-similarity tokens)
+    from _builder.utils import _CJK_RE
+    cjk_chars = _CJK_RE.findall(text)
+    if cjk_chars:
+        for ch in cjk_chars:
+            ngrams.append(f"c:{ch}")
+        for i in range(len(cjk_chars) - 1):
+            ngrams.append(f"c:{cjk_chars[i]}{cjk_chars[i + 1]}")
     # Normalize: lowercase, replace non-alphanumeric with space, collapse spaces
     norm = re.sub(r'[^a-zA-Z0-9_]+', ' ', text.lower()).strip()
     if not norm:
-        return []
+        return ngrams
     # Add boundary markers per word
-    ngrams = []
     for word in norm.split():
         if not word:
             continue

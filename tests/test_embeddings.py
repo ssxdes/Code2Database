@@ -58,6 +58,14 @@ class TestCharNgrams(unittest.TestCase):
         """CJK characters are included in n-grams."""
         result = _char_ngrams("释放pid", n=3)
         self.assertTrue(len(result) > 0)
+        # CJK unigrams and bigrams must appear alongside Latin n-grams
+        self.assertIn("c:释", result)
+        self.assertIn("c:放", result)
+        self.assertIn("c:释放", result)
+        # Latin n-grams still present
+        self.assertIn("$pi", result)
+        self.assertIn("pid", result)
+        self.assertIn("id$", result)
 
 
 class TestBuildVocab(unittest.TestCase):
@@ -335,6 +343,21 @@ class TestEndToEndSimilarity(unittest.TestCase):
         sim_alloc = emb.similarity("allocate", "alloc_pid")
         sim_free = emb.similarity("allocate", "free_pid")
         self.assertGreater(sim_alloc, sim_free)
+
+    def test_cjk_text_produces_matches(self):
+        """Chinese text produces non-zero similarity between related entries."""
+        emb = NGramEmbeddings(n=3)
+        corpus = {
+            "free_mem": "释放内存 free_memory",
+            "init_mod": "初始化模块 init_module",
+        }
+        emb.fit(corpus)
+        sim_free = emb.similarity("释放内存", "free_mem")
+        sim_init = emb.similarity("释放内存", "init_mod")
+        # The CJK query must match the CJK content in free_mem
+        self.assertGreater(sim_free, 0.0)
+        # And score higher than the unrelated init_mod entry
+        self.assertGreater(sim_free, sim_init)
 
 
 if __name__ == "__main__":

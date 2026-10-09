@@ -46,7 +46,6 @@
 这
 那
 哪
-哪
 每
 各
 某
@@ -112,7 +111,6 @@
 喂
 哎
 唉
-嗯
 # Latin stopwords (common English stopwords)
 the
 a
@@ -196,8 +194,6 @@ too
 very
 s
 t
-can
 just
 don
-should
 now

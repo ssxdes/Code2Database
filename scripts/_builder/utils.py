@@ -129,10 +129,28 @@ def _fts5_escape(query: str) -> str:
     carries the same word boundaries used on the write side
     (``body_tokenized`` column).  This makes FTS5 MATCH work
     natively for CJK without relying on the Jaccard fallback.
+
+    Stopwords are filtered on the CJK path to mirror
+    :func:`_cjk_pre_tokenize` on the write side — without this, a
+    query like ``释放的内存`` produces ``"释放" "的" "内存"`` while the
+    indexed text has ``的`` removed, so the FTS5 AND-match fails.
     """
-    tokens = re.findall(r'[A-Za-z0-9_]+', query)
     if _has_cjk(query):
-        tokens.extend(_cjk_tokenize(query))
+        cjk_tokens = _cjk_tokenize(query)
+        stopwords = _load_stopwords()
+        if stopwords:
+            cjk_tokens = [t for t in cjk_tokens if t not in stopwords]
+        latin_tokens = re.findall(r'[A-Za-z0-9_]+', query)
+        if stopwords:
+            latin_tokens = [t for t in latin_tokens if t not in stopwords]
+        seen: set = set()
+        tokens: list = []
+        for t in cjk_tokens + latin_tokens:
+            if t not in seen:
+                seen.add(t)
+                tokens.append(t)
+    else:
+        tokens = re.findall(r'[A-Za-z0-9_]+', query)
     if not tokens:
         return '""'  # match nothing safely
     return " ".join(f'"{t}"' for t in tokens)

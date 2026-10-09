@@ -70,6 +70,27 @@ class TestFts5EscapeCjk(unittest.TestCase):
         self.assertIn('"释放"', result)
         self.assertIn('"memory"', result)
 
+    def test_cjk_stopwords_filtered_on_query_side(self):
+        result = _fts5_escape("释放的内存")
+        self.assertIn('"释放"', result)
+        self.assertIn('"内存"', result)
+        self.assertNotIn('"的"', result)
+
+    def test_cjk_query_stopword_consistency_with_write_side(self):
+        body = "释放的内存"
+        tokenized = _cjk_pre_tokenize(body)
+        q = _fts5_escape(body)
+        tokenized_tokens = set(tokenized.split())
+        q_tokens = set(t.strip('"') for t in q.split())
+        self.assertEqual(tokenized_tokens, q_tokens,
+                         f"write side={tokenized_tokens} != query side={q_tokens}")
+
+    def test_no_duplicate_tokens(self):
+        result = _fts5_escape("释放 memory 释放")
+        tokens = [t.strip('"') for t in result.split()]
+        self.assertEqual(len(tokens), len(set(tokens)),
+                         f"duplicate tokens in: {result}")
+
 
 class TestKbQueryCjkMatch(unittest.TestCase):
 
@@ -110,6 +131,12 @@ class TestKbQueryCjkMatch(unittest.TestCase):
         self._insert("混合查询", "释放 memory release 释放资源", weight=2.0)
         results = query_kb(self.graph_dir, "释放", top_n=5)
         self.assertGreaterEqual(len(results), 1)
+
+    def test_cjk_stopword_query_matches_filtered_index(self):
+        self._insert("停止词测试", "释放的内存和资源", weight=2.0)
+        results = query_kb(self.graph_dir, "释放的内存", top_n=5)
+        self.assertGreaterEqual(len(results), 1,
+                                "query with stopwords must match write-side-filtered index")
 
     def test_multiple_cjk_entries(self):
         self._insert("释放内存", "释放内存释放资源", weight=2.0)

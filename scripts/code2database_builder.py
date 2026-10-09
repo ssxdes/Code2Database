@@ -147,38 +147,55 @@ def cmd_kb_query(args):
 
     if engine in ('semantic', 'hybrid'):
         from _builder.kb.neural_embed import semantic_search, get_embedding
-        # HyDE: expand query with hypothetical answer
-        search_query = args.query
-        hyde_text = hyde_expand(args.query) if use_hyde else None
-        # Multi-query: decompose into sub-queries
-        sub_queries = multi_query_decompose(args.query) if use_multi else [args.query]
-        if hyde_text:
-            sub_queries = [hyde_text] + sub_queries
-        all_results = []
-        for sq in sub_queries:
-            result = semantic_search(args.graph, sq, top_n=args.top)
-            all_results.extend(result.get("results", []))
-        # Deduplicate by id
-        seen = set()
-        deduped = []
-        for r in all_results:
-            rid = r.get("id")
-            if rid and rid not in seen:
-                seen.add(rid)
-                deduped.append(r)
-            elif not rid:
-                deduped.append(r)
-        # Rerank
+        from _builder.kb.kb_index import _kb_connect
+        two_stage_used = False
+        hyde_used = False
+        multi_used = False
+        deduped: list = []
+        if use_two_stage is not False:
+            query_emb = get_embedding(args.query)
+            if query_emb is not None:
+                ts_conn = _kb_connect(args.graph, create_if_missing=False)
+                if ts_conn is not None:
+                    try:
+                        ts_results = two_stage_retrieve(
+                            ts_conn, query_emb, [], top_n=args.top)
+                    finally:
+                        ts_conn.close()
+                    if ts_results:
+                        deduped = ts_results
+                        two_stage_used = True
+        if not two_stage_used:
+            hyde_text = hyde_expand(args.query) if use_hyde else None
+            hyde_used = bool(hyde_text)
+            sub_queries = (multi_query_decompose(args.query)
+                           if use_multi else [args.query])
+            multi_used = use_multi and len(sub_queries) > 1
+            if hyde_text:
+                sub_queries = [hyde_text] + sub_queries
+            all_results = []
+            for sq in sub_queries:
+                result = semantic_search(args.graph, sq, top_n=args.top)
+                all_results.extend(result.get("results", []))
+            seen = set()
+            deduped = []
+            for r in all_results:
+                rid = r.get("id")
+                if rid and rid not in seen:
+                    seen.add(rid)
+                    deduped.append(r)
+                elif not rid:
+                    deduped.append(r)
         if use_rerank and deduped:
             deduped = do_rerank(deduped, args.query, top_n=args.top)
-        # Graph walk
         if use_graph_walk is not False and deduped:
             deduped = graph_walk(deduped, args.graph)
         results = deduped[:args.top]
         result = {"query": args.query, "results": results,
                   "engine": engine, "enhancements": {
-                      "hyde": bool(hyde_text),
-                      "multi_query": use_multi and len(sub_queries) > 1,
+                      "two_stage": two_stage_used,
+                      "hyde": hyde_used,
+                      "multi_query": multi_used,
                       "rerank": use_rerank,
                       "graph_walk": use_graph_walk is not False,
                   }}

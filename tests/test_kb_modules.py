@@ -662,6 +662,22 @@ class TestKbGlobal(unittest.TestCase):
         self.assertGreater(len(results), 0)
         self.assertEqual(results[0]["title"], "test principle")
 
+    def test_global_search_cjk_fallback(self):
+        """Global KB search finds CJK entries via similarity fallback
+        when FTS5 tokenization differs between query and stored text."""
+        from _builder.kb.kb_global import global_add, global_search
+        global_add(
+            title="内存释放原则",
+            body="当不再需要分配的内存时必须调用free函数释放",
+            tags=["内存", "释放"],
+            kind="principle",
+        )
+        # Query with different CJK phrasing — FTS5 AND-match may miss,
+        # but the similarity pass should find the entry via shared tokens
+        results = global_search("怎样释放内存", top_n=10)
+        self.assertGreater(len(results), 0)
+        self.assertIn("内存", results[0]["title"])
+
     def test_global_migration_segments_cjk_body(self):
         """Global KB migration backfills body_tokenized with CJK
         segmentation, not raw body — otherwise CJK entries from before

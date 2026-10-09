@@ -163,7 +163,15 @@ def global_add(title: str, body: str, tags: List[str] = None,
 
 
 def global_search(query: str, top_n: int = 10, kinds: Optional[List[str]] = None) -> List[Dict[str, Any]]:
-    """Search the global KB by FTS5 + BM25."""
+    """Search the global KB by FTS5 + BM25.
+
+    CJK-aware: when the query contains CJK ideographs (or FTS5 returns
+    no results), a token-set similarity pass scans high-weight candidates
+    and merges hits by best score — mirroring the fallback in
+    kb_index.query_kb so Chinese global entries are discoverable even
+    when jieba segmentation differs between query and stored text.
+    """
+    from _builder.utils import _has_cjk, _simple_tokenize, _similarity_score
     conn = _global_kb_connect()
     try:
         match_expr = _fts5_escape(query)
@@ -182,7 +190,44 @@ def global_search(query: str, top_n: int = 10, kinds: Optional[List[str]] = None
             params.extend(kinds)
         sql += "ORDER BY score DESC LIMIT ?"
         params.append(top_n)
-        rows = conn.execute(sql, params).fetchall()
+        try:
+            rows = conn.execute(sql, params).fetchall()
+        except sqlite3.Error:
+            rows = []
+        # CJK similarity fallback: scan high-weight candidates when FTS5
+        # misses or the query contains CJK (same strategy as query_kb).
+        sim_scores: Dict[int, float] = {}
+        if not rows or _has_cjk(query):
+            sql2 = (
+                "SELECT id, title, body, tags, kind, weight, confidence, "
+                "       source_project FROM kb_global "
+                "WHERE weight >= 0 "
+            )
+            params2: list = []
+            if kinds:
+                placeholders2 = ",".join("?" for _ in kinds)
+                sql2 += f"AND kind IN ({placeholders2}) "
+                params2.extend(kinds)
+            sql2 += "ORDER BY weight DESC LIMIT 500"
+            cand = conn.execute(sql2, params2).fetchall()
+            q_tokens = _simple_tokenize(query)
+            scored_cand = []
+            for r in cand:
+                e_tokens = _simple_tokenize(
+                    " ".join([r["title"] or "", r["body"] or ""]))
+                sim = _similarity_score(q_tokens, e_tokens)
+                if sim > 0:
+                    scored_cand.append(
+                        (sim * (0.5 + 0.5 * min(r["weight"] / 2.0, 1.0)),
+                         r))
+            scored_cand.sort(key=lambda x: -x[0])
+            existing_ids = {r["id"] for r in rows}
+            for s, r in scored_cand[:top_n]:
+                if r["id"] not in existing_ids:
+                    rows.append(r)
+                    sim_scores[r["id"]] = s
+                    if len(rows) >= top_n:
+                        break
         results = []
         for r in rows:
             tags = r["tags"]
@@ -191,6 +236,8 @@ def global_search(query: str, top_n: int = 10, kinds: Optional[List[str]] = None
                     tags = json.loads(tags)
                 except (json.JSONDecodeError, TypeError):
                     tags = []
+            score = r["score"] if "score" in r.keys() else \
+                sim_scores.get(r["id"], 0.0)
             results.append({
                 "id": r["id"],
                 "title": r["title"],
@@ -200,7 +247,7 @@ def global_search(query: str, top_n: int = 10, kinds: Optional[List[str]] = None
                 "weight": round(r["weight"], 4),
                 "confidence": round(r["confidence"], 4),
                 "source_project": r["source_project"] or "",
-                "score": round(r["score"], 4),
+                "score": round(score, 4),
                 "global": True,
             })
         # Best-effort access_count bump

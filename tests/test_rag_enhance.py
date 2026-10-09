@@ -4,11 +4,12 @@ Each enhancement must degrade gracefully when the required external
 service is unavailable.  These tests verify both the happy path (when
 the service is present) and the degradation path (when it is not).
 """
+import json
 import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -98,6 +99,34 @@ class TestRerankGracefulDegradation(unittest.TestCase):
                                       "OPENAI_API_KEY": ""}):
             out = rerank(results, "query", top_n=10)
         self.assertEqual(len(out), 2)
+
+    def test_remote_api_uses_index_field_for_ordering(self):
+        """The rerank API may return results in a different order than
+        the input. The ``index`` field maps each scored item back to
+        the original input position."""
+        results = [{"id": 10, "body": "alpha"},
+                   {"id": 20, "body": "beta"},
+                   {"id": 30, "body": "gamma"}]
+        # API returns gamma (index=2) as best, alpha (index=0) second
+        api_response = {
+            "results": [
+                {"index": 2, "relevance_score": 0.95},
+                {"index": 0, "relevance_score": 0.80},
+                {"index": 1, "relevance_score": 0.30},
+            ]
+        }
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(api_response).encode()
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        with patch.dict(os.environ, {"C2D_RERANK_URL": "http://mock/rerank",
+                                      "C2D_RERANK_API_KEY": "key"}), \
+             patch("urllib.request.urlopen", return_value=mock_resp):
+            out = rerank(results, "query", top_n=3)
+        self.assertEqual(len(out), 3)
+        self.assertEqual(out[0]["id"], 30)  # gamma was best
+        self.assertEqual(out[1]["id"], 10)  # alpha was second
+        self.assertEqual(out[2]["id"], 20)  # beta was third
 
 
 class TestGraphWalkDegradation(unittest.TestCase):

@@ -135,10 +135,22 @@ def rerank(results: List[Dict[str, Any]],
                 data = json.loads(resp.read())
                 scored = data.get("results", data.get("data", []))
                 if isinstance(scored, list):
-                    order = sorted(range(len(results)),
-                                   key=lambda i: -scored[i].get("score", 0)
-                                   if i < len(scored) else 0)
-                    return [results[i] for i in order[:top_n]]
+                    # Build (score, original_index) pairs. Most rerank
+                    # APIs (Cohere, Jina, Voyage) return an ``index``
+                    # field mapping back to the input position; some
+                    # return ``relevance_score`` instead of ``score``.
+                    # Fall back to positional correspondence only when
+                    # ``index`` is absent.
+                    scored_pairs = []
+                    for pos, item in enumerate(scored):
+                        score = item.get("score",
+                                         item.get("relevance_score", 0))
+                        orig_idx = item.get("index", pos)
+                        if isinstance(orig_idx, int) and \
+                                0 <= orig_idx < len(results):
+                            scored_pairs.append((float(score), orig_idx))
+                    scored_pairs.sort(key=lambda p: -p[0])
+                    return [results[idx] for _, idx in scored_pairs[:top_n]]
         except Exception:
             pass
     # No reranker available — return unchanged

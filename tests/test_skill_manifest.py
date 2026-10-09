@@ -334,6 +334,29 @@ class TestSkillManifest(unittest.TestCase):
             self.assertIn(c, ana_cmds,
                           f"analysis missing {c}")
 
+    def test_analysis_routing_table_covers_non_on_demand_commands_exactly_once(self):
+        """Every analysis command not in on_demand_commands must be routed once.
+
+        on_demand_commands are intentionally outside the routing table
+        (they are invoked explicitly, not via a question route). Every
+        other command in commands[] must appear in exactly one routing
+        category so the agent router can discover it.
+        """
+        rt = self.analysis.get("routing_table", {})
+        self.assertTrue(rt, "analysis routing_table missing or empty")
+        on_demand = set(self.analysis.get("on_demand_commands", []))
+        all_cmds = set(self.analysis["commands"])
+        routable = all_cmds - on_demand
+        routed = [c for cmds in rt.values() for c in cmds if c in all_cmds]
+        dupes = sorted(c for c, n in Counter(routed).items() if n > 1)
+        self.assertEqual(dupes, [],
+                         f"analysis commands in multiple routing categories: "
+                         f"{dupes}")
+        unrouted = sorted(routable - set(routed))
+        self.assertEqual(unrouted, [],
+                         f"analysis commands not in routing_table or "
+                         f"on_demand_commands: {unrouted}")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -120,6 +120,7 @@
   ],
   "routing_table": {
     "Is this thread-safe?": [
+      "concurrency",
       "concurrency-risks",
       "concurrency-analyze",
       "detect-races",
@@ -133,19 +134,29 @@
       "param-flow",
       "data-dep",
       "data-lifecycle",
-      "io-path"
+      "io-path",
+      "field-access",
+      "field-flow",
+      "null-source",
+      "reverse-trace",
+      "taint-analysis",
+      "code-slice"
     ],
     "What breaks if I change this?": [
       "impact",
       "blast-radius",
       "neighbors",
       "path",
-      "diff-chains"
+      "diff-chains",
+      "key-paths"
     ],
     "Is this path feasible?": [
       "path-feasible",
       "resolve-chain",
-      "extract-signals"
+      "extract-signals",
+      "path-guards",
+      "runtime-guards",
+      "hw-reach"
     ],
     "What invariants does this function enforce?": [
       "extract-invariants",
@@ -153,6 +164,7 @@
       "apply-invariants"
     ],
     "Which Python/Go/Rust function calls into C?": [
+      "ffi",
       "ffi-detect",
       "ffi-list",
       "ffi-trace",
@@ -170,6 +182,22 @@
       "who-frees",
       "unbalanced-alloc-free",
       "add-semantic-edges"
+    ],
+    "Is this code safe from cycles, recursion, or bounds issues?": [
+      "check-bounds",
+      "check-clones",
+      "check-cycles",
+      "check-infinite-loop",
+      "check-recursion"
+    ],
+    "How do I search or explore the graph?": [
+      "find",
+      "query",
+      "hybrid-search",
+      "semantic-search",
+      "explore-flow",
+      "diagnose",
+      "reason"
     ],
     "Query cgdb tables directly (clang backend)": [
       "cgdb_search_symbols",

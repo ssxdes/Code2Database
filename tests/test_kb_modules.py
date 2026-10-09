@@ -489,6 +489,22 @@ class TestKbCluster(unittest.TestCase):
         self.assertEqual(summary["items_clustered"], 2)
         self.assertEqual(summary["cluster_count"], 1)
 
+    def test_cluster_cjk_items(self):
+        """Two CJK entries with overlapping content should cluster."""
+        _make_memory_entry(self.graph_dir, 1,
+                           "如何释放内存",
+                           "调用free函数释放分配的内存",
+                           tags=[])
+        _make_memory_entry(self.graph_dir, 2,
+                           "怎样释放内存",
+                           "使用free释放已分配的内存块",
+                           tags=[])
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        summary = cluster_kb(self.graph_dir, threshold=0.15, verbose=False)
+        self.assertTrue(summary["clustered"])
+        self.assertEqual(summary["items_clustered"], 2)
+        self.assertEqual(summary["cluster_count"], 1)
+
 
 class TestKbAudit(unittest.TestCase):
     def setUp(self):

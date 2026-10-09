@@ -881,6 +881,24 @@ class TestJaccardSimilarity(unittest.TestCase):
         # Lowercased + deduplicated
         self.assertEqual(len(tokens), 2)
 
+    def test_tokenize_cjk_included(self):
+        """CJK characters participate in Jaccard token sets."""
+        tokens = _tokenize_for_jaccard("释放内存")
+        self.assertIn("释", tokens)
+        self.assertIn("放", tokens)
+        self.assertIn("内", tokens)
+        self.assertIn("存", tokens)
+        # CJK bigrams are also included
+        self.assertIn("释放", tokens)
+        self.assertIn("内存", tokens)
+
+    def test_tokenize_mixed_cjk_latin(self):
+        """Mixed CJK+Latin text produces tokens from both scripts."""
+        tokens = _tokenize_for_jaccard("释放 free_pid")
+        self.assertIn("free_pid", tokens)
+        self.assertIn("释", tokens)
+        self.assertIn("放", tokens)
+
 
 class TestForeignRefsCycle(unittest.TestCase):
     """Test the full add → sync → list → remove cycle for foreign_refs."""

@@ -15,6 +15,7 @@ import sys
 from typing import Dict
 
 from _builder.kb.kb_index import _kb_connect, _fts5_escape
+from _builder.utils import _simple_tokenize
 import re as _re
 import logging
 
@@ -50,8 +51,15 @@ class _UnionFind:
 
 
 def _tokenize_for_jaccard(text: str) -> set:
-    """Tokenize text for Jaccard similarity (lowercased alphanumeric)."""
-    return set(_re.findall(r'[a-z0-9_]+', (text or "").lower()))
+    """Tokenize text for Jaccard similarity.
+
+    Delegates to utils._simple_tokenize so CJK characters and bigrams
+    participate in the token set — the previous Latin-only regex
+    stripped every CJK ideograph, so two Chinese knowledge entries with
+    identical content but different formatting had zero token overlap
+    and never clustered.
+    """
+    return _simple_tokenize(text or "")
 
 
 def _jaccard(a: set, b: set) -> float:
@@ -114,11 +122,39 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
             ts = token_sets.get(iid, set())
             if not ts:
                 continue
-            query_text = (title + " " + body)[:500]
+            # Use body only (not title) for the FTS5 candidate query: the
+            # FTS5 ``title`` column stores raw CJK text (unicode61 folds a
+            # contiguous CJK run into one token), so AND-joining segmented
+            # title tokens against the unsegmented FTS5 title column
+            # produces zero candidates for CJK items.  body_tokenized is
+            # pre-segmented, so querying against it yields real candidates.
+            # The title still participates in the Jaccard comparison below.
+            query_text = (body or "")[:500]
             if not query_text.strip():
                 continue
             try:
-                match_expr = _fts5_escape(query_text)
+                # Build an OR-joined FTS5 expression for candidate
+                # discovery: _fts5_escape AND-joins all tokens, which
+                # requires every token to match — only near-exact
+                # duplicates survive.  OR-joining finds items with any
+                # token overlap, and Jaccard filtering below removes
+                # false positives.  Without OR, CJK items with shared
+                # words but different phrasing (e.g. "调用free" vs
+                # "使用free") produce zero candidates and never cluster.
+                from _builder.utils import _cjk_tokenize, _load_stopwords
+                from _builder.utils import _has_cjk as _has_cjk_fn
+                raw_tokens: list = []
+                if _has_cjk_fn(query_text):
+                    raw_tokens = _cjk_tokenize(query_text)
+                latin_tokens = _re.findall(r'[A-Za-z0-9_]+', query_text)
+                all_tokens = raw_tokens + latin_tokens
+                stopwords = _load_stopwords()
+                if stopwords:
+                    all_tokens = [t for t in all_tokens
+                                  if t not in stopwords]
+                if not all_tokens:
+                    continue
+                or_expr = " OR ".join(f'"{t}"' for t in all_tokens)
                 # Get top-20 FTS5 candidates (sampling for performance).
                 # kb_paragraphs_fts is an external-content FTS5 table over
                 # kb_paragraphs(id); its addressable rowid IS that id, so
@@ -128,7 +164,7 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
                     "SELECT rowid FROM kb_paragraphs_fts "
                     "WHERE kb_paragraphs_fts MATCH ? AND rowid != ? "
                     "ORDER BY bm25(kb_paragraphs_fts) LIMIT 20",
-                    (match_expr, iid)
+                    (or_expr, iid)
                 ).fetchall()
                 for cr in cand_rows:
                     cand_id = cr["rowid"]

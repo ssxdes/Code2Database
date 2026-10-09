@@ -59,14 +59,46 @@ _CONTRADICTION_PAIRS = [
     # Comparison
     ("greater", "less"), ("larger", "smaller"),
     ("equal", "unequal"), ("equal", "different"),
+    # CJK modal / obligation
+    ("必须", "禁止"), ("必须", "不可"), ("必须", "不得"),
+    ("应当", "不应当"), ("应该", "不应该"), ("可以", "不可以"),
+    ("允许", "禁止"), ("允许", "不允许"), ("需要", "不需要"),
+    # CJK boolean / truth
+    ("是", "不是"), ("有", "没有"), ("存在", "不存在"),
+    ("成立", "不成立"), ("正确", "错误"), ("对", "错"),
+    ("真", "假"),
+    # CJK state / status
+    ("启用", "禁用"), ("激活", "停用"), ("有效", "无效"),
+    ("合法", "非法"), ("可用", "不可用"),
+    # CJK quantifiers
+    ("总是", "从不"), ("全部", "无"), ("永远", "从不"),
+    # CJK safety
+    ("安全", "不安全"), ("线程安全", "线程不安全"),
+    ("可重入", "不可重入"),
+    # CJK lifecycle
+    ("打开", "关闭"), ("开始", "停止"), ("创建", "销毁"),
+    ("分配", "释放"), ("初始化", "反初始化"),
+    # CJK permission
+    ("接受", "拒绝"), ("允许", "拒绝"),
 ]
 
 
 def _has_word(body: str, word: str) -> bool:
-    """Word-boundary containment: 'open' matches 'the file is open' but
-    not 'opened-loop' or 'openfd'."""
+    """Word-boundary containment.
+
+    For Latin words, uses regex lookbehind/lookahead so 'open' matches
+    'the file is open' but not 'opened-loop' or 'openfd'.  For CJK
+    words, uses plain substring containment: Chinese text has no spaces,
+    so regex ``\\w`` boundaries treat every adjacent CJK ideograph as a
+    word character and reject valid matches (e.g. ``必须`` inside
+    ``必须释放`` would fail the ``(?![\\w-])`` lookahead because ``释``
+    is a ``\\w`` character).
+    """
+    from _builder.utils import _CJK_RE
+    if _CJK_RE.search(word):
+        return word in (body or "")
     return re.search(rf"(?<![\w-]){re.escape(word)}(?![\w-])",
-                     body) is not None
+                     body or "") is not None
 
 
 def detect_conflicts(graph_dir: str) -> List[Dict[str, Any]]:

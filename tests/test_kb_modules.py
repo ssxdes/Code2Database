@@ -598,6 +598,26 @@ class TestKbConflict(unittest.TestCase):
         conflicts = detect_conflicts(self.graph_dir)
         self.assertEqual(len(conflicts), 0)
 
+    def test_detect_conflicts_cjk(self):
+        """Chinese contradiction pairs (必须/禁止) are detected."""
+        rid1 = upsert_kb_paragraph(self.graph_dir, "memory", "f1.json",
+                                    "内存释放规则", "必须调用free释放内存",
+                                    kind="memory_qa")
+        rid2 = upsert_kb_paragraph(self.graph_dir, "memory", "f2.json",
+                                    "内存释放规则", "禁止直接调用free释放",
+                                    kind="memory_qa")
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.graph_dir)
+        conn.execute("UPDATE kb_paragraphs SET scope_id = 3 WHERE id IN (?, ?)",
+                      (rid1, rid2))
+        conn.commit()
+        conn.close()
+        conflicts = detect_conflicts(self.graph_dir)
+        self.assertGreater(len(conflicts), 0)
+        pair = conflicts[0]["contradiction"]
+        self.assertIn("必须", pair)
+        self.assertIn("禁止", pair)
+
     def test_forget_immediately_deletes(self):
         rid = upsert_kb_paragraph(self.graph_dir, "memory", "f.json",
                                     "title", "body", kind="memory_qa")

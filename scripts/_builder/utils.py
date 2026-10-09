@@ -1217,6 +1217,9 @@ def _cjk_pre_tokenize(text: str, tokenizer: str = "jieba",
     if stopwords:
         tokens = [t for t in tokens if t not in stopwords]
     return " ".join(tokens)
+
+
+def _make_call_graph(G: nx.DiGraph, skip_file_nodes: bool = False) -> nx.DiGraph:
     """Build a call-only subgraph from G, excluding CONTAINS/IMPORTS edges.
 
     Optionally skip file nodes (node_type=='file' or 'file' in labels)

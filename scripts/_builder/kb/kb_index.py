@@ -1339,28 +1339,42 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
                 and entry_scope == scope,
             })
         # attach see_also — items in the same cluster
-        # (same scope_id) ranked by weight × confidence.
-        for res in results:
-            scope_id = res.get("scope_id")
-            if scope_id is None:
-                res["see_also"] = []
-                continue
+        # (same scope_id) ranked by weight. Batched into a single
+        # query instead of one per result.
+        scope_ids = {res["scope_id"] for res in results
+                     if res.get("scope_id") is not None}
+        if scope_ids:
+            placeholders = ",".join("?" for _ in scope_ids)
             try:
-                see_rows = conn.execute(
-                    "SELECT id, source_kind, source_file, title, weight, kind "
-                    "FROM kb_paragraphs WHERE scope_id = ? AND id != ? "
-                    "ORDER BY weight DESC LIMIT 5",
-                    (scope_id, res["id"])
+                all_see = conn.execute(
+                    f"SELECT id, source_kind, source_file, title, "
+                    f"weight, kind, scope_id "
+                    f"FROM kb_paragraphs WHERE scope_id IN ({placeholders}) "
+                    f"ORDER BY scope_id, weight DESC LIMIT 500",
+                    tuple(scope_ids)
                 ).fetchall()
-                res["see_also"] = [{
-                    "id": sr["id"],
-                    "source_kind": sr["source_kind"],
-                    "source_file": sr["source_file"],
-                    "title": sr["title"] or "",
-                    "weight": round(sr["weight"], 4),
-                    "kind": sr["kind"],
-                } for sr in see_rows]
+                by_scope: dict = {}
+                for sr in all_see:
+                    by_scope.setdefault(sr["scope_id"], []).append(sr)
+                for res in results:
+                    sid = res.get("scope_id")
+                    if sid is None:
+                        res["see_also"] = []
+                        continue
+                    siblings = by_scope.get(sid, [])
+                    res["see_also"] = [{
+                        "id": sr["id"],
+                        "source_kind": sr["source_kind"],
+                        "source_file": sr["source_file"],
+                        "title": sr["title"] or "",
+                        "weight": round(sr["weight"], 4),
+                        "kind": sr["kind"],
+                    } for sr in siblings if sr["id"] != res["id"]][:5]
             except sqlite3.Error:
+                for res in results:
+                    res["see_also"] = []
+        else:
+            for res in results:
                 res["see_also"] = []
         # Update access_count on returned rows (best-effort)
         # Update access_count on returned rows (best-effort). Skipped in
@@ -1368,12 +1382,12 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
         # production DB on every query — including these bookkeeping writes).
         if update_access:
             try:
-                for res in results:
-                    conn.execute(
-                        "UPDATE kb_paragraphs SET access_count = access_count + 1, "
-                        "accessed_at = ? WHERE id = ?",
-                        (datetime.now().isoformat(), res["id"])
-                    )
+                now = datetime.now().isoformat()
+                conn.executemany(
+                    "UPDATE kb_paragraphs SET access_count = access_count + 1, "
+                    "accessed_at = ? WHERE id = ?",
+                    [(now, res["id"]) for res in results]
+                )
                 conn.commit()
             except sqlite3.Error:
                 logging.getLogger(__name__).debug("silent exception", exc_info=True)

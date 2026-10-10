@@ -136,6 +136,7 @@ def _fts5_escape(query: str) -> str:
     indexed text has ``的`` removed, so the FTS5 AND-match fails.
     """
     if _has_cjk(query):
+        query = _strip_cjk_punct(query)
         cjk_tokens = _cjk_tokenize(query)
         stopwords = _load_stopwords()
         if stopwords:
@@ -1104,6 +1105,39 @@ _CJK_RE = re.compile(
     ']'
 )
 
+# CJK + fullwidth punctuation that appears inside CJK text but carries
+# no semantic value.  These characters are captured by _CJK_RE (they
+# live in the \u3000-\u303f and \uff00-\uffef ranges) and treated as
+# tokens, which inflates the FTS5 index with noise and creates
+# meaningless bigrams that span punctuation boundaries (e.g.  内存，
+# produces the bigram 存，).  Stripping them before tokenisation
+# keeps the index lean and the similarity scores accurate.
+_CJK_PUNCT_RE = re.compile(
+    '['
+    '\u3000-\u303f'          # CJK Symbols and Punctuation (、。〈〉《》「」etc.)
+    '\uff01-\uff0f'          # Fullwidth ! " # $ % & ' ( ) * + , - . /
+    '\uff1a-\uff1f'          # Fullwidth : ; < = > ?
+    '\uff3b-\uff40'          # Fullwidth [ \ ] ^ _ `
+    '\uff5b-\uff65'          # Fullwidth { | } ~ and corner brackets
+    '\u2018-\u201f'          # Quotation marks (smart quotes, guillemets)
+    '\u2026'                 # Horizontal ellipsis …
+    '\u2014\u2013'           # Em dash —, en dash –
+    '\u00b7'                 # Middle dot ·
+    ']'
+)
+
+
+def _strip_cjk_punct(text: str) -> str:
+    """Replace CJK / fullwidth punctuation with spaces.
+
+    Called before tokenisation so jieba never emits punctuation tokens,
+    char-bigram generation never spans punctuation boundaries, and
+    similarity token sets stay free of noise.
+    """
+    if not text:
+        return text or ""
+    return _CJK_PUNCT_RE.sub(" ", text)
+
 
 def _has_cjk(text) -> bool:
     """True if text contains CJK unified ideograph characters.
@@ -1128,6 +1162,11 @@ def _similarity_score(tokens_a: set, tokens_b: set) -> float:
 
 def _simple_tokenize(text: str) -> set:
     """Simple tokenization for similarity matching. Handles CJK and Latin."""
+    if not text:
+        return set()
+    # Strip CJK punctuation so it doesn't become a token or create
+    # cross-punctuation bigrams (e.g.  内存， → no 存， bigram).
+    text = _strip_cjk_punct(text)
     # Keep CJK chars, alphanumerics; split on punctuation/whitespace
     # For CJK: each character is a token; for Latin: words
     tokens = set()
@@ -1178,6 +1217,7 @@ def _load_stopwords() -> Set[str]:
 
 def _char_bigram_tokenize(text: str) -> List[str]:
     """Character + bigram tokenization (the always-available fallback)."""
+    text = _strip_cjk_punct(text)
     cjk = _CJK_RE.findall(text)
     tokens: List[str] = list(cjk)
     for i in range(len(cjk) - 1):
@@ -1230,6 +1270,7 @@ def _cjk_pre_tokenize(text: str, tokenizer: str = "jieba",
     """
     if not text or not _has_cjk(text):
         return text or ""
+    text = _strip_cjk_punct(text)
     stopwords = _load_stopwords() if use_stopwords else set()
     tokens = _cjk_tokenize(text, tokenizer, user_dict)
     if stopwords:

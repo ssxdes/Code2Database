@@ -15,7 +15,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 
-from _builder.utils import _fts5_escape, _cjk_pre_tokenize, _has_cjk
+from _builder.utils import _fts5_escape, _cjk_pre_tokenize, _has_cjk, \
+    _simple_tokenize, _strip_cjk_punct
 from _builder.kb.kb_index import _kb_connect, query_kb, upsert_kb_paragraph
 
 
@@ -44,6 +45,42 @@ class TestCjkPreTokenize(unittest.TestCase):
         tokens = result.split()
         self.assertIn("释", tokens)
         self.assertIn("放", tokens)
+
+    def test_cjk_punctuation_stripped_in_pre_tokenize(self):
+        result = _cjk_pre_tokenize("释放内存，然后返回。")
+        tokens = result.split()
+        self.assertNotIn("，", tokens)
+        self.assertNotIn("。", tokens)
+        self.assertIn("释放", tokens)
+        self.assertIn("返回", tokens)
+
+    def test_fullwidth_punctuation_stripped(self):
+        result = _cjk_pre_tokenize("注意：请勿调用！")
+        tokens = result.split()
+        self.assertNotIn("：", tokens)
+        self.assertNotIn("！", tokens)
+        self.assertIn("注意", tokens)
+        self.assertIn("调用", tokens)
+
+    def test_cjk_punctuation_no_cross_punct_bigrams(self):
+        tokens = _simple_tokenize("内存，释放")
+        self.assertNotIn("存，", tokens)
+        self.assertNotIn("，释", tokens)
+        self.assertIn("内存", tokens)
+        self.assertIn("释放", tokens)
+
+    def test_strip_cjk_punct_replaces_with_space(self):
+        result = _strip_cjk_punct("内存，释放。")
+        self.assertNotIn("，", result)
+        self.assertNotIn("。", result)
+
+    def test_strip_cjk_punct_preserves_ideographs(self):
+        result = _strip_cjk_punct("释放内存")
+        self.assertEqual(result, "释放内存")
+
+    def test_strip_cjk_punct_empty(self):
+        self.assertEqual(_strip_cjk_punct(""), "")
+        self.assertEqual(_strip_cjk_punct(None), "")
 
 
 class TestFts5EscapeCjk(unittest.TestCase):

@@ -857,6 +857,63 @@ class TestKbConflict(unittest.TestCase):
         self.assertEqual(row["title"], "old title")
         self.assertEqual(row["body"], "old body")
 
+    def test_rollback_explicit_to_version(self):
+        """rollback_kb_item with explicit to_version restores that version."""
+        from _builder.kb.kb_index import _kb_connect
+        import json as _json
+        conn = _kb_connect(self.graph_dir)
+        conn.execute(
+            "INSERT INTO kb_items (kind, title, body, tags, versions_json, "
+            "created_at) "
+            "VALUES ('memory_qa', 'v3 title', 'v3 body', '[]', ?, ?)",
+            (_json.dumps([
+                {"title": "v1 title", "body": "v1 body",
+                 "tags": "[]", "version": 1},
+                {"title": "v2 title", "body": "v2 body",
+                 "tags": "[]", "version": 2},
+            ]),
+             "2026-01-01T00:00:00"))
+        conn.commit()
+        item_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
+        result = rollback_kb_item(self.graph_dir, item_id, to_version=1)
+        self.assertTrue(result.get("rolled_back"), result)
+        self.assertEqual(result["restored_to_version"], 1)
+        conn = _kb_connect(self.graph_dir)
+        row = conn.execute("SELECT title, body FROM kb_items WHERE id=?",
+                           (item_id,)).fetchone()
+        conn.close()
+        self.assertEqual(row["title"], "v1 title")
+        self.assertEqual(row["body"], "v1 body")
+
+    def test_rollback_invalid_to_version(self):
+        """rollback_kb_item with out-of-range to_version returns error."""
+        from _builder.kb.kb_index import _kb_connect
+        import json as _json
+        conn = _kb_connect(self.graph_dir)
+        conn.execute(
+            "INSERT INTO kb_items (kind, title, body, tags, versions_json, "
+            "created_at) "
+            "VALUES ('memory_qa', 'current', 'body', '[]', ?, ?)",
+            (_json.dumps([{"title": "v1", "body": "b1", "version": 1}]),
+             "2026-01-01T00:00:00"))
+        conn.commit()
+        item_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
+        result = rollback_kb_item(self.graph_dir, item_id, to_version=99)
+        self.assertIn("error", result)
+        self.assertIn("no version", result["error"])
+
+    def test_rollback_nonexistent_item(self):
+        """rollback_kb_item on nonexistent id returns error."""
+        result = rollback_kb_item(self.graph_dir, 999999)
+        self.assertIn("error", result)
+
+    def test_forget_nonexistent_item(self):
+        """forget_kb_paragraph on nonexistent id returns error."""
+        result = forget_kb_paragraph(self.graph_dir, 999999, "test")
+        self.assertIn("error", result)
+
 
 class TestKbGlobal(unittest.TestCase):
     def setUp(self):

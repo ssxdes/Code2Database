@@ -336,6 +336,101 @@ class TestRebuildAndQueryKB(unittest.TestCase):
         results = query_kb(self.graph_dir, "test", top_n=5)
         self.assertEqual(len(results), 0)
 
+    def test_see_also_populated_after_clustering(self):
+        """Results with scope_id carry see_also siblings."""
+        upsert_kb_paragraph(self.graph_dir, "memory", "a.json",
+                            "bdev register", "bdev_register calls io_device_register")
+        upsert_kb_paragraph(self.graph_dir, "memory", "b.json",
+                            "bdev registration flow", "bdev_register registers io_device")
+        upsert_kb_paragraph(self.graph_dir, "memory", "c.json",
+                            "unrelated topic", "completely different content here")
+        # Cluster to assign scope_ids
+        cluster_kb(self.graph_dir, threshold=0.15, verbose=False)
+        results = query_kb(self.graph_dir, "bdev", top_n=10)
+        self.assertGreater(len(results), 0)
+        # At least one result should have a scope_id and see_also
+        has_see_also = any(
+            r.get("scope_id") is not None and len(r.get("see_also", [])) > 0
+            for r in results
+        )
+        self.assertTrue(has_see_also,
+                        f"no result had see_also: {[(r.get('scope_id'), r.get('see_also')) for r in results]}")
+        # The see_also entries must exclude the result itself
+        for r in results:
+            for sa in r.get("see_also", []):
+                self.assertNotEqual(sa["id"], r["id"])
+
+    def test_update_access_false_skips_access_count_increment(self):
+        """update_access=False must not mutate the DB."""
+        upsert_kb_paragraph(self.graph_dir, "memory", "test.json",
+                            "access test", "access test body content")
+        # Query with update_access=False
+        results = query_kb(self.graph_dir, "access", top_n=5,
+                           update_access=False, log_query=False)
+        self.assertGreater(len(results), 0)
+        rid = results[0]["id"]
+        # Check access_count is still 0
+        conn = _kb_connect(self.graph_dir)
+        try:
+            row = conn.execute(
+                "SELECT access_count FROM kb_paragraphs WHERE id = ?",
+                (rid,)).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(row)
+        self.assertEqual(row["access_count"], 0,
+                         "access_count must not change when update_access=False")
+
+    def test_update_access_true_increments_access_count(self):
+        """update_access=True (default) increments access_count."""
+        upsert_kb_paragraph(self.graph_dir, "memory", "test.json",
+                            "access test", "access test body content")
+        results = query_kb(self.graph_dir, "access", top_n=5,
+                           update_access=True, log_query=False)
+        self.assertGreater(len(results), 0)
+        rid = results[0]["id"]
+        conn = _kb_connect(self.graph_dir)
+        try:
+            row = conn.execute(
+                "SELECT access_count FROM kb_paragraphs WHERE id = ?",
+                (rid,)).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(row)
+        self.assertGreater(row["access_count"], 0,
+                           "access_count must increment when update_access=True")
+
+    def test_min_weight_filter(self):
+        """min_weight filters out low-weight entries."""
+        upsert_kb_paragraph(self.graph_dir, "memory", "low.json",
+                            "weight test", "weight test body", weight=0.3)
+        upsert_kb_paragraph(self.graph_dir, "memory", "high.json",
+                            "weight test high", "weight test body high", weight=2.0)
+        results = query_kb(self.graph_dir, "weight", top_n=10, min_weight=1.0)
+        self.assertGreater(len(results), 0)
+        for r in results:
+            self.assertGreaterEqual(r["weight"], 1.0)
+
+    def test_max_tokens_truncates_body(self):
+        """max_tokens truncates very long body text."""
+        long_body = "release memory " * 500  # ~8000 chars
+        upsert_kb_paragraph(self.graph_dir, "memory", "long.json",
+                            "truncation test", long_body)
+        results = query_kb(self.graph_dir, "truncation", top_n=5,
+                           max_tokens=100, update_access=False, log_query=False)
+        self.assertGreater(len(results), 0)
+        for r in results:
+            if "truncation" in r["title"].lower():
+                self.assertIn("(truncated)", r["body"])
+
+    def test_empty_query_returns_empty(self):
+        results = query_kb(self.graph_dir, "", top_n=5)
+        self.assertEqual(len(results), 0)
+
+    def test_whitespace_query_returns_empty(self):
+        results = query_kb(self.graph_dir, "   ", top_n=5)
+        self.assertEqual(len(results), 0)
+
 
 class TestRebuildSkipSignature(unittest.TestCase):
     """The incremental skip decides 'unchanged' from the mtimes of the

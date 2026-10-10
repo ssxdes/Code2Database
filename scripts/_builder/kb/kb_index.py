@@ -1048,24 +1048,29 @@ def sync_brief_to_kb(graph_dir: str, brief: dict) -> int:
         conn.execute(
             "DELETE FROM kb_paragraphs WHERE source_file = ?",
             ("brief.json",))
-        # Insert the new paragraphs.
+        # Insert the new paragraphs in one executemany call.
+        now = datetime.now().isoformat()
+        rows = []
         for p in paragraphs:
             pbody = p["body"]
-            conn.execute(
+            rows.append((
+                p["source_kind"], p["source_file"], p["para_index"],
+                p["title"], pbody, _cjk_pre_tokenize(pbody),
+                p.get("tags"),
+                p.get("node_ids"), p.get("weight", 1.0),
+                p.get("confidence", 1.0), p.get("kind", "knowledge"),
+                p.get("graph_version"), now,
+                p.get("version_scope") or "default",
+            ))
+        if rows:
+            conn.executemany(
                 "INSERT INTO kb_paragraphs "
                 "(source_kind, source_file, para_index, title, body, "
                 " body_tokenized, tags, "
                 " node_ids, weight, confidence, kind, graph_version, "
                 " created_at, access_count, version_scope) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
-                (p["source_kind"], p["source_file"], p["para_index"],
-                 p["title"], pbody, _cjk_pre_tokenize(pbody),
-                 p.get("tags"),
-                 p.get("node_ids"), p.get("weight", 1.0),
-                 p.get("confidence", 1.0), p.get("kind", "knowledge"),
-                 p.get("graph_version"),
-                 datetime.now().isoformat(),
-                 p.get("version_scope") or "default"))
+                rows)
         conn.commit()
         return len(paragraphs)
     except sqlite3.Error as exc:

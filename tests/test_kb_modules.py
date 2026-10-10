@@ -630,6 +630,81 @@ class TestKbCluster(unittest.TestCase):
         self.assertEqual(summary["items_clustered"], 2)
         self.assertEqual(summary["cluster_count"], 1)
 
+    def test_cluster_assigns_canonical_id(self):
+        """Each cluster's highest weight x confidence member becomes canonical."""
+        _make_memory_entry(self.graph_dir, 1,
+                           "how does bdev register io_device",
+                           "bdev_register calls io_device_register",
+                           tags=["bdev"])
+        _make_memory_entry(self.graph_dir, 2,
+                           "how does bdev register io_device",
+                           "bdev_register calls io_device_register differently",
+                           tags=["bdev"])
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        cluster_kb(self.graph_dir, threshold=0.1, verbose=False)
+        conn = _kb_connect(self.graph_dir)
+        try:
+            rows = conn.execute(
+                "SELECT id, scope_id, canonical_id, weight "
+                "FROM kb_paragraphs WHERE scope_id IS NOT NULL "
+                "ORDER BY weight DESC"
+            ).fetchall()
+            self.assertGreater(len(rows), 0)
+            # All rows in the same cluster must have the same canonical_id
+            scope_ids = {r["scope_id"] for r in rows}
+            for sid in scope_ids:
+                members = [r for r in rows if r["scope_id"] == sid]
+                canonicals = {r["canonical_id"] for r in members}
+                self.assertEqual(len(canonicals), 1,
+                                 f"cluster {sid} has multiple canonical_ids: {canonicals}")
+                # The canonical_id must point to an actual member
+                member_ids = {r["id"] for r in members}
+                self.assertIn(list(canonicals)[0], member_ids)
+        finally:
+            conn.close()
+
+    def test_cluster_links_principle_ref(self):
+        """Memory entries linked to knowledge principles via principle_ref."""
+        # Create several memory entries whose text overlaps with a hard_rule.
+        # BM25 scoring on a tiny corpus can produce near-zero scores, so
+        # we seed enough paragraphs for the FTS5 match to score above 1.0.
+        for i in range(5):
+            _make_memory_entry(self.graph_dir, i + 1,
+                               f"bdev register rule {i}",
+                               f"All bdev modules must call bdev_register "
+                               f"before use variant {i}",
+                               tags=["bdev"])
+        # A knowledge brief with a matching hard_rule
+        _make_knowledge_md(self.graph_dir, "principles.md",
+                           "## bdev registration\n\n"
+                           "All bdev modules must call bdev_register before use.\n")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        summary = cluster_kb(self.graph_dir, threshold=0.1, verbose=False)
+        self.assertTrue(summary["clustered"])
+        # At least one principle_ref should be linked when memory text
+        # overlaps with a knowledge principle
+        self.assertGreater(summary["principle_refs_linked"], 0,
+                           f"no principle_refs linked: {summary}")
+        conn = _kb_connect(self.graph_dir)
+        try:
+            rows = conn.execute(
+                "SELECT id, kind, principle_ref FROM kb_paragraphs "
+                "WHERE kind = 'memory_qa' AND principle_ref IS NOT NULL"
+            ).fetchall()
+            self.assertGreater(len(rows), 0,
+                               "no memory_qa with principle_ref set")
+            for r in rows:
+                self.assertIsNotNone(r["principle_ref"])
+        finally:
+            conn.close()
+
+    def test_cluster_empty_kb(self):
+        """Empty kb store returns zero clusters."""
+        summary = cluster_kb(self.graph_dir, threshold=0.1, verbose=False)
+        self.assertTrue(summary["clustered"])
+        self.assertEqual(summary["cluster_count"], 0)
+        self.assertEqual(summary["items_clustered"], 0)
+
 
 class TestKbAudit(unittest.TestCase):
     def setUp(self):

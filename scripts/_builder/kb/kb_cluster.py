@@ -215,14 +215,24 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
             if not query_text.strip():
                 continue
             try:
-                match_expr = _fts5_escape(query_text[:500])
-                # Link memory_qa entries to principle-like brief sections.
-                # The actual kinds emitted by _brief_sections_as_paragraphs
-                # are: description, must_know, hard_rule, mode, abstraction,
-                # convention, pitfall, query_path. 'principle' and 'fact'
-                # are never inserted (dead code in the original query).
-                # We match against the rule/convention/abstraction kinds
-                # that represent project principles.
+                # Build an OR-joined match expression so a principle that
+                # shares even a subset of the memory's tokens is a
+                # candidate.  The AND-join from _fts5_escape requires
+                # every token to appear, which excludes valid principles
+                # that merely overlap on the key terms.
+                raw_tokens = _re.findall(r'[A-Za-z0-9_]+', query_text[:500].lower())
+                # Deduplicate while preserving order
+                seen_tok: set = set()
+                unique_tokens: list = []
+                for t in raw_tokens:
+                    if t not in seen_tok:
+                        seen_tok.add(t)
+                        unique_tokens.append(t)
+                if unique_tokens:
+                    match_expr = " OR ".join(
+                        f'"{t}"' for t in unique_tokens)
+                else:
+                    match_expr = _fts5_escape(query_text[:500])
                 pr_rows = conn.execute(
                     "SELECT kb_paragraphs.id, -bm25(kb_paragraphs_fts) AS score "
                     "FROM kb_paragraphs_fts JOIN kb_paragraphs "
@@ -233,10 +243,13 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
                     "ORDER BY score DESC LIMIT 1",
                     (match_expr,)
                 ).fetchall()
-                # BM25 scores are on a different scale (typically 1-15+)
-                # than the Jaccard threshold (0-1). Use a BM25-appropriate
-                # threshold: 1.0 means "at least some textual overlap".
-                if pr_rows and pr_rows[0]["score"] >= 1.0:
+                # BM25 on a pre-tokenized FTS5 column (body_tokenized)
+                # produces very small scores on small corpora because the
+                # porter unicode61 tokenizer sees each space-separated
+                # segment as a token. Use a low threshold (any positive
+                # score means the principle shares at least one term with
+                # the memory entry via FTS5 OR-match).
+                if pr_rows and pr_rows[0]["score"] > 0:
                     conn.execute(
                         "UPDATE kb_paragraphs SET principle_ref = ? WHERE id = ?",
                         (pr_rows[0]["id"], mr["id"])

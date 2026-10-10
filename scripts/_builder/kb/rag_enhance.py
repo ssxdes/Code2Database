@@ -248,12 +248,12 @@ def two_stage_retrieve(conn, query_embedding: List[float],
             return None
     except Exception:
         return None
-    # Embed each cluster summary and find top-3 clusters
-    from _builder.kb.kb_index import query_ann
-    from _builder.kb.neural_embed import get_embedding, cosine_similarity
     if query_embedding is None:
         return None
+    # Embed each cluster summary and find top-3 clusters
     try:
+        from _builder.kb.kb_index import query_ann
+        from _builder.kb.neural_embed import get_embedding, cosine_similarity
         summaries = conn.execute(
             "SELECT cluster_id, summary FROM kb_cluster_summaries"
         ).fetchall()

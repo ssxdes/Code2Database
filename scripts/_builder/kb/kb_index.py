@@ -1578,9 +1578,13 @@ def _query_foreign_kb(conn: sqlite3.Connection, query: str, top_n: int,
 
     ATTACHes each foreign db read-only and queries its kb_paragraphs_fts.
     Returns results tagged with source_db so consumers know which C2D
-    each hit came from.
+    each hit came from.  When the query contains CJK and FTS5 returns
+    no results, falls back to token-set similarity (same approach as
+    query_kb).
     """
     match_expr = _fts5_escape(query)
+    cjk_query = _has_cjk(query)
+    q_tokens = _simple_tokenize(query) if cjk_query else set()
     foreign_results: List[Dict[str, Any]] = []
     try:
         watched = conn.execute(
@@ -1616,6 +1620,30 @@ def _query_foreign_kb(conn: sqlite3.Connection, query: str, top_n: int,
                 f"ORDER BY score DESC LIMIT ?",
                 (match_expr, min_weight, top_n)
             ).fetchall()
+            # CJK fallback: when the query contains CJK and FTS5
+            # returned no results, scan high-weight candidates and
+            # match via token-set similarity (same approach as query_kb).
+            sim_scores: Dict[int, float] = {}
+            if not rows and cjk_query:
+                cand = conn.execute(
+                    f"SELECT p.id, p.source_kind, p.source_file, p.title, "
+                    f"p.body, p.tags, p.weight, p.kind "
+                    f"FROM {alias}.kb_paragraphs p "
+                    f"WHERE p.weight >= ? "
+                    f"ORDER BY p.weight DESC LIMIT 200",
+                    (min_weight,)
+                ).fetchall()
+                scored = []
+                for c in cand:
+                    e_tokens = _simple_tokenize(" ".join(
+                        [c["title"] or "", c["body"] or "", c["tags"] or ""]))
+                    sim = _similarity_score(q_tokens, e_tokens)
+                    if sim > 0:
+                        scored.append((sim, c))
+                scored.sort(key=lambda x: -x[0])
+                rows = [c for _, c in scored[:top_n]]
+                for sim, c in scored[:top_n]:
+                    sim_scores[c["id"]] = sim
             max_chars = max_tokens * 4
             for r in rows:
                 body = r["body"] or ""
@@ -1627,6 +1655,7 @@ def _query_foreign_kb(conn: sqlite3.Connection, query: str, top_n: int,
                         tags = json.loads(tags)
                     except (json.JSONDecodeError, TypeError):
                         tags = []
+                score = r["score"] if "score" in r.keys() else sim_scores.get(r["id"], 0.0)
                 foreign_results.append({
                     "id": r["id"],
                     "source_kind": r["source_kind"],
@@ -1636,7 +1665,7 @@ def _query_foreign_kb(conn: sqlite3.Connection, query: str, top_n: int,
                     "tags": tags or [],
                     "weight": round(r["weight"], 4),
                     "kind": r["kind"],
-                    "score": round(r["score"], 4),
+                    "score": round(score, 4),
                     "source_db": c2d_path,
                     "foreign_project": project_name,
                 })
@@ -1760,6 +1789,8 @@ def _query_watched_kbs(conn: sqlite3.Connection, query: str, top_n: int,
     unqualified (an alias-qualified operand is rejected by SQLite).
     """
     match_expr = _fts5_escape(query)
+    cjk_query = _has_cjk(query)
+    q_tokens = _simple_tokenize(query) if cjk_query else set()
     out: List[Dict[str, Any]] = []
     try:
         watched = conn.execute(
@@ -1791,11 +1822,36 @@ def _query_watched_kbs(conn: sqlite3.Connection, query: str, top_n: int,
             )
             rows = conn.execute(sql, (match_expr, min_weight, top_n)
                                 ).fetchall()
+            sim_scores: Dict[int, float] = {}
+            # CJK fallback: when the query contains CJK and FTS5
+            # returned no results, scan high-weight candidates and
+            # match via token-set similarity (same approach as query_kb).
+            if not rows and cjk_query:
+                cand_sql = (
+                    f"SELECT p.id, p.source_kind, p.source_file, p.title, "
+                    f"p.body, p.tags, p.weight, p.kind, p.version_scope "
+                    f"FROM {alias}.kb_paragraphs p "
+                    f"WHERE p.weight >= ? "
+                    f"ORDER BY p.weight DESC LIMIT 200"
+                )
+                cand = conn.execute(cand_sql, (min_weight,)).fetchall()
+                scored = []
+                for c in cand:
+                    e_tokens = _simple_tokenize(" ".join(
+                        [c["title"] or "", c["body"] or "", c["tags"] or ""]))
+                    sim = _similarity_score(q_tokens, e_tokens)
+                    if sim > 0:
+                        scored.append((sim, c))
+                scored.sort(key=lambda x: -x[0])
+                rows = [c for _, c in scored[:top_n]]
+                for sim, c in scored[:top_n]:
+                    sim_scores[c["id"]] = sim
             max_chars = max_tokens * 4
             for r in rows:
                 body = r["body"] or ""
                 if len(body) > max_chars:
                     body = body[:max_chars] + "\n... (truncated)"
+                score = r["score"] if "score" in r.keys() else sim_scores.get(r["id"], 0.0)
                 out.append({
                     "id": r["id"],
                     "source_kind": r["source_kind"],
@@ -1805,7 +1861,7 @@ def _query_watched_kbs(conn: sqlite3.Connection, query: str, top_n: int,
                     "tags": r["tags"] or [],
                     "weight": round(r["weight"], 4),
                     "kind": r["kind"],
-                    "score": round(r["score"], 4),
+                    "score": round(score, 4),
                     "version_scope": r["version_scope"] or "default",
                     "source_domain": domain,
                     "source_kb": kb_path,

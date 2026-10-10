@@ -115,6 +115,16 @@ class TestWatchedKbs(_DomainBase):
         results = query_kb(self.local, "locking work", cross=True)
         self.assertEqual(results, [])
 
+    def test_cross_query_cjk_fallback(self):
+        """Cross-domain query finds CJK entries via similarity fallback
+        when FTS5 MATCH returns no results on the remote store."""
+        self._seed_remote("内存释放方法", "调用free函数释放分配的内存块")
+        watch_kb(self.local, self.remote)
+        results = query_kb(self.local, "怎样释放内存", cross=True)
+        remote = [r for r in results if r.get("source_domain") == "remote"]
+        self.assertGreater(len(remote), 0,
+                            f"no CJK cross-domain hits: {results}")
+
 
 if __name__ == "__main__":
     unittest.main()

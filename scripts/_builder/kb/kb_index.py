@@ -1449,15 +1449,18 @@ def build_ann_index(graph_dir: str, model: str = "",
                  for r in rows]
         embeddings = get_embedding_batch(texts)
         dim = 0
+        update_data = []
         for r, emb in zip(rows, embeddings):
             if emb is None:
                 continue
             if dim == 0:
                 dim = len(emb)
             blob = struct.pack(f"{dim}f", *emb)
-            conn.execute(
+            update_data.append((blob, r["id"]))
+        if update_data:
+            conn.executemany(
                 "UPDATE kb_paragraphs SET embedding = ? WHERE id = ?",
-                (blob, r["id"]))
+                update_data)
         conn.commit()
         if dim == 0:
             return {"built": False, "reason": "no embeddings generated"}
@@ -1479,10 +1482,10 @@ def build_ann_index(graph_dir: str, model: str = "",
             "SELECT id, embedding FROM kb_paragraphs "
             "WHERE embedding IS NOT NULL"
         ).fetchall()
-        for r in all_rows:
-            conn.execute(
+        if all_rows:
+            conn.executemany(
                 "INSERT INTO kb_vec(rowid, embedding) VALUES (?, ?)",
-                (r["id"], r["embedding"]))
+                [(r["id"], r["embedding"]) for r in all_rows])
         conn.commit()
         return {
             "built": True, "embedded": len(rows),

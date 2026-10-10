@@ -141,6 +141,24 @@ class TestGraphWalkDegradation(unittest.TestCase):
         finally:
             tmp.cleanup()
 
+    def test_db_without_cgdb_nodes_table(self):
+        """code2database.db exists (tree-sitter backend) but cgdb_nodes
+        table is absent — graph_walk returns results unchanged."""
+        import sqlite3
+        tmp = tempfile.TemporaryDirectory()
+        try:
+            db_path = os.path.join(tmp.name, "code2database.db")
+            conn = sqlite3.connect(db_path)
+            conn.execute("CREATE TABLE functions(id INTEGER, name TEXT)")
+            conn.commit()
+            conn.close()
+            results = [{"id": 1, "body": "a", "node_ids": [1]}]
+            out = graph_walk(results, tmp.name)
+            self.assertEqual(len(out), 1)
+            self.assertNotIn("graph_context", out[0])
+        finally:
+            tmp.cleanup()
+
 
 class TestHydeDegradation(unittest.TestCase):
 

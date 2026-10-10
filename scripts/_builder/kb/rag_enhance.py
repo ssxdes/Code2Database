@@ -192,6 +192,14 @@ def graph_walk(results: List[Dict[str, Any]],
         conn = sqlite3.connect(f"file:{c2d_path}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
         try:
+            # tree-sitter backend produces code2database.db without
+            # cgdb tables; skip graph expansion gracefully.
+            _has_cgdb = conn.execute(
+                "SELECT 1 FROM sqlite_master "
+                "WHERE type='table' AND name='cgdb_nodes'"
+            ).fetchone()
+            if not _has_cgdb:
+                return results
             for r in results:
                 node_ids_raw = r.get("node_ids")
                 if isinstance(node_ids_raw, str):

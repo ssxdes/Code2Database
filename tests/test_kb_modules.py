@@ -1060,6 +1060,173 @@ class TestKbGlobal(unittest.TestCase):
             self.assertFalse(any("principle entry" == r["title"]
                                  for r in results2))
 
+    def test_global_share_rejects_path_traversal(self):
+        """global_share must reject relative paths escaping CWD."""
+        from _builder.kb.kb_global import global_add, global_share
+        global_add(title="traversal test", body="body", kind="principle")
+        result = global_share("../../etc/passwd")
+        self.assertEqual(result, "")
+
+    def test_global_share_absolute_path_outside_cwd(self):
+        """global_share accepts absolute paths outside CWD."""
+        from _builder.kb.kb_global import global_add, global_share
+        global_add(title="abs path test", body="body", kind="principle")
+        out_path = os.path.join(self.tmpdir, "sub", "export.json")
+        result = global_share(out_path)
+        self.assertNotEqual(result, "")
+        self.assertTrue(os.path.exists(result))
+
+    def test_global_import_rejects_oversized_file(self):
+        """global_import rejects files > 50MB."""
+        from _builder.kb.kb_global import global_import
+        big_path = os.path.join(self.tmpdir, "big.json")
+        with open(big_path, "wb") as f:
+            f.write(b'{"entries":[]}' + b' ' * (51 * 1024 * 1024))
+        imported = global_import(big_path)
+        self.assertEqual(imported, 0)
+
+    def test_global_import_rejects_nonexistent_file(self):
+        """global_import returns 0 for nonexistent file."""
+        from _builder.kb.kb_global import global_import
+        result = global_import("/nonexistent/path/file.json")
+        self.assertEqual(result, 0)
+
+    def test_global_import_rejects_corrupt_json(self):
+        """global_import returns 0 for corrupt JSON."""
+        from _builder.kb.kb_global import global_import
+        bad_path = os.path.join(self.tmpdir, "bad.json")
+        with open(bad_path, "w") as f:
+            f.write("{not valid json")
+        result = global_import(bad_path)
+        self.assertEqual(result, 0)
+
+    def test_global_import_skips_oversized_entries(self):
+        """global_import skips individual entries > 100KB body."""
+        from _builder.kb.kb_global import global_add, global_share, global_import, global_search
+        global_add(title="normal", body="small body", kind="principle")
+        export_path = os.path.join(self.tmpdir, "export.json")
+        global_share(export_path)
+        # Manually add a huge entry to the export
+        with open(export_path) as f:
+            data = json.load(f)
+        data["entries"].append({
+            "title": "huge", "body": "x" * 200_000,
+            "kind": "principle", "tags": [],
+        })
+        with open(export_path, "w") as f:
+            json.dump(data, f)
+        # Reset to fresh global KB
+        new_home = os.path.join(self.tmpdir, "home3")
+        os.makedirs(new_home, exist_ok=True)
+        os.environ["HOME"] = new_home
+        imported = global_import(export_path)
+        # The normal entry should be imported, the huge one skipped
+        self.assertGreaterEqual(imported, 1)
+        self.assertFalse(any(r["title"] == "huge"
+                             for r in global_search("huge", top_n=10)))
+
+    def test_query_with_global_fallback_local_first(self):
+        """query_with_global_fallback returns local results when available."""
+        from _builder.kb.kb_global import (
+            global_add, query_with_global_fallback,
+        )
+        from _builder.kb.kb_index import upsert_kb_paragraph
+        import tempfile as _tf
+        with _tf.TemporaryDirectory(prefix="c2d_fallback_") as proj_dir:
+            g = os.path.join(proj_dir, "c2d-out")
+            os.makedirs(g, exist_ok=True)
+            from _builder.graph.sqlite_store import SQLiteStore
+            s = SQLiteStore(os.path.join(g, "code2database.db"))
+            s.connect(); s.close()
+            upsert_kb_paragraph(g, "memory", "test.json",
+                                "local result", "local body about bdev")
+            # Add a global entry too
+            global_add(title="global result", body="global body about bdev",
+                       kind="principle")
+            results = query_with_global_fallback(g, "bdev", top_n=10)
+            self.assertGreater(len(results), 0)
+            # Should have local results (not global)
+            self.assertTrue(any(r.get("source_kind") == "memory"
+                                for r in results))
+
+    def test_query_with_global_fallback_to_global(self):
+        """query_with_global_fallback falls back to global KB when local has no matches."""
+        from _builder.kb.kb_global import (
+            global_add, query_with_global_fallback,
+        )
+        import tempfile as _tf
+        with _tf.TemporaryDirectory(prefix="c2d_fallback_") as proj_dir:
+            g = os.path.join(proj_dir, "c2d-out")
+            os.makedirs(g, exist_ok=True)
+            from _builder.graph.sqlite_store import SQLiteStore
+            s = SQLiteStore(os.path.join(g, "code2database.db"))
+            s.connect(); s.close()
+            # Add only a global entry
+            global_add(title="fallback global", body="global knowledge about nvme",
+                       kind="principle")
+            results = query_with_global_fallback(g, "nvme", top_n=10)
+            self.assertGreater(len(results), 0)
+            # Should have global results
+            self.assertTrue(any("global" in r.get("title", "").lower()
+                                or "nvme" in r.get("body", "").lower()
+                                for r in results))
+
+    def test_global_import_memory_imports_new(self):
+        """global_import_memory imports new Q&A when no similar exists."""
+        from _builder.kb.kb_global import (
+            global_add, global_import_memory,
+        )
+        from _builder.memory.memory_store import MemoryStore
+        import tempfile as _tf
+        with _tf.TemporaryDirectory(prefix="c2d_gim_") as proj_dir:
+            g = os.path.join(proj_dir, "c2d-out")
+            os.makedirs(g, exist_ok=True)
+            from _builder.graph.sqlite_store import SQLiteStore
+            s = SQLiteStore(os.path.join(g, "code2database.db"))
+            s.connect(); s.close()
+            # Add a global memory_qa entry
+            global_add(title="how to configure dma",
+                       body="call dma_config() with channel id",
+                       kind="memory_qa",
+                       source_project="other_project",
+                       weight=2.0)
+            # Import into project
+            result = global_import_memory(g, "configure dma", top_n=5)
+            self.assertGreater(result["imported"], 0)
+            # Verify it was imported
+            store = MemoryStore(g)
+            entries = store.search("dma")
+            self.assertGreater(len(entries), 0)
+
+    def test_global_import_memory_skips_when_no_merge(self):
+        """global_import_memory skips similar entries when auto_merge=False."""
+        from _builder.kb.kb_global import (
+            global_add, global_import_memory,
+        )
+        from _builder.memory.memory_store import MemoryStore
+        import tempfile as _tf
+        with _tf.TemporaryDirectory(prefix="c2d_gim_") as proj_dir:
+            g = os.path.join(proj_dir, "c2d-out")
+            os.makedirs(g, exist_ok=True)
+            from _builder.graph.sqlite_store import SQLiteStore
+            s = SQLiteStore(os.path.join(g, "code2database.db"))
+            s.connect(); s.close()
+            # Add a local similar memory entry
+            store = MemoryStore(g)
+            store.add("how to configure dma controller",
+                      "call dma_setup with channel",
+                      no_merge=True)
+            # Add a global memory_qa entry with very similar question
+            global_add(title="how to configure dma controller",
+                       body="call dma_config with channel id",
+                       kind="memory_qa",
+                       source_project="other_project",
+                       weight=2.0)
+            # Import with auto_merge=False — should skip
+            result = global_import_memory(g, "configure dma controller",
+                                          top_n=5, auto_merge=False)
+            self.assertGreater(result["skipped"], 0)
+
 
 class TestAnnIndex(unittest.TestCase):
     """build_ann_index and query_ann: vector index build and KNN search."""

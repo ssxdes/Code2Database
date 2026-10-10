@@ -159,6 +159,106 @@ class TestGraphWalkDegradation(unittest.TestCase):
         finally:
             tmp.cleanup()
 
+    def test_graph_walk_attaches_context_when_cgdb_nodes_exist(self):
+        """graph_walk attaches graph_context when cgdb_nodes has matching rows."""
+        import sqlite3
+        tmp = tempfile.TemporaryDirectory()
+        try:
+            db_path = os.path.join(tmp.name, "code2database.db")
+            conn = sqlite3.connect(db_path)
+            conn.execute(
+                "CREATE TABLE cgdb_nodes "
+                "(id INTEGER PRIMARY KEY, name TEXT, description TEXT, "
+                " legacy_function_id INTEGER)")
+            conn.execute(
+                "INSERT INTO cgdb_nodes (id, name, description, legacy_function_id) "
+                "VALUES (1, 'bdev_register', 'Registers a block device module', 10)")
+            conn.execute(
+                "INSERT INTO cgdb_nodes (id, name, description, legacy_function_id) "
+                "VALUES (2, 'bdev_unregister', 'Unregisters a block device module', 11)")
+            conn.commit()
+            conn.close()
+            results = [
+                {"id": 1, "body": "a", "node_ids": [1]},
+                {"id": 2, "body": "b", "node_ids": [2]},
+                {"id": 3, "body": "c", "node_ids": []},
+            ]
+            out = graph_walk(results, tmp.name)
+            self.assertEqual(len(out), 3)
+            self.assertIn("graph_context", out[0])
+            self.assertIn("graph_context", out[1])
+            self.assertNotIn("graph_context", out[2])
+            self.assertEqual(out[0]["graph_context"][0]["node"], "bdev_register")
+        finally:
+            tmp.cleanup()
+
+    def test_graph_walk_handles_node_ids_as_json_string(self):
+        """graph_walk handles node_ids stored as a JSON string."""
+        import sqlite3
+        tmp = tempfile.TemporaryDirectory()
+        try:
+            db_path = os.path.join(tmp.name, "code2database.db")
+            conn = sqlite3.connect(db_path)
+            conn.execute(
+                "CREATE TABLE cgdb_nodes "
+                "(id INTEGER PRIMARY KEY, name TEXT, description TEXT, "
+                " legacy_function_id INTEGER)")
+            conn.execute(
+                "INSERT INTO cgdb_nodes (id, name, description) "
+                "VALUES (5, 'test_fn', 'A test function description')")
+            conn.commit()
+            conn.close()
+            results = [{"id": 1, "body": "a", "node_ids": "[5]"}]
+            out = graph_walk(results, tmp.name)
+            self.assertEqual(len(out), 1)
+            self.assertIn("graph_context", out[0])
+        finally:
+            tmp.cleanup()
+
+    def test_graph_walk_skips_node_not_found(self):
+        """graph_walk skips node_ids that don't exist in cgdb_nodes."""
+        import sqlite3
+        tmp = tempfile.TemporaryDirectory()
+        try:
+            db_path = os.path.join(tmp.name, "code2database.db")
+            conn = sqlite3.connect(db_path)
+            conn.execute(
+                "CREATE TABLE cgdb_nodes "
+                "(id INTEGER PRIMARY KEY, name TEXT, description TEXT, "
+                " legacy_function_id INTEGER)")
+            conn.execute(
+                "INSERT INTO cgdb_nodes (id, name, description) "
+                "VALUES (1, 'found_fn', 'Found function description')")
+            conn.commit()
+            conn.close()
+            results = [{"id": 1, "body": "a", "node_ids": [1, 999]}]
+            out = graph_walk(results, tmp.name)
+            self.assertEqual(len(out), 1)
+            self.assertIn("graph_context", out[0])
+            # Only node 1 was found
+            self.assertEqual(len(out[0]["graph_context"]), 1)
+        finally:
+            tmp.cleanup()
+
+
+class TestRerankLocalProvider(unittest.TestCase):
+    """rerank with a local CrossEncoder reranker (mocked)."""
+
+    def test_local_reranker_reorders_results(self):
+        results = [
+            {"id": 1, "body": "unrelated content"},
+            {"id": 2, "body": "release memory with free()"},
+            {"id": 3, "body": "random other text"},
+        ]
+        mock_reranker = MagicMock()
+        mock_reranker.predict.return_value = [0.1, 0.95, 0.2]
+        with patch("_builder.kb.rag_enhance._get_reranker",
+                   return_value=mock_reranker):
+            out = rerank(results, "how to release memory", top_n=3)
+        self.assertEqual(len(out), 3)
+        self.assertEqual(out[0]["id"], 2)  # highest score
+        self.assertIn("rerank_score", out[0])
+
 
 class TestHydeDegradation(unittest.TestCase):
 
@@ -170,6 +270,18 @@ class TestHydeDegradation(unittest.TestCase):
             self.assertIsNone(hyde_expand("how to release memory"))
 
 
+class TestHydeHappyPath(unittest.TestCase):
+
+    def test_returns_hypothetical_answer_when_llm_available(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key",
+                                      "OPENAI_API_BASE": "http://mock"}):
+            with patch("_builder.kb.rag_enhance._call_llm",
+                       return_value="Call free() on the allocated pointer."):
+                result = hyde_expand("how to release memory")
+        self.assertIsNotNone(result)
+        self.assertIn("free", result.lower())
+
+
 class TestMultiQueryDecomposition(unittest.TestCase):
 
     def test_returns_original_when_no_llm(self):
@@ -179,6 +291,84 @@ class TestMultiQueryDecomposition(unittest.TestCase):
                                       "LLM_API_BASE": ""}):
             result = multi_query_decompose("how to release memory")
             self.assertEqual(result, ["how to release memory"])
+
+    def test_decomposes_when_llm_available(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key",
+                                      "OPENAI_API_BASE": "http://mock"}):
+            with patch("_builder.kb.rag_enhance._call_llm",
+                       return_value="how to free memory\n"
+                                    "memory deallocation function\n"
+                                    "release allocated resources"):
+                result = multi_query_decompose("how to release memory")
+        self.assertEqual(len(result), 3)
+        self.assertIn("free memory", result[0])
+
+    def test_returns_original_when_llm_returns_empty(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key",
+                                      "OPENAI_API_BASE": "http://mock"}):
+            with patch("_builder.kb.rag_enhance._call_llm",
+                       return_value=""):
+                result = multi_query_decompose("how to release memory")
+        self.assertEqual(result, ["how to release memory"])
+
+    def test_returns_original_when_llm_returns_whitespace(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key",
+                                      "OPENAI_API_BASE": "http://mock"}):
+            with patch("_builder.kb.rag_enhance._call_llm",
+                       return_value="   \n  \n  "):
+                result = multi_query_decompose("how to release memory")
+        self.assertEqual(result, ["how to release memory"])
+
+
+class TestCallLlm(unittest.TestCase):
+
+    def test_returns_none_when_no_key(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "",
+                                      "LLM_API_KEY": ""}):
+            from _builder.kb.rag_enhance import _call_llm
+            result = _call_llm("test prompt")
+        self.assertIsNone(result)
+
+    def test_returns_response_when_api_succeeds(self):
+        from _builder.kb.rag_enhance import _call_llm
+        api_response = {
+            "choices": [{"message": {"content": "LLM response text"}}]
+        }
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(api_response).encode()
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key",
+                                      "OPENAI_API_BASE": "http://mock"}):
+            with patch("urllib.request.urlopen", return_value=mock_resp):
+                result = _call_llm("test prompt")
+        self.assertEqual(result, "LLM response text")
+
+    def test_returns_none_on_api_error(self):
+        from _builder.kb.rag_enhance import _call_llm
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key",
+                                      "OPENAI_API_BASE": "http://mock"}):
+            with patch("urllib.request.urlopen",
+                       side_effect=Exception("network error")):
+                result = _call_llm("test prompt")
+        self.assertIsNone(result)
+
+
+class TestDetectLlmProvider(unittest.TestCase):
+
+    def test_returns_none_when_no_env(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "",
+                                      "LLM_API_KEY": "",
+                                      "OPENAI_API_BASE": "",
+                                      "LLM_API_BASE": ""}):
+            from _builder.kb.rag_enhance import _detect_llm_provider
+            self.assertEqual(_detect_llm_provider(), "none")
+
+    def test_returns_openai_when_base_and_key_set(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "key",
+                                      "OPENAI_API_BASE": "http://mock"}):
+            from _builder.kb.rag_enhance import _detect_llm_provider
+            self.assertEqual(_detect_llm_provider(), "openai")
 
 
 if __name__ == "__main__":

@@ -810,9 +810,11 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
         return {"rebuilt": False, "reason": "no_store",
                 "memory_count": 0, "knowledge_count": 0}
     try:
-        # P4: Incremental skip — compute max mtime of all source files
-        # and compare against stored value. If unchanged, skip rebuild.
+        # P4: Incremental skip — compute a change signature from all
+        # source files (max mtime + file count) and compare against
+        # stored values. If both match, skip rebuild.
         _max_mtime = 0.0
+        _file_count = 0
         _mem_dir = os.path.join(graph_dir, "memory")
         _know_dir = os.path.join(graph_dir, "knowledge")
         for _d in (_mem_dir, _know_dir):
@@ -825,24 +827,30 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
                             _mt = os.path.getmtime(_fpath)
                             if _mt > _max_mtime:
                                 _max_mtime = _mt
+                            _file_count += 1
                         except OSError as _e:
                             logging.getLogger(__name__).debug(
                                 "getmtime failed for %s: %s", _fpath, _e)
         try:
-            _row = conn.execute(
+            _mtime_row = conn.execute(
                 "SELECT value FROM kb_meta WHERE key = 'last_rebuild_mtime'"
             ).fetchone()
-            # Use strict equality (==), not >=. >= wrongly skips when:
-            #   - A file was deleted → new max < stored → stored >= new_max
-            #     is True, but paragraphs from the deleted file are stale.
-            #   - The directory became empty → new max = 0, stored is from
-            #     a previous non-empty build → stored >= 0 is True, but
-            #     paragraphs are stale.
-            # Strict equality only matches when the set of files is exactly
-            # the same AND no file was modified (mtime is the highest it
-            # was last time). Otherwise, rebuild to drop stale paragraphs.
-            if _row is not None and _max_mtime > 0 \
-                    and float(_row["value"]) == _max_mtime:
+            _count_row_meta = conn.execute(
+                "SELECT value FROM kb_meta WHERE key = 'last_rebuild_file_count'"
+            ).fetchone()
+            # The signature is max_mtime + file_count. Both must match:
+            #   - A file was deleted but wasn't the newest → max_mtime
+            #     unchanged, but file_count drops → mismatch → rebuild.
+            #   - A file was added with an older mtime → max_mtime
+            #     unchanged, but file_count rises → mismatch → rebuild.
+            #   - A file was modified → max_mtime rises → mismatch → rebuild.
+            # Strict mtime equality (not >=) prevents stale-skip when the
+            # directory becomes empty (max drops to 0).
+            _mtime_ok = (_mtime_row is not None and _max_mtime > 0
+                         and float(_mtime_row["value"]) == _max_mtime)
+            _count_ok = (_count_row_meta is not None
+                         and int(_count_row_meta["value"]) == _file_count)
+            if _mtime_ok and _count_ok:
                 # Nothing changed — skip rebuild
                 _count_row = conn.execute(
                     "SELECT COUNT(*) AS c FROM kb_paragraphs"
@@ -921,7 +929,8 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
         except sqlite3.OperationalError:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
             pass
-        # P4: Store max source mtime for incremental skip on next rebuild
+        # P4: Store change signature (max mtime + file count) for
+        # incremental skip on next rebuild.
         try:
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS kb_meta (key TEXT PRIMARY KEY, value TEXT)"
@@ -930,6 +939,11 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
                 "INSERT OR REPLACE INTO kb_meta (key, value) "
                 "VALUES ('last_rebuild_mtime', ?)",
                 (str(_max_mtime),)
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO kb_meta (key, value) "
+                "VALUES ('last_rebuild_file_count', ?)",
+                (str(_file_count),)
             )
         except sqlite3.Error:
             pass

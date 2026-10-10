@@ -98,7 +98,7 @@ def _settle_sqlite_store(db_path):
 
 
 def _signature_state(graph_dir):
-    """Diagnostic context for skip assertions: the stored marker plus
+    """Diagnostic context for skip assertions: the stored markers plus
     every file in the scanned dirs with its mtime, so a skip that did
     not engage names the file whose timestamp moved."""
     lines = []
@@ -109,6 +109,10 @@ def _signature_state(graph_dir):
                 "SELECT value FROM kb_meta WHERE key = 'last_rebuild_mtime'"
             ).fetchone()
             lines.append(f"marker={row[0] if row else None}")
+            frow = conn.execute(
+                "SELECT value FROM kb_meta WHERE key = 'last_rebuild_file_count'"
+            ).fetchone()
+            lines.append(f"file_count_marker={frow[0] if frow else None}")
         finally:
             conn.close()
     for d in ("memory", "knowledge"):
@@ -447,6 +451,29 @@ class TestRebuildSkipSignature(unittest.TestCase):
             second["rebuilt"], _signature_state(self.graph_dir))
         self.assertEqual(second["knowledge_count"], 0)
         self.assertEqual(second["memory_count"], 1)
+
+    def test_deleted_non_newest_file_still_triggers_rebuild(self):
+        # When the deleted file was NOT the one with the highest mtime,
+        # max_mtime alone cannot detect the deletion. The file-count
+        # component of the signature must catch it.
+        _make_memory_entry(self.graph_dir, 1, "q1", "a1")
+        _settle_sqlite_store(
+            os.path.join(self.graph_dir, "memory", "memory.db"))
+        # Create knowledge file with an OLDER mtime than memory.db.
+        _make_knowledge_md(self.graph_dir, "principles.md",
+                           "## section\n\nbody\n")
+        _old_mtime = time.time() - 3600
+        os.utime(os.path.join(self.graph_dir, "knowledge", "brief.json"),
+                 (_old_mtime, _old_mtime))
+        first = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertTrue(first["rebuilt"])
+        self.assertGreaterEqual(first["knowledge_count"], 1)
+        # Delete the non-newest file — max_mtime unchanged, but count drops.
+        os.remove(os.path.join(self.graph_dir, "knowledge", "brief.json"))
+        second = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertTrue(
+            second["rebuilt"], _signature_state(self.graph_dir))
+        self.assertEqual(second["knowledge_count"], 0)
 
     def test_rebuild_without_any_sources_reports_empty(self):
         # No memory/ and no knowledge/ at all: the max-mtime guard (0

@@ -1446,7 +1446,11 @@ def build_ann_index(graph_dir: str, model: str = "",
     at least one embedding provider — returns a status dict with
     ``built: False`` and a reason when either is unavailable.
     """
-    conn = _kb_connect(graph_dir)
+    conn = None
+    try:
+        conn = _kb_connect(graph_dir)
+    except sqlite3.Error:
+        conn = None
     if conn is None:
         return {"built": False, "reason": "no kb store"}
     if not _try_load_vec_ext(conn):
@@ -1538,8 +1542,8 @@ def query_ann(conn: sqlite3.Connection,
             "       v.distance "
             "FROM kb_vec v "
             "JOIN kb_paragraphs p ON p.id = v.rowid "
-            "WHERE v.embedding MATCH ? "
-            "ORDER BY v.distance LIMIT ?",
+            "WHERE v.embedding MATCH ? AND k = ? "
+            "ORDER BY v.distance",
             (blob, top_n)
         ).fetchall()
         results = []

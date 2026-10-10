@@ -32,6 +32,9 @@ from _builder.kb.kb_index import (
     get_known_unknowns,
     _fts5_escape,
     _split_markdown_paragraphs,
+    _try_load_vec_ext,
+    build_ann_index,
+    query_ann,
 )
 from _builder.kb.kb_cluster import cluster_kb
 from _builder.kb.kb_audit import audit_kb, write_audit_log_entry
@@ -924,6 +927,182 @@ class TestKbGlobal(unittest.TestCase):
             # Should NOT find the principle entry
             self.assertFalse(any("principle entry" == r["title"]
                                  for r in results2))
+
+
+class TestAnnIndex(unittest.TestCase):
+    """build_ann_index and query_ann: vector index build and KNN search."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="kb_ann_test_")
+        self.graph_dir = os.path.join(self.tmpdir, "code2db-out")
+        os.makedirs(self.graph_dir, exist_ok=True)
+        from _builder.graph.sqlite_store import SQLiteStore
+        store = SQLiteStore(os.path.join(self.graph_dir, "code2database.db"))
+        store.connect()
+        store.close()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _seed_paragraphs(self, n=3):
+        for i in range(n):
+            upsert_kb_paragraph(
+                self.graph_dir, "memory", f"test_{i}.json",
+                f"test title {i}", f"test body content number {i}")
+
+    def test_try_load_vec_ext_returns_bool(self):
+        conn = _kb_connect(self.graph_dir)
+        try:
+            result = _try_load_vec_ext(conn)
+            self.assertIsInstance(result, bool)
+        finally:
+            conn.close()
+
+    def test_build_ann_no_kb_store(self):
+        # _kb_connect returns None when create_if_missing=False
+        # and the db doesn't exist
+        result = build_ann_index("/nonexistent/path/that/does/not/exist")
+        self.assertFalse(result["built"])
+        self.assertEqual(result.get("reason"), "no kb store")
+
+    def test_build_ann_no_provider(self):
+        self._seed_paragraphs(2)
+        import _builder.kb.neural_embed as ne
+        ne._PROVIDER_CACHE = None
+        old = os.environ.pop("OPENAI_API_KEY", None)
+        old_base = os.environ.pop("OPENAI_BASE_URL", None)
+        old_ollama = os.environ.pop("C2D_OLLAMA_URL", None)
+        try:
+            result = build_ann_index(self.graph_dir, provider="auto")
+            self.assertFalse(result["built"])
+            self.assertEqual(result["reason"], "no embedding provider")
+        finally:
+            if old:
+                os.environ["OPENAI_API_KEY"] = old
+            if old_base:
+                os.environ["OPENAI_BASE_URL"] = old_base
+            if old_ollama:
+                os.environ["C2D_OLLAMA_URL"] = old_ollama
+            ne._PROVIDER_CACHE = None
+
+    def test_build_ann_with_mocked_embeddings(self):
+        self._seed_paragraphs(3)
+        import _builder.kb.neural_embed as ne
+        import _builder.kb.kb_index as ki
+
+        def fake_get_embedding(text):
+            return [0.1, 0.2, 0.3, 0.4]
+
+        def fake_get_batch(texts):
+            return [[0.1 + i * 0.01, 0.2, 0.3, 0.4] for i in range(len(texts))]
+
+        def fake_detect():
+            return "mock"
+
+        orig_ge = ne.get_embedding
+        orig_geb = ne.get_embedding_batch
+        orig_dp = ne._detect_provider
+        orig_vec = ki._VEC_EXT_LOADED
+        ne.get_embedding = fake_get_embedding
+        ne.get_embedding_batch = fake_get_batch
+        ne._detect_provider = fake_detect
+        ne._PROVIDER_CACHE = "mock"
+        ki._VEC_EXT_LOADED = None
+        try:
+            result = build_ann_index(self.graph_dir, provider="mock")
+            self.assertTrue(result["built"], f"build failed: {result}")
+            self.assertEqual(result["embedded"], 3)
+            self.assertEqual(result["dim"], 4)
+            self.assertEqual(result["provider"], "mock")
+        finally:
+            ne.get_embedding = orig_ge
+            ne.get_embedding_batch = orig_geb
+            ne._detect_provider = orig_dp
+            ne._PROVIDER_CACHE = None
+            ki._VEC_EXT_LOADED = orig_vec
+
+    def test_build_ann_idempotent_skip(self):
+        self._seed_paragraphs(2)
+        import _builder.kb.neural_embed as ne
+        import _builder.kb.kb_index as ki
+
+        orig_ge = ne.get_embedding
+        orig_geb = ne.get_embedding_batch
+        orig_dp = ne._detect_provider
+
+        def fake_get_batch(texts):
+            return [[0.1, 0.2, 0.3, 0.4] for _ in range(len(texts))]
+
+        def fake_detect():
+            return "mock"
+
+        ne.get_embedding_batch = fake_get_batch
+        ne.get_embedding = lambda t: [0.1, 0.2, 0.3, 0.4]
+        ne._detect_provider = fake_detect
+        ne._PROVIDER_CACHE = "mock"
+        ki._VEC_EXT_LOADED = None
+        try:
+            r1 = build_ann_index(self.graph_dir, provider="mock")
+            self.assertTrue(r1["built"])
+            r2 = build_ann_index(self.graph_dir, provider="mock")
+            self.assertTrue(r2["built"])
+            self.assertEqual(r2["reason"], "all rows already embedded")
+            self.assertEqual(r2["embedded"], 0)
+        finally:
+            ne.get_embedding = orig_ge
+            ne.get_embedding_batch = orig_geb
+            ne._detect_provider = orig_dp
+            ne._PROVIDER_CACHE = None
+            ki._VEC_EXT_LOADED = None
+
+    def test_query_ann_returns_results(self):
+        self._seed_paragraphs(3)
+        import _builder.kb.neural_embed as ne
+        import _builder.kb.kb_index as ki
+
+        orig_ge = ne.get_embedding
+        orig_geb = ne.get_embedding_batch
+        orig_dp = ne._detect_provider
+
+        def fake_get_batch(texts):
+            return [[float(i), 0.0, 0.0, 0.0] for i in range(len(texts))]
+
+        def fake_detect():
+            return "mock"
+
+        ne.get_embedding_batch = fake_get_batch
+        ne.get_embedding = lambda t: [0.0, 0.0, 0.0, 0.0]
+        ne._detect_provider = fake_detect
+        ne._PROVIDER_CACHE = "mock"
+        ki._VEC_EXT_LOADED = None
+        try:
+            build_ann_index(self.graph_dir, provider="mock")
+            conn = _kb_connect(self.graph_dir)
+            try:
+                _try_load_vec_ext(conn)
+                results = query_ann(conn, [0.0, 0.0, 0.0, 0.0], top_n=5)
+                self.assertGreater(len(results), 0)
+                for r in results:
+                    self.assertIn("id", r)
+                    self.assertIn("score", r)
+                    self.assertIn("body", r)
+            finally:
+                conn.close()
+        finally:
+            ne.get_embedding = orig_ge
+            ne.get_embedding_batch = orig_geb
+            ne._detect_provider = orig_dp
+            ne._PROVIDER_CACHE = None
+            ki._VEC_EXT_LOADED = None
+
+    def test_query_ann_no_vec_table_returns_empty(self):
+        self._seed_paragraphs(1)
+        conn = _kb_connect(self.graph_dir)
+        try:
+            results = query_ann(conn, [0.1, 0.2], top_n=5)
+            self.assertEqual(len(results), 0)
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":

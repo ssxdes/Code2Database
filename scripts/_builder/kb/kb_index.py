@@ -1001,6 +1001,28 @@ def upsert_kb_paragraph(graph_dir: str, source_kind: str, source_file: str,
                     merged_ids.append(eid)
                     existing.add(eid)
         node_ids_json = json.dumps(merged_ids, ensure_ascii=False) if merged_ids else None
+        tokenized_body = _cjk_pre_tokenize(body)
+        # Deduplicate: if a row with the same (source_kind, source_file,
+        # para_index) exists, UPDATE it in place — preserving the id,
+        # scope_id, canonical_id, principle_ref, and access_count that
+        # clustering / governance may have set on the existing row.
+        existing = conn.execute(
+            "SELECT id FROM kb_paragraphs "
+            "WHERE source_kind = ? AND source_file = ? AND para_index = 0",
+            (source_kind, source_file)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE kb_paragraphs SET title = ?, body = ?, "
+                "body_tokenized = ?, tags = ?, node_ids = ?, "
+                "weight = ?, confidence = ?, kind = ?, graph_version = ?, "
+                "version_scope = ? WHERE id = ?",
+                (title, body, tokenized_body, tags_json,
+                 node_ids_json, weight, confidence, kind, graph_version,
+                 version_scope or "default", existing["id"])
+            )
+            conn.commit()
+            return existing["id"]
         cur = conn.execute(
             "INSERT INTO kb_paragraphs "
             "(source_kind, source_file, para_index, title, body, "
@@ -1009,7 +1031,7 @@ def upsert_kb_paragraph(graph_dir: str, source_kind: str, source_file: str,
             " access_count, version_scope) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
             (source_kind, source_file, 0, title, body,
-             _cjk_pre_tokenize(body), tags_json,
+             tokenized_body, tags_json,
              node_ids_json, weight, confidence, kind, graph_version,
              datetime.now().isoformat(),
              version_scope or "default")

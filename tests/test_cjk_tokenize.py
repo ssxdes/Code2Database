@@ -220,9 +220,10 @@ class TestKbQueryCjkMatch(unittest.TestCase):
         self.tmp.cleanup()
 
     def _insert(self, title, body, weight=1.0, kind="memory_qa"):
+        self._insert_count = getattr(self, "_insert_count", 0) + 1
         return upsert_kb_paragraph(
-            self.graph_dir, "memory", "test.json", title, body,
-            weight=weight, kind=kind)
+            self.graph_dir, "memory", f"test_{self._insert_count}.json",
+            title, body, weight=weight, kind=kind)
 
     def test_single_cjk_word_match(self):
         self._insert("释放内存", "释放内存释放资源线程安全", weight=2.0)

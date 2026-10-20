@@ -339,6 +339,29 @@ class TestRebuildAndQueryKB(unittest.TestCase):
         results = query_kb(self.graph_dir, "test", top_n=5)
         self.assertEqual(len(results), 0)
 
+    def test_upsert_dedup_updates_existing_row(self):
+        """upsert_kb_paragraph with the same (source_kind, source_file)
+        updates the existing row instead of creating a duplicate."""
+        rid1 = upsert_kb_paragraph(self.graph_dir, "memory", "dedup.json",
+                                    "original title", "original body")
+        rid2 = upsert_kb_paragraph(self.graph_dir, "memory", "dedup.json",
+                                    "updated title", "updated body")
+        self.assertEqual(rid1, rid2, "second upsert should return same id")
+        conn = _kb_connect(self.graph_dir)
+        try:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM kb_paragraphs "
+                "WHERE source_file = 'dedup.json'"
+            ).fetchone()[0]
+            self.assertEqual(count, 1, "should have exactly 1 row, not duplicates")
+            row = conn.execute(
+                "SELECT title, body FROM kb_paragraphs WHERE id = ?",
+                (rid1,)).fetchone()
+            self.assertEqual(row["title"], "updated title")
+            self.assertEqual(row["body"], "updated body")
+        finally:
+            conn.close()
+
     def test_see_also_populated_after_clustering(self):
         """Results with scope_id carry see_also siblings."""
         upsert_kb_paragraph(self.graph_dir, "memory", "a.json",

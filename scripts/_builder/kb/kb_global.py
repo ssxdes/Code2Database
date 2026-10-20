@@ -250,14 +250,16 @@ def global_search(query: str, top_n: int = 10, kinds: Optional[List[str]] = None
                 "score": round(score, 4),
                 "global": True,
             })
-        # Best-effort access_count bump
+        # Best-effort access_count bump — batched into a single
+        # executemany call to match query_kb's pattern and avoid
+        # N round-trips to the database.
         try:
-            for r in results:
-                conn.execute(
-                    "UPDATE kb_global SET access_count = access_count + 1, "
-                    "accessed_at = ? WHERE id = ?",
-                    (datetime.now().isoformat(), r["id"])
-                )
+            now = datetime.now().isoformat()
+            conn.executemany(
+                "UPDATE kb_global SET access_count = access_count + 1, "
+                "accessed_at = ? WHERE id = ?",
+                [(now, r["id"]) for r in results]
+            )
             conn.commit()
         except sqlite3.Error:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)

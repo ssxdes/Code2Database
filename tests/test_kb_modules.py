@@ -705,6 +705,52 @@ class TestKbCluster(unittest.TestCase):
         self.assertEqual(summary["cluster_count"], 0)
         self.assertEqual(summary["items_clustered"], 0)
 
+    def test_cluster_summaries_populated(self):
+        """cluster_kb populates kb_cluster_summaries for two-stage retrieval."""
+        _make_memory_entry(self.graph_dir, 1,
+                           "how does bdev register io_device",
+                           "bdev_register calls io_device_register",
+                           tags=["bdev"])
+        _make_memory_entry(self.graph_dir, 2,
+                           "how does bdev register io_device",
+                           "bdev_register calls io_device_register differently",
+                           tags=["bdev"])
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        cluster_kb(self.graph_dir, threshold=0.1, verbose=False)
+        conn = _kb_connect(self.graph_dir)
+        try:
+            rows = conn.execute(
+                "SELECT cluster_id, summary, token_count "
+                "FROM kb_cluster_summaries ORDER BY cluster_id"
+            ).fetchall()
+            self.assertGreaterEqual(len(rows), 1)
+            for r in rows:
+                self.assertTrue(r["summary"])
+                self.assertGreater(r["token_count"], 0)
+        finally:
+            conn.close()
+
+    def test_cluster_summaries_cjk_content(self):
+        """CJK cluster summaries are generated with CJK content intact."""
+        _make_memory_entry(self.graph_dir, 1,
+                           "如何释放内存",
+                           "调用free函数释放分配的内存",
+                           tags=[])
+        _make_memory_entry(self.graph_dir, 2,
+                           "怎样释放内存",
+                           "使用free释放已分配的内存块",
+                           tags=[])
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        cluster_kb(self.graph_dir, threshold=0.15, verbose=False)
+        conn = _kb_connect(self.graph_dir)
+        try:
+            rows = conn.execute(
+                "SELECT summary FROM kb_cluster_summaries").fetchall()
+            self.assertGreaterEqual(len(rows), 1)
+            self.assertIn("释放", rows[0]["summary"])
+        finally:
+            conn.close()
+
 
 class TestKbAudit(unittest.TestCase):
     def setUp(self):

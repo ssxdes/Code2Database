@@ -264,6 +264,12 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
         conn.commit()
         cluster_count = len(scope_map)
         items_clustered = sum(1 for r in items)
+        # Generate per-cluster summaries so two_stage_retrieve can
+        # match cluster summaries first, then drill down.  Each
+        # summary = canonical item title + body excerpt + related
+        # titles, capped at ~500 chars to match the embedding window.
+        _generate_cluster_summaries(conn)
+        conn.commit()
         if verbose:
             print(f"[kb-cluster] {cluster_count} clusters, "
                   f"{items_clustered} items clustered, "
@@ -278,3 +284,56 @@ def cluster_kb(graph_dir: str, threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
         }
     finally:
         conn.close()
+
+
+def _generate_cluster_summaries(conn: sqlite3.Connection) -> int:
+    """Populate kb_cluster_summaries from the current scope_id grouping.
+
+    For each cluster, the summary combines the canonical item's title
+    and body excerpt with the titles of related members.  Returns the
+    number of summaries written.
+    """
+    from datetime import datetime
+    now = datetime.now().isoformat()
+    conn.execute("DELETE FROM kb_cluster_summaries")
+    rows = conn.execute(
+        "SELECT id, scope_id, canonical_id, title, body "
+        "FROM kb_paragraphs WHERE scope_id IS NOT NULL "
+        "ORDER BY scope_id, weight DESC"
+    ).fetchall()
+    if not rows:
+        return 0
+    groups: Dict[int, list] = {}
+    for r in rows:
+        groups.setdefault(r["scope_id"], []).append(r)
+    written = 0
+    for scope_id, members in groups.items():
+        canonical = None
+        others = []
+        for m in members:
+            if m["canonical_id"] and m["id"] == m["canonical_id"]:
+                canonical = m
+            elif canonical is None:
+                canonical = m
+            else:
+                others.append(m)
+        if canonical is None:
+            continue
+        title = canonical["title"] or ""
+        body_excerpt = (canonical["body"] or "")[:300]
+        summary = f"{title}. {body_excerpt}".strip()
+        if others:
+            related_titles = [o["title"] or "" for o in others[:5]]
+            related = ", ".join(t for t in related_titles if t)
+            if related:
+                summary = f"{summary} Related: {related}"
+        summary = summary[:500]
+        token_count = len(summary.split())
+        conn.execute(
+            "INSERT INTO kb_cluster_summaries "
+            "(cluster_id, summary, generated_at, model, token_count) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (scope_id, summary, now, "title+body", token_count)
+        )
+        written += 1
+    return written

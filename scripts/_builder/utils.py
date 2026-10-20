@@ -9,7 +9,7 @@ from pathlib import Path
 from collections import defaultdict
 import networkx as nx
 import logging
-from typing import Optional, List, Set
+from typing import Optional, List, Set, Dict
 
 
 # Cache source_root per graph_dir to avoid re-reading master.json on every
@@ -134,7 +134,16 @@ def _fts5_escape(query: str) -> str:
     :func:`_cjk_pre_tokenize` on the write side — without this, a
     query like ``释放的内存`` produces ``"释放" "的" "内存"`` while the
     indexed text has ``的`` removed, so the FTS5 AND-match fails.
+
+    Cross-lingual synonyms are expanded so a CJK query ``释放`` also
+    matches paragraphs whose indexed text contains ``free`` or
+    ``release``, and an English query ``free`` matches paragraphs
+    indexed with ``释放``.  On the query side each token and its
+    synonyms are wrapped in an FTS5 OR-group (``("queue" OR "队列")``)
+    so a paragraph indexed with either variant still matches — the
+    OR-group makes the query *more* permissive, not more restrictive.
     """
+    synonyms = _load_synonyms()
     if _has_cjk(query):
         query = _strip_cjk_punct(query)
         cjk_tokens = _cjk_tokenize(query)
@@ -154,7 +163,39 @@ def _fts5_escape(query: str) -> str:
         tokens = re.findall(r'[A-Za-z0-9_]+', query)
     if not tokens:
         return '""'  # match nothing safely
-    return " ".join(f'"{t}"' for t in tokens)
+    if not synonyms:
+        return " ".join(f'"{t}"' for t in tokens)
+    # Build OR-groups: each token and its synonyms become
+    # ("token" OR "syn1" OR "syn2").  When any group has >1 token,
+    # FTS5 requires explicit AND between all parts (implicit AND
+    # via whitespace does not compose with parenthesised OR-groups).
+    # A paragraph indexed with any one synonym in each group
+    # satisfies the match, so the query stays permissive.
+    parts: list = []
+    emitted: set = set()
+    has_or_group = False
+    for tok in tokens:
+        if tok in emitted:
+            continue
+        syns = synonyms.get(tok)
+        if not syns:
+            parts.append(f'"{tok}"')
+            emitted.add(tok)
+            continue
+        group = [tok]
+        for syn in syns:
+            if syn not in emitted and syn not in group:
+                group.append(syn)
+        emitted.update(group)
+        if len(group) == 1:
+            parts.append(f'"{tok}"')
+        else:
+            or_expr = " OR ".join(f'"{t}"' for t in group)
+            parts.append(f"({or_expr})")
+            has_or_group = True
+    if has_or_group:
+        return " AND ".join(parts)
+    return " ".join(parts)
 
 
 def normalize_str_field(value) -> str:
@@ -1215,6 +1256,63 @@ def _load_stopwords() -> Set[str]:
     return sw
 
 
+def _load_synonyms() -> Dict[str, Set[str]]:
+    """Load the bundled CJK↔English synonym groups.
+
+    Returns a dict mapping each term to the set of its synonyms (all
+    other terms on the same line).  When the synonyms file is absent,
+    returns an empty dict — callers skip expansion, preserving the
+    original behavior.
+    """
+    cache_key = "__synonyms__"
+    if cache_key in _TOKENIZER_CACHE:
+        return _TOKENIZER_CACHE[cache_key]
+    mapping: Dict[str, Set[str]] = {}
+    syn_path = Path(__file__).resolve().parent.parent / "config" / "synonyms.txt"
+    if syn_path.is_file():
+        for line in syn_path.read_text(encoding="utf-8").splitlines():
+            terms = line.split()
+            if len(terms) < 2:
+                continue
+            group = set(terms)
+            for term in group:
+                existing = mapping.get(term)
+                if existing is None:
+                    mapping[term] = set(group) - {term}
+                else:
+                    existing |= set(group) - {term}
+    _TOKENIZER_CACHE[cache_key] = mapping
+    return mapping
+
+
+def _expand_tokens(tokens: List[str],
+                   synonyms: Optional[Dict[str, Set[str]]] = None) -> List[str]:
+    """Expand a token list with cross-lingual synonyms.
+
+    For each token that appears in the synonym mapping, the
+    corresponding synonym tokens are appended to the result.  The
+    expansion is deduplicated and preserves the original order so the
+    write side (``_cjk_pre_tokenize``) and query side (``_fts5_escape``)
+    stay symmetric.  When *synonyms* is empty or None, the input is
+    returned unchanged.
+    """
+    if not synonyms:
+        return tokens
+    seen: Set[str] = set()
+    expanded: List[str] = []
+    for tok in tokens:
+        if tok not in seen:
+            seen.add(tok)
+            expanded.append(tok)
+        syns = synonyms.get(tok)
+        if syns:
+            for syn in syns:
+                if syn not in seen:
+                    seen.add(syn)
+                    expanded.append(syn)
+    return expanded
+
+
 def _char_bigram_tokenize(text: str) -> List[str]:
     """Character + bigram tokenization (the always-available fallback)."""
     text = _strip_cjk_punct(text)
@@ -1262,19 +1360,30 @@ def _cjk_pre_tokenize(text: str, tokenizer: str = "jieba",
 
     If *text* contains CJK ideographs, the CJK portions are word-segmented
     and space-joined so ``unicode61`` splits them into individual tokens.
-    Latin text is left untouched (it is already whitespace-separated).
-    Stopwords are removed when enabled.
+    Latin text is tokenized on whitespace.  Stopwords are removed when
+    enabled.  Cross-lingual synonyms (from ``config/synonyms.txt``) are
+    expanded so a Chinese term like ``释放`` also indexes its English
+    equivalents ``free`` / ``release`` — making the paragraph findable
+    by either language.
 
     Returns the pre-tokenized string ready to store in a ``*_tokenized``
     column that an FTS5 external-content table indexes.
     """
-    if not text or not _has_cjk(text):
+    if not text:
         return text or ""
+    synonyms = _load_synonyms()
+    if not _has_cjk(text):
+        tokens = text.split()
+        if synonyms:
+            tokens = _expand_tokens(tokens, synonyms)
+        return " ".join(tokens)
     text = _strip_cjk_punct(text)
     stopwords = _load_stopwords() if use_stopwords else set()
     tokens = _cjk_tokenize(text, tokenizer, user_dict)
     if stopwords:
         tokens = [t for t in tokens if t not in stopwords]
+    if synonyms:
+        tokens = _expand_tokens(tokens, synonyms)
     return " ".join(tokens)
 
 

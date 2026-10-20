@@ -1,0 +1,209 @@
+# CJK↔English synonym groups for KB cross-lingual matching.
+# Terms on the same line are treated as equivalent: when any term
+# appears in a token list, all other terms on the same line are added
+# to the token list before FTS5 indexing / MATCH escaping.
+#
+# This bridges the gap between Chinese documentation queries and
+# English code identifiers: a paragraph mentioning "释放内存" becomes
+# findable by the English query "free memory", and vice versa.
+#
+# Format: one group per line, terms separated by whitespace.
+# Lines starting with # are comments. Blank lines are ignored.
+# Each term may appear in at most one group (groups are merged if a
+# term repeats). Keep groups small (2-4 terms) to avoid index bloat.
+#
+# Loaded by _builder/utils.py::_load_synonyms() and applied during
+# _cjk_pre_tokenize() (write side) and _fts5_escape() (query side).
+
+释放 free release
+内存 memory
+锁 lock
+互斥锁 mutex
+互斥 mutex exclusive
+信号量 semaphore
+信号 signal
+死锁 deadlock
+线程 thread
+进程 process
+函数 function
+变量 variable
+数组 array
+指针 pointer
+结构体 struct
+联合体 union
+枚举 enum
+宏 macro define
+队列 queue
+栈 stack
+堆 heap
+缓冲区 buffer
+缓存 cache
+回调 callback
+中断 interrupt
+异常 exception
+错误 error
+警告 warning
+调试 debug
+编译 compile
+链接 link
+加载 load
+卸载 unload
+初始化 init initialize
+注册 register
+注销 unregister deregister
+分配 alloc allocate
+回收 dealloc deallocate
+配置 config configure
+上下文 context
+句柄 handle
+描述符 descriptor
+管道 pipe
+套接字 socket
+协议 protocol
+接口 interface
+模块 module
+组件 component
+插件 plugin
+驱动 driver
+设备 device
+寄存器 register reg
+标志 flag
+掩码 mask
+优先级 priority
+调度 schedule
+阻塞 block
+唤醒 wakeup
+超时 timeout
+重试 retry
+回滚 rollback
+提交 commit
+事务 transaction
+原子 atomic
+并发 concurrent concurrency
+同步 sync synchronous
+异步 async asynchronous
+串行 serial
+并行 parallel
+转发 forward
+绑定 bind
+监听 listen
+连接 connect
+断开 disconnect
+发送 send
+接收 receive
+读取 read
+写入 write
+扫描 scan
+匹配 match
+过滤 filter
+排序 sort
+合并 merge
+拆分 split
+复制 copy
+删除 delete remove
+插入 insert
+更新 update
+查询 query search
+计数 count
+边界 boundary
+临界 critical
+范围 range
+限制 limit
+约束 constraint
+规则 rule
+策略 strategy
+类型 type
+实例 instance
+对象 object
+方法 method
+属性 property
+事件 event
+消息 message
+状态 state
+框架 framework
+库 library
+包 package
+命名空间 namespace
+作用域 scope
+引用 reference
+迭代器 iterator
+协程 coroutine
+闭包 closure
+泛型 generic
+继承 inherit extends
+多态 polymorphism
+封装 encapsulation
+抽象 abstraction
+实现 implementation
+声明 declaration
+定义 definition
+参数 parameter argument
+返回 return
+局部 local
+全局 global
+静态 static
+常量 constant
+字段 field
+哈希 hash
+索引 index
+主键 primary
+外键 foreign
+触发器 trigger
+视图 view
+游标 cursor
+隔离 isolation
+一致性 consistency
+持久性 durability
+性能 performance
+延迟 latency
+吞吐 throughput
+带宽 bandwidth
+容量 capacity
+冗余 redundant redundancy
+故障 fail failure
+恢复 recover recovery
+备份 backup
+快照 snapshot
+迁移 migrate migration
+升级 upgrade
+降级 downgrade
+版本 version
+分支 branch
+标签 tag
+冲突 conflict
+竞态 race
+访问 access
+权限 permission
+认证 authentication
+授权 authorization
+加密 encrypt
+解密 decrypt
+签名 signature sign
+证书 certificate cert
+令牌 token
+会话 session
+断言 assert
+覆盖 coverage
+基准 benchmark
+指标 metric
+日志 log
+追踪 trace
+监控 monitor
+告警 alert
+阈值 threshold
+采样 sample
+统计 statistics
+概率 probability
+随机 random
+序列化 serialize
+反序列化 deserialize
+压缩 compress
+解压 decompress
+编码 encode
+解码 decode
+校验 checksum
+循环 loop
+递归 recursion
+迭代 iterate iteration
+遍历 traverse
+嵌套 nested

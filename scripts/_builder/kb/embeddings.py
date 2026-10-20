@@ -37,19 +37,24 @@ def _char_ngrams(text: str, n: int = DEFAULT_NGRAM_SIZE) -> List[str]:
 
     CJK ideographs are extracted as unigram and bigram tokens (prefixed
     with ``c:`` to avoid collision with Latin n-grams) so Chinese text
-    produces non-empty vectors.  The previous regex-based normalization
-    replaced every CJK character with a space, making the embedding
-    system completely blind to Chinese content.
+    produces non-empty vectors.  CJK stopwords (的, 了, 是, ...) are
+    filtered from unigrams to keep the vectors lean — these characters
+    appear in almost every Chinese sentence, so their IDF is near-zero
+    and they add noise without discrimination.  Bigrams are kept
+    because a stopword paired with a content word (e.g.  的释) still
+    carries some signal.
     """
     if not text:
         return []
     ngrams: List[str] = []
     # Extract CJK unigrams + bigrams (shape-similarity tokens)
-    from _builder.utils import _CJK_RE
+    from _builder.utils import _CJK_RE, _load_stopwords
     cjk_chars = _CJK_RE.findall(text)
     if cjk_chars:
+        stopwords = _load_stopwords()
         for ch in cjk_chars:
-            ngrams.append(f"c:{ch}")
+            if ch not in stopwords:
+                ngrams.append(f"c:{ch}")
         for i in range(len(cjk_chars) - 1):
             ngrams.append(f"c:{cjk_chars[i]}{cjk_chars[i + 1]}")
     # Normalize: lowercase, replace non-alphanumeric with space, collapse spaces

@@ -67,6 +67,26 @@ class TestCharNgrams(unittest.TestCase):
         self.assertIn("pid", result)
         self.assertIn("id$", result)
 
+    def test_cjk_stopwords_filtered_from_unigrams(self):
+        """CJK stopwords (的, 了) are filtered from unigrams."""
+        result = _char_ngrams("释放的内存", n=3)
+        # Content characters present as unigrams
+        self.assertIn("c:释", result)
+        self.assertIn("c:放", result)
+        # Stopword 的 is filtered from unigrams
+        self.assertNotIn("c:的", result)
+        # But bigrams containing stopwords are kept (they carry signal)
+        self.assertIn("c:放的", result)
+
+    def test_cjk_stopword_bigrams_preserved(self):
+        """Bigrams containing stopwords are kept — they still carry signal."""
+        result = _char_ngrams("内存的释放", n=3)
+        # 的 is filtered from unigrams
+        self.assertNotIn("c:的", result)
+        # But bigrams 存的 and 的释 are present
+        self.assertIn("c:存的", result)
+        self.assertIn("c:的释", result)
+
 
 class TestBuildVocab(unittest.TestCase):
     """Test _build_vocab document frequency counting."""

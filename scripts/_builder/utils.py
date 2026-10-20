@@ -1313,6 +1313,59 @@ def _expand_tokens(tokens: List[str],
     return expanded
 
 
+# Patterns for extracting code identifiers from KB body text.
+_BACKTICK_ID_RE = re.compile(r'`([a-zA-Z_][a-zA-Z0-9_]*)`')
+_FUNC_CALL_RE = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*\(')
+_MEMBER_ACCESS_RE = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:->|\.)')
+_GENERAL_ID_RE = re.compile(r'[a-zA-Z_][a-zA-Z0-9_]+')
+
+
+def _extract_code_identifiers(text: str, max_count: int = 20) -> List[str]:
+    """Extract likely code identifiers from free-form text.
+
+    Identifiers are pulled from three high-confidence sources:
+    1. Backtick-quoted code spans (`` `pthread_mutex_lock` ``)
+    2. Function-call patterns (`` free_pid(``)
+    3. Member-access patterns (`` task->pid``, ``task.pid``)
+
+    Additionally, long snake_case tokens (>= 6 chars with underscore)
+    are extracted as low-confidence candidates.  Pure English words
+    (no underscore, no mixed case, <= 5 chars) are skipped.
+
+    Returns a deduplicated list, capped at *max_count*.
+    """
+    if not text:
+        return []
+    seen: Set[str] = set()
+    identifiers: List[str] = []
+    # High-confidence: backtick-quoted code
+    for m in _BACKTICK_ID_RE.findall(text):
+        if m not in seen and len(m) >= 2:
+            seen.add(m)
+            identifiers.append(m)
+    # High-confidence: function calls and member access
+    for pattern in (_FUNC_CALL_RE, _MEMBER_ACCESS_RE):
+        for m in pattern.findall(text):
+            if m not in seen and len(m) >= 2:
+                seen.add(m)
+                identifiers.append(m)
+    # Low-confidence: long snake_case tokens
+    for m in _GENERAL_ID_RE.findall(text):
+        if m in seen:
+            continue
+        has_underscore = '_' in m
+        has_upper = any(c.isupper() for c in m)
+        has_lower = any(c.islower() for c in m)
+        mixed_case = has_upper and has_lower
+        if len(m) >= 6 and has_underscore:
+            seen.add(m)
+            identifiers.append(m)
+        elif len(m) >= 6 and mixed_case and not m.isupper():
+            seen.add(m)
+            identifiers.append(m)
+    return identifiers[:max_count]
+
+
 def _char_bigram_tokenize(text: str) -> List[str]:
     """Character + bigram tokenization (the always-available fallback)."""
     text = _strip_cjk_punct(text)

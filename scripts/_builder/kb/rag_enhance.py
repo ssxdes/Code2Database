@@ -215,10 +215,14 @@ def graph_walk(results: List[Dict[str, Any]],
                     continue
                 context_nodes = []
                 for nid in node_ids[:5]:
+                    # Match by integer id / legacy_function_id, or by
+                    # string name so auto-extracted identifiers from
+                    # body text find their cgdb node.
                     row = conn.execute(
                         "SELECT name, description FROM cgdb_nodes "
-                        "WHERE id = ? OR legacy_function_id = ?",
-                        (nid, nid)).fetchone()
+                        "WHERE id = ? OR legacy_function_id = ? "
+                        "OR name = ?",
+                        (nid, nid, str(nid))).fetchone()
                     if row and row["description"]:
                         context_nodes.append({
                             "node": row["name"],

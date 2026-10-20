@@ -979,13 +979,28 @@ def upsert_kb_paragraph(graph_dir: str, source_kind: str, source_file: str,
 
     Used to keep the FTS5 index in sync after direct kb writes
     after a filesystem write. Returns the row id.
+
+    Code identifiers are auto-extracted from the title and body and
+    merged with any explicit *node_ids* so graph_walk can find
+    matching cgdb nodes even when the paragraph has no explicit
+    node references.
     """
+    from _builder.utils import _extract_code_identifiers
     conn = _kb_connect(graph_dir)
     if conn is None:
         return -1
     try:
         tags_json = json.dumps(tags, ensure_ascii=False) if tags else None
-        node_ids_json = json.dumps(node_ids, ensure_ascii=False) if node_ids else None
+        # Merge explicit node_ids with auto-extracted identifiers
+        merged_ids = list(node_ids or [])
+        extracted = _extract_code_identifiers((title or "") + " " + (body or ""))
+        if extracted:
+            existing = set(merged_ids)
+            for eid in extracted:
+                if eid not in existing:
+                    merged_ids.append(eid)
+                    existing.add(eid)
+        node_ids_json = json.dumps(merged_ids, ensure_ascii=False) if merged_ids else None
         cur = conn.execute(
             "INSERT INTO kb_paragraphs "
             "(source_kind, source_file, para_index, title, body, "

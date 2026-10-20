@@ -240,6 +240,32 @@ class TestGraphWalkDegradation(unittest.TestCase):
         finally:
             tmp.cleanup()
 
+    def test_graph_walk_matches_by_function_name(self):
+        """graph_walk finds cgdb nodes by function name string, not just
+        integer id — enables auto-extracted identifiers to link."""
+        import sqlite3
+        tmp = tempfile.TemporaryDirectory()
+        try:
+            db_path = os.path.join(tmp.name, "code2database.db")
+            conn = sqlite3.connect(db_path)
+            conn.execute(
+                "CREATE TABLE cgdb_nodes "
+                "(id INTEGER PRIMARY KEY, name TEXT, description TEXT, "
+                " legacy_function_id INTEGER)")
+            conn.execute(
+                "INSERT INTO cgdb_nodes (id, name, description) "
+                "VALUES (1, 'pthread_mutex_lock', 'Locks a mutex')")
+            conn.commit()
+            conn.close()
+            results = [{"id": 1, "body": "a", "node_ids": ["pthread_mutex_lock"]}]
+            out = graph_walk(results, tmp.name)
+            self.assertEqual(len(out), 1)
+            self.assertIn("graph_context", out[0])
+            self.assertEqual(out[0]["graph_context"][0]["node"],
+                             "pthread_mutex_lock")
+        finally:
+            tmp.cleanup()
+
 
 class TestRerankLocalProvider(unittest.TestCase):
     """rerank with a local CrossEncoder reranker (mocked)."""

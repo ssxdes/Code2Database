@@ -582,6 +582,93 @@ class TestRebuildSkipSignature(unittest.TestCase):
         self.assertEqual(summary["total"], 0)
 
 
+class TestCodeIdentifierExtraction(unittest.TestCase):
+    """Auto-extraction of code identifiers from KB body text."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="kb_id_test_")
+        self.graph_dir = os.path.join(self.tmpdir, "code2db-out")
+        os.makedirs(self.graph_dir, exist_ok=True)
+        from _builder.graph.sqlite_store import SQLiteStore
+        store = SQLiteStore(os.path.join(self.graph_dir, "code2database.db"))
+        store.connect()
+        store.close()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_extract_backtick_identifiers(self):
+        from _builder.utils import _extract_code_identifiers
+        ids = _extract_code_identifiers("use `pthread_mutex_lock` to lock")
+        self.assertIn("pthread_mutex_lock", ids)
+
+    def test_extract_function_call_identifiers(self):
+        from _builder.utils import _extract_code_identifiers
+        ids = _extract_code_identifiers("call free_pid() to release")
+        self.assertIn("free_pid", ids)
+
+    def test_extract_member_access_identifiers(self):
+        from _builder.utils import _extract_code_identifiers
+        ids = _extract_code_identifiers("access task->pid and task.state")
+        self.assertIn("task", ids)
+
+    def test_extract_snake_case_identifiers(self):
+        from _builder.utils import _extract_code_identifiers
+        ids = _extract_code_identifiers("the bdev_register function")
+        self.assertIn("bdev_register", ids)
+
+    def test_skip_english_words(self):
+        from _builder.utils import _extract_code_identifiers
+        ids = _extract_code_identifiers("the quick brown fox jumps")
+        # No underscores or mixed case → no extraction
+        self.assertEqual(ids, [])
+
+    def test_max_count_limit(self):
+        from _builder.utils import _extract_code_identifiers
+        text = " ".join(f"`func_{i}`" for i in range(50))
+        ids = _extract_code_identifiers(text, max_count=10)
+        self.assertLessEqual(len(ids), 10)
+
+    def test_upsert_auto_extracts_identifiers(self):
+        """upsert_kb_paragraph auto-extracts identifiers from body text
+        and merges them into node_ids."""
+        rid = upsert_kb_paragraph(
+            self.graph_dir, "knowledge", "test.json",
+            "Locking rule", "Use `pthread_mutex_lock` before accessing shared data",
+        )
+        conn = _kb_connect(self.graph_dir)
+        try:
+            row = conn.execute(
+                "SELECT node_ids FROM kb_paragraphs WHERE id = ?",
+                (rid,)).fetchone()
+        finally:
+            conn.close()
+        import json
+        node_ids = json.loads(row["node_ids"]) if row["node_ids"] else []
+        self.assertIn("pthread_mutex_lock", node_ids)
+
+    def test_upsert_merges_explicit_and_extracted_ids(self):
+        """Explicit node_ids are preserved; extracted identifiers are
+        appended without duplicates."""
+        rid = upsert_kb_paragraph(
+            self.graph_dir, "knowledge", "test.json",
+            "Test", "Call `free_pid()` and `alloc_resource()`",
+            node_ids=["explicit_node"],
+        )
+        conn = _kb_connect(self.graph_dir)
+        try:
+            row = conn.execute(
+                "SELECT node_ids FROM kb_paragraphs WHERE id = ?",
+                (rid,)).fetchone()
+        finally:
+            conn.close()
+        import json
+        node_ids = json.loads(row["node_ids"]) if row["node_ids"] else []
+        self.assertIn("explicit_node", node_ids)
+        self.assertIn("free_pid", node_ids)
+        self.assertIn("alloc_resource", node_ids)
+
+
 class TestKbCluster(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix="kb_cluster_test_")

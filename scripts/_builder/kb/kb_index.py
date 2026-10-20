@@ -1512,10 +1512,54 @@ def build_ann_index(graph_dir: str, model: str = "",
         conn.execute(
             "INSERT OR REPLACE INTO kb_meta (key, value) "
             "VALUES ('ann_built_at', ?)", (datetime.now().isoformat(),))
+        # Check whether kb_vec already exists with the same dimension.
+        # If so, only insert the newly-embedded rows instead of
+        # dropping and rebuilding the entire vector index — avoids
+        # O(N) rebuild on every call when only a few paragraphs were
+        # added.
+        existing_dim_row = conn.execute(
+            "SELECT value FROM kb_meta WHERE key = 'ann_vec_dim'"
+        ).fetchone()
+        existing_vec = None
+        try:
+            existing_vec = conn.execute(
+                "SELECT 1 FROM sqlite_master "
+                "WHERE type='table' AND name='kb_vec'"
+            ).fetchone()
+        except sqlite3.Error:
+            pass
+        if existing_vec and existing_dim_row \
+                and int(existing_dim_row["value"]) == dim:
+            # Incremental: insert only the newly-embedded rows.
+            new_ids = [ud[1] for ud in update_data]
+            if new_ids:
+                placeholders = ",".join("?" for _ in new_ids)
+                new_rows = conn.execute(
+                    f"SELECT id, embedding FROM kb_paragraphs "
+                    f"WHERE id IN ({placeholders}) "
+                    "AND embedding IS NOT NULL",
+                    new_ids
+                ).fetchall()
+                if new_rows:
+                    conn.executemany(
+                        "INSERT INTO kb_vec(rowid, embedding) VALUES (?, ?)",
+                        [(r["id"], r["embedding"]) for r in new_rows])
+            conn.commit()
+            total_indexed = conn.execute(
+                "SELECT COUNT(*) FROM kb_vec").fetchone()[0]
+            return {
+                "built": True, "embedded": len(rows),
+                "total_indexed": total_indexed, "dim": dim,
+                "provider": detected, "incremental": True,
+            }
+        # Full rebuild: dimension changed or kb_vec doesn't exist yet.
         conn.execute("DROP TABLE IF EXISTS kb_vec")
         conn.execute(
             f"CREATE VIRTUAL TABLE IF NOT EXISTS kb_vec "
             f"USING vec0(embedding float[{dim}])")
+        conn.execute(
+            "INSERT OR REPLACE INTO kb_meta (key, value) "
+            "VALUES ('ann_vec_dim', ?)", (str(dim),))
         all_rows = conn.execute(
             "SELECT id, embedding FROM kb_paragraphs "
             "WHERE embedding IS NOT NULL"
@@ -1528,7 +1572,7 @@ def build_ann_index(graph_dir: str, model: str = "",
         return {
             "built": True, "embedded": len(rows),
             "total_indexed": len(all_rows), "dim": dim,
-            "provider": detected,
+            "provider": detected, "incremental": False,
         }
     except Exception as exc:
         logging.getLogger(__name__).warning(

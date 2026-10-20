@@ -1536,6 +1536,65 @@ class TestAnnIndex(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_build_ann_incremental_inserts_only_new_rows(self):
+        """Second build_ann_index call with new paragraphs only inserts
+        the new rows into kb_vec — no full rebuild."""
+        self._seed_paragraphs(3)
+        import _builder.kb.neural_embed as ne
+        import _builder.kb.kb_index as ki
+
+        orig_ge = ne.get_embedding
+        orig_geb = ne.get_embedding_batch
+        orig_dp = ne._detect_provider
+
+        def fake_get_batch(texts):
+            return [[float(i), 0.0, 0.0, 0.0] for i in range(len(texts))]
+
+        def fake_detect():
+            return "mock"
+
+        ne.get_embedding_batch = fake_get_batch
+        ne.get_embedding = lambda t: [0.0, 0.0, 0.0, 0.0]
+        ne._detect_provider = fake_detect
+        ne._PROVIDER_CACHE = "mock"
+        ki._VEC_EXT_LOADED = None
+        try:
+            # First build: full rebuild
+            r1 = build_ann_index(self.graph_dir, provider="mock")
+            self.assertTrue(r1["built"])
+            self.assertFalse(r1.get("incremental", False))
+            self.assertEqual(r1["embedded"], 3)
+            self.assertEqual(r1["total_indexed"], 3)
+            # Add 2 more paragraphs
+            upsert_kb_paragraph(
+                self.graph_dir, "memory", "test_3.json",
+                "test title 3", "test body content number 3")
+            upsert_kb_paragraph(
+                self.graph_dir, "memory", "test_4.json",
+                "test title 4", "test body content number 4")
+            # Second build: incremental — only 2 new rows
+            r2 = build_ann_index(self.graph_dir, provider="mock")
+            self.assertTrue(r2["built"])
+            self.assertTrue(r2.get("incremental", False),
+                            f"expected incremental=True, got {r2}")
+            self.assertEqual(r2["embedded"], 2)
+            self.assertEqual(r2["total_indexed"], 5)
+            # Verify all 5 rows are in kb_vec
+            conn = _kb_connect(self.graph_dir)
+            try:
+                _try_load_vec_ext(conn)
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM kb_vec").fetchone()[0]
+                self.assertEqual(count, 5)
+            finally:
+                conn.close()
+        finally:
+            ne.get_embedding = orig_ge
+            ne.get_embedding_batch = orig_geb
+            ne._detect_provider = orig_dp
+            ne._PROVIDER_CACHE = None
+            ki._VEC_EXT_LOADED = None
+
 
 if __name__ == "__main__":
     unittest.main()

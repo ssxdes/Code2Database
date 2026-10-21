@@ -207,3 +207,18 @@
 迭代 iterate iteration
 遍历 traverse
 嵌套 nested
+调用 call invoke
+返回值 return value
+保存 save store
+创建 create
+销毁 destroy
+服务 service
+测试 test
+验证 validate
+解析 parse
+打开 open
+关闭 close
+启动 start
+停止 stop
+运行 run
+执行 execute

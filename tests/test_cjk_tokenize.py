@@ -16,7 +16,8 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 
 from _builder.utils import _fts5_escape, _cjk_pre_tokenize, _has_cjk, \
-    _simple_tokenize, _strip_cjk_punct, _normalize_fullwidth
+    _simple_tokenize, _strip_cjk_punct, _normalize_fullwidth, \
+    _normalize_cjk_digits
 from _builder.kb.kb_index import _kb_connect, query_kb, upsert_kb_paragraph
 
 
@@ -360,6 +361,95 @@ class TestPinyinExpansion(unittest.TestCase):
         tokens = _simple_tokenize("释放")
         self.assertIn("shi", tokens)
         self.assertIn("fang", tokens)
+
+
+class TestCjkDigitNormalization(unittest.TestCase):
+    """CJK numeral characters (一二三…) should normalise to ASCII digits
+    so ``三个线程`` and ``3个线程`` produce the same token stream and
+    match each other in FTS5."""
+
+    def test_normalize_single_digits(self):
+        self.assertEqual(_normalize_cjk_digits("三个"), "3个")
+        self.assertEqual(_normalize_cjk_digits("第一步"), "第1步")
+        self.assertEqual(_normalize_cjk_digits("第二种"), "第2种")
+        self.assertEqual(_normalize_cjk_digits("九"), "9")
+
+    def test_normalize_zero_variants(self):
+        self.assertEqual(_normalize_cjk_digits("零"), "0")
+        self.assertEqual(_normalize_cjk_digits("〇"), "0")
+
+    def test_normalize_preserves_ascii(self):
+        self.assertEqual(_normalize_cjk_digits("3个线程"), "3个线程")
+        self.assertEqual(_normalize_cjk_digits("v1.2"), "v1.2")
+
+    def test_normalize_preserves_non_digit_cjk(self):
+        self.assertEqual(_normalize_cjk_digits("线程"), "线程")
+        self.assertEqual(_normalize_cjk_digits("函数"), "函数")
+
+    def test_normalize_empty(self):
+        self.assertEqual(_normalize_cjk_digits(""), "")
+        self.assertEqual(_normalize_cjk_digits(None), "")
+
+    def test_normalize_compound_left_to_segmenter(self):
+        # 十二 (twelve): 十 is not mapped, 二 → 2.  The result 十2 is
+        # not ideal, but compound positional parsing (X十Y → X*10+Y)
+        # is rare in a code KB and deliberately left to the segmenter.
+        result = _normalize_cjk_digits("十二")
+        self.assertNotIn("二", result)
+        self.assertIn("2", result)
+
+    def test_pre_tokenize_cjk_digit_matches_ascii(self):
+        # The token stream for 三个线程 and 3个线程 must be identical
+        # after normalisation.
+        cjk_result = _cjk_pre_tokenize("三个线程")
+        ascii_result = _cjk_pre_tokenize("3个线程")
+        self.assertEqual(cjk_result, ascii_result)
+
+    def test_pre_tokenize_step_number(self):
+        # 第一步 and 第1步 must produce the same token stream
+        cjk_result = _cjk_pre_tokenize("第一步")
+        ascii_result = _cjk_pre_tokenize("第1步")
+        self.assertEqual(cjk_result, ascii_result)
+
+    def test_fts5_escape_cjk_digit(self):
+        # Query 三个线程 escapes the same as 3个线程
+        cjk_result = _fts5_escape("三个线程")
+        ascii_result = _fts5_escape("3个线程")
+        self.assertEqual(cjk_result, ascii_result)
+
+    def test_simple_tokenize_cjk_digit(self):
+        # Token sets for 三个线程 and 3个线程 must overlap on the
+        # normalised digit token.
+        cjk_tokens = _simple_tokenize("三个线程")
+        ascii_tokens = _simple_tokenize("3个线程")
+        self.assertIn("3", cjk_tokens)
+        self.assertIn("3", ascii_tokens)
+
+    def test_cjk_digit_paragraph_matches_ascii_query(self):
+        """Paragraph stored with CJK numerals must be findable by an
+        ASCII-digit query."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            gd = str(Path(tmp))
+            upsert_kb_paragraph(gd, "memory", "test.json",
+                                "线程创建", "创建三个线程处理并发请求",
+                                "[]", "[]", 2.0, "memory_qa", 1.0, 0, "")
+            results = query_kb(gd, "3个线程", top_n=5)
+            self.assertGreaterEqual(len(results), 1,
+                                    "ASCII query '3个线程' must match CJK paragraph about 三个线程")
+
+    def test_ascii_digit_paragraph_matches_cjk_query(self):
+        """Paragraph stored with ASCII digits must be findable by a
+        CJK-numeral query."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            gd = str(Path(tmp))
+            upsert_kb_paragraph(gd, "memory", "test.json",
+                                "步骤", "第1步初始化数据库连接",
+                                "[]", "[]", 2.0, "memory_qa", 1.0, 0, "")
+            results = query_kb(gd, "第一步", top_n=5)
+            self.assertGreaterEqual(len(results), 1,
+                                    "CJK query '第一步' must match ASCII paragraph about 第1步")
 
 
 class TestFts5EscapeCjk(unittest.TestCase):

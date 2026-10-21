@@ -143,11 +143,14 @@ def _fts5_escape(query: str) -> str:
     so a paragraph indexed with either variant still matches — the
     OR-group makes the query *more* permissive, not more restrictive.
     """
-    # Normalise full-width ASCII variants before the CJK check so the
-    # routing matches the write side (``_cjk_pre_tokenize``) — otherwise
-    # a full-width-only query like ``ＡＢＣ`` takes the CJK path and the
-    # full-width letters never reach the Latin token regex.
+    # Normalise full-width ASCII variants and CJK numerals before the
+    # CJK check so the routing matches the write side
+    # (``_cjk_pre_tokenize``) — otherwise a full-width-only query like
+    # ``ＡＢＣ`` takes the CJK path and the full-width letters never
+    # reach the Latin token regex, and a CJK-numeral query ``三个线程``
+    # would miss a paragraph indexed with ``3个线程``.
     query = _normalize_fullwidth(query)
+    query = _normalize_cjk_digits(query)
     synonyms = _load_synonyms()
     if _has_cjk(query):
         query = _strip_cjk_punct(query)
@@ -1183,6 +1186,22 @@ _CJK_PUNCT_RE = re.compile(
 _FULLWIDTH_RE = re.compile(r'[\uFF01-\uFF5E\u3000]')
 
 
+# CJK numeral characters mapped to their ASCII digit equivalents so
+# ``三个线程`` and ``3个线程`` produce the same token stream.  Only
+# single-character digits (零一二三四五六七八九, 〇) are mapped; compound
+# forms like 十二 (12) or 一百 (100) are left to the segmenter — they
+# are rare in a code knowledge base and full positional parsing (X十Y
+# → X*10+Y) adds complexity without proportional benefit.
+_CJK_DIGIT_MAP = {
+    '零': '0', '〇': '0',
+    '一': '1', '二': '2', '三': '3', '四': '4', '五': '5',
+    '六': '6', '七': '7', '八': '8', '九': '9',
+}
+_CJK_DIGIT_RE = re.compile(
+    r'[' + ''.join(re.escape(k) for k in _CJK_DIGIT_MAP) + r']'
+)
+
+
 def _normalize_fullwidth(text: str) -> str:
     """Convert full-width characters to their half-width ASCII equivalents.
 
@@ -1200,6 +1219,22 @@ def _normalize_fullwidth(text: str) -> str:
             return ' '
         return chr(ord(ch) - 0xFEE0)
     return _FULLWIDTH_RE.sub(_convert, text)
+
+
+def _normalize_cjk_digits(text: str) -> str:
+    """Replace CJK numeral characters with their ASCII digit equivalents.
+
+    ``三个线程`` → ``3个线程``, ``第一步`` → ``第1步``, ``第二种`` →
+    ``第2种``.  Applied symmetrically on the write and query sides so
+    a paragraph stored with CJK numerals matches an ASCII-digit query
+    and vice versa.  Compound positional forms like ``十二`` (12) are
+    left to the segmenter.
+    """
+    if not text:
+        return text or ""
+    def _digit(m):
+        return _CJK_DIGIT_MAP.get(m.group(0), m.group(0))
+    return _CJK_DIGIT_RE.sub(_digit, text)
 
 
 def _strip_cjk_punct(text: str) -> str:
@@ -1239,11 +1274,12 @@ def _simple_tokenize(text: str) -> set:
     """Simple tokenization for similarity matching. Handles CJK and Latin."""
     if not text:
         return set()
-    # Normalise full-width ASCII variants first so ＡＢＣ and ABC
-    # produce identical token sets, then strip CJK punctuation so it
-    # doesn't become a token or create cross-punctuation bigrams
-    # (e.g.  内存， → no 存， bigram).
+    # Normalise full-width ASCII variants and CJK numerals first so
+    # ＡＢＣ and ABC, 三个 and 3个, produce identical token sets, then
+    # strip CJK punctuation so it doesn't become a token or create
+    # cross-punctuation bigrams (e.g.  内存， → no 存， bigram).
     text = _normalize_fullwidth(text)
+    text = _normalize_cjk_digits(text)
     text = _strip_cjk_punct(text)
     # Keep CJK chars, alphanumerics; split on punctuation/whitespace
     # For CJK: each character is a token; for Latin: words
@@ -1490,6 +1526,7 @@ def _extract_code_identifiers(text: str, max_count: int = 20) -> List[str]:
 def _char_bigram_tokenize(text: str) -> List[str]:
     """Character + bigram tokenization (the always-available fallback)."""
     text = _normalize_fullwidth(text)
+    text = _normalize_cjk_digits(text)
     text = _strip_cjk_punct(text)
     cjk = _CJK_RE.findall(text)
     tokens: List[str] = list(cjk)
@@ -1546,11 +1583,10 @@ def _cjk_pre_tokenize(text: str, tokenizer: str = "jieba",
     """
     if not text:
         return text or ""
-    # Normalise full-width ASCII variants before the CJK check so
-    # ``ＡＢＣ函数`` is treated as the Latin+CJK mix ``ABC函数`` rather
-    # than a pure-CJK string (the full-width block lives inside _CJK_RE
-    # and would otherwise route Latin-looking text down the CJK path).
+    # Normalise full-width ASCII variants and CJK numerals before the
+    # CJK check so ＡＢＣ and ABC, 三个 and 3个, take the same path.
     text = _normalize_fullwidth(text)
+    text = _normalize_cjk_digits(text)
     synonyms = _load_synonyms()
     if not _has_cjk(text):
         tokens = text.split()

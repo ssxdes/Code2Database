@@ -31,9 +31,9 @@ $BUILDER c2d ask --question "..." --dry-run    # 预览翻译后的命令
 
 `ask` 用 `--question` 对配方注册表分类 — 内置 13 个配方：thread-safety、race-scan、value-origin、impact、call-path、path-feasibility、invariants、ffi、provenance、resource、quality、doc-alignment、explore — 并执行匹配的只读命令序列（分步横幅 + 聚合摘要，`--json` 输出结构化结果）。显式参数（`--target/--from/--to/--query/--source`）优先于提问提取；无匹配时回退到单命令意图路由。配方步骤永远只读（引擎拒绝写命令与写标志）；每步执行前回显，任意动词可用 `--dry-run` 预览。
 
-## 家族命令映射 — 121 个可见命令面
+## 家族命令映射 — 123 个可见命令面
 
-CLI 把 27 个前缀族各收拢为一个可见的伞形命令：**121 个可见命令**取代原 255 个。`tx begin`、`kb query`、`cgdb find-invokers`、`daemon start` 是教学拼写；155 个旧拼写（`tx begin`、`kb query`……）**解析行为完全相同**——仅从 `--help` 隐藏，既有脚本与肌肉记忆不受影响。`--graph` 与所有旗标不变；`tx begin --help` 与 `tx begin --help` 输出完全一致。
+CLI 把 27 个前缀族各收拢为一个可见的伞形命令：**123 个可见命令**取代原 255 个。`tx begin`、`kb query`、`cgdb find-invokers`、`daemon start` 是教学拼写；155 个旧拼写（`tx begin`、`kb query`……）**解析行为完全相同**——仅从 `--help` 隐藏，既有脚本与肌肉记忆不受影响。`--graph` 与所有旗标不变；`tx begin --help` 与 `tx begin --help` 输出完全一致。
 
 | 伞形 | 裸形式（=） | 隐藏的旧拼写（全部仍可解析） |
 |------|-------------|------------------------------|
@@ -913,9 +913,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## 完整 CLI 命令参考（builder 276 个拼写：121 可见 + 155 隐藏旧拼写）
+## 完整 CLI 命令参考（builder 278 个拼写：123 可见 + 155 隐藏旧拼写）
 
-共 283 个 CLI 子命令：`code2database_builder.py`（276 个）+ `code2database_scanner.py`（8 个）。builder 面教学 121 个可见命令（见上方家族命令映射）；此处列出的 155 个旧拼写解析行为完全相同——本节是它们的旗标级参考。另有 13 个短别名（`describe`、`context`、`trace`、`concurrency`、`save`、`recall`、`brief`、`flow`、`find`、`health`、`daemon`、`export`、`init`）映射到下表中的完整命令，计入 builder 总数。
+共 285 个 CLI 子命令：`code2database_builder.py`（276 个）+ `code2database_scanner.py`（8 个）。builder 面教学 123 个可见命令（见上方家族命令映射）；此处列出的 155 个旧拼写解析行为完全相同——本节是它们的旗标级参考。另有 13 个短别名（`describe`、`context`、`trace`、`concurrency`、`save`、`recall`、`brief`、`flow`、`find`、`health`、`daemon`、`export`、`init`）映射到下表中的完整命令，计入 builder 总数。
 
 | 命令 | 说明 |
 |------|------|
@@ -1068,6 +1068,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `intent-query` | Classify a natural-language question and route to a CLI command |
 | `io-path` | Trace IO path from a function, auto-detecting vtable dispatch options |
 | `kb-audit` | Review the KB: counts, stale, weak-confidence, citations |
+| `kb-backup` | 将所有 KB 存储文件打包为 tar.gz 备份归档 |
 | `kb-cluster` | Cluster kb_paragraphs by FTS5 similarity + link principles |
 | `kb-conflict` | Detect contradictory items in the same cluster |
 | `kb-forget` | Immediately delete a kb_paragraph (no decay) |
@@ -1082,6 +1083,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `kb-migrate` | Migrate kb_paragraphs rows into kb_items (fact-level) |
 | `kb-query` | Unified FTS5+BM25 query across memory and knowledge |
 | `kb-rebuild-index` | Rebuild the unified kb_paragraphs FTS5 index  |
+| `kb-restore` | 从 tar.gz 备份归档恢复 KB 存储 |
 | `kb-init` | 初始化独立的知识/记忆存储（无需图谱；可设置域名） |
 | `kb-domain-add` | 注册另一个知识库为可查询的域 |
 | `kb-domain-list` | 列出已关注的知识库域 |

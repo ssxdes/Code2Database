@@ -21,6 +21,7 @@
     "brief-validate",
     "kb",
     "kb-audit",
+    "kb-backup",
     "kb-cluster",
     "kb-conflict",
     "kb-domain",
@@ -42,6 +43,7 @@
     "kb-migrate",
     "kb-query",
     "kb-rebuild-index",
+    "kb-restore",
     "kb-rollback",
     "kb-stats",
     "knowledge-brief",
@@ -91,7 +93,9 @@
       "kb-init",
       "kb-migrate",
       "kb-rollback",
-      "kb-rebuild-index"
+      "kb-rebuild-index",
+      "kb-backup",
+      "kb-restore"
     ],
     "Share and recall across projects and domains": [
       "kb-global-add",

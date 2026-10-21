@@ -325,6 +325,31 @@ def cmd_kb_stats(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def cmd_kb_backup(args):
+    """Bundle KB stores into a tar.gz archive."""
+    from _builder.kb.kb_backup import kb_backup
+    try:
+        path = kb_backup(args.graph, args.output)
+        print(json.dumps({"backup_path": path, "status": "ok"},
+                         ensure_ascii=False, indent=2))
+    except FileNotFoundError as e:
+        print(json.dumps({"error": str(e), "status": "not_found"},
+                         ensure_ascii=False, indent=2))
+        sys.exit(1)
+
+
+def cmd_kb_restore(args):
+    """Restore KB stores from a tar.gz archive."""
+    from _builder.kb.kb_backup import kb_restore
+    try:
+        result = kb_restore(args.graph, args.input, force=args.force)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    except FileNotFoundError as e:
+        print(json.dumps({"error": str(e), "status": "not_found"},
+                         ensure_ascii=False, indent=2))
+        sys.exit(1)
+
+
 def cmd_kb_conflict(args):
     """detect contradictory items."""
     from _builder.kb.kb_conflict import detect_conflicts
@@ -1624,6 +1649,22 @@ def main():
     p_ks = sub.add_parser("kb-stats",
                           help="KB statistics: storage, clusters, query log, access")
     p_ks.add_argument("--graph", required=True, help="Store directory")
+
+    # kb-backup (archive all KB stores into a tar.gz)
+    p_kb_bak = sub.add_parser("kb-backup",
+                              help="Archive all KB store files into a tar.gz backup")
+    p_kb_bak.add_argument("--graph", required=True, help="Store directory")
+    p_kb_bak.add_argument("--output", required=True,
+                         help="Output archive path (.tar.gz)")
+
+    # kb-restore (extract a KB backup archive)
+    p_kb_rst = sub.add_parser("kb-restore",
+                              help="Restore KB stores from a tar.gz backup archive")
+    p_kb_rst.add_argument("--graph", required=True, help="Store directory")
+    p_kb_rst.add_argument("--input", required=True,
+                         help="Archive path to restore from (.tar.gz)")
+    p_kb_rst.add_argument("--force", action="store_true",
+                         help="Overwrite existing files")
 
     # kb-conflict (detect contradictions)
     p_kcf = sub.add_parser("kb-conflict",
@@ -3307,6 +3348,7 @@ def main():
         # kb-only project must not be forced to spell --graph for them
         # either — the store resolves like any other via markers.
         "kb-migrate", "kb-conflict", "kb-rollback",
+        "kb-backup", "kb-restore",
         "kb-global-share-memory", "kb-global-import-memory",
         "brief-update", "brief-extract", "brief-validate",
         "brief-suggest", "brief-migrate-legacy",
@@ -3425,6 +3467,8 @@ def main():
         "kb-known-unknowns": cmd_kb_known_unknowns,
         "kb-audit": cmd_kb_audit,
         "kb-stats": cmd_kb_stats,
+        "kb-backup": cmd_kb_backup,
+        "kb-restore": cmd_kb_restore,
         "kb-conflict": cmd_kb_conflict,
         "kb-rollback": cmd_kb_rollback,
         "kb-forget": cmd_kb_forget,

@@ -33,7 +33,7 @@ $BUILDER c2d ask --question "..." --dry-run    # preview the translated commands
 
 ## Family Command Map — the 121-command visible surface
 
-The CLI collapses 27 prefix families into one visible umbrella command each: **121 visible commands** instead of 255. `tx begin`, `kb query`, `cgdb find-invokers`, `daemon start` are the taught spellings; the 155 legacy spellings (`tx begin`, `kb query`, ...) **still parse identically** — they are hidden from `--help` only, so existing scripts and muscle memory keep working. `--graph` and every flag are unchanged; `tx begin --help` prints exactly what `tx begin --help` prints.
+The CLI collapses 27 prefix families into one visible umbrella command each: **123 visible commands** instead of 255. `tx begin`, `kb query`, `cgdb find-invokers`, `daemon start` are the taught spellings; the 155 legacy spellings (`tx begin`, `kb query`, ...) **still parse identically** — they are hidden from `--help` only, so existing scripts and muscle memory keep working. `--graph` and every flag are unchanged; `tx begin --help` prints exactly what `tx begin --help` prints.
 
 | Umbrella | Bare form (=) | Hidden legacy spellings (all still parse) |
 |----------|---------------|-------------------------------------------|
@@ -915,9 +915,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (276 builder spellings: 121 visible + 155 hidden legacy)
+## Complete CLI Command Reference (276 builder spellings: 123 visible + 155 hidden legacy)
 
-283 CLI subparsers total: `code2database_builder.py` (276) + `code2database_scanner.py` (8). The builder surface teaches 121 visible commands (see the Family Command Map above); the 155 legacy spellings listed here still parse identically — this section is their flag-level reference. 13 short aliases (`describe`, `context`, `trace`, `concurrency`, `save`, `recall`, `brief`, `flow`, `find`, `health`, `daemon`, `export`, `init`) map to the full commands listed below and count toward the builder total.
+285 CLI subparsers total: `code2database_builder.py` (278) + `code2database_scanner.py` (8). The builder surface teaches 123 visible commands (see the Family Command Map above); the 155 legacy spellings listed here still parse identically — this section is their flag-level reference. 13 short aliases (`describe`, `context`, `trace`, `concurrency`, `save`, `recall`, `brief`, `flow`, `find`, `health`, `daemon`, `export`, `init`) map to the full commands listed below and count toward the builder total.
 
 | Command | Description |
 |---------|-------------|
@@ -1070,6 +1070,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `intent-query` | Classify a natural-language question and route to a CLI command |
 | `io-path` | Trace IO path from a function, auto-detecting vtable dispatch options |
 | `kb-audit` | Review the KB: counts, stale, weak-confidence, citations |
+| `kb-backup` | Archive all KB store files into a tar.gz backup |
 | `kb-cluster` | Cluster kb_paragraphs by FTS5 similarity + link principles |
 | `kb-conflict` | Detect contradictory items in the same cluster |
 | `kb-forget` | Immediately delete a kb_paragraph (no decay) |
@@ -1084,6 +1085,7 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 | `kb-migrate` | Migrate kb_paragraphs rows into kb_items (fact-level) |
 | `kb-query` | Unified FTS5+BM25 query across memory and knowledge |
 | `kb-rebuild-index` | Rebuild the unified kb_paragraphs FTS5 index  |
+| `kb-restore` | Restore KB stores from a tar.gz backup archive |
 | `kb-init` | Provision a standalone knowledge/memory store (no graph required; sets the domain name) |
 | `kb-domain-add` | Register another knowledge base as a queryable domain |
 | `kb-domain-list` | List watched knowledge-base domains |

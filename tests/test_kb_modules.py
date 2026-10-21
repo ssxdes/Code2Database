@@ -2230,5 +2230,94 @@ class TestMmrRerank(unittest.TestCase):
             self.assertNotIn("_toks", r)
 
 
+class TestKbBackupRestore(unittest.TestCase):
+    """kb-backup and kb-restore: single-file tar.gz archive of every
+    KB store file with a manifest carrying schema versions and sha256
+    hashes."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="kb_backup_test_")
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        self.graph_dir = os.path.join(self.tmpdir, "code2db-out")
+        os.makedirs(self.graph_dir, exist_ok=True)
+
+    def _populate(self):
+        """Create a minimal KB with one memory entry and rebuild."""
+        _make_memory_entry(self.graph_dir, 1, "backup test q", "backup test a")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+
+    def test_backup_creates_archive(self):
+        from _builder.kb.kb_backup import kb_backup
+        self._populate()
+        out = os.path.join(self.tmpdir, "backup.tar.gz")
+        path = kb_backup(self.graph_dir, out)
+        self.assertTrue(os.path.isfile(path))
+        # The archive must be a valid tar.gz
+        import tarfile
+        with tarfile.open(path, "r:gz") as tar:
+            names = tar.getnames()
+        self.assertIn("manifest.json", names)
+        self.assertIn("kb_index.db", names)
+
+    def test_backup_manifest_has_schema_versions(self):
+        from _builder.kb.kb_backup import kb_backup
+        self._populate()
+        out = os.path.join(self.tmpdir, "backup.tar.gz")
+        kb_backup(self.graph_dir, out)
+        import tarfile, json
+        with tarfile.open(out, "r:gz") as tar:
+            manifest = json.loads(
+                tar.extractfile("manifest.json").read().decode("utf-8"))
+        self.assertEqual(manifest["format"], "code2database-kb-backup")
+        self.assertIn("schema_versions", manifest)
+        self.assertIn("kb_index", manifest["schema_versions"])
+        self.assertIn("files", manifest)
+        self.assertGreater(len(manifest["files"]), 0)
+
+    def test_restore_round_trip(self):
+        from _builder.kb.kb_backup import kb_backup, kb_restore
+        self._populate()
+        out = os.path.join(self.tmpdir, "backup.tar.gz")
+        kb_backup(self.graph_dir, out)
+        # Restore to a new directory
+        new_dir = os.path.join(self.tmpdir, "restored")
+        result = kb_restore(new_dir, out)
+        self.assertGreater(result["restored_count"], 0)
+        self.assertEqual(result["skipped_count"], 0)
+        # The restored KB should be queryable
+        hits = query_kb(new_dir, "backup test")
+        self.assertTrue(any("backup" in h["body"] for h in hits))
+
+    def test_restore_skips_existing_without_force(self):
+        from _builder.kb.kb_backup import kb_backup, kb_restore
+        self._populate()
+        out = os.path.join(self.tmpdir, "backup.tar.gz")
+        kb_backup(self.graph_dir, out)
+        # Restore to the same directory — existing files should be skipped
+        result = kb_restore(self.graph_dir, out, force=False)
+        self.assertGreater(result["skipped_count"], 0)
+
+    def test_restore_force_overwrites(self):
+        from _builder.kb.kb_backup import kb_backup, kb_restore
+        self._populate()
+        out = os.path.join(self.tmpdir, "backup.tar.gz")
+        kb_backup(self.graph_dir, out)
+        result = kb_restore(self.graph_dir, out, force=True)
+        self.assertEqual(result["skipped_count"], 0)
+        self.assertGreater(result["restored_count"], 0)
+
+    def test_backup_missing_dir_raises(self):
+        from _builder.kb.kb_backup import kb_backup
+        with self.assertRaises(FileNotFoundError):
+            kb_backup("/nonexistent/path", "/tmp/out.tar.gz")
+
+    def test_backup_empty_dir_raises(self):
+        from _builder.kb.kb_backup import kb_backup
+        empty = os.path.join(self.tmpdir, "empty")
+        os.makedirs(empty)
+        with self.assertRaises(FileNotFoundError):
+            kb_backup(empty, "/tmp/out.tar.gz")
+
+
 if __name__ == "__main__":
     unittest.main()

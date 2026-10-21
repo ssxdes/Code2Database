@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "Turn a codebase into a queryable code database for the questions grep cannot answer in a few calls: reverse queries (callers, impact), global aggregates (domains, key paths, value flow), races, and cross-session memory. Scan once, query forever. C/C++/Go/Python/Java/Rust/ASM invocation graphs: conditional paths, concurrency analysis, data flow, FFI tracing, a 13-layer typed cgdb semantic store. One-shot lifecycle via the c2d umbrella (setup → session → ask → capture). 83 MCP tools + 121 visible CLI commands (umbrella families; 155 legacy spellings still parse). Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
+description: "Turn a codebase into a queryable code database for the questions grep cannot answer in a few calls: reverse queries (callers, impact), global aggregates (domains, key paths, value flow), races, and cross-session memory. Scan once, query forever. C/C++/Go/Python/Java/Rust/ASM invocation graphs: conditional paths, concurrency analysis, data flow, FFI tracing, a 13-layer typed cgdb semantic store. One-shot lifecycle via the c2d umbrella (setup → session → ask → capture). 83 MCP tools + 123 visible CLI commands (umbrella families; 155 legacy spellings still parse). Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
 trigger: /Code2Database
 ---
 
@@ -110,7 +110,7 @@ Umbrella families (`tx begin`, `kb query`, `cgdb find-invokers`, ...) collapse 2
 
 Aliases: `describe`/`context` → describe-node, `trace` → trace-chain, `find` → find-invariants, `flow` → value-flow, `concurrency` → concurrency-risks, `save` → save-memory, `recall` → search-memory, `brief` → knowledge-brief, `health` → profile-health, `daemon` → daemon-status, `export` → export-mermaid.
 
-All 276 CLI command spellings remain accessible (121 visible + 155 hidden legacy).
+All 276 CLI command spellings remain accessible (123 visible + 155 hidden legacy).
 
 ## Supported Languages
 

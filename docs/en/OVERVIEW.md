@@ -56,7 +56,7 @@ The skill ships as 4 sub-skills (`/Code2Database` core, `/Code2Database-analysis
 - **Analysis (12 Tier-1 + 19 cgdb_* MCP tools)** — loaded on demand. Concurrency, data flow, invariants, FFI, path feasibility, provenance, cgdb tables.
 - **Ops (9 Tier-1 commands)** — loaded on demand. Transactions, daemon, profile health, doc-code alignment, exports, plugins, memory, embeddings.
 
-All 276 CLI spellings (121 visible umbrella commands + 155 hidden legacy) are accessible via the shared `scripts/code2database_builder.py` regardless of which sub-skill is active. The split is purely about LLM context economy: a 4K-token core skill is always useful; a 20K-token analysis skill should only be loaded when the user asks about races or invariants.
+All 278 CLI spellings (123 visible umbrella commands + 155 hidden legacy) are accessible via the shared `scripts/code2database_builder.py` regardless of which sub-skill is active. The split is purely about LLM context economy: a 4K-token core skill is always useful; a 20K-token analysis skill should only be loaded when the user asks about races or invariants.
 
 ### Why micro → lite → local Query Mode
 
@@ -199,7 +199,7 @@ The daemon coordinates with manual updates via `pause`/`resume` socket commands 
 │         cgdb_sync.py, sqlite_store.py, sqlite_postprocess.py,       │
 │         memory_manager.py, semantics.py,                            │
 │         auto_enhance.py, bug_benchmark.py, etc.                     │
-│  CLI: scripts/code2database_builder.py (276 spellings: 121 visible; +8 scanner)   │
+│  CLI: scripts/code2database_builder.py (278 spellings: 123 visible; +8 scanner)   │
 └──────────────────────────────┬───────────────────────────────────────┘
                                │
                                ▼  (optional)
@@ -392,7 +392,7 @@ Code2Database is organized into 5 packages under `scripts/`, plus a CLI entry la
 
 ```
 scripts/
-├── code2database_builder.py      ← CLI entry point (276 CLI spellings, argparse routing)
+├── code2database_builder.py      ← CLI entry point (278 CLI spellings, argparse routing)
 ├── code2database_scanner.py      ← Scanner CLI entry point (8 subcommands)
 ├── setup.sh                      ← Dependency installer (per-language option)
 ├── requirements.txt              ← Pinned dependencies
@@ -835,7 +835,7 @@ Code2Database's current capabilities, organized by category:
 - Value flow (DATA_FLOW edges) + cross-function data dependency (DATA_DEP edges)
 
 ### Query & Analysis
-- 121 visible CLI commands, 276 parseable spellings (4 sub-skills: core, analysis, ops, kb)
+- 123 visible CLI commands, 276 parseable spellings (4 sub-skills: core, analysis, ops, kb)
 - 83 MCP tools (55 base + 28 design-report) (36 code2database_* + 19 cgdb_*)
 - Cypher-subset query language (MATCH/WHERE/RETURN)
 - Z3 SMT path feasibility (heuristic fallback)

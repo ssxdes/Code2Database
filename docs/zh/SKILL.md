@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "将代码库转为可查询的代码数据库，专答 grep 几次调用也答不出的提问：反向查询（调用方、影响面）、全局聚合（领域、关键路径、值流）、竞争检测、跨会话记忆。扫描一次，永久查询。C/C++/Go/Python/Java/Rust/ASM 调用图：条件路径、并发分析、数据流、FFI 追踪、13 层强类型 cgdb 语义库。通过 c2d 总入口一键生命周期（setup → session → ask → capture）。83 个 MCP 工具 + 121 个可见 CLI 命令（伞形家族；155 个旧拼写仍可解析）。当代码提问涉及结构、调用链、影响分析、并发或数据流时使用 /Code2Database。"
+description: "将代码库转为可查询的代码数据库，专答 grep 几次调用也答不出的提问：反向查询（调用方、影响面）、全局聚合（领域、关键路径、值流）、竞争检测、跨会话记忆。扫描一次，永久查询。C/C++/Go/Python/Java/Rust/ASM 调用图：条件路径、并发分析、数据流、FFI 追踪、13 层强类型 cgdb 语义库。通过 c2d 总入口一键生命周期（setup → session → ask → capture）。83 个 MCP 工具 + 123 个可见 CLI 命令（伞形家族；155 个旧拼写仍可解析）。当代码提问涉及结构、调用链、影响分析、并发或数据流时使用 /Code2Database。"
 trigger: /Code2Database
 ---
 
@@ -10,7 +10,7 @@ trigger: /Code2Database
 
 ## 一键式生命周期 — `c2d` 总入口
 
-不需要记住 121 个可见命令。一个命令覆盖完整工作流 — 只需掌握 4 个动词：
+不需要记住 123 个可见命令。一个命令覆盖完整工作流 — 只需掌握 4 个动词：
 
 | 动词 | 用途 | 示例 |
 |------|------|------|
@@ -106,9 +106,9 @@ python3 scripts/code2database_builder.py trace --from bdev_start --to spdk_app_s
 
 别名：`describe`/`context` → describe-node、`trace` → trace-chain、`find` → find-invariants、`flow` → value-flow、`concurrency` → concurrency-risks、`save` → save-memory、`recall` → search-memory、`brief` → knowledge-brief、`health` → profile-health、`daemon` → daemon-status、`export` → export-mermaid。
 
-伞形家族（`tx begin`、`kb query`、`cgdb find-invokers`……）把 27 个前缀族收拢为 121 个可见命令；155 个旧拼写仍可解析——完整映射见 `references/usage_reference.md`。
+伞形家族（`tx begin`、`kb query`、`cgdb find-invokers`……）把 27 个前缀族收拢为 123 个可见命令；155 个旧拼写仍可解析——完整映射见 `references/usage_reference.md`。
 
-全部 276 个 CLI 命令拼写仍可访问（121 可见 + 155 隐藏旧拼写）。
+全部 278 个 CLI 命令拼写仍可访问（123 可见 + 155 隐藏旧拼写）。
 
 ## 支持语言
 

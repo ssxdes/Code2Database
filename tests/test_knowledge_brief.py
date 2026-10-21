@@ -101,7 +101,7 @@ class TestBriefIO(unittest.TestCase):
         save_brief(self.graph_dir, brief)
         loaded = load_brief(self.graph_dir)
         self.assertEqual(loaded["project"], "SPDK")
-        self.assertEqual(loaded["schema_version"], 1)
+        self.assertEqual(loaded["schema_version"], 2)
         self.assertTrue(loaded["updated_at"])
 
     def test_save_brief_warns_when_oversized(self):

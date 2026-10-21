@@ -10,6 +10,7 @@ imported once.
 """
 import json
 import os
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -90,8 +91,143 @@ class TestCrud(_Base):
         store.add("pitfall", "the doorbell register wraps silently",
                   tags=["nvme"])
         rows = store._conn.execute(
-            "SELECT title, body FROM knowledge_fts "
+            "SELECT title, body_tokenized FROM knowledge_fts "
             "WHERE knowledge_fts MATCH 'doorbell'").fetchall()
+        self.assertEqual(len(rows), 1)
+
+
+class TestCjkTokenization(_Base):
+    """CJK pre-tokenization: knowledge_fts indexes segmented tokens
+    instead of unicode61-folded CJK runs, so a pure-CJK query matches
+    paragraphs whose body contains the segmented words."""
+
+    def test_body_tokenized_column_populated_on_add(self):
+        store = self._open()
+        kid = store.add("hard_rule", "释放内存前必须持有互斥锁")
+        row = store._conn.execute(
+            "SELECT body_tokenized FROM knowledge_items "
+            "WHERE id = ?", (kid,)).fetchone()
+        self.assertIsNotNone(row["body_tokenized"])
+        # The pre-tokenized form contains segmented words (jieba) or
+        # character bigrams (fallback), not the raw folded run.
+        self.assertIn("释放", row["body_tokenized"])
+
+    def test_revise_updates_body_tokenized(self):
+        store = self._open()
+        kid = store.add("convention", "old english text")
+        original = store._conn.execute(
+            "SELECT body_tokenized FROM knowledge_items "
+            "WHERE id = ?", (kid,)).fetchone()["body_tokenized"]
+        store.revise(kid, body="新的中文内容")
+        updated = store._conn.execute(
+            "SELECT body_tokenized FROM knowledge_items "
+            "WHERE id = ?", (kid,)).fetchone()["body_tokenized"]
+        self.assertNotEqual(original, updated)
+        self.assertIn("新", updated)
+
+    def test_cjk_query_matches_via_fts5(self):
+        store = self._open()
+        store.add("hard_rule", "释放内存前必须持有互斥锁")
+        store.add("pitfall", "不要在信号处理函数中调用非异步信号安全的函数")
+        # A pure-CJK query for the verb must match the hard_rule row
+        # whose body_tokenized contains the segmented token.
+        rows = store._conn.execute(
+            "SELECT knowledge_fts.rowid FROM knowledge_fts "
+            "WHERE knowledge_fts MATCH '释放'").fetchall()
+        self.assertEqual(len(rows), 1)
+
+    def test_search_latin_query_returns_ranked_results(self):
+        store = self._open()
+        store.add("hard_rule", "lock the queue before touching the tail")
+        store.add("pitfall", "the doorbell register wraps silently")
+        hits = store.search("doorbell")
+        self.assertTrue(hits)
+        self.assertIn("doorbell", hits[0]["body"])
+
+    def test_search_cjk_query_returns_ranked_results(self):
+        store = self._open()
+        store.add("hard_rule", "释放内存前必须持有互斥锁")
+        store.add("pitfall", "不要在信号处理函数中调用非异步信号安全的函数")
+        hits = store.search("释放内存")
+        self.assertTrue(hits)
+        self.assertIn("释放", hits[0]["body"])
+
+    def test_search_kinds_filter(self):
+        store = self._open()
+        store.add("hard_rule", "lock the queue before touching the tail")
+        store.add("pitfall", "the queue tail can race without a lock")
+        hits = store.search("queue", kinds=["hard_rule"])
+        self.assertTrue(hits)
+        self.assertTrue(all(h["kind"] == "hard_rule" for h in hits))
+
+    def test_search_empty_query_returns_empty(self):
+        store = self._open()
+        store.add("hard_rule", "anything")
+        self.assertEqual(store.search(""), [])
+        self.assertEqual(store.search("   "), [])
+
+    def test_rebuild_tokenized_refreshes_index(self):
+        store = self._open()
+        store.add("abstraction", "first version of the abstraction")
+        # Simulate a stale body_tokenized (e.g. pre-migration copy).
+        store._conn.execute(
+            "UPDATE knowledge_items SET body_tokenized = body")
+        store._conn.commit()
+        n = store.rebuild_tokenized()
+        self.assertGreater(n, 0)
+        row = store._conn.execute(
+            "SELECT body_tokenized FROM knowledge_items").fetchone()
+        # rebuild_tokenized calls _cjk_pre_tokenize, which for
+        # non-CJK text returns the whitespace-joined tokens.
+        self.assertNotEqual(row["body_tokenized"], "first version of the abstraction")
+
+    def test_migration_backfills_existing_rows(self):
+        """A store created with the old schema (no body_tokenized)
+        must migrate on the next write-side open."""
+        store = self._open()
+        store.add("hard_rule", "释放内存前必须持有互斥锁")
+        store.close()
+        # Simulate the pre-migration state: drop body_tokenized
+        # column and revert FTS5 to index body directly.
+        conn = sqlite3.connect(knowledge_db_path(self.graph_dir))
+        conn.execute("DROP TRIGGER IF EXISTS knowledge_ai")
+        conn.execute("DROP TRIGGER IF EXISTS knowledge_ad")
+        conn.execute("DROP TRIGGER IF EXISTS knowledge_au")
+        conn.execute("DROP TABLE IF EXISTS knowledge_fts")
+        # SQLite does not support DROP COLUMN before 3.35; recreate
+        # the table without the column to model the old schema.
+        conn.execute("ALTER TABLE knowledge_items RENAME TO knowledge_items_old")
+        conn.execute(
+            "CREATE TABLE knowledge_items (id INTEGER PRIMARY KEY, "
+            "kind TEXT, title TEXT, body TEXT, tags TEXT, "
+            "extra_json TEXT, version_scope TEXT, status TEXT, "
+            "origin TEXT, source_memory_id INTEGER, weight REAL, "
+            "created_at TEXT, revised_at TEXT)")
+        conn.execute(
+            "INSERT INTO knowledge_items SELECT id, kind, title, body, "
+            "tags, extra_json, version_scope, status, origin, "
+            "source_memory_id, weight, created_at, revised_at "
+            "FROM knowledge_items_old")
+        conn.execute("DROP TABLE knowledge_items_old")
+        conn.execute(
+            "CREATE VIRTUAL TABLE knowledge_fts USING fts5("
+            "title, body, tags, content='knowledge_items', "
+            "content_rowid='id', tokenize='porter unicode61')")
+        conn.commit()
+        conn.close()
+        # Re-open: migration must add body_tokenized, backfill, and
+        # rebuild FTS5 on the new column.
+        store2 = KnowledgeStore(self.graph_dir)
+        self.addCleanup(store2.close)
+        row = store2._conn.execute(
+            "SELECT body_tokenized FROM knowledge_items "
+            "WHERE kind = 'hard_rule'").fetchone()
+        self.assertIsNotNone(row["body_tokenized"])
+        self.assertIn("释放", row["body_tokenized"])
+        # FTS5 now indexes body_tokenized, so a CJK query matches.
+        rows = store2._conn.execute(
+            "SELECT rowid FROM knowledge_fts "
+            "WHERE knowledge_fts MATCH '释放'").fetchall()
         self.assertEqual(len(rows), 1)
 
 

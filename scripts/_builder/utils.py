@@ -151,6 +151,7 @@ def _fts5_escape(query: str) -> str:
     # would miss a paragraph indexed with ``3个线程``.
     query = _normalize_fullwidth(query)
     query = _normalize_cjk_digits(query)
+    query = _normalize_cjk_magnitudes(query)
     synonyms = _load_synonyms()
     if _has_cjk(query):
         query = _strip_cjk_punct(query)
@@ -1226,6 +1227,27 @@ _CJK_DIGIT_RE = re.compile(
     r'[' + ''.join(re.escape(k) for k in _CJK_DIGIT_MAP) + r']'
 )
 
+# CJK magnitude characters — multiplicative numerals that follow a
+# digit to express hundreds / thousands / ten-thousands / etc.
+# Applied AFTER _normalize_cjk_digits so the input has ASCII digits.
+# No word-boundary guard: the regex requires a \d+ prefix, so
+# standalone magnitudes (万能, 千年, 百度) never match because they
+# have no preceding digit. The rare ``3万能`` false positive
+# (``30000能`` instead of ``3 universal``) is accepted because
+# technical text almost always writes ``3 个万能`` or ``3 种万能``
+# rather than ``3万能`` directly.
+_CJK_MAGNITUDE_MAP: Dict[str, str] = {
+    "百万": "000000",      # x 1,000,000
+    "千万": "0000000",     # x 10,000,000
+    "亿":   "00000000",    # x 100,000,000
+    "万":   "0000",        # x 10,000
+    "千":   "000",         # x 1,000
+    "百":   "00",          # x 100
+}
+_CJK_MAGNITUDE_RE = re.compile(
+    r"(\d+)(百万|千万|亿|万|千|百)"
+)
+
 
 def _normalize_fullwidth(text: str) -> str:
     """Convert full-width characters to their half-width ASCII equivalents.
@@ -1260,6 +1282,27 @@ def _normalize_cjk_digits(text: str) -> str:
     def _digit(m):
         return _CJK_DIGIT_MAP.get(m.group(0), m.group(0))
     return _CJK_DIGIT_RE.sub(_digit, text)
+
+
+def _normalize_cjk_magnitudes(text: str) -> str:
+    r"""Replace ``<digits><magnitude>`` with the fully expanded number.
+
+    After ``_normalize_cjk_digits`` converts CJK numerals to ASCII,
+    magnitude characters still carry multiplicative meaning:
+    ``3百`` -> ``300``, ``5千`` -> ``5000``, ``3万`` -> ``30000``,
+    ``3百万`` -> ``3000000``.  This expansion lets a paragraph stored
+    as ``三百个线程`` match an ASCII query ``300``.
+
+    ``十`` is intentionally omitted because ``十二`` (12) and ``十几``
+    (ten-something) are ambiguous.  Standalone magnitudes without a
+    preceding digit (``万能``, ``千年``, ``百度``) never match because
+    the regex requires a ``\d+`` prefix.
+    """
+    if not text:
+        return text or ""
+    def _replace(m):
+        return m.group(1) + _CJK_MAGNITUDE_MAP[m.group(2)]
+    return _CJK_MAGNITUDE_RE.sub(_replace, text)
 
 
 def _strip_cjk_punct(text: str) -> str:
@@ -1305,6 +1348,7 @@ def _simple_tokenize(text: str) -> set:
     # cross-punctuation bigrams (e.g.  内存， → no 存， bigram).
     text = _normalize_fullwidth(text)
     text = _normalize_cjk_digits(text)
+    text = _normalize_cjk_magnitudes(text)
     text = _strip_cjk_punct(text)
     # Keep CJK chars, alphanumerics; split on punctuation/whitespace
     # For CJK: each character is a token; for Latin: words
@@ -1552,6 +1596,7 @@ def _char_bigram_tokenize(text: str) -> List[str]:
     """Character + bigram tokenization (the always-available fallback)."""
     text = _normalize_fullwidth(text)
     text = _normalize_cjk_digits(text)
+    text = _normalize_cjk_magnitudes(text)
     text = _strip_cjk_punct(text)
     cjk = _CJK_RE.findall(text)
     tokens: List[str] = list(cjk)
@@ -1626,6 +1671,7 @@ def _cjk_pre_tokenize(text: str, tokenizer: str = "jieba",
     # CJK check so ＡＢＣ and ABC, 三个 and 3个, take the same path.
     text = _normalize_fullwidth(text)
     text = _normalize_cjk_digits(text)
+    text = _normalize_cjk_magnitudes(text)
     synonyms = _load_synonyms()
     if not _has_cjk(text):
         tokens = text.split()

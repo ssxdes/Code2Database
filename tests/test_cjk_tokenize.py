@@ -17,7 +17,8 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 from _builder.utils import _fts5_escape, _cjk_pre_tokenize, _has_cjk, \
     _simple_tokenize, _strip_cjk_punct, _normalize_fullwidth, \
-    _normalize_cjk_digits, set_project_user_dict, reset_resolver_state
+    _normalize_cjk_digits, _normalize_cjk_magnitudes, \
+    set_project_user_dict, reset_resolver_state
 from _builder.kb.kb_index import _kb_connect, query_kb, upsert_kb_paragraph, \
     build_kb_user_dict
 
@@ -691,6 +692,85 @@ class TestKbQueryCjkMatch(unittest.TestCase):
         results = query_kb(self.graph_dir, "mutex", top_n=5)
         self.assertGreaterEqual(len(results), 1,
                                 "English query 'mutex' must find CJK paragraph about 互斥锁")
+
+
+class TestCjkMagnitudeNormalization(unittest.TestCase):
+    """CJK magnitude characters (百/千/万/亿) following a digit are
+    expanded to their numeric equivalent so ``3百`` matches ``300``."""
+
+    def test_hundred_expansion(self):
+        self.assertEqual(_normalize_cjk_magnitudes("3百"), "300")
+        # Full pipeline: 三百 → digits → 3百 → magnitudes → 300
+        from _builder.utils import _normalize_cjk_digits
+        self.assertEqual(
+            _normalize_cjk_magnitudes(_normalize_cjk_digits("三百")),
+            "300")
+
+    def test_thousand_expansion(self):
+        self.assertEqual(_normalize_cjk_magnitudes("5千"), "5000")
+        from _builder.utils import _normalize_cjk_digits
+        self.assertEqual(
+            _normalize_cjk_magnitudes(_normalize_cjk_digits("五千")),
+            "5000")
+
+    def test_ten_thousand_expansion(self):
+        self.assertEqual(_normalize_cjk_magnitudes("3万"), "30000")
+        from _builder.utils import _normalize_cjk_digits
+        self.assertEqual(
+            _normalize_cjk_magnitudes(_normalize_cjk_digits("三万")),
+            "30000")
+
+    def test_hundred_million_expansion(self):
+        self.assertEqual(_normalize_cjk_magnitudes("3亿"), "300000000")
+
+    def test_compound_million_expansion(self):
+        # 百万 = 100 x 10000 = 1,000,000
+        self.assertEqual(_normalize_cjk_magnitudes("3百万"), "3000000")
+
+    def test_compound_ten_million_expansion(self):
+        # 千万 = 1000 x 10000 = 10,000,000
+        self.assertEqual(_normalize_cjk_magnitudes("3千万"), "30000000")
+
+    def test_multi_digit_prefix(self):
+        self.assertEqual(_normalize_cjk_magnitudes("12万"), "120000")
+        self.assertEqual(_normalize_cjk_magnitudes("300百"), "30000")
+
+    def test_standalone_magnitude_not_expanded(self):
+        # No preceding digit -> no match. 万能, 千年, 百度 stay intact.
+        self.assertEqual(_normalize_cjk_magnitudes("万能"), "万能")
+        self.assertEqual(_normalize_cjk_magnitudes("千年"), "千年")
+        self.assertEqual(_normalize_cjk_magnitudes("百度"), "百度")
+
+    def test_magnitude_followed_by_cjk_classifier(self):
+        # 3百个 -> 300个 (magnitude followed by classifier expands)
+        self.assertEqual(_normalize_cjk_magnitudes("3百个"), "300个")
+        self.assertEqual(_normalize_cjk_magnitudes("3万字"), "30000字")
+
+    def test_magnitude_at_end_of_string(self):
+        self.assertEqual(_normalize_cjk_magnitudes("3万"), "30000")
+        self.assertEqual(_normalize_cjk_magnitudes("数量3百"), "数量300")
+
+    def test_no_digit_prefix_no_expansion(self):
+        self.assertEqual(_normalize_cjk_magnitudes("hello world"), "hello world")
+        self.assertEqual(_normalize_cjk_magnitudes("三百"), "三百")
+
+    def test_empty_string(self):
+        self.assertEqual(_normalize_cjk_magnitudes(""), "")
+        self.assertEqual(_normalize_cjk_magnitudes(None), "")
+
+    def test_pre_tokenize_includes_magnitude_expansion(self):
+        # End-to-end: _cjk_pre_tokenize should expand magnitudes
+        # so the tokenized form contains the expanded number.
+        result = _cjk_pre_tokenize("三百个线程")
+        self.assertIn("300", result)
+
+    def test_symmetric_query_and_write(self):
+        # A paragraph stored with ``3百`` must match a query for ``300``
+        # and vice versa, because both sides apply the normalization.
+        tokenized = _cjk_pre_tokenize("需要3百个线程")
+        self.assertIn("300", tokenized)
+        escaped = _fts5_escape("300")
+        self.assertIn('"300"', escaped)
 
 
 class TestProjectUserDict(unittest.TestCase):

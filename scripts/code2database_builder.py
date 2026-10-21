@@ -122,6 +122,10 @@ def cmd_kb_rebuild_index(args):
             model=getattr(args, 'ann_model', '') or '',
             provider=getattr(args, 'ann_provider', 'auto'))
         summary["ann"] = ann_summary
+    if getattr(args, 'cluster', False):
+        from _builder.kb.kb_cluster import cluster_kb
+        cluster_summary = cluster_kb(args.graph, verbose=True)
+        summary["cluster"] = cluster_summary
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
@@ -217,6 +221,7 @@ def cmd_kb_query(args):
         max_tokens=args.max_tokens,
         version_scope=getattr(args, 'version_scope', '') or None,
         cross=bool(getattr(args, 'cross', False)),
+        diversify=bool(getattr(args, 'diverse', False)),
     )
     # Graph walk for sparse engine too
     if use_graph_walk and results:
@@ -1538,8 +1543,11 @@ def main():
     p_kri.add_argument("--ann-model", default="",
                        help="Embedding model name (default: auto-detect)")
     p_kri.add_argument("--ann-provider", default="auto",
-                       choices=["auto", "ollama", "st", "openai", "none"],
-                       help="Embedding provider (default: auto-detect)")
+                        choices=["auto", "ollama", "st", "openai", "none"],
+                        help="Embedding provider (default: auto-detect)")
+    p_kri.add_argument("--cluster", action="store_true",
+                        help="Also run kb-cluster to recompute scope_id, "
+                             "canonical_id, principle_ref, and cluster summaries")
 
     # kb-query (unified FTS5+BM25 query across memory + knowledge)
     p_kq2 = sub.add_parser("kb-query",
@@ -1580,9 +1588,11 @@ def main():
     p_kq2.add_argument("--no-graph-walk", action="store_false", dest="graph_walk",
                        help="Disable graph walk")
     p_kq2.add_argument("--two-stage", action="store_true", default=None,
-                       help="Two-stage retrieval: match cluster summaries first")
+                        help="Two-stage retrieval: match cluster summaries first")
     p_kq2.add_argument("--no-two-stage", action="store_false", dest="two_stage",
-                       help="Disable two-stage retrieval")
+                        help="Disable two-stage retrieval")
+    p_kq2.add_argument("--diverse", action="store_true", default=False,
+                        help="Re-rank top results using MMR to deprioritise near-duplicate paragraphs")
 
     # kb-cluster (union-find clustering + principle_ref)
     p_kc = sub.add_parser("kb-cluster",

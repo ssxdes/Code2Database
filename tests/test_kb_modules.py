@@ -1098,6 +1098,44 @@ class TestKbStats(unittest.TestCase):
         self.assertIn("last_rebuild", result)
         self.assertIn("file_count", result["last_rebuild"])
 
+    def test_stats_access_windows(self):
+        # kb_stats reports 7d/30d/90d access windows so a maintainer
+        # can spot recently-active vs stale knowledge.
+        _make_memory_entry(self.graph_dir, 1, "test q", "test a")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        query_kb(self.graph_dir, "test", top_n=5)
+        result = kb_stats(self.graph_dir)
+        self.assertIn("access_windows", result)
+        self.assertIn("7d", result["access_windows"])
+        self.assertIn("30d", result["access_windows"])
+        self.assertIn("90d", result["access_windows"])
+        # The query we just ran should count toward the 7d window.
+        self.assertGreater(result["access_windows"]["7d"], 0)
+
+    def test_stats_query_log_windows(self):
+        _make_memory_entry(self.graph_dir, 1, "test query", "test answer")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        query_kb(self.graph_dir, "test", top_n=5)
+        query_kb(self.graph_dir, "nonexistent_xyz", top_n=5)
+        result = kb_stats(self.graph_dir)
+        self.assertIn("query_log_windows", result)
+        win = result["query_log_windows"]["7d"]
+        self.assertEqual(win["total"], 2)
+        self.assertEqual(win["matched"], 1)
+        self.assertEqual(win["zero_hit"], 1)
+        self.assertGreater(win["match_rate"], 0.0)
+
+    def test_stats_stale_accessed_count(self):
+        # Items accessed but not in 90+ days are "stale" — still
+        # relevant enough to have been accessed, but no longer active.
+        _make_memory_entry(self.graph_dir, 1, "stale q", "stale a")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        query_kb(self.graph_dir, "stale", top_n=5)
+        result = kb_stats(self.graph_dir)
+        self.assertIn("stale_accessed_count", result)
+        # Fresh access — stale count should be 0.
+        self.assertEqual(result["stale_accessed_count"], 0)
+
     def test_stats_reports_schema_version(self):
         # kb_meta carries a schema_version key after _kb_connect;
         # kb_stats surfaces it so enterprise maintainers can verify

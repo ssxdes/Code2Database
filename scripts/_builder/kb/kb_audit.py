@@ -115,6 +115,66 @@ def kb_stats(graph_dir: str) -> Dict[str, Any]:
             "SELECT COUNT(*) FROM kb_paragraphs WHERE access_count = 0"
         ).fetchone()[0]
         result["never_accessed_count"] = never_accessed
+        # -- Time-bucketed access patterns --
+        # accessed_at is the last-access timestamp (updated by
+        # query_kb when update_access=True). Bucket counts reveal
+        # recently-active vs stale items so a maintainer can spot
+        # knowledge that has aged out of relevance.
+        now_iso = datetime.now().isoformat()
+        def _count_since(days: int) -> int:
+            from datetime import timedelta
+            cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+            try:
+                return conn.execute(
+                    "SELECT COUNT(*) FROM kb_paragraphs "
+                    "WHERE accessed_at IS NOT NULL "
+                    "AND accessed_at >= ?", (cutoff,)).fetchone()[0]
+            except sqlite3.Error:
+                return 0
+        result["access_windows"] = {
+            "7d": _count_since(7),
+            "30d": _count_since(30),
+            "90d": _count_since(90),
+        }
+        # Stale items: not accessed in 90+ days (or never accessed).
+        try:
+            from datetime import timedelta
+            cutoff_90 = (datetime.now() - timedelta(days=90)).isoformat()
+            stale = conn.execute(
+                "SELECT COUNT(*) FROM kb_paragraphs "
+                "WHERE access_count > 0 AND "
+                "(accessed_at IS NULL OR accessed_at < ?)",
+                (cutoff_90,)).fetchone()[0]
+        except sqlite3.Error:
+            stale = 0
+        result["stale_accessed_count"] = stale
+        # Query-log time buckets: matched / zero-hit rate per window.
+        def _qlog_since(days: int) -> dict:
+            from datetime import timedelta
+            cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+            try:
+                total = conn.execute(
+                    "SELECT COUNT(*) FROM kb_query_log "
+                    "WHERE queried_at >= ?", (cutoff,)).fetchone()[0]
+                matched = conn.execute(
+                    "SELECT COUNT(*) FROM kb_query_log "
+                    "WHERE queried_at >= ? AND matched = 1",
+                    (cutoff,)).fetchone()[0]
+                zero = conn.execute(
+                    "SELECT COUNT(*) FROM kb_query_log "
+                    "WHERE queried_at >= ? AND matched = 0",
+                    (cutoff,)).fetchone()[0]
+            except sqlite3.Error:
+                return {"total": 0, "matched": 0, "zero_hit": 0,
+                        "match_rate": 0.0}
+            rate = (matched / total) if total > 0 else 0.0
+            return {"total": total, "matched": matched,
+                    "zero_hit": zero, "match_rate": round(rate, 4)}
+        result["query_log_windows"] = {
+            "7d": _qlog_since(7),
+            "30d": _qlog_since(30),
+            "90d": _qlog_since(90),
+        }
         # -- Index status --
         meta = {r["key"]: r["value"] for r in conn.execute(
             "SELECT key, value FROM kb_meta"

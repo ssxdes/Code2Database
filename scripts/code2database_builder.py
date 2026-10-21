@@ -313,6 +313,13 @@ def cmd_kb_audit(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def cmd_kb_stats(args):
+    """KB statistics snapshot."""
+    from _builder.kb.kb_audit import kb_stats
+    result = kb_stats(args.graph)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def cmd_kb_conflict(args):
     """detect contradictory items."""
     from _builder.kb.kb_conflict import detect_conflicts
@@ -1602,6 +1609,11 @@ def main():
                           help="Audit KB: counts, stale, low-confidence, citations")
     p_ka.add_argument("--graph", required=True, help="Store directory")
     p_ka.add_argument("--topic", default="", help="Optional: 'what do we know about X'")
+
+    # kb-stats (statistics snapshot)
+    p_ks = sub.add_parser("kb-stats",
+                          help="KB statistics: storage, clusters, query log, access")
+    p_ks.add_argument("--graph", required=True, help="Store directory")
 
     # kb-conflict (detect contradictions)
     p_kcf = sub.add_parser("kb-conflict",
@@ -3276,7 +3288,7 @@ def main():
         "find-invariants", "value-flow", "concurrency-risks", "update",
         "session-init", "save-memory", "search-memory", "knowledge-brief",
         "kb-rebuild-index", "kb-cluster", "kb-known-unknowns", "kb-audit",
-        "kb-forget", "serve", "tx-begin", "daemon-status",
+        "kb-stats", "kb-forget", "serve", "tx-begin", "daemon-status",
         "profile-health", "validate-memory", "kb-init",
         "kb-domain-name", "kb-domain-add", "kb-domain-list",
         "kb-domain-remove",
@@ -3402,6 +3414,7 @@ def main():
         "kb-migrate": cmd_kb_migrate,
         "kb-known-unknowns": cmd_kb_known_unknowns,
         "kb-audit": cmd_kb_audit,
+        "kb-stats": cmd_kb_stats,
         "kb-conflict": cmd_kb_conflict,
         "kb-rollback": cmd_kb_rollback,
         "kb-forget": cmd_kb_forget,

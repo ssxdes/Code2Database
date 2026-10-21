@@ -31,9 +31,9 @@ $BUILDER c2d ask --question "..." --dry-run    # preview the translated commands
 
 `ask` classifies `--question` against the recipe registry — 13 built-in recipes: thread-safety, race-scan, value-origin, impact, call-path, path-feasibility, invariants, ffi, provenance, resource, quality, doc-alignment, explore — and executes the matched read-only command sequence with per-step banners and an aggregated summary (`--json` for structured output). Explicit flags (`--target/--from/--to/--query/--source`) override question extraction; when nothing matches, it falls back to the single-command intent router. Recipe steps are always read-only (write commands and write flags are refused by the engine); every step is echoed before it runs and any verb can be previewed with `--dry-run`.
 
-## Family Command Map — the 120-command visible surface
+## Family Command Map — the 121-command visible surface
 
-The CLI collapses 27 prefix families into one visible umbrella command each: **120 visible commands** instead of 255. `tx begin`, `kb query`, `cgdb find-invokers`, `daemon start` are the taught spellings; the 155 legacy spellings (`tx begin`, `kb query`, ...) **still parse identically** — they are hidden from `--help` only, so existing scripts and muscle memory keep working. `--graph` and every flag are unchanged; `tx begin --help` prints exactly what `tx begin --help` prints.
+The CLI collapses 27 prefix families into one visible umbrella command each: **121 visible commands** instead of 255. `tx begin`, `kb query`, `cgdb find-invokers`, `daemon start` are the taught spellings; the 155 legacy spellings (`tx begin`, `kb query`, ...) **still parse identically** — they are hidden from `--help` only, so existing scripts and muscle memory keep working. `--graph` and every flag are unchanged; `tx begin --help` prints exactly what `tx begin --help` prints.
 
 | Umbrella | Bare form (=) | Hidden legacy spellings (all still parse) |
 |----------|---------------|-------------------------------------------|
@@ -915,9 +915,9 @@ python3 "$SKILL_DIR/scripts/code2database_builder.py" build \
 
 ---
 
-## Complete CLI Command Reference (275 builder spellings: 120 visible + 155 hidden legacy)
+## Complete CLI Command Reference (276 builder spellings: 121 visible + 155 hidden legacy)
 
-283 CLI subparsers total: `code2database_builder.py` (275) + `code2database_scanner.py` (8). The builder surface teaches 120 visible commands (see the Family Command Map above); the 155 legacy spellings listed here still parse identically — this section is their flag-level reference. 13 short aliases (`describe`, `context`, `trace`, `concurrency`, `save`, `recall`, `brief`, `flow`, `find`, `health`, `daemon`, `export`, `init`) map to the full commands listed below and count toward the builder total.
+283 CLI subparsers total: `code2database_builder.py` (276) + `code2database_scanner.py` (8). The builder surface teaches 121 visible commands (see the Family Command Map above); the 155 legacy spellings listed here still parse identically — this section is their flag-level reference. 13 short aliases (`describe`, `context`, `trace`, `concurrency`, `save`, `recall`, `brief`, `flow`, `find`, `health`, `daemon`, `export`, `init`) map to the full commands listed below and count toward the builder total.
 
 | Command | Description |
 |---------|-------------|

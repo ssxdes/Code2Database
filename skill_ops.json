@@ -97,6 +97,7 @@
     "kb-migrate",
     "kb-rebuild-index",
     "kb-rollback",
+    "kb-stats",
     "light-scan",
     "manage-memory",
     "memory",
@@ -242,6 +243,7 @@
     "Knowledge base management": [
       "kb-migrate",
       "kb-audit",
+      "kb-stats",
       "kb-cluster",
       "kb-conflict",
       "kb-forget",

@@ -234,6 +234,7 @@
     "kb-query",
     "kb-rebuild-index",
     "kb-rollback",
+    "kb-stats",
     "key-paths",
     "knowledge-brief",
     "light-scan",
@@ -413,7 +414,7 @@
   ],
   "cgdb_schema_version": 6,
   "query_priority_chain": "Memory (recall) -> Knowledge (know) -> Graph (query/describe/trace) -> Source (describe --code)",
-  "total_commands": 275,
+  "total_commands": 276,
   "core_commands": 21,
   "sqlite_schema_version": 13,
   "scanner_commands": [

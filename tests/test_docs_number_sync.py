@@ -30,8 +30,8 @@ class CanonicalNumbersTest(unittest.TestCase):
         self.assertEqual(self.canon["report"], 28)
         self.assertEqual(self.canon["base"], 55)
         self.assertEqual(self.canon["sub_skills"], 4)
-        self.assertEqual(self.canon["spellings"], 275)
-        self.assertEqual(self.canon["visible"], 120)
+        self.assertEqual(self.canon["spellings"], 276)
+        self.assertEqual(self.canon["visible"], 121)
         self.assertEqual(self.canon["scanner"], 8)
         self.assertEqual(self.canon["tier"],
                          {"core": 21, "analysis": 12, "ops": 9, "kb": 6})
@@ -44,8 +44,8 @@ class LineRuleTest(unittest.TestCase):
     """Each rule catches its drifted shape and passes its correct one."""
 
     CANON = {"total": 83, "c2d": 36, "cgdb": 19, "report": 28,
-             "base": 55, "sub_skills": 4, "spellings": 275,
-             "visible": 120, "scanner": 8,
+             "base": 55, "sub_skills": 4, "spellings": 276,
+             "visible": 121, "scanner": 8,
              "tier": {"core": 21, "analysis": 12, "ops": 9, "kb": 6}}
 
     def _keys(self, line):
@@ -99,19 +99,19 @@ class LineRuleTest(unittest.TestCase):
                          ["sub_skills"])
 
     def test_cli_spelling_counts(self):
-        self.assertEqual(self._keys("All 275 CLI spellings parse"), [])
-        self.assertEqual(self._keys("全部 275 个 CLI 拼写都可解析"), [])
+        self.assertEqual(self._keys("All 276 CLI spellings parse"), [])
+        self.assertEqual(self._keys("全部 276 个 CLI 拼写都可解析"), [])
         self.assertEqual(self._keys("All 263 CLI spellings parse"),
                          ["spellings"])
-        self.assertEqual(self._keys("275 spellings incl. hidden legacy"), [])
+        self.assertEqual(self._keys("276 spellings incl. hidden legacy"), [])
         self.assertEqual(self._keys("255 spellings incl. hidden legacy"),
                          ["spellings"])
 
     def test_visible_counts(self):
-        self.assertEqual(self._keys("(120 visible umbrella)"), [])
-        self.assertEqual(self._keys("120 visible CLI commands"), [])
-        self.assertEqual(self._keys("query_commands-120_visible-success"), [])
-        self.assertEqual(self._keys("查询命令-120_可见-success"), [])
+        self.assertEqual(self._keys("(121 visible umbrella)"), [])
+        self.assertEqual(self._keys("121 visible CLI commands"), [])
+        self.assertEqual(self._keys("query_commands-121_visible-success"), [])
+        self.assertEqual(self._keys("查询命令-121_可见-success"), [])
         self.assertEqual(self._keys("119 visible CLI commands"),
                          ["visible"])
 
@@ -124,9 +124,9 @@ class LineRuleTest(unittest.TestCase):
         self.assertEqual(self._keys("scanner entry point （9 个子命令）"),
                          ["scanner subcommands"])
         self.assertEqual(
-            self._keys("builder CLI, 275 subcommands — 120 visible"), [])
+            self._keys("builder CLI, 276 subcommands — 121 visible"), [])
         self.assertEqual(
-            self._keys("builder CLI, 263 subcommands — 120 visible"),
+            self._keys("builder CLI, 263 subcommands — 121 visible"),
             ["builder subcommands"])
 
     def test_tier_counts_use_nearest_sub_skill(self):

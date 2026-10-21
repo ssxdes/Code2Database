@@ -37,7 +37,7 @@ from _builder.kb.kb_index import (
     query_ann,
 )
 from _builder.kb.kb_cluster import cluster_kb
-from _builder.kb.kb_audit import audit_kb, write_audit_log_entry
+from _builder.kb.kb_audit import audit_kb, kb_stats, write_audit_log_entry
 from _builder.kb.kb_conflict import detect_conflicts, forget_kb_paragraph, rollback_kb_item
 
 
@@ -898,6 +898,91 @@ class TestKbAudit(unittest.TestCase):
                               before_value="old",
                               after_value="new",
                               reason="unit test")
+
+
+class TestKbStats(unittest.TestCase):
+    """kb_stats reports storage, cluster, query-log, and access stats
+    that an enterprise maintainer needs to monitor KB health."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="kb_stats_test_")
+        self.graph_dir = os.path.join(self.tmpdir, "code2db-out")
+        os.makedirs(self.graph_dir, exist_ok=True)
+        from _builder.graph.sqlite_store import SQLiteStore
+        store = SQLiteStore(
+            os.path.join(self.graph_dir, "code2database.db"))
+        store.connect()
+        store.close()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_stats_empty_kb(self):
+        result = kb_stats(self.graph_dir)
+        self.assertNotIn("error", result)
+        self.assertEqual(result["total_items"], 0)
+        self.assertEqual(result["by_kind"], {})
+        self.assertEqual(result["cluster_count"], 0)
+
+    def test_stats_with_items(self):
+        _make_memory_entry(self.graph_dir, 1, "test q", "test a")
+        _make_knowledge_md(self.graph_dir, "principles.md",
+                           "## test principle\n\nbody\n")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        result = kb_stats(self.graph_dir)
+        self.assertGreater(result["total_items"], 0)
+        self.assertGreater(len(result["by_kind"]), 0)
+        self.assertGreater(len(result["by_source_kind"]), 0)
+
+    def test_stats_query_log(self):
+        _make_memory_entry(self.graph_dir, 1, "test query", "test answer")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        # Run some queries
+        query_kb(self.graph_dir, "test", top_n=5)
+        query_kb(self.graph_dir, "test", top_n=5)
+        query_kb(self.graph_dir, "nonexistent_xyz", top_n=5)
+        result = kb_stats(self.graph_dir)
+        qlog = result["query_log"]
+        self.assertEqual(qlog["total"], 3)
+        self.assertEqual(qlog["matched"], 2)
+        self.assertEqual(qlog["zero_hit"], 1)
+        self.assertGreater(qlog["match_rate"], 0.0)
+        self.assertGreater(len(qlog["top_queries"]), 0)
+        self.assertGreater(len(qlog["recent_zero_hit"]), 0)
+
+    def test_stats_access_patterns(self):
+        _make_memory_entry(self.graph_dir, 1, "test q", "test a")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        query_kb(self.graph_dir, "test", top_n=5)
+        result = kb_stats(self.graph_dir)
+        self.assertGreater(len(result["most_accessed"]), 0)
+        self.assertEqual(result["most_accessed"][0]["access_count"], 1)
+
+    def test_stats_version_scope(self):
+        upsert_kb_paragraph(self.graph_dir, "memory", "test1.json",
+                            "title1", "body1", "[]", "[]", 2.0,
+                            "memory_qa", 1.0, 0, "main")
+        upsert_kb_paragraph(self.graph_dir, "memory", "test2.json",
+                            "title2", "body2", "[]", "[]", 2.0,
+                            "memory_qa", 1.0, 0, "release-1.0")
+        result = kb_stats(self.graph_dir)
+        self.assertIn("main", result["by_version_scope"])
+        self.assertIn("release-1.0", result["by_version_scope"])
+
+    def test_stats_ann_index_status(self):
+        result = kb_stats(self.graph_dir)
+        self.assertIn("ann_index", result)
+        self.assertIn("dimension", result["ann_index"])
+        self.assertIn("model", result["ann_index"])
+
+    def test_stats_domain_name(self):
+        result = kb_stats(self.graph_dir)
+        self.assertIn("domain_name", result)
+
+    def test_stats_last_rebuild(self):
+        result = kb_stats(self.graph_dir)
+        self.assertIn("last_rebuild", result)
+        self.assertIn("file_count", result["last_rebuild"])
 
 
 class TestKbConflict(unittest.TestCase):

@@ -1,6 +1,6 @@
 ---
 name: Code2Database
-description: "Turn a codebase into a queryable code database for the questions grep cannot answer in a few calls: reverse queries (callers, impact), global aggregates (domains, key paths, value flow), races, and cross-session memory. Scan once, query forever. C/C++/Go/Python/Java/Rust/ASM invocation graphs: conditional paths, concurrency analysis, data flow, FFI tracing, a 13-layer typed cgdb semantic store. One-shot lifecycle via the c2d umbrella (setup → session → ask → capture). 83 MCP tools + 120 visible CLI commands (umbrella families; 155 legacy spellings still parse). Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
+description: "Turn a codebase into a queryable code database for the questions grep cannot answer in a few calls: reverse queries (callers, impact), global aggregates (domains, key paths, value flow), races, and cross-session memory. Scan once, query forever. C/C++/Go/Python/Java/Rust/ASM invocation graphs: conditional paths, concurrency analysis, data flow, FFI tracing, a 13-layer typed cgdb semantic store. One-shot lifecycle via the c2d umbrella (setup → session → ask → capture). 83 MCP tools + 121 visible CLI commands (umbrella families; 155 legacy spellings still parse). Use /Code2Database when the question involves code structure, call chains, impact analysis, concurrency, or data flow."
 trigger: /Code2Database
 ---
 
@@ -10,7 +10,7 @@ trigger: /Code2Database
 
 ## One-Click Lifecycle — the `c2d` Umbrella
 
-You do not need to memorize the 120-command visible surface. One command covers the whole workflow — learn 4 verbs:
+You do not need to memorize the 121-command visible surface. One command covers the whole workflow — learn 4 verbs:
 
 | Verb | Purpose | Example |
 |------|---------|---------|
@@ -106,11 +106,11 @@ The 21 Tier-1 commands cover ~95% of agent workflows. Task→command navigation:
 - **Memory & knowledge**: `session-init`, `kb query`, `memory save/search`, `brief` — kb governance commands live in the ops and kb sub-skills
 - **Serving & ops**: `serve` (MCP, 83 tools), `tx`, `daemon`, `health`
 
-Umbrella families (`tx begin`, `kb query`, `cgdb find-invokers`, ...) collapse 27 prefix families into the 120-command visible surface; the 155 legacy spellings still parse — full map in `references/usage_reference.md`.
+Umbrella families (`tx begin`, `kb query`, `cgdb find-invokers`, ...) collapse 27 prefix families into the 121-command visible surface; the 155 legacy spellings still parse — full map in `references/usage_reference.md`.
 
 Aliases: `describe`/`context` → describe-node, `trace` → trace-chain, `find` → find-invariants, `flow` → value-flow, `concurrency` → concurrency-risks, `save` → save-memory, `recall` → search-memory, `brief` → knowledge-brief, `health` → profile-health, `daemon` → daemon-status, `export` → export-mermaid.
 
-All 275 CLI command spellings remain accessible (120 visible + 155 hidden legacy).
+All 276 CLI command spellings remain accessible (121 visible + 155 hidden legacy).
 
 ## Supported Languages
 

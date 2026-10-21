@@ -27,7 +27,7 @@ Full capability catalog with per-command detail: `docs/en/references/usage_refer
 
 ## Skill Structure (4 sub-skills)
 
-The skill is split into 4 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 275 subcommands — 120 visible umbrella surface + 155 hidden legacy spellings — plus 8 scanner subcommands) is shared; all spellings parse regardless of sub-skill activation.
+The skill is split into 4 sub-skills to keep LLM context lean. The CLI (`scripts/code2database_builder.py`, 276 subcommands — 121 visible umbrella surface + 155 hidden legacy spellings — plus 8 scanner subcommands) is shared; all spellings parse regardless of sub-skill activation.
 
 | Sub-skill | Trigger | Purpose |
 |-----------|---------|---------|

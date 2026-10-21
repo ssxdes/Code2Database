@@ -173,15 +173,15 @@ class TestSkillManifest(unittest.TestCase):
         self.assertEqual(ghosts, set(),
                          f"on_demand ghosts: {sorted(ghosts)}")
 
-    def test_builder_command_count_is_275(self):
+    def test_builder_command_count_is_276(self):
         """Pin the builder subcommand count — docs reference this number.
 
         255 legacy commands + 20 umbrella families. The *visible* help
         surface is ~120 (umbrella form); the legacy spellings stay
         parseable but hidden.
         """
-        self.assertEqual(len(self.builder), 275,
-                         "Builder subcommand count drifted from 275; "
+        self.assertEqual(len(self.builder), 276,
+                         "Builder subcommand count drifted from 276; "
                          "update SKILL.md/AGENTS.md to match: %d"
                          % len(self.builder))
 

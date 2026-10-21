@@ -889,9 +889,34 @@ def reset_resolver_state():
     external-prefix or test-segment state from a prior build_graph call in
     the same process (build_multi, scripted multi-project builds, tests).
     """
-    global _EXTERNAL_LIB_PREFIXES, _TEST_DOMAIN_SEGMENTS
+    global _EXTERNAL_LIB_PREFIXES, _TEST_DOMAIN_SEGMENTS, _PROJECT_USER_DICT
     _EXTERNAL_LIB_PREFIXES = []
     _TEST_DOMAIN_SEGMENTS = _DEFAULT_TEST_DOMAIN_SEGMENTS
+    _PROJECT_USER_DICT = None
+
+
+# Optional path to a jieba user_dict file built from the project
+# corpus.  When set, _jieba_tokenize loads it into an isolated
+# jieba.Tokenizer instance so project-specific identifiers (spdk,
+# vfio, virtio) segment as whole tokens instead of being split by
+# the default dictionary.
+_PROJECT_USER_DICT: Optional[str] = None
+
+
+def set_project_user_dict(path: Optional[str]) -> None:
+    """Set the project-level jieba user_dict path.
+
+    Call this after build_kb_user_dict writes the file.  When set,
+    every _jieba_tokenize call (and therefore _cjk_pre_tokenize and
+    _fts5_escape) loads the user_dict into an isolated Tokenizer
+    instance.  Pass None to clear (e.g. between projects).
+    """
+    global _PROJECT_USER_DICT
+    if path != _PROJECT_USER_DICT:
+        # Invalidate the cached jieba instance so the next call
+        # rebuilds with the new dictionary.
+        _TOKENIZER_CACHE.pop(("jieba", _PROJECT_USER_DICT), None)
+    _PROJECT_USER_DICT = path
 
 
 def _candidate_in_test_domain(cid: str, id_registry: dict = None) -> bool:
@@ -1536,16 +1561,30 @@ def _char_bigram_tokenize(text: str) -> List[str]:
 
 
 def _jieba_tokenize(text: str, user_dict: Optional[str] = None) -> List[str]:
-    """Jieba tokenization with optional user dictionary."""
-    cache_key = ("jieba", user_dict)
+    """Jieba tokenization with optional user dictionary.
+
+    When a user_dict is provided (either explicitly or via
+    set_project_user_dict), an isolated jieba.Tokenizer instance is
+    used so load_userdict does not pollute the global jieba state.
+    The Tokenizer instance is cached by (jieba, user_dict) so the
+    load cost is paid once per dictionary.
+    """
+    effective_dict = user_dict or _PROJECT_USER_DICT
+    cache_key = ("jieba", effective_dict)
     if cache_key not in _TOKENIZER_CACHE:
         import jieba  # lazy import — optional dependency
-        if user_dict and os.path.isfile(user_dict):
-            jieba.load_userdict(user_dict)
-        _TOKENIZER_CACHE[cache_key] = jieba
-    else:
-        jieba = _TOKENIZER_CACHE[cache_key]
-    return [t for t in jieba.lcut(text) if t.strip()]
+        if effective_dict and os.path.isfile(effective_dict):
+            # Isolated Tokenizer instance — load_userdict on this
+            # instance does not affect the global jieba or other
+            # cached instances.  This matters for test isolation and
+            # for multi-project builds that switch user_dicts.
+            tokenizer = jieba.Tokenizer()
+            tokenizer.load_userdict(effective_dict)
+            _TOKENIZER_CACHE[cache_key] = tokenizer
+        else:
+            _TOKENIZER_CACHE[cache_key] = jieba
+    tokenizer = _TOKENIZER_CACHE[cache_key]
+    return [t for t in tokenizer.lcut(text) if t.strip()]
 
 
 def _cjk_tokenize(text: str, tokenizer: str = "jieba",

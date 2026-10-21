@@ -832,6 +832,80 @@ def _is_transient_store_artifact(fname: str, fpath: str) -> bool:
     return False
 
 
+def build_kb_user_dict(graph_dir: str, max_terms: int = 1000) -> Optional[str]:
+    """Build a jieba user_dict from the project corpus.
+
+    Scans the code graph (function names in code2database.db) and the
+    KB paragraph bodies (via _extract_code_identifiers) for terms that
+    jieba's default dictionary does not know — project-specific
+    identifiers like ``spdk``, ``vfio``, ``virtio``, ``bdev_submit``.
+    Writes them to ``knowledge/jieba_user_dict.txt`` in the jieba
+    user_dict format (one term per line with a high frequency hint).
+
+    Returns the path to the written file, or None when no graph or
+    KB store is available. The caller (rebuild_kb_index) activates
+    the dict via ``set_project_user_dict`` so subsequent tokenize
+    calls segment project identifiers as whole tokens.
+    """
+    from _builder.utils import _extract_code_identifiers
+    terms: dict = {}
+    # Source 1: function names from the code graph.
+    c2d_db = os.path.join(graph_dir, "code2database.db")
+    if os.path.isfile(c2d_db):
+        try:
+            gconn = sqlite3.connect(f"file:{c2d_db}?mode=ro", uri=True)
+            try:
+                # Function names — the primary identifier source.
+                rows = gconn.execute(
+                    "SELECT name FROM functions "
+                    "WHERE name IS NOT NULL "
+                    "ORDER BY length(name) DESC LIMIT ?",
+                    (max_terms * 2,)).fetchall()
+                for (name,) in rows:
+                    if name and len(name) >= 3:
+                        terms[name] = terms.get(name, 0) + 1
+            finally:
+                gconn.close()
+        except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception",
+                                               exc_info=True)
+    # Source 2: identifiers extracted from KB paragraph bodies.
+    kb_conn = _kb_connect(graph_dir, create_if_missing=False)
+    if kb_conn is not None:
+        try:
+            rows = kb_conn.execute(
+                "SELECT title, body FROM kb_paragraphs "
+                "ORDER BY weight DESC LIMIT 500").fetchall()
+            for r in rows:
+                text = (r["title"] or "") + " " + (r["body"] or "")
+                for ident in _extract_code_identifiers(text, max_count=20):
+                    if len(ident) >= 3:
+                        terms[ident] = terms.get(ident, 0) + 1
+        except sqlite3.Error:
+            logging.getLogger(__name__).debug("silent exception",
+                                               exc_info=True)
+        finally:
+            kb_conn.close()
+    if not terms:
+        return None
+    # Write the user_dict file.
+    out_dir = os.path.join(graph_dir, "knowledge")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "jieba_user_dict.txt")
+    # Sort by frequency (desc) then alphabetically. Cap at max_terms.
+    sorted_terms = sorted(terms.items(),
+                          key=lambda x: (-x[1], x[0]))[:max_terms]
+    tmp_path = out_path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        for term, freq in sorted_terms:
+            # jieba user_dict format: term freq tag
+            # High freq (1000) ensures jieba prefers the user_dict
+            # entry over splitting the identifier into parts.
+            f.write(f"{term} 1000 n\n")
+    os.replace(tmp_path, out_path)
+    return out_path
+
+
 def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
     """Rebuild the kb_paragraphs index from filesystem sources.
 
@@ -902,6 +976,16 @@ def rebuild_kb_index(graph_dir: str, verbose: bool = True) -> dict:
         except sqlite3.OperationalError:
             # kb_meta table may not exist yet — proceed with full rebuild
             pass
+        # Build a jieba user_dict from the project corpus so
+        # project-specific identifiers (spdk, vfio, virtio) segment
+        # as whole tokens during the pre-tokenize step below.
+        try:
+            from _builder.utils import set_project_user_dict
+            user_dict_path = build_kb_user_dict(graph_dir)
+            set_project_user_dict(user_dict_path)
+        except Exception:
+            logging.getLogger(__name__).debug("silent exception",
+                                               exc_info=True)
         # Clear FTS5 index first (before DELETE) so triggers don't do
         # redundant work during the DELETE + INSERT cycle. The 'deleteall'
         # command clears the entire FTS5 index in one shot — much faster

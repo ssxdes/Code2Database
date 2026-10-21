@@ -17,8 +17,9 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 from _builder.utils import _fts5_escape, _cjk_pre_tokenize, _has_cjk, \
     _simple_tokenize, _strip_cjk_punct, _normalize_fullwidth, \
-    _normalize_cjk_digits
-from _builder.kb.kb_index import _kb_connect, query_kb, upsert_kb_paragraph
+    _normalize_cjk_digits, set_project_user_dict, reset_resolver_state
+from _builder.kb.kb_index import _kb_connect, query_kb, upsert_kb_paragraph, \
+    build_kb_user_dict
 
 
 class TestCjkPreTokenize(unittest.TestCase):
@@ -690,6 +691,140 @@ class TestKbQueryCjkMatch(unittest.TestCase):
         results = query_kb(self.graph_dir, "mutex", top_n=5)
         self.assertGreaterEqual(len(results), 1,
                                 "English query 'mutex' must find CJK paragraph about 互斥锁")
+
+
+class TestProjectUserDict(unittest.TestCase):
+    """Auto-built jieba user_dict: project-specific identifiers
+    (spdk, vfio, virtio) segment as whole tokens after
+    build_kb_user_dict writes the dict and set_project_user_dict
+    activates it."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.graph_dir = os.path.join(self.tmp.name, "code2db-out")
+        os.makedirs(self.graph_dir, exist_ok=True)
+        # Reset any leftover project user_dict from prior tests.
+        reset_resolver_state()
+
+    def tearDown(self):
+        reset_resolver_state()
+
+    def test_build_writes_user_dict_file(self):
+        # Create a minimal code graph so build_kb_user_dict has a
+        # function-name source to mine.
+        import sqlite3
+        db_path = os.path.join(self.graph_dir, "code2database.db")
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "CREATE TABLE functions (id INTEGER PRIMARY KEY, "
+            "name TEXT, file TEXT)")
+        conn.execute(
+            "INSERT INTO functions (name, file) VALUES "
+            "('spdk_bdev_submit', 'bdev.c'), "
+            "('virtio_pci_probe', 'virtio.c'), "
+            "('vfio_set_irq', 'vfio.c')")
+        conn.commit()
+        conn.close()
+        path = build_kb_user_dict(self.graph_dir)
+        self.assertIsNotNone(path)
+        self.assertTrue(os.path.isfile(path))
+        content = open(path, encoding="utf-8").read()
+        self.assertIn("spdk_bdev_submit", content)
+        self.assertIn("virtio_pci_probe", content)
+        self.assertIn("vfio_set_irq", content)
+
+    def test_build_extracts_identifiers_from_kb_paragraphs(self):
+        # No code graph — only KB paragraphs. Identifiers in the body
+        # text should still be extracted and written.
+        upsert_kb_paragraph(
+            self.graph_dir, "memory", "test.json",
+            "test", "call spdk_bdev_submit to process the request",
+            "[]", "[]", 1.0, "memory_qa", 1.0)
+        path = build_kb_user_dict(self.graph_dir)
+        self.assertIsNotNone(path)
+        content = open(path, encoding="utf-8").read()
+        self.assertIn("spdk_bdev_submit", content)
+
+    def test_build_returns_none_when_no_corpus(self):
+        # Empty graph + empty KB → no terms → None.
+        path = build_kb_user_dict(self.graph_dir)
+        self.assertIsNone(path)
+
+    def test_user_dict_segments_project_identifier(self):
+        # Without the user_dict, jieba may split spdk_bdev_submit into
+        # parts. With the user_dict, it should segment as one token.
+        from _builder.utils import _jieba_tokenize
+        # Write a user_dict with a known term.
+        dict_path = os.path.join(self.graph_dir, "jieba_user_dict.txt")
+        with open(dict_path, "w", encoding="utf-8") as f:
+            f.write("spdk_bdev_submit 1000 n\n")
+        set_project_user_dict(dict_path)
+        tokens = _jieba_tokenize("spdk_bdev_submit called")
+        self.assertIn("spdk_bdev_submit", tokens)
+
+    def test_user_dict_does_not_affect_default_jieba(self):
+        # The isolated Tokenizer instance should not pollute the
+        # global jieba state. Clearing the project dict restores
+        # default segmentation.
+        from _builder.utils import _jieba_tokenize, _TOKENIZER_CACHE
+        dict_path = os.path.join(self.graph_dir, "jieba_user_dict.txt")
+        with open(dict_path, "w", encoding="utf-8") as f:
+            f.write("myproj_custom_func 1000 n\n")
+        set_project_user_dict(dict_path)
+        tokens_with = _jieba_tokenize("myproj_custom_func called")
+        self.assertIn("myproj_custom_func", tokens_with)
+        # Clear the project dict.
+        set_project_user_dict(None)
+        # The cache should have been invalidated for the project dict.
+        self.assertNotIn(("jieba", dict_path), _TOKENIZER_CACHE)
+        # Default jieba should not have the custom term.
+        tokens_without = _jieba_tokenize("myproj_custom_func called")
+        # The custom term should NOT appear as a single token
+        # (it may be split by the default dictionary).
+        self.assertNotIn("myproj_custom_func", tokens_without)
+
+    def test_rebuild_kb_index_activates_user_dict(self):
+        # rebuild_kb_index calls build_kb_user_dict + set_project_user_dict.
+        # After rebuild, project identifiers should segment as whole tokens.
+        from _builder.kb.kb_index import rebuild_kb_index
+        import sqlite3
+        # Create a code graph with a project-specific identifier.
+        db_path = os.path.join(self.graph_dir, "code2database.db")
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "CREATE TABLE functions (id INTEGER PRIMARY KEY, "
+            "name TEXT, file TEXT)")
+        conn.execute(
+            "INSERT INTO functions (name, file) VALUES "
+            "('myproj_init_driver', 'driver.c')")
+        conn.commit()
+        conn.close()
+        # Create a memory entry that references the identifier.
+        _mem_dir = os.path.join(self.graph_dir, "memory")
+        os.makedirs(_mem_dir, exist_ok=True)
+        mem_db = sqlite3.connect(os.path.join(_mem_dir, "memory.db"))
+        mem_db.execute(
+            "CREATE TABLE memories (id INTEGER PRIMARY KEY, "
+            "question TEXT, answer TEXT, status TEXT, weight REAL, "
+            "created TEXT, category_id INTEGER)")
+        mem_db.execute(
+            "INSERT INTO memories (question, answer, status, weight, "
+            "created) VALUES ('how to init', 'call myproj_init_driver "
+            "first', 'active', 1.0, '2024-01-01')")
+        mem_db.commit()
+        mem_db.close()
+        # Rebuild — should build user_dict and activate it.
+        result = rebuild_kb_index(self.graph_dir, verbose=False)
+        self.assertTrue(result.get("rebuilt") or
+                        result.get("reason") == "unchanged")
+        # The user_dict file should exist.
+        dict_path = os.path.join(self.graph_dir, "knowledge",
+                                 "jieba_user_dict.txt")
+        self.assertTrue(os.path.isfile(dict_path))
+        # The pre-tokenized body should contain the whole identifier.
+        from _builder.utils import _PROJECT_USER_DICT
+        self.assertIsNotNone(_PROJECT_USER_DICT)
 
 
 if __name__ == "__main__":

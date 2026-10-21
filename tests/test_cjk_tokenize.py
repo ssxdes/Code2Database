@@ -223,6 +223,145 @@ class TestFullwidthNormalization(unittest.TestCase):
             self.assertGreaterEqual(len(results), 1)
 
 
+class TestPinyinExpansion(unittest.TestCase):
+    """Pinyin expansion lets a pure-Latin query ``shifang`` match a
+    paragraph whose body contains ``释放`` — common when the IME is off
+    or the keyboard is ASCII-only."""
+
+    def test_pinyin_for_cjk_token(self):
+        from _builder.utils import _pinyin_for_token
+        result = _pinyin_for_token("释放")
+        self.assertIn("shifang", result)
+        self.assertIn("shi", result)
+        self.assertIn("fang", result)
+
+    def test_pinyin_for_single_char(self):
+        from _builder.utils import _pinyin_for_token
+        result = _pinyin_for_token("释")
+        self.assertIn("shi", result)
+        # Single char has no concatenated form
+        self.assertEqual(len(result), 1)
+
+    def test_pinyin_for_non_cjk(self):
+        from _builder.utils import _pinyin_for_token
+        self.assertEqual(_pinyin_for_token("memory"), [])
+        self.assertEqual(_pinyin_for_token("ABC"), [])
+        self.assertEqual(_pinyin_for_token(""), [])
+        self.assertEqual(_pinyin_for_token(None), [])
+
+    def test_expand_pinyin_appends_pinyin(self):
+        from _builder.utils import _expand_pinyin
+        tokens = ["释放", "memory"]
+        result = _expand_pinyin(tokens)
+        self.assertIn("释放", result)
+        self.assertIn("memory", result)
+        self.assertIn("shifang", result)
+        self.assertIn("shi", result)
+        self.assertIn("fang", result)
+
+    def test_expand_pinyin_preserves_order(self):
+        from _builder.utils import _expand_pinyin
+        tokens = ["释放", "内存"]
+        result = _expand_pinyin(tokens)
+        # Original token first, then its pinyin, then next original
+        self.assertEqual(result[0], "释放")
+        self.assertIn("shifang", result[:5])
+        self.assertIn("内存", result)
+
+    def test_expand_pinyin_no_duplicates(self):
+        from _builder.utils import _expand_pinyin
+        tokens = ["释放", "释放"]
+        result = _expand_pinyin(tokens)
+        self.assertEqual(result.count("释放"), 1)
+        self.assertEqual(result.count("shifang"), 1)
+
+    def test_expand_pinyin_empty(self):
+        from _builder.utils import _expand_pinyin
+        self.assertEqual(_expand_pinyin([]), [])
+
+    def test_pre_tokenize_includes_pinyin(self):
+        result = _cjk_pre_tokenize("释放内存")
+        tokens = result.split()
+        self.assertIn("释放", tokens)
+        self.assertIn("内存", tokens)
+        self.assertIn("shifang", tokens)
+        self.assertIn("neicun", tokens)
+
+    def test_pre_tokenize_pinyin_with_synonyms(self):
+        # Pinyin + synonyms both apply
+        result = _cjk_pre_tokenize("释放")
+        tokens = result.split()
+        self.assertIn("释放", tokens)
+        self.assertIn("shifang", tokens)
+        # Synonyms
+        self.assertIn("free", tokens)
+        self.assertIn("release", tokens)
+
+    def test_pinyin_query_matches_cjk_paragraph(self):
+        """A pure-Latin pinyin query ``shifang`` must match a
+        paragraph whose body contains ``释放``."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            gd = str(Path(tmp))
+            upsert_kb_paragraph(gd, "memory", "test.json",
+                                "释放内存", "释放内存释放资源",
+                                "[]", "[]", 2.0, "memory_qa", 1.0, 0, "")
+            results = query_kb(gd, "shifang", top_n=5)
+            self.assertGreaterEqual(len(results), 1,
+                                    "Pinyin query 'shifang' must match CJK paragraph about 释放")
+
+    def test_pinyin_multi_word_query_matches(self):
+        """Multi-word pinyin query ``shifang neicun`` matches."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            gd = str(Path(tmp))
+            upsert_kb_paragraph(gd, "memory", "test.json",
+                                "释放内存", "释放内存释放资源",
+                                "[]", "[]", 2.0, "memory_qa", 1.0, 0, "")
+            results = query_kb(gd, "shifang neicun", top_n=5)
+            self.assertGreaterEqual(len(results), 1)
+
+    def test_pinyin_spaced_query_matches(self):
+        """Spaced pinyin query ``shi fang`` matches via per-char pinyin."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            gd = str(Path(tmp))
+            upsert_kb_paragraph(gd, "memory", "test.json",
+                                "释放内存", "释放内存释放资源",
+                                "[]", "[]", 2.0, "memory_qa", 1.0, 0, "")
+            results = query_kb(gd, "shi fang", top_n=5)
+            self.assertGreaterEqual(len(results), 1,
+                                    "Spaced pinyin 'shi fang' must match CJK paragraph about 释放")
+
+    def test_pinyin_does_not_break_cjk_query(self):
+        """CJK query 释放 still matches after pinyin expansion."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            gd = str(Path(tmp))
+            upsert_kb_paragraph(gd, "memory", "test.json",
+                                "释放内存", "释放内存释放资源",
+                                "[]", "[]", 2.0, "memory_qa", 1.0, 0, "")
+            results = query_kb(gd, "释放", top_n=5)
+            self.assertGreaterEqual(len(results), 1)
+
+    def test_pinyin_does_not_break_english_query(self):
+        """English query 'free' still matches after pinyin expansion."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            gd = str(Path(tmp))
+            upsert_kb_paragraph(gd, "memory", "test.json",
+                                "释放内存", "释放内存释放资源",
+                                "[]", "[]", 2.0, "memory_qa", 1.0, 0, "")
+            results = query_kb(gd, "free", top_n=5)
+            self.assertGreaterEqual(len(results), 1)
+
+    def test_pinyin_in_simple_tokenize(self):
+        from _builder.utils import _simple_tokenize
+        tokens = _simple_tokenize("释放")
+        self.assertIn("shi", tokens)
+        self.assertIn("fang", tokens)
+
+
 class TestFts5EscapeCjk(unittest.TestCase):
 
     def test_latin_query_unchanged(self):
@@ -263,8 +402,16 @@ class TestFts5EscapeCjk(unittest.TestCase):
         # query side uses OR-groups, so plain split() would include
         # AND/OR keywords and parentheses.
         q_tokens = set(_re.findall(r'"([^"]+)"', q))
-        self.assertEqual(tokenized_tokens, q_tokens,
-                         f"write side={tokenized_tokens} != query side={q_tokens}")
+        # The write side indexes pinyin alongside CJK so pinyin
+        # queries can match; the query side for a CJK query does not
+        # add pinyin (a CJK query should match CJK tokens, not pinyin).
+        # The invariant is that every query-side token appears in the
+        # write-side index so FTS5 AND-match succeeds.
+        self.assertTrue(q_tokens.issubset(tokenized_tokens),
+                        f"query side={q_tokens} not subset of write side={tokenized_tokens}")
+        # Stopword 的 must be absent on both sides
+        self.assertNotIn("的", tokenized_tokens)
+        self.assertNotIn("的", q_tokens)
 
     def test_no_duplicate_tokens(self):
         import re as _re
@@ -327,16 +474,25 @@ class TestSynonymExpansion(unittest.TestCase):
         self.assertIn("内存", tokens)
 
     def test_synonym_expansion_is_symmetric(self):
-        """Write side and query side must produce the same token set
-        for the same input text — otherwise FTS5 MATCH will fail."""
+        """Write side and query side must produce compatible token
+        sets — every query-side token must appear in the write-side
+        index so FTS5 AND-match finds the paragraph.  The write side
+        additionally indexes pinyin spellings so pure-Latin pinyin
+        queries match CJK paragraphs; the query side does not add
+        pinyin for a CJK query (a CJK query should match CJK
+        tokens), so the query side is a subset of the write side."""
         import re as _re
         body = "释放内存"
         tokenized = _cjk_pre_tokenize(body)
         escaped = _fts5_escape(body)
         tokenized_tokens = set(tokenized.split())
         escaped_tokens = set(_re.findall(r'"([^"]+)"', escaped))
-        self.assertEqual(tokenized_tokens, escaped_tokens,
-                         f"write side={tokenized_tokens} != query side={escaped_tokens}")
+        self.assertTrue(escaped_tokens.issubset(tokenized_tokens),
+                        f"query side={escaped_tokens} not subset of write side={tokenized_tokens}")
+        # CJK tokens and synonyms must be present on both sides
+        for tok in ("释放", "内存", "free", "release", "memory"):
+            self.assertIn(tok, tokenized_tokens)
+            self.assertIn(tok, escaped_tokens)
 
 
 class TestKbQueryCjkMatch(unittest.TestCase):

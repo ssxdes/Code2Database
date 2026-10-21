@@ -1257,6 +1257,15 @@ def _simple_tokenize(text: str) -> set:
     # Also add CJK bigrams for better matching
     for i in range(len(cjk) - 1):
         tokens.add(cjk[i] + cjk[i+1])
+    # Pinyin for CJK characters and bigrams so a pinyin query
+    # ``shifang`` has token-set overlap with a CJK candidate
+    # ``释放``.
+    for ch in cjk:
+        for p in _pinyin_for_token(ch):
+            tokens.add(p)
+    for i in range(len(cjk) - 1):
+        for p in _pinyin_for_token(cjk[i] + cjk[i+1]):
+            tokens.add(p)
     return tokens
 
 
@@ -1347,6 +1356,81 @@ def _expand_tokens(tokens: List[str],
                 if syn not in seen:
                     seen.add(syn)
                     expanded.append(syn)
+    return expanded
+
+
+# ---------------------------------------------------------------------------
+# Pinyin expansion
+#
+# Chinese users frequently type the pronunciation of a character in Latin
+# letters (pinyin) instead of the CJK ideograph — either because their
+# IME is off, because they're unsure of the character, or because the
+# keyboard only has ASCII keys.  Without pinyin in the index, a query
+# ``shifang`` finds nothing even when the paragraph body contains
+# ``释放``.
+#
+# When the optional ``pypinyin`` library is available, each CJK word
+# emitted by the segmenter is additionally indexed under its
+# tone-stripped pinyin (concatenated, e.g. ``释放`` → ``shifang``).
+# Per-character pinyin (``shi``, ``fang``) is also added so partial
+# matches like ``shi fang`` (typed with a space) still hit.  The
+# expansion is symmetric with the query side: a pure-Latin query
+# ``shifang`` produces ``"shifang"`` in the FTS5 MATCH expression,
+# which matches the pinyin token stored on the write side.
+# ---------------------------------------------------------------------------
+
+def _pinyin_for_token(token: str) -> List[str]:
+    """Return the pinyin spellings for a CJK token.
+
+    Returns a list containing the concatenated pinyin (e.g.
+    ``释放`` → ``["shifang"]``) followed by per-character pinyin
+    (``["shi", "fang"]``).  Non-CJK tokens return ``[]``.  When
+    ``pypinyin`` is unavailable, returns ``[]`` for every input so
+    callers degrade to CJK-only matching.
+    """
+    if not token or not _CJK_RE.search(token):
+        return []
+    try:
+        from pypinyin import lazy_pinyin, Style
+    except ImportError:
+        return []
+    parts = lazy_pinyin(token, style=Style.NORMAL, errors="ignore")
+    parts = [p for p in parts if p and p.isalpha()]
+    if not parts:
+        return []
+    result: List[str] = []
+    # Concatenated form first (highest signal: ``释放`` → ``shifang``)
+    if len(parts) > 1:
+        result.append("".join(parts))
+    # Per-character form (so ``shi fang`` typed with a space matches)
+    result.extend(parts)
+    return result
+
+
+def _expand_pinyin(tokens: List[str]) -> List[str]:
+    """Append pinyin spellings for CJK tokens in *tokens*.
+
+    Deduplication preserves order.  Non-CJK tokens pass through
+    unchanged.  When ``pypinyin`` is unavailable, the input is
+    returned unchanged.
+    """
+    if not tokens:
+        return tokens
+    try:
+        from pypinyin import lazy_pinyin, Style  # noqa: F401
+    except ImportError:
+        return tokens
+    seen: Set[str] = set()
+    expanded: List[str] = []
+    for tok in tokens:
+        if tok not in seen:
+            seen.add(tok)
+            expanded.append(tok)
+        py = _pinyin_for_token(tok)
+        for p in py:
+            if p not in seen:
+                seen.add(p)
+                expanded.append(p)
     return expanded
 
 
@@ -1480,6 +1564,12 @@ def _cjk_pre_tokenize(text: str, tokenizer: str = "jieba",
         tokens = [t for t in tokens if t not in stopwords]
     if synonyms:
         tokens = _expand_tokens(tokens, synonyms)
+    # Pinyin expansion lets a pure-Latin query ``shifang`` match a
+    # paragraph whose body contains ``释放`` — common when the IME is
+    # off or the keyboard is ASCII-only.  Per-character pinyin (shi,
+    # fang) is added alongside the concatenated form so a spaced
+    # query ``shi fang`` also matches.
+    tokens = _expand_pinyin(tokens)
     return " ".join(tokens)
 
 

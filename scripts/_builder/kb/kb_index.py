@@ -23,7 +23,7 @@ import sqlite3
 import sys
 from _builder.scanner_bridge.c2d_foreign import _escape_sql_path
 from _builder.utils import (_simple_tokenize, _similarity_score, _has_cjk,
-                           _cjk_pre_tokenize)
+                           _cjk_pre_tokenize, _mmr_rerank)
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import struct
@@ -1199,7 +1199,8 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
              log_query: bool = True,
              update_access: bool = True,
              version_scope: str = None,
-             cross: bool = False) -> List[Dict[str, Any]]:
+             cross: bool = False,
+             diversify: bool = False) -> List[Dict[str, Any]]:
     """Unified FTS5 + BM25 search across all kb_paragraphs.
 
     Args:
@@ -1218,6 +1219,13 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
         cross: also search every watched kb store (cross-domain
                    query). Hits from other domains carry source_domain
                    and source_kb.
+        diversify: when True, re-rank the top results using Maximal
+                   Marginal Relevance (MMR) so near-duplicate
+                   paragraphs are deprioritised in favour of covering
+                   distinct aspects of the query.  The ``score``
+                   field on each result is the original BM25 score;
+                   MMR only reorders.  Default False preserves the
+                   pure relevance ordering.
 
     Returns:
         List of dicts with id, source_kind, source_file, title, body,
@@ -1375,6 +1383,16 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
                 "is_current_scope": bool(scope)
                 and entry_scope == scope,
             })
+        # MMR diversification: when the caller opts in, re-rank the
+        # assembled results so near-duplicate paragraphs (similar
+        # topic, different source) are deprioritised in favour of
+        # covering distinct aspects.  Applied before see_also so the
+        # cluster-sibling annotations still reflect the original
+        # cluster memberships.  The score field stays as the original
+        # BM25 value — MMR only reorders.
+        if diversify and len(results) > 1:
+            results = _mmr_rerank(results, query, lambda_param=0.7,
+                                  top_n=top_n)
         # attach see_also — items in the same cluster
         # (same scope_id) ranked by weight. Batched into a single
         # query instead of one per result.

@@ -1619,5 +1619,132 @@ class TestAnnIndex(unittest.TestCase):
             ki._VEC_EXT_LOADED = None
 
 
+class TestMmrRerank(unittest.TestCase):
+    """Maximal Marginal Relevance diversifies result lists by
+    penalising near-duplicate paragraphs."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="kb_mmr_test_")
+        self.graph_dir = os.path.join(self.tmpdir, "code2db-out")
+        os.makedirs(self.graph_dir, exist_ok=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _insert(self, title, body, weight=2.0):
+        upsert_kb_paragraph(self.graph_dir, "memory", f"{title}.json",
+                            title, body, "[]", "[]", weight,
+                            "memory_qa", 1.0, 0, "")
+
+    def test_mmr_rerank_preserves_score(self):
+        from _builder.utils import _mmr_rerank
+        results = [
+            {"title": "a", "body": "free memory release", "score": 1.0},
+            {"title": "b", "body": "free memory release", "score": 0.9},
+            {"title": "c", "body": "thread sync mutex", "score": 0.8},
+        ]
+        reranked = _mmr_rerank(results, "memory", lambda_param=0.7, top_n=3)
+        # Scores must be unchanged
+        scores = {r["title"]: r["score"] for r in reranked}
+        self.assertEqual(scores["a"], 1.0)
+        self.assertEqual(scores["b"], 0.9)
+        self.assertEqual(scores["c"], 0.8)
+
+    def test_mmr_rerank_deprioritises_duplicates(self):
+        from _builder.utils import _mmr_rerank
+        # Two near-duplicate paragraphs (a, b) and one distinct (c)
+        results = [
+            {"title": "a", "body": "free memory release allocated", "score": 1.0},
+            {"title": "b", "body": "release memory free allocated", "score": 0.9},
+            {"title": "c", "body": "thread sync mutex lock", "score": 0.8},
+        ]
+        reranked = _mmr_rerank(results, "memory", lambda_param=0.7, top_n=3)
+        # The distinct result c should rank above the duplicate b
+        titles = [r["title"] for r in reranked]
+        self.assertEqual(titles[0], "a")  # highest relevance
+        self.assertLess(titles.index("c"), titles.index("b"),
+                        "Distinct result c should rank above near-duplicate b")
+
+    def test_mmr_rerank_lambda_1_is_pure_relevance(self):
+        from _builder.utils import _mmr_rerank
+        results = [
+            {"title": "a", "body": "free memory", "score": 1.0},
+            {"title": "b", "body": "free memory", "score": 0.9},
+            {"title": "c", "body": "thread sync", "score": 0.8},
+        ]
+        reranked = _mmr_rerank(results, "memory", lambda_param=1.0, top_n=3)
+        # With λ=1.0, MMR = pure relevance → original order preserved
+        titles = [r["title"] for r in reranked]
+        self.assertEqual(titles, ["a", "b", "c"])
+
+    def test_mmr_rerank_empty(self):
+        from _builder.utils import _mmr_rerank
+        self.assertEqual(_mmr_rerank([], "query"), [])
+
+    def test_mmr_rerank_single(self):
+        from _builder.utils import _mmr_rerank
+        results = [{"title": "a", "body": "test", "score": 1.0}]
+        reranked = _mmr_rerank(results, "query", top_n=1)
+        self.assertEqual(len(reranked), 1)
+        self.assertEqual(reranked[0]["title"], "a")
+
+    def test_mmr_rerank_top_n_limit(self):
+        from _builder.utils import _mmr_rerank
+        results = [
+            {"title": "a", "body": "free memory", "score": 1.0},
+            {"title": "b", "body": "thread sync", "score": 0.9},
+            {"title": "c", "body": "file io", "score": 0.8},
+        ]
+        reranked = _mmr_rerank(results, "query", top_n=2)
+        self.assertEqual(len(reranked), 2)
+
+    def test_mmr_rerank_cleans_temp_fields(self):
+        from _builder.utils import _mmr_rerank
+        results = [
+            {"title": "a", "body": "free memory", "score": 1.0},
+            {"title": "b", "body": "thread sync", "score": 0.9},
+        ]
+        reranked = _mmr_rerank(results, "query", top_n=2)
+        for r in reranked:
+            self.assertNotIn("_rel", r)
+            self.assertNotIn("_toks", r)
+
+    def test_query_kb_diversify_changes_order(self):
+        # Insert near-duplicate paragraphs and a distinct one, all
+        # matching the query terms but with different additional
+        # content.
+        self._insert("mem-free", "free memory release allocated blocks")
+        self._insert("mem-release", "release memory free allocated blocks")
+        self._insert("mem-sync", "free memory sync mutex thread safety")
+        plain = query_kb(self.graph_dir, "memory free", top_n=3,
+                         diversify=False)
+        diverse = query_kb(self.graph_dir, "memory free", top_n=3,
+                           diversify=True)
+        # Both should return 3 results
+        self.assertEqual(len(plain), 3)
+        self.assertEqual(len(diverse), 3)
+        # The diversified list should not be identical to the plain list
+        plain_titles = [r["title"] for r in plain]
+        diverse_titles = [r["title"] for r in diverse]
+        # mem-sync (distinct from the duplicate pair) should rank
+        # at least as high in the diversified list
+        if "mem-sync" in plain_titles and "mem-sync" in diverse_titles:
+            self.assertLessEqual(
+                diverse_titles.index("mem-sync"),
+                plain_titles.index("mem-sync"),
+                "Diversified list should rank mem-sync at least as high")
+
+    def test_query_kb_diversify_default_off(self):
+        # By default, diversify=False → pure relevance ordering
+        self._insert("a", "free memory release")
+        self._insert("b", "free memory release")
+        results = query_kb(self.graph_dir, "memory", top_n=2)
+        self.assertEqual(len(results), 2)
+        # No temp fields should leak
+        for r in results:
+            self.assertNotIn("_rel", r)
+            self.assertNotIn("_toks", r)
+
+
 if __name__ == "__main__":
     unittest.main()

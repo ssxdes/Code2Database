@@ -9,7 +9,7 @@ from pathlib import Path
 from collections import defaultdict
 import networkx as nx
 import logging
-from typing import Optional, List, Set, Dict
+from typing import Optional, List, Set, Dict, Any
 
 
 # Cache source_root per graph_dir to avoid re-reading master.json on every
@@ -1717,3 +1717,71 @@ def resolve_store_dir() -> str:
         if parent == d:
             return _STORE_DIR_NAME
         d = parent
+
+
+# ---------------------------------------------------------------------------
+# Maximal Marginal Relevance (MMR) for result diversification
+#
+# When the top-N results contain near-duplicate paragraphs (similar
+# topic, different source), the user gets redundant information.  MMR
+# re-ranks by balancing each candidate's relevance to the query
+# against its similarity to already-selected results, so the final list
+# covers more distinct aspects.
+# ---------------------------------------------------------------------------
+
+def _mmr_rerank(results: List[Dict[str, Any]],
+                query: str,
+                lambda_param: float = 0.7,
+                top_n: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Re-rank *results* using Maximal Marginal Relevance.
+
+    MMR score = λ × relevance - (1-λ) × max_similarity_to_selected
+
+    Greedily selects results: the first pick is the highest-relevance
+    result; each subsequent pick maximises the MMR score, which
+    penalises candidates whose token set overlaps heavily with any
+    already-selected result.  The trade-off is controlled by
+    *lambda_param*: 1.0 = pure relevance (no diversification),
+    0.0 = pure diversity.
+
+    The ``score`` field on each result is preserved unchanged — MMR
+    only reorders.  Temporary fields (``_rel``, ``_toks``) are removed
+    before returning.
+    """
+    if not results or len(results) <= 1:
+        return results
+    if top_n is None or top_n > len(results):
+        top_n = len(results)
+    if top_n <= 1:
+        return results[:top_n]
+    # Normalise relevance scores to [0, 1] so the λ balance is stable
+    # across queries with different BM25 magnitudes.
+    max_score = max((r.get("score", 0) or 0) for r in results) or 1.0
+    query_tokens = _simple_tokenize(query)
+    for r in results:
+        r["_rel"] = (r.get("score", 0) or 0) / max_score
+        body_text = (r.get("title") or "") + " " + (r.get("body") or "")
+        r["_toks"] = _simple_tokenize(body_text)
+    selected: List[Dict[str, Any]] = []
+    remaining = list(results)
+    while remaining and len(selected) < top_n:
+        if not selected:
+            best = max(remaining, key=lambda r: r["_rel"])
+        else:
+            best = None
+            best_mmr = -1.0
+            for r in remaining:
+                max_sim = max(
+                    _similarity_score(r["_toks"], s["_toks"])
+                    for s in selected
+                )
+                mmr = lambda_param * r["_rel"] - (1 - lambda_param) * max_sim
+                if mmr > best_mmr:
+                    best_mmr = mmr
+                    best = r
+        selected.append(best)
+        remaining.remove(best)
+    for r in results:
+        r.pop("_rel", None)
+        r.pop("_toks", None)
+    return selected

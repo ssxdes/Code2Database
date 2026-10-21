@@ -143,6 +143,11 @@ def _fts5_escape(query: str) -> str:
     so a paragraph indexed with either variant still matches — the
     OR-group makes the query *more* permissive, not more restrictive.
     """
+    # Normalise full-width ASCII variants before the CJK check so the
+    # routing matches the write side (``_cjk_pre_tokenize``) — otherwise
+    # a full-width-only query like ``ＡＢＣ`` takes the CJK path and the
+    # full-width letters never reach the Latin token regex.
+    query = _normalize_fullwidth(query)
     synonyms = _load_synonyms()
     if _has_cjk(query):
         query = _strip_cjk_punct(query)
@@ -1168,6 +1173,35 @@ _CJK_PUNCT_RE = re.compile(
 )
 
 
+# Full-width ASCII variants in the U+FF00 block: full-width Latin letters
+# (Ａ-Ｚ, ａ-ｚ), digits (０-９), punctuation (！＂＃…), and the full-width
+# space (　).  Chinese / Japanese IMEs routinely emit these in mixed CJK
+# text; without normalisation a paragraph stored as ``使用 ＡＢＣ 函数``
+# indexes three single-character tokens (Ａ, Ｂ, Ｃ) that no ASCII query
+# can match.  Converting to the half-width ASCII equivalents makes the
+# index and query symmetric with Latin text.
+_FULLWIDTH_RE = re.compile(r'[\uFF01-\uFF5E\u3000]')
+
+
+def _normalize_fullwidth(text: str) -> str:
+    """Convert full-width characters to their half-width ASCII equivalents.
+
+    Handles full-width Latin letters (Ａ-Ｚ, ａ-ｚ), digits (０-９),
+    punctuation (！＂＃…), and the full-width space (　).  Applied before
+    CJK punctuation stripping and tokenisation so the downstream paths
+    see canonical ASCII for Latin runs and only true CJK ideographs in
+    the CJK runs.
+    """
+    if not text:
+        return text or ""
+    def _convert(m):
+        ch = m.group(0)
+        if ch == '\u3000':
+            return ' '
+        return chr(ord(ch) - 0xFEE0)
+    return _FULLWIDTH_RE.sub(_convert, text)
+
+
 def _strip_cjk_punct(text: str) -> str:
     """Replace CJK / fullwidth punctuation with spaces.
 
@@ -1205,8 +1239,11 @@ def _simple_tokenize(text: str) -> set:
     """Simple tokenization for similarity matching. Handles CJK and Latin."""
     if not text:
         return set()
-    # Strip CJK punctuation so it doesn't become a token or create
-    # cross-punctuation bigrams (e.g.  内存， → no 存， bigram).
+    # Normalise full-width ASCII variants first so ＡＢＣ and ABC
+    # produce identical token sets, then strip CJK punctuation so it
+    # doesn't become a token or create cross-punctuation bigrams
+    # (e.g.  内存， → no 存， bigram).
+    text = _normalize_fullwidth(text)
     text = _strip_cjk_punct(text)
     # Keep CJK chars, alphanumerics; split on punctuation/whitespace
     # For CJK: each character is a token; for Latin: words
@@ -1368,6 +1405,7 @@ def _extract_code_identifiers(text: str, max_count: int = 20) -> List[str]:
 
 def _char_bigram_tokenize(text: str) -> List[str]:
     """Character + bigram tokenization (the always-available fallback)."""
+    text = _normalize_fullwidth(text)
     text = _strip_cjk_punct(text)
     cjk = _CJK_RE.findall(text)
     tokens: List[str] = list(cjk)
@@ -1424,6 +1462,11 @@ def _cjk_pre_tokenize(text: str, tokenizer: str = "jieba",
     """
     if not text:
         return text or ""
+    # Normalise full-width ASCII variants before the CJK check so
+    # ``ＡＢＣ函数`` is treated as the Latin+CJK mix ``ABC函数`` rather
+    # than a pure-CJK string (the full-width block lives inside _CJK_RE
+    # and would otherwise route Latin-looking text down the CJK path).
+    text = _normalize_fullwidth(text)
     synonyms = _load_synonyms()
     if not _has_cjk(text):
         tokens = text.split()

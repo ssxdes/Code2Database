@@ -16,7 +16,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 
 from _builder.utils import _fts5_escape, _cjk_pre_tokenize, _has_cjk, \
-    _simple_tokenize, _strip_cjk_punct
+    _simple_tokenize, _strip_cjk_punct, _normalize_fullwidth
 from _builder.kb.kb_index import _kb_connect, query_kb, upsert_kb_paragraph
 
 
@@ -92,6 +92,135 @@ class TestCjkPreTokenize(unittest.TestCase):
     def test_strip_cjk_punct_empty(self):
         self.assertEqual(_strip_cjk_punct(""), "")
         self.assertEqual(_strip_cjk_punct(None), "")
+
+
+class TestFullwidthNormalization(unittest.TestCase):
+    """Full-width ASCII variants (Ａ-Ｚ, ０-９, 　) are common in CJK
+    text typed via Chinese IMEs and must normalise to their half-width
+    equivalents so the index and query sides stay symmetric."""
+
+    def test_normalize_fullwidth_letters(self):
+        self.assertEqual(_normalize_fullwidth("ＡＢＣ"), "ABC")
+        self.assertEqual(_normalize_fullwidth("ａｂｃ"), "abc")
+
+    def test_normalize_fullwidth_digits(self):
+        self.assertEqual(_normalize_fullwidth("１２３"), "123")
+        self.assertEqual(_normalize_fullwidth("０"), "0")
+
+    def test_normalize_fullwidth_space(self):
+        self.assertEqual(_normalize_fullwidth("释放\u3000内存"), "释放 内存")
+
+    def test_normalize_fullwidth_punctuation(self):
+        # Full-width punctuation in the U+FF00 block
+        self.assertEqual(_normalize_fullwidth("Ａ！"), "A!")
+        self.assertEqual(_normalize_fullwidth("＃＄"), "#$")
+
+    def test_normalize_fullwidth_preserves_ascii(self):
+        self.assertEqual(_normalize_fullwidth("ABC123"), "ABC123")
+        self.assertEqual(_normalize_fullwidth("free memory"), "free memory")
+
+    def test_normalize_fullwidth_preserves_cjk(self):
+        self.assertEqual(_normalize_fullwidth("释放内存"), "释放内存")
+
+    def test_normalize_fullwidth_empty(self):
+        self.assertEqual(_normalize_fullwidth(""), "")
+        self.assertEqual(_normalize_fullwidth(None), "")
+
+    def test_pre_tokenize_fullwidth_letters(self):
+        # Full-width Latin letters in CJK context: the IME typed ＡＢＣ
+        # but the user meant ABC.  The tokenised output must contain
+        # the ASCII form so English queries match.
+        result = _cjk_pre_tokenize("使用 ＡＢＣ 函数")
+        tokens = result.split()
+        self.assertIn("ABC", tokens)
+        self.assertNotIn("Ａ", tokens)
+        self.assertNotIn("Ｂ", tokens)
+        self.assertNotIn("Ｃ", tokens)
+
+    def test_pre_tokenize_fullwidth_digits(self):
+        result = _cjk_pre_tokenize("版本１．２")
+        tokens = result.split()
+        # After normalisation, １．２ becomes 1.2 (jieba treats it as
+        # one token).  The key invariant: no full-width digits remain.
+        for tok in tokens:
+            for ch in tok:
+                self.assertFalse('\uFF10' <= ch <= '\uFF19',
+                                 f"Full-width digit {ch!r} survived in token {tok!r}")
+        self.assertIn("版本", tokens)
+
+    def test_pre_tokenize_fullwidth_space(self):
+        result = _cjk_pre_tokenize("释放\u3000内存")
+        tokens = result.split()
+        self.assertIn("释放", tokens)
+        self.assertIn("内存", tokens)
+        # No empty tokens from the full-width space
+        self.assertNotIn("", tokens)
+
+    def test_pre_tokenize_fullwidth_only(self):
+        # Pure full-width text (no CJK): normalises to ASCII and takes
+        # the Latin path.  Previously the full-width block lived inside
+        # _CJK_RE so ＡＢＣ was routed to the CJK path and jieba split
+        # it into single chars.
+        result = _cjk_pre_tokenize("ＡＢＣ")
+        self.assertEqual(result, "ABC")
+
+    def test_fts5_escape_fullwidth_letters(self):
+        result = _fts5_escape("ＡＢＣ")
+        self.assertIn('"ABC"', result)
+        self.assertNotIn("Ａ", result)
+
+    def test_fts5_escape_fullwidth_with_cjk(self):
+        result = _fts5_escape("ＡＢＣ函数")
+        self.assertIn('"ABC"', result)
+        self.assertIn("函数", result)
+
+    def test_simple_tokenize_fullwidth(self):
+        # Full-width ABC normalises to ASCII; _simple_tokenize
+        # lowercases and runs the [a-zA-Z0-9_]+ regex which captures
+        # the whole alphanumeric run as one token.
+        tokens = _simple_tokenize("ＡＢＣ123")
+        self.assertIn("abc123", tokens)
+        self.assertNotIn("Ａ", tokens)
+        self.assertNotIn("Ｂ", tokens)
+
+    def test_fullwidth_query_matches_ascii_paragraph(self):
+        """A full-width query ＡＢＣ must match a paragraph stored
+        with ASCII ABC."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            gd = str(Path(tmp))
+            upsert_kb_paragraph(gd, "memory", "test.json",
+                                "ABC function", "ABC function call",
+                                "[]", "[]", 2.0, "memory_qa", 1.0, 0, "")
+            results = query_kb(gd, "ＡＢＣ", top_n=5)
+            self.assertGreaterEqual(len(results), 1,
+                                    "Full-width query ＡＢＣ must match ASCII ABC")
+
+    def test_fullwidth_paragraph_matches_ascii_query(self):
+        """A paragraph stored with full-width ＡＢＣ must match an
+        ASCII query ABC."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            gd = str(Path(tmp))
+            upsert_kb_paragraph(gd, "memory", "test.json",
+                                "ＡＢＣ function", "ＡＢＣ function call",
+                                "[]", "[]", 2.0, "memory_qa", 1.0, 0, "")
+            results = query_kb(gd, "ABC", top_n=5)
+            self.assertGreaterEqual(len(results), 1,
+                                    "ASCII query ABC must match full-width ＡＢＣ paragraph")
+
+    def test_fullwidth_digits_match(self):
+        """Version-like strings with full-width digits should
+        normalise so a query for version 1.2 matches."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            gd = str(Path(tmp))
+            upsert_kb_paragraph(gd, "memory", "test.json",
+                                "版本１．２", "版本１．２发布说明",
+                                "[]", "[]", 2.0, "memory_qa", 1.0, 0, "")
+            # Query with ASCII digits
+            results = query_kb(gd, "版本", top_n=5)
+            self.assertGreaterEqual(len(results), 1)
 
 
 class TestFts5EscapeCjk(unittest.TestCase):

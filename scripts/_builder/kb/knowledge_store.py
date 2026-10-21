@@ -243,9 +243,38 @@ class KnowledgeStore:
             logging.getLogger(__name__).debug(
                 "silent exception", exc_info=True)
         _migrate_to_body_tokenized(self._conn)
+        self._ensure_schema_version()
         self._import_legacy_brief()
 
     # -- connection ---------------------------------------------------
+
+    def _ensure_schema_version(self) -> None:
+        """Stamp the current schema version into knowledge_meta.
+
+        Records KNOWLEDGE_SCHEMA_VERSION so kb_stats and the audit
+        trail can report it. Never lowers an existing version.
+        """
+        try:
+            row = self._conn.execute(
+                "SELECT value FROM knowledge_meta "
+                "WHERE key = 'schema_version'").fetchone()
+            if row is None:
+                self._conn.execute(
+                    "INSERT OR REPLACE INTO knowledge_meta (key, value) "
+                    "VALUES ('schema_version', ?)",
+                    (str(KNOWLEDGE_SCHEMA_VERSION),))
+                self._conn.commit()
+            else:
+                current = int(row[0])
+                if current < KNOWLEDGE_SCHEMA_VERSION:
+                    self._conn.execute(
+                        "UPDATE knowledge_meta SET value = ? "
+                        "WHERE key = 'schema_version'",
+                        (str(KNOWLEDGE_SCHEMA_VERSION),))
+                    self._conn.commit()
+        except (sqlite3.Error, ValueError):
+            logging.getLogger(__name__).debug("silent exception",
+                                              exc_info=True)
 
     def _connect(self) -> sqlite3.Connection:
         uri = f"file:{self.db_path}?mode=ro" if self.read_only \

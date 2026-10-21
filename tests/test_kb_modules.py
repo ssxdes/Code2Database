@@ -1098,6 +1098,78 @@ class TestKbStats(unittest.TestCase):
         self.assertIn("last_rebuild", result)
         self.assertIn("file_count", result["last_rebuild"])
 
+    def test_stats_reports_schema_version(self):
+        # kb_meta carries a schema_version key after _kb_connect;
+        # kb_stats surfaces it so enterprise maintainers can verify
+        # every store is on the expected schema.
+        result = kb_stats(self.graph_dir)
+        self.assertIn("schema_version", result)
+        self.assertIsInstance(result["schema_version"], int)
+        self.assertGreater(result["schema_version"], 0)
+
+    def test_stats_reports_knowledge_schema_version(self):
+        # The knowledge store has its own schema_version in
+        # knowledge_meta; kb_stats reports it alongside the kb_index
+        # version so a maintainer sees both at once.
+        from _builder.kb.knowledge_store import KnowledgeStore
+        ks = KnowledgeStore(self.graph_dir)
+        ks.add("hard_rule", "test rule")
+        ks.close()
+        result = kb_stats(self.graph_dir)
+        self.assertIn("knowledge_schema_version", result)
+        self.assertIsInstance(result["knowledge_schema_version"], int)
+        self.assertGreater(result["knowledge_schema_version"], 0)
+
+    def test_schema_version_persisted_in_kb_meta(self):
+        from _builder.kb.kb_index import KB_SCHEMA_VERSION
+        conn = _kb_connect(self.graph_dir)
+        try:
+            row = conn.execute(
+                "SELECT value FROM kb_meta WHERE key = 'schema_version'"
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(row)
+        self.assertEqual(int(row[0]), KB_SCHEMA_VERSION)
+
+    def test_schema_version_never_lowered(self):
+        # Pre-set a higher version; _ensure_schema_version must not
+        # lower it (the constant tracks the latest migration applied
+        # by this codebase, not a ceiling).
+        conn = _kb_connect(self.graph_dir)
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO kb_meta (key, value) "
+                "VALUES ('schema_version', '99')")
+            conn.commit()
+        finally:
+            conn.close()
+        # Re-open — the existing version (99) must be preserved.
+        conn = _kb_connect(self.graph_dir)
+        try:
+            row = conn.execute(
+                "SELECT value FROM kb_meta WHERE key = 'schema_version'"
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(int(row[0]), 99)
+
+    def test_knowledge_schema_version_persisted(self):
+        from _builder.kb.knowledge_store import (
+            KnowledgeStore, KNOWLEDGE_SCHEMA_VERSION, knowledge_db_path)
+        ks = KnowledgeStore(self.graph_dir)
+        ks.close()
+        import sqlite3 as _sqlite3
+        conn = _sqlite3.connect(knowledge_db_path(self.graph_dir))
+        try:
+            row = conn.execute(
+                "SELECT value FROM knowledge_meta "
+                "WHERE key = 'schema_version'").fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(row)
+        self.assertEqual(int(row[0]), KNOWLEDGE_SCHEMA_VERSION)
+
 
 class TestKbConflict(unittest.TestCase):
     def setUp(self):

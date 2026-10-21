@@ -129,6 +129,22 @@ def kb_stats(graph_dir: str) -> Dict[str, Any]:
             "file_count": int(meta.get("last_rebuild_file_count", 0)),
         }
         result["domain_name"] = meta.get("domain_name", "")
+        result["schema_version"] = int(meta.get("schema_version", 1))
+        # Knowledge store schema version (separate database).
+        try:
+            from _builder.kb.knowledge_store import open_knowledge
+            ks = open_knowledge(graph_dir, create_if_missing=False)
+            if ks is not None:
+                krow = ks._conn.execute(
+                    "SELECT value FROM knowledge_meta "
+                    "WHERE key = 'schema_version'").fetchone()
+                result["knowledge_schema_version"] = (
+                    int(krow[0]) if krow else 1)
+                ks.close()
+            else:
+                result["knowledge_schema_version"] = None
+        except Exception:
+            result["knowledge_schema_version"] = None
         return result
     finally:
         conn.close()

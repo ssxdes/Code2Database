@@ -30,6 +30,12 @@ import struct
 import logging
 
 
+# Schema version history:
+#   1 — original schema (kb_paragraphs, kb_items, FTS5 on body)
+#   2 — body_tokenized column + CJK pre-tokenization + version_scope
+#       column + kb_cluster_summaries table + ANN vector table
+KB_SCHEMA_VERSION = 2
+
 _VEC_EXT_LOADED: Optional[bool] = None
 
 
@@ -440,9 +446,42 @@ def _kb_connect(graph_dir: str, create_if_missing: bool = True) -> Optional[sqli
                 conn.commit()
         except Exception:
             logging.getLogger(__name__).debug("silent exception", exc_info=True)
+    _ensure_schema_version(conn, KB_SCHEMA_VERSION)
     if conn is not None:
         _import_legacy_kb(conn, graph_dir)
     return conn
+
+
+def _ensure_schema_version(conn: sqlite3.Connection,
+                           target_version: int) -> None:
+    """Record the current schema version in kb_meta.
+
+    Existing idempotent migrations (ALTER TABLE IF missing column)
+    have already run by the time this is called. This function only
+    stamps the version so kb_stats can report it and future migrations
+    can branch on `current < target` instead of re-checking column
+    presence. It never lowers an existing version.
+    """
+    try:
+        row = conn.execute(
+            "SELECT value FROM kb_meta WHERE key = 'schema_version'"
+        ).fetchone()
+        if row is None:
+            conn.execute(
+                "INSERT OR REPLACE INTO kb_meta (key, value) "
+                "VALUES ('schema_version', ?)",
+                (str(target_version),))
+            conn.commit()
+        else:
+            current = int(row[0])
+            if current < target_version:
+                conn.execute(
+                    "UPDATE kb_meta SET value = ? "
+                    "WHERE key = 'schema_version'",
+                    (str(target_version),))
+                conn.commit()
+    except (sqlite3.Error, ValueError):
+        logging.getLogger(__name__).debug("silent exception", exc_info=True)
 
 
 _LEGACY_COPY_TABLES = ("kb_paragraphs", "kb_items", "kb_query_log",

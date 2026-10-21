@@ -861,6 +861,120 @@ class TestKbCluster(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_cluster_single_paragraph(self):
+        """A single paragraph forms its own singleton cluster."""
+        _make_memory_entry(self.graph_dir, 1,
+                           "unique topic", "unique body content")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        summary = cluster_kb(self.graph_dir, threshold=0.3, verbose=False)
+        self.assertTrue(summary["clustered"])
+        self.assertEqual(summary["cluster_count"], 1)
+        self.assertEqual(summary["items_clustered"], 1)
+        conn = _kb_connect(self.graph_dir)
+        try:
+            row = conn.execute(
+                "SELECT scope_id, canonical_id FROM kb_paragraphs "
+                "WHERE scope_id IS NOT NULL"
+            ).fetchone()
+            self.assertIsNotNone(row)
+            self.assertEqual(row["scope_id"], row["canonical_id"])
+        finally:
+            conn.close()
+
+    def test_cluster_idempotent_on_rerun(self):
+        """Re-running cluster_kb recomputes scope_id and canonical_id
+        from scratch — the reset UPDATE at the start must clear all
+        prior assignments so stale clusters don't leak."""
+        _make_memory_entry(self.graph_dir, 1,
+                           "how does bdev register",
+                           "bdev_register calls io_device_register")
+        _make_memory_entry(self.graph_dir, 2,
+                           "how does bdev register",
+                           "bdev_register calls io_device_register")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        # First run
+        cluster_kb(self.graph_dir, threshold=0.1, verbose=False)
+        conn = _kb_connect(self.graph_dir)
+        try:
+            first_scope = conn.execute(
+                "SELECT DISTINCT scope_id FROM kb_paragraphs "
+                "WHERE scope_id IS NOT NULL"
+            ).fetchall()
+            first_count = len(first_scope)
+        finally:
+            conn.close()
+        # Second run — must produce the same number of clusters
+        cluster_kb(self.graph_dir, threshold=0.1, verbose=False)
+        conn = _kb_connect(self.graph_dir)
+        try:
+            second_scope = conn.execute(
+                "SELECT DISTINCT scope_id FROM kb_paragraphs "
+                "WHERE scope_id IS NOT NULL"
+            ).fetchall()
+            second_count = len(second_scope)
+            # No stale scope_ids from the first run
+            stale = conn.execute(
+                "SELECT COUNT(*) FROM kb_paragraphs "
+                "WHERE scope_id IS NULL AND canonical_id IS NOT NULL"
+            ).fetchone()[0]
+            self.assertEqual(stale, 0)
+        finally:
+            conn.close()
+        self.assertEqual(first_count, second_count)
+
+    def test_cluster_multiple_distinct_clusters(self):
+        """Two groups of similar items form two distinct clusters."""
+        # Group 1: bdev registration
+        _make_memory_entry(self.graph_dir, 1,
+                           "bdev register", "bdev_register io_device_register")
+        _make_memory_entry(self.graph_dir, 2,
+                           "bdev register", "bdev_register io_device_register")
+        # Group 2: thread sync (distinct topic)
+        _make_memory_entry(self.graph_dir, 3,
+                           "thread sync", "mutex_lock mutex_unlock thread")
+        _make_memory_entry(self.graph_dir, 4,
+                           "thread sync", "mutex_lock mutex_unlock thread")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        summary = cluster_kb(self.graph_dir, threshold=0.3, verbose=False)
+        self.assertTrue(summary["clustered"])
+        self.assertGreaterEqual(summary["cluster_count"], 2)
+
+    def test_cluster_summary_truncation(self):
+        """Cluster summaries are capped at 500 characters."""
+        # Create a paragraph with a very long body
+        long_body = "bdev_register calls io_device_register " * 50
+        _make_memory_entry(self.graph_dir, 1,
+                           "bdev register long", long_body)
+        _make_memory_entry(self.graph_dir, 2,
+                           "bdev register long", long_body)
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        cluster_kb(self.graph_dir, threshold=0.1, verbose=False)
+        conn = _kb_connect(self.graph_dir)
+        try:
+            row = conn.execute(
+                "SELECT summary FROM kb_cluster_summaries"
+            ).fetchone()
+            self.assertIsNotNone(row)
+            self.assertLessEqual(len(row["summary"]), 500)
+        finally:
+            conn.close()
+
+    def test_cluster_summary_no_related_when_singleton(self):
+        """A singleton cluster summary has no 'Related:' suffix."""
+        _make_memory_entry(self.graph_dir, 1,
+                           "unique singleton", "unique singleton body")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        cluster_kb(self.graph_dir, threshold=0.5, verbose=False)
+        conn = _kb_connect(self.graph_dir)
+        try:
+            row = conn.execute(
+                "SELECT summary FROM kb_cluster_summaries"
+            ).fetchone()
+            self.assertIsNotNone(row)
+            self.assertNotIn("Related:", row["summary"])
+        finally:
+            conn.close()
+
 
 class TestKbAudit(unittest.TestCase):
     def setUp(self):
@@ -1153,6 +1267,219 @@ class TestKbConflict(unittest.TestCase):
     def test_forget_nonexistent_item(self):
         """forget_kb_paragraph on nonexistent id returns error."""
         result = forget_kb_paragraph(self.graph_dir, 999999, "test")
+        self.assertIn("error", result)
+
+    def test_detect_conflicts_empty_kb(self):
+        """detect_conflicts on an empty KB returns [] (no clusters,
+        no contradictions)."""
+        conflicts = detect_conflicts(self.graph_dir)
+        self.assertEqual(conflicts, [])
+
+    def test_detect_conflicts_singletons_no_conflicts(self):
+        """All singletons (no cluster >1) → no contradictions."""
+        upsert_kb_paragraph(self.graph_dir, "memory", "f1.json",
+                            "title1", "must always lock", kind="memory_qa")
+        upsert_kb_paragraph(self.graph_dir, "memory", "f2.json",
+                            "title2", "must never lock", kind="memory_qa")
+        # No scope_id set → all singletons
+        conflicts = detect_conflicts(self.graph_dir)
+        self.assertEqual(conflicts, [])
+
+    def test_detect_conflicts_must_must_not(self):
+        """English modal pair must/must not is detected."""
+        rid1 = upsert_kb_paragraph(self.graph_dir, "memory", "f1.json",
+                                    "lock rule", "you must lock first",
+                                    kind="memory_qa")
+        rid2 = upsert_kb_paragraph(self.graph_dir, "memory", "f2.json",
+                                    "lock rule", "you must not lock here",
+                                    kind="memory_qa")
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.graph_dir)
+        conn.execute("UPDATE kb_paragraphs SET scope_id = 10 WHERE id IN (?, ?)",
+                      (rid1, rid2))
+        conn.commit()
+        conn.close()
+        conflicts = detect_conflicts(self.graph_dir)
+        self.assertGreater(len(conflicts), 0)
+        pair = conflicts[0]["contradiction"]
+        self.assertIn("must", pair)
+        self.assertIn("must not", pair)
+
+    def test_detect_conflicts_true_false(self):
+        """English boolean pair true/false is detected."""
+        rid1 = upsert_kb_paragraph(self.graph_dir, "memory", "f1.json",
+                                    "flag check", "the flag is true",
+                                    kind="memory_qa")
+        rid2 = upsert_kb_paragraph(self.graph_dir, "memory", "f2.json",
+                                    "flag check", "the flag is false",
+                                    kind="memory_qa")
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.graph_dir)
+        conn.execute("UPDATE kb_paragraphs SET scope_id = 11 WHERE id IN (?, ?)",
+                      (rid1, rid2))
+        conn.commit()
+        conn.close()
+        conflicts = detect_conflicts(self.graph_dir)
+        self.assertGreater(len(conflicts), 0)
+        pair = conflicts[0]["contradiction"]
+        self.assertIn("true", pair)
+        self.assertIn("false", pair)
+
+    def test_detect_conflicts_cjk_thread_safety(self):
+        """CJK pair 线程安全/线程不安全 is detected.  Note: the
+        安全/不安全 pair may match first since 安全 is a substring of
+        线程安全 — both are valid contradictions."""
+        rid1 = upsert_kb_paragraph(self.graph_dir, "memory", "f1.json",
+                                    "同步规则", "此函数是线程安全的",
+                                    kind="memory_qa")
+        rid2 = upsert_kb_paragraph(self.graph_dir, "memory", "f2.json",
+                                    "同步规则", "此函数是线程不安全的",
+                                    kind="memory_qa")
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.graph_dir)
+        conn.execute("UPDATE kb_paragraphs SET scope_id = 12 WHERE id IN (?, ?)",
+                      (rid1, rid2))
+        conn.commit()
+        conn.close()
+        conflicts = detect_conflicts(self.graph_dir)
+        self.assertGreater(len(conflicts), 0)
+        pair = conflicts[0]["contradiction"]
+        # The pair is either (线程安全, 线程不安全) or the shorter
+        # (安全, 不安全) — both correctly flag the contradiction.
+        self.assertTrue(
+            ("安全" in pair[0] and "不安全" in pair[1])
+            or ("安全" in pair[1] and "不安全" in pair[0]),
+            f"Expected safety contradiction, got {pair}")
+
+    def test_detect_conflicts_cjk_reverse_direction(self):
+        """CJK contradiction checked in both directions: w1∈a∧w2∈b
+        and w2∈a∧w1∈b.  This test puts 必须 in item B and 禁止 in
+        item A (reverse of the existing test)."""
+        rid1 = upsert_kb_paragraph(self.graph_dir, "memory", "f1.json",
+                                    "规则A", "禁止直接调用free",
+                                    kind="memory_qa")
+        rid2 = upsert_kb_paragraph(self.graph_dir, "memory", "f2.json",
+                                    "规则B", "必须通过包装函数调用",
+                                    kind="memory_qa")
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.graph_dir)
+        conn.execute("UPDATE kb_paragraphs SET scope_id = 13 WHERE id IN (?, ?)",
+                      (rid1, rid2))
+        conn.commit()
+        conn.close()
+        conflicts = detect_conflicts(self.graph_dir)
+        self.assertGreater(len(conflicts), 0)
+
+    def test_detect_conflicts_similar_but_not_contradictory(self):
+        """Two paragraphs with high token overlap but no antonym pair
+        must NOT be flagged as contradictory."""
+        rid1 = upsert_kb_paragraph(self.graph_dir, "memory", "f1.json",
+                                    "memory release",
+                                    "use free to release allocated memory",
+                                    kind="memory_qa")
+        rid2 = upsert_kb_paragraph(self.graph_dir, "memory", "f2.json",
+                                    "memory allocation",
+                                    "use malloc to allocate memory blocks",
+                                    kind="memory_qa")
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.graph_dir)
+        conn.execute("UPDATE kb_paragraphs SET scope_id = 14 WHERE id IN (?, ?)",
+                      (rid1, rid2))
+        conn.commit()
+        conn.close()
+        conflicts = detect_conflicts(self.graph_dir)
+        self.assertEqual(len(conflicts), 0)
+
+    def test_detect_conflicts_multiple_clusters(self):
+        """Two separate clusters, each with a contradiction, produce
+        two conflict entries."""
+        # Cluster 1: yes/no
+        r1 = upsert_kb_paragraph(self.graph_dir, "memory", "f1.json",
+                                  "q1", "yes it is", kind="memory_qa")
+        r2 = upsert_kb_paragraph(self.graph_dir, "memory", "f2.json",
+                                  "q1", "no it is not", kind="memory_qa")
+        # Cluster 2: true/false
+        r3 = upsert_kb_paragraph(self.graph_dir, "memory", "f3.json",
+                                  "q2", "the flag is true", kind="memory_qa")
+        r4 = upsert_kb_paragraph(self.graph_dir, "memory", "f4.json",
+                                  "q2", "the flag is false", kind="memory_qa")
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.graph_dir)
+        conn.execute("UPDATE kb_paragraphs SET scope_id = 20 WHERE id IN (?, ?)",
+                      (r1, r2))
+        conn.execute("UPDATE kb_paragraphs SET scope_id = 21 WHERE id IN (?, ?)",
+                      (r3, r4))
+        conn.commit()
+        conn.close()
+        conflicts = detect_conflicts(self.graph_dir)
+        self.assertGreaterEqual(len(conflicts), 2)
+        scope_ids = {c["scope_id"] for c in conflicts}
+        self.assertGreaterEqual(len(scope_ids), 2)
+
+    def test_forget_returns_metadata(self):
+        """forget_kb_paragraph returns source_kind, source_file, title
+        of the forgotten paragraph."""
+        rid = upsert_kb_paragraph(self.graph_dir, "memory", "meta.json",
+                                    "meta title", "meta body",
+                                    kind="memory_qa")
+        result = forget_kb_paragraph(self.graph_dir, rid, reason="meta test")
+        self.assertTrue(result["forgotten"])
+        self.assertEqual(result["source_kind"], "memory")
+        self.assertEqual(result["source_file"], "meta.json")
+        self.assertEqual(result["title"], "meta title")
+
+    def test_forget_default_reason(self):
+        """forget_kb_paragraph with empty reason defaults to
+        'manual forget' in the audit log entry."""
+        rid = upsert_kb_paragraph(self.graph_dir, "memory", "def.json",
+                                    "default reason", "body",
+                                    kind="memory_qa")
+        result = forget_kb_paragraph(self.graph_dir, rid)
+        self.assertTrue(result["forgotten"])
+        # Verify audit log entry was written
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.graph_dir)
+        try:
+            log = conn.execute(
+                "SELECT reason FROM audit_log WHERE target_id = ? "
+                "AND command = 'kb-forget'",
+                (str(rid),)
+            ).fetchone()
+            self.assertIsNotNone(log)
+        finally:
+            conn.close()
+
+    def test_rollback_with_invalid_versions_json(self):
+        """rollback_kb_item with corrupt versions_json treats it as
+        empty list (JSONDecodeError → [])."""
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.graph_dir)
+        conn.execute(
+            "INSERT INTO kb_items (kind, title, body, tags, versions_json, "
+            "created_at) "
+            "VALUES ('memory_qa', 'cur', 'body', '[]', ?, ?)",
+            ("not valid json{{{", "2026-01-01T00:00:00"))
+        conn.commit()
+        item_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
+        # With empty versions and to_version=None, should return error
+        result = rollback_kb_item(self.graph_dir, item_id)
+        self.assertIn("error", result)
+
+    def test_rollback_empty_versions_to_version_none(self):
+        """rollback_kb_item with empty versions and to_version=None
+        returns an error (no version to restore)."""
+        from _builder.kb.kb_index import _kb_connect
+        conn = _kb_connect(self.graph_dir)
+        conn.execute(
+            "INSERT INTO kb_items (kind, title, body, tags, versions_json, "
+            "created_at) "
+            "VALUES ('memory_qa', 'cur', 'body', '[]', ?, ?)",
+            ("[]", "2026-01-01T00:00:00"))
+        conn.commit()
+        item_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
+        result = rollback_kb_item(self.graph_dir, item_id)
         self.assertIn("error", result)
 
 

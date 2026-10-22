@@ -1489,9 +1489,10 @@ def _pinyin_for_token(token: str) -> List[str]:
 
     Returns a list containing the concatenated pinyin (e.g.
     ``释放`` → ``["shifang"]``) followed by per-character pinyin
-    (``["shi", "fang"]``).  Non-CJK tokens return ``[]``.  When
-    ``pypinyin`` is unavailable, returns ``[]`` for every input so
-    callers degrade to CJK-only matching.
+    (``["shi", "fang"]``) and the first-letter initials (``"sf"``)
+    so abbreviation queries match CJK paragraphs.  Non-CJK tokens
+    return ``[]``.  When ``pypinyin`` is unavailable, returns ``[]``
+    for every input so callers degrade to CJK-only matching.
     """
     if not token or not _CJK_RE.search(token):
         return []
@@ -1509,6 +1510,13 @@ def _pinyin_for_token(token: str) -> List[str]:
         result.append("".join(parts))
     # Per-character form (so ``shi fang`` typed with a space matches)
     result.extend(parts)
+    # First-letter initials (abbreviation: ``释放`` → ``sf``).  Only
+    # for 2+ character tokens — a single-char initial is just the
+    # first per-character pinyin (already in the list).
+    if len(parts) >= 2:
+        initials = "".join(p[0] for p in parts)
+        if initials not in result:
+            result.append(initials)
     return result
 
 

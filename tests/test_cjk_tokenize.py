@@ -237,13 +237,24 @@ class TestPinyinExpansion(unittest.TestCase):
         self.assertIn("shifang", result)
         self.assertIn("shi", result)
         self.assertIn("fang", result)
+        # First-letter initials (abbreviation)
+        self.assertIn("sf", result)
 
     def test_pinyin_for_single_char(self):
         from _builder.utils import _pinyin_for_token
         result = _pinyin_for_token("释")
         self.assertIn("shi", result)
-        # Single char has no concatenated form
+        # Single char has no concatenated form or initials
         self.assertEqual(len(result), 1)
+
+    def test_pinyin_initials_for_multi_char(self):
+        from _builder.utils import _pinyin_for_token
+        # 4-char token gets 4-letter initials
+        result = _pinyin_for_token("释放内存")
+        self.assertIn("sfnc", result)
+        # 2-char token gets 2-letter initials
+        result2 = _pinyin_for_token("线程")
+        self.assertIn("xc", result2)
 
     def test_pinyin_for_non_cjk(self):
         from _builder.utils import _pinyin_for_token
@@ -357,6 +368,24 @@ class TestPinyinExpansion(unittest.TestCase):
                                 "[]", "[]", 2.0, "memory_qa", 1.0, 0, "")
             results = query_kb(gd, "free", top_n=5)
             self.assertGreaterEqual(len(results), 1)
+
+    def test_pinyin_initials_query_matches_cjk(self):
+        """First-letter initials query 'sf' matches a CJK paragraph
+        whose body contains 释放."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            gd = str(Path(tmp))
+            upsert_kb_paragraph(gd, "memory", "test.json",
+                                "释放内存", "释放内存释放资源",
+                                "[]", "[]", 2.0, "memory_qa", 1.0, 0, "")
+            results = query_kb(gd, "sf", top_n=5)
+            self.assertGreaterEqual(len(results), 1,
+                                    "Initials query 'sf' must match CJK paragraph about 释放")
+
+    def test_pinyin_initials_in_simple_tokenize(self):
+        from _builder.utils import _simple_tokenize
+        tokens = _simple_tokenize("释放")
+        self.assertIn("sf", tokens)
 
     def test_pinyin_in_simple_tokenize(self):
         from _builder.utils import _simple_tokenize

@@ -1484,7 +1484,8 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
                     node_ids = []
             body = r["body"] or ""
             if len(body) > max_chars:
-                body = body[:max_chars] + "\n... (truncated)"
+                from _builder.utils import _extract_snippet
+                body = _extract_snippet(body, query, max_chars)
             try:
                 entry_scope = r["version_scope"] or "default"
             except (IndexError, KeyError):

@@ -907,5 +907,89 @@ class TestProjectUserDict(unittest.TestCase):
         self.assertIsNotNone(_PROJECT_USER_DICT)
 
 
+class TestSnippetExtraction(unittest.TestCase):
+    """Snippet extraction returns a context window around the first
+    matching query term, not a truncated body from offset 0."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.graph_dir = self.tmp.name
+
+    def test_short_body_returned_intact(self):
+        from _builder.utils import _extract_snippet
+        result = _extract_snippet("short body", "short", max_chars=400)
+        self.assertEqual(result, "short body")
+
+    def test_long_body_centers_on_match(self):
+        from _builder.utils import _extract_snippet
+        body = "x" * 200 + " target " + "y" * 200
+        result = _extract_snippet(body, "target", max_chars=50,
+                                  context_chars=20)
+        self.assertIn("target", result)
+        self.assertLessEqual(len(result), 60)  # max_chars + ellipsis
+        # The snippet should not start from the beginning
+        self.assertTrue(result.startswith("..."))
+
+    def test_no_match_returns_start(self):
+        from _builder.utils import _extract_snippet
+        body = "a" * 500
+        result = _extract_snippet(body, "nomatch", max_chars=100)
+        self.assertEqual(len(result), 104)  # 100 + "..." suffix
+        self.assertTrue(result.endswith("..."))
+
+    def test_cjk_match_anchors_snippet(self):
+        from _builder.utils import _extract_snippet
+        body = "前言" * 50 + "释放内存" + "后记" * 50
+        result = _extract_snippet(body, "释放", max_chars=60,
+                                 context_chars=20)
+        self.assertIn("释放", result)
+        # Should not start from the beginning (match is in the middle)
+        self.assertTrue(result.startswith("..."))
+
+    def test_empty_body(self):
+        from _builder.utils import _extract_snippet
+        self.assertEqual(_extract_snippet("", "query"), "")
+
+    def test_empty_query_falls_back_to_start(self):
+        from _builder.utils import _extract_snippet
+        body = "a" * 500
+        result = _extract_snippet(body, "", max_chars=100)
+        self.assertLessEqual(len(result), 104)
+
+    def test_multiple_terms_finds_earliest(self):
+        from _builder.utils import _extract_snippet
+        body = "alpha beta gamma " + "x" * 200 + " delta"
+        result = _extract_snippet(body, "gamma delta", max_chars=30,
+                                 context_chars=10)
+        # Should find "gamma" first (earlier in body)
+        self.assertIn("gamma", result)
+
+    def test_snippet_preserves_cjk_text(self):
+        from _builder.utils import _extract_snippet
+        body = "这是一段很长的中文文本" * 30 + "关键信息" + "更多文本" * 30
+        result = _extract_snippet(body, "关键", max_chars=80,
+                                  context_chars=20)
+        self.assertIn("关键", result)
+
+    def test_query_kb_uses_snippet_not_truncation(self):
+        """query_kb should return a snippet centered on the match, not
+        the first N characters of the body."""
+        long_body = ("alpha_beta_gamma " * 50 +
+                     "unique_match_marker_xyz " +
+                     "delta_epsilon_zeta " * 50)
+        upsert_kb_paragraph(self.graph_dir, "memory", "test.json",
+                            "long doc", long_body, "[]", "[]", 2.0,
+                            "memory_qa", 1.0, 0, "")
+        results = query_kb(self.graph_dir, "unique_match_marker_xyz",
+                          top_n=5, max_tokens=50)
+        self.assertGreater(len(results), 0)
+        body = results[0]["body"]
+        self.assertIn("unique_match_marker_xyz", body)
+        # The snippet should start with "..." (not from offset 0).
+        self.assertTrue(body.startswith("..."),
+                        f"snippet should start with '...': {body[:80]}")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1870,3 +1870,77 @@ def _mmr_rerank(results: List[Dict[str, Any]],
         r.pop("_rel", None)
         r.pop("_toks", None)
     return selected
+
+
+# ---------------------------------------------------------------------------
+# Snippet extraction
+#
+# Enterprise search systems show the user a short fragment of each result
+# centred on the first matching term, not the full body truncated at an
+# arbitrary character count.  The snippet gives the user enough context to
+# judge relevance without reading the whole paragraph, and mirrors what
+# grep / search engines / RAG systems present.
+# ---------------------------------------------------------------------------
+
+def _extract_snippet(body: str, query: str,
+                     max_chars: int = 400,
+                     context_chars: int = 80) -> str:
+    """Extract a context window around the first query-term match.
+
+    Searches for the first occurrence of any significant query token
+    (Latin word or CJK character) in *body* and returns a window of
+    approximately *context_chars* characters on each side.  When no
+    token is found, the first *max_chars* of the body are returned.
+
+    The snippet is bounded by *max_chars* total.  Ellipsis (``...``)
+    marks the start/end when the snippet does not begin or end at a
+    body boundary.
+
+    For CJK text the search is character-based: any CJK character in
+    the query that appears in the body anchors the snippet.  This
+    handles the common case where the user queries a single CJK word
+    (``释放``) and the body contains that word somewhere in the middle.
+    """
+    if not body:
+        return ""
+    if len(body) <= max_chars:
+        return body
+    # Collect search anchors: normalised query tokens that are
+    # meaningful (length >= 2 for Latin, any CJK char).
+    query = _normalize_fullwidth(query or "")
+    query = _normalize_cjk_digits(query)
+    query = _normalize_cjk_magnitudes(query)
+    cjk_chars = _CJK_RE.findall(query)
+    latin_tokens = [t.lower() for t in re.findall(
+        r'[a-zA-Z0-9_]{2,}', query)]
+    # Search for the earliest match of any anchor.
+    best_pos = -1
+    body_lower = body.lower()
+    for tok in latin_tokens:
+        pos = body_lower.find(tok)
+        if pos >= 0 and (best_pos < 0 or pos < best_pos):
+            best_pos = pos
+    for ch in cjk_chars:
+        pos = body.find(ch)
+        if pos >= 0 and (best_pos < 0 or pos < best_pos):
+            best_pos = pos
+    if best_pos < 0:
+        # No match — fall back to the start.
+        snippet = body[:max_chars]
+        if len(body) > max_chars:
+            snippet = snippet.rstrip() + "\n..."
+        return snippet
+    # Centre the window on the match.
+    half = max_chars // 2
+    start = max(0, best_pos - context_chars)
+    end = min(len(body), start + max_chars)
+    # Re-adjust start if end hit the body boundary.
+    if end - start < max_chars:
+        start = max(0, end - max_chars)
+    snippet = body[start:end]
+    prefix = "..." if start > 0 else ""
+    suffix = "\n..." if end < len(body) else ""
+    return (prefix + snippet + suffix).strip()
+
+
+

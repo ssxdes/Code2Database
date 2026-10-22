@@ -378,26 +378,52 @@ class KnowledgeStore:
 
     # -- public API ------------------------------------------------------
 
+    def _sync_to_index(self) -> None:
+        """Best-effort incremental sync to kb_index.db.
+
+        After any mutation (add / revise / retire / remove), the
+        derived kb_paragraphs rows that mirror the knowledge store
+        must be refreshed so ``query_kb`` sees the change without a
+        full ``kb-rebuild-index``.  The sync regenerates the brief
+        from the current row set and calls ``sync_brief_to_kb``,
+        which drops + reinserts only the ``source_file='brief.json'``
+        rows — memory paragraphs and foreign briefs are untouched.
+
+        Failures are logged but never raised: the knowledge store is
+        the source of truth; a later ``kb-rebuild-index`` catches up.
+        """
+        try:
+            from _builder.kb.kb_index import sync_brief_to_kb
+            sync_brief_to_kb(self.graph_dir, self.to_brief())
+        except Exception:
+            logging.getLogger(__name__).debug(
+                "kb_index sync skipped", exc_info=True)
+
     def add(self, kind: str, body: str, title: str = "",
             tags: List[str] = None, extra: dict = None,
             version_scope: str = "default", origin: str = "curated",
-            source_memory_id: int = None) -> int:
+            source_memory_id: int = None,
+            sync_index: bool = True) -> int:
         if kind not in _KINDS:
             raise ValueError(f"unknown knowledge kind {kind!r}; "
                              f"expected one of {_KINDS}")
         if not body or not str(body).strip():
             raise ValueError("knowledge body must be non-empty")
         with self._conn:
-            return self._insert_row({
+            rid = self._insert_row({
                 "kind": kind, "title": title, "body": str(body),
                 "tags": tags, "extra": extra,
                 "version_scope": (version_scope or "").strip()
                 or "default",
                 "origin": origin, "source_memory_id": source_memory_id,
             })
+        if sync_index:
+            self._sync_to_index()
+        return rid
 
     def revise(self, item_id: int, body: str = None, title: str = None,
-                tags: List[str] = None, extra: dict = None) -> bool:
+                tags: List[str] = None, extra: dict = None,
+                sync_index: bool = True) -> bool:
         """Improve an item's description in place (revised_at stamp)."""
         sets, params = [], []
         if body is not None:
@@ -425,22 +451,31 @@ class KnowledgeStore:
             cur = self._conn.execute(
                 f"UPDATE knowledge_items SET {', '.join(sets)} "
                 f"WHERE id = ?", params)
-        return bool(cur.rowcount)
+        changed = bool(cur.rowcount)
+        if changed and sync_index:
+            self._sync_to_index()
+        return changed
 
-    def retire(self, item_id: int) -> bool:
+    def retire(self, item_id: int, sync_index: bool = True) -> bool:
         """Mark an item retired (kept for lineage, hidden from views)."""
         with self._conn:
             cur = self._conn.execute(
                 "UPDATE knowledge_items SET status = 'retired', "
                 "revised_at = ? WHERE id = ? AND status = 'active'",
                 (datetime.now().isoformat(), item_id))
-        return bool(cur.rowcount)
+        changed = bool(cur.rowcount)
+        if changed and sync_index:
+            self._sync_to_index()
+        return changed
 
-    def remove(self, item_id: int) -> bool:
+    def remove(self, item_id: int, sync_index: bool = True) -> bool:
         with self._conn:
             cur = self._conn.execute(
                 "DELETE FROM knowledge_items WHERE id = ?", (item_id,))
-        return bool(cur.rowcount)
+        changed = bool(cur.rowcount)
+        if changed and sync_index:
+            self._sync_to_index()
+        return changed
 
     def get(self, item_id: int) -> Optional[dict]:
         r = self._conn.execute(

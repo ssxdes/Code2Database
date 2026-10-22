@@ -413,5 +413,77 @@ class TestKbIndexFromStore(_Base):
                             for h in hits))
 
 
+class TestKnowledgeStoreIncrementalSync(_Base):
+    """Knowledge store mutations sync to kb_index so query_kb sees
+    changes without a full rebuild."""
+
+    def test_add_syncs_to_kb_index(self):
+        from _builder.kb.kb_index import query_kb, upsert_kb_paragraph
+        # Seed kb_index with one paragraph so the store exists.
+        upsert_kb_paragraph(self.graph_dir, "memory", "seed.json",
+                            "seed", "seed body")
+        store = self._open()
+        store.add("pitfall", "never call free on a stack buffer")
+        hits = query_kb(self.graph_dir, "stack buffer", top_n=5)
+        self.assertTrue(any("stack buffer" in h["body"] for h in hits),
+                        f"add did not sync to kb_index: {hits}")
+
+    def test_revise_syncs_to_kb_index(self):
+        from _builder.kb.kb_index import query_kb, upsert_kb_paragraph
+        upsert_kb_paragraph(self.graph_dir, "memory", "seed.json",
+                            "seed", "seed body")
+        store = self._open()
+        kid = store.add("convention", "use camelCase",
+                        sync_index=True)
+        store.revise(kid, body="use snake_case for variables")
+        hits = query_kb(self.graph_dir, "snake_case", top_n=5)
+        self.assertTrue(any("snake_case" in h["body"] for h in hits),
+                        f"revise did not sync to kb_index: {hits}")
+
+    def test_retire_syncs_to_kb_index(self):
+        from _builder.kb.kb_index import query_kb, upsert_kb_paragraph
+        upsert_kb_paragraph(self.graph_dir, "memory", "seed.json",
+                            "seed", "seed body")
+        store = self._open()
+        kid = store.add("pitfall", "retire_test_unique_marker_xyz")
+        # Verify it is searchable
+        hits = query_kb(self.graph_dir, "retire_test_unique_marker_xyz",
+                        top_n=5)
+        self.assertTrue(len(hits) > 0)
+        store.retire(kid)
+        # After retire, it should be gone from kb_index
+        hits = query_kb(self.graph_dir, "retire_test_unique_marker_xyz",
+                        top_n=5)
+        self.assertTrue(all("retire_test_unique_marker_xyz"
+                            not in h["body"] for h in hits),
+                        f"retire did not sync: {hits}")
+
+    def test_remove_syncs_to_kb_index(self):
+        from _builder.kb.kb_index import query_kb, upsert_kb_paragraph
+        upsert_kb_paragraph(self.graph_dir, "memory", "seed.json",
+                            "seed", "seed body")
+        store = self._open()
+        kid = store.add("pitfall", "remove_test_unique_marker_abc")
+        store.remove(kid)
+        hits = query_kb(self.graph_dir, "remove_test_unique_marker_abc",
+                        top_n=5)
+        self.assertTrue(all("remove_test_unique_marker_abc"
+                            not in h["body"] for h in hits),
+                        f"remove did not sync: {hits}")
+
+    def test_sync_index_false_skips_sync(self):
+        from _builder.kb.kb_index import query_kb, upsert_kb_paragraph
+        upsert_kb_paragraph(self.graph_dir, "memory", "seed.json",
+                            "seed", "seed body")
+        store = self._open()
+        store.add("pitfall", "no_sync_unique_marker_zzz",
+                 sync_index=False)
+        hits = query_kb(self.graph_dir, "no_sync_unique_marker_zzz",
+                        top_n=5)
+        self.assertTrue(all("no_sync_unique_marker_zzz"
+                            not in h["body"] for h in hits),
+                        "sync_index=False should skip kb_index sync")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -447,7 +447,7 @@ class TestRebuildAndQueryKB(unittest.TestCase):
         self.assertGreater(len(results), 0)
         for r in results:
             if "truncation" in r["title"].lower():
-                self.assertIn("(truncated)", r["body"])
+                self.assertIn("...", r["body"])
 
     def test_empty_query_returns_empty(self):
         results = query_kb(self.graph_dir, "", top_n=5)

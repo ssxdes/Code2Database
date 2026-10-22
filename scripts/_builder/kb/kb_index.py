@@ -23,7 +23,8 @@ import sqlite3
 import sys
 from _builder.scanner_bridge.c2d_foreign import _escape_sql_path
 from _builder.utils import (_simple_tokenize, _similarity_score, _has_cjk,
-                           _cjk_pre_tokenize, _mmr_rerank)
+                           _cjk_pre_tokenize, _mmr_rerank,
+                           _reciprocal_rank_fusion)
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import struct
@@ -1437,19 +1438,24 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
             scored_cand.sort(key=lambda x: -x[0])
             for s, r in scored_cand[:top_n]:
                 sim_scores[r["id"]] = s
-            # Merge: prefer FTS5 hits (already in `rows`), then add
-            # similarity hits not already present. scored_cand holds
-            # (score, row) tuples, so unpack to get the row.
-            existing_ids = {r["id"] for r in rows}
-            for _, r in scored_cand[:top_n]:
-                if r["id"] not in existing_ids:
-                    rows.append(r)
-                    if len(rows) >= top_n:
-                        break
+            # Reciprocal Rank Fusion: merge FTS5 and similarity lists
+            # by rank rather than concatenating (which buries relevant
+            # similarity hits below low-scoring FTS5 hits).  Each list
+            # contributes 1/(k+rank); items in both lists get both
+            # contributions and surface higher.
+            fts_list = list(rows)
+            sim_list = [r for _, r in scored_cand[:top_n]]
+            fused = _reciprocal_rank_fusion(
+                [fts_list, sim_list], key_fn=lambda r: r["id"])
+            # Preserve RRF scores for scope-aware re-sort below.
+            rrf_scores = {item["id"]: rrf for item, rrf in fused}
+            rows = [item for item, _ in fused[:top_n]]
+        else:
+            rrf_scores = {}
         if scope:
-            # The similarity channel appends after FTS rows without
-            # scope awareness — restore current-version-first ordering
-            # across the merged set before building results.
+            # The similarity channel may reorder FTS rows via RRF —
+            # restore current-version-first ordering across the merged
+            # set before building results.
             def _row_scope(r):
                 try:
                     return r["version_scope"] or "default"
@@ -1457,6 +1463,8 @@ def query_kb(graph_dir: str, query: str, top_n: int = 10,
                     return "default"
 
             def _row_score(r):
+                if r["id"] in rrf_scores:
+                    return rrf_scores[r["id"]]
                 if "score" in r.keys():
                     return r["score"]
                 return sim_scores.get(r["id"], 0.0)

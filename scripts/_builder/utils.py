@@ -9,7 +9,7 @@ from pathlib import Path
 from collections import defaultdict
 import networkx as nx
 import logging
-from typing import Optional, List, Set, Dict, Any
+from typing import Optional, List, Set, Dict, Any, Callable
 
 
 # Cache source_root per graph_dir to avoid re-reading master.json on every
@@ -1941,6 +1941,48 @@ def _extract_snippet(body: str, query: str,
     prefix = "..." if start > 0 else ""
     suffix = "\n..." if end < len(body) else ""
     return (prefix + snippet + suffix).strip()
+
+
+# ---------------------------------------------------------------------------
+# Reciprocal Rank Fusion (RRF)
+#
+# When BM25 (FTS5) and token-set similarity produce two ranked lists,
+# concatenating them (FTS5 first, similarity second) buries relevant
+# similarity hits below low-scoring FTS5 hits.  RRF assigns each
+# document a fused score = sum(1 / (k + rank_i)) across every list it
+# appears in, so a document that ranks well in BOTH channels surfaces
+# above one that ranks high in only one.
+# ---------------------------------------------------------------------------
+
+_RRF_K = 60  # standard constant — dampens the advantage of rank-0
+
+
+def _reciprocal_rank_fusion(lists: List[List[Any]],
+                            key_fn: Callable[[Any], Any],
+                            k: int = _RRF_K) -> List[tuple]:
+    """Fuse multiple ranked lists into one via reciprocal rank fusion.
+
+    Args:
+        lists: each element is a ranked list (best first).
+        key_fn: extracts the identity used to match items across lists.
+        k: the damping constant (default 60).
+
+    Returns:
+        ``(item, rrf_score)`` tuples sorted by rrf_score descending.
+        When an item appears in multiple lists, the scores add up.
+    """
+    scores: dict = {}
+    items: dict = {}
+    for ranked in lists:
+        for rank, item in enumerate(ranked):
+            kid = key_fn(item)
+            if kid not in scores:
+                scores[kid] = 0.0
+                items[kid] = item
+            scores[kid] += 1.0 / (k + rank)
+    fused = [(items[kid], scores[kid]) for kid in scores]
+    fused.sort(key=lambda x: -x[1])
+    return fused
 
 
 

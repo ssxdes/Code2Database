@@ -991,5 +991,54 @@ class TestSnippetExtraction(unittest.TestCase):
                         f"snippet should start with '...': {body[:80]}")
 
 
+class TestReciprocalRankFusion(unittest.TestCase):
+    """RRF fuses BM25 and similarity ranked lists by rank, not by
+    concatenation."""
+
+    def test_single_list_unchanged_order(self):
+        from _builder.utils import _reciprocal_rank_fusion
+        items = [{"id": 1}, {"id": 2}, {"id": 3}]
+        fused = _reciprocal_rank_fusion([items], key_fn=lambda r: r["id"])
+        ids = [item["id"] for item, _ in fused]
+        self.assertEqual(ids, [1, 2, 3])
+
+    def test_two_lists_fuses_ranks(self):
+        from _builder.utils import _reciprocal_rank_fusion
+        list_a = [{"id": 1}, {"id": 2}, {"id": 3}]
+        list_b = [{"id": 1}, {"id": 4}, {"id": 5}]
+        fused = _reciprocal_rank_fusion([list_a, list_b],
+                                        key_fn=lambda r: r["id"])
+        # id 1 is rank 0 in BOTH lists → highest combined RRF score.
+        self.assertEqual(fused[0][0]["id"], 1)
+
+    def test_item_in_both_lists_ranks_higher(self):
+        from _builder.utils import _reciprocal_rank_fusion
+        list_a = [{"id": 10}, {"id": 20}, {"id": 30}]
+        list_b = [{"id": 30}, {"id": 40}]
+        fused = _reciprocal_rank_fusion([list_a, list_b],
+                                        key_fn=lambda r: r["id"])
+        # id 30 appears in both lists (rank 2 in a, rank 0 in b)
+        # id 10 appears only in a (rank 0)
+        # RRF: id10 = 1/60, id30 = 1/62 + 1/60
+        # id30 should rank higher than id10 despite being lower in list_a
+        fused_ids = [item["id"] for item, _ in fused]
+        self.assertLess(fused_ids.index(30), fused_ids.index(10))
+
+    def test_empty_lists(self):
+        from _builder.utils import _reciprocal_rank_fusion
+        self.assertEqual(_reciprocal_rank_fusion([], key_fn=lambda r: r), [])
+        self.assertEqual(_reciprocal_rank_fusion([[]], key_fn=lambda r: r), [])
+
+    def test_deduplication(self):
+        from _builder.utils import _reciprocal_rank_fusion
+        list_a = [{"id": 1}, {"id": 2}]
+        list_b = [{"id": 1}, {"id": 2}]
+        fused = _reciprocal_rank_fusion([list_a, list_b],
+                                        key_fn=lambda r: r["id"])
+        # Each id should appear only once
+        ids = [item["id"] for item, _ in fused]
+        self.assertEqual(len(ids), len(set(ids)))
+
+
 if __name__ == "__main__":
     unittest.main()

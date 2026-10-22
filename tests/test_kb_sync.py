@@ -174,5 +174,36 @@ class TestManagerWiring(_KbTestBase):
                          f"{dup_rows}")
 
 
+class TestSyncEdgeCases(_KbTestBase):
+    """Edge cases for sync_memory_entries and sync_brief_to_kb."""
+
+    def test_sync_memory_entries_no_memory_db(self):
+        # No memory.db → returns 0 without creating kb store
+        import shutil
+        shutil.rmtree(os.path.join(self.graph_dir, "memory"),
+                      ignore_errors=True)
+        result = sync_memory_entries(self.graph_dir, [1, 2])
+        self.assertEqual(result, 0)
+
+    def test_sync_memory_entries_empty_list(self):
+        result = sync_memory_entries(self.graph_dir, [])
+        self.assertEqual(result, 0)
+
+    def test_sync_memory_entries_nonexistent_id(self):
+        result = sync_memory_entries(self.graph_dir, [99999])
+        self.assertEqual(result, 0)
+
+    def test_sync_brief_to_kb_handles_none(self):
+        from _builder.kb.kb_index import sync_brief_to_kb
+        # sync_brief_to_kb with None should return 0, not crash.
+        result = sync_brief_to_kb(self.graph_dir, None)
+        self.assertEqual(result, 0)
+
+    def test_sync_brief_to_kb_handles_empty_dict(self):
+        from _builder.kb.kb_index import sync_brief_to_kb
+        result = sync_brief_to_kb(self.graph_dir, {})
+        self.assertEqual(result, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

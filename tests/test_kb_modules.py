@@ -14,6 +14,7 @@ These tests use a temporary code2database.db to verify:
 """
 import json
 import os
+import io
 import shutil
 import sqlite3
 import sys
@@ -1003,6 +1004,22 @@ class TestKbAudit(unittest.TestCase):
         self.assertGreater(result["total_items"], 0)
         # by_kind should have entries
         self.assertGreater(len(result["by_kind"]), 0)
+
+    def test_audit_with_topic_returns_matches(self):
+        _make_memory_entry(self.graph_dir, 1, "bdev question",
+                           "bdev answer about registration")
+        _make_knowledge_md(self.graph_dir, "principles.md",
+                           "## bdev principle\n\nbdev registration rules\n")
+        rebuild_kb_index(self.graph_dir, verbose=False)
+        result = audit_kb(self.graph_dir, topic="bdev")
+        self.assertIn("what_we_know_about_X", result)
+        self.assertGreater(len(result["what_we_know_about_X"]), 0)
+        for m in result["what_we_know_about_X"]:
+            self.assertIn("id", m)
+            self.assertIn("source_kind", m)
+            self.assertIn("body", m)
+            self.assertIn("score", m)
+            self.assertLessEqual(len(m["body"]), 300)
 
     def test_write_audit_log_entry(self):
         # Should not raise even on fresh db
@@ -2355,6 +2372,96 @@ class TestKbBackupRestore(unittest.TestCase):
         os.makedirs(empty)
         with self.assertRaises(FileNotFoundError):
             kb_backup(empty, "/tmp/out.tar.gz")
+
+    def test_restore_missing_archive_raises(self):
+        from _builder.kb.kb_backup import kb_restore
+        with self.assertRaises(FileNotFoundError):
+            kb_restore(self.graph_dir, "/nonexistent/archive.tar.gz")
+
+    def test_restore_rejects_path_traversal(self):
+        """kb_restore must skip archive members that escape graph_dir."""
+        import tarfile
+        from _builder.kb.kb_backup import kb_restore
+        # Craft a malicious archive with a path-traversal member.
+        evil_path = os.path.join(self.tmpdir, "evil.tar.gz")
+        with tarfile.open(evil_path, "w:gz") as tar:
+            # A safe member so the archive is not empty.
+            info = tarfile.TarInfo("memory/memory.db")
+            info.size = 1
+            tar.addfile(info, io.BytesIO(b"\x00"))
+            # A traversal member.
+            evil = tarfile.TarInfo("../../../evil_traversal_test.txt")
+            evil.size = 4
+            tar.addfile(evil, io.BytesIO(b"evil"))
+        result = kb_restore(self.graph_dir, evil_path)
+        # The traversal file must NOT exist outside graph_dir.
+        self.assertFalse(os.path.exists(
+            os.path.join(self.tmpdir, "evil_traversal_test.txt")))
+        self.assertFalse(os.path.exists(
+            os.path.join(self.tmpdir, "..", "evil_traversal_test.txt")))
+
+    def test_restore_archive_without_manifest(self):
+        """kb_restore works when the archive has no manifest.json."""
+        import tarfile
+        from _builder.kb.kb_backup import kb_restore
+        archive = os.path.join(self.tmpdir, "nomanifest.tar.gz")
+        with tarfile.open(archive, "w:gz") as tar:
+            info = tarfile.TarInfo("memory/memory.db")
+            info.size = 1
+            tar.addfile(info, io.BytesIO(b"\x00"))
+        target = os.path.join(self.tmpdir, "restored_nom")
+        result = kb_restore(target, archive)
+        self.assertIsNone(result["manifest"])
+        self.assertEqual(result["schema_versions"], {})
+
+    def test_ann_dimension_mismatch_triggers_full_rebuild(self):
+        """build_ann_index with a stale ann_vec_dim falls through to
+        full rebuild instead of incremental insert."""
+        # Seed paragraphs
+        for i in range(2):
+            upsert_kb_paragraph(self.graph_dir, "memory", f"t_{i}.json",
+                                f"title {i}", f"body {i}")
+        import _builder.kb.neural_embed as ne
+        import _builder.kb.kb_index as ki
+        def fake_get_batch(texts):
+            return [[0.1, 0.2, 0.3, 0.4] for _ in range(len(texts))]
+        def fake_detect():
+            return "mock"
+        orig_ge = ne.get_embedding
+        orig_geb = ne.get_embedding_batch
+        orig_dp = ne._detect_provider
+        ne.get_embedding_batch = fake_get_batch
+        ne.get_embedding = lambda t: [0.1, 0.2, 0.3, 0.4]
+        ne._detect_provider = fake_detect
+        ne._PROVIDER_CACHE = "mock"
+        ki._VEC_EXT_LOADED = None
+        try:
+            # First build
+            r1 = build_ann_index(self.graph_dir, provider="mock")
+            self.assertTrue(r1["built"])
+            # Add a new paragraph so the next build has work to do
+            upsert_kb_paragraph(self.graph_dir, "memory", "t_new.json",
+                                "new title", "new body")
+            # Stale dim in meta → full rebuild (not incremental)
+            conn = _kb_connect(self.graph_dir)
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO kb_meta (key, value) "
+                    "VALUES ('ann_vec_dim', '999')")
+                conn.commit()
+            finally:
+                conn.close()
+            ki._VEC_EXT_LOADED = None
+            r2 = build_ann_index(self.graph_dir, provider="mock")
+            self.assertTrue(r2["built"])
+            self.assertFalse(r2.get("incremental", True),
+                             f"expected full rebuild, got {r2}")
+        finally:
+            ne.get_embedding = orig_ge
+            ne.get_embedding_batch = orig_geb
+            ne._detect_provider = orig_dp
+            ne._PROVIDER_CACHE = None
+            ki._VEC_EXT_LOADED = None
 
 
 if __name__ == "__main__":

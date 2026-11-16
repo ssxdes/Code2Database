@@ -159,6 +159,17 @@ def _fts5_escape(query: str) -> str:
         stopwords = _load_stopwords()
         if stopwords:
             cjk_tokens = [t for t in cjk_tokens if t not in stopwords]
+        # The char-fallback path emits individual CJK chars alongside
+        # bigrams (e.g. ``释放`` → ``[释, 放, 释放]``).  Each is an
+        # AND token, so a paragraph indexed with only the full word
+        # (via jieba or synonym expansion) lacks ``释`` and ``放`` as
+        # separate tokens and the AND-match fails.  Keep multi-char
+        # CJK tokens when available; fall back to single chars only
+        # when no multi-char CJK token exists (e.g. a single-char
+        # query like ``锁``).
+        multi_char_cjk = [t for t in cjk_tokens if len(t) >= 2]
+        if multi_char_cjk:
+            cjk_tokens = multi_char_cjk
         latin_tokens = re.findall(r'[A-Za-z0-9_]+', query)
         if stopwords:
             latin_tokens = [t for t in latin_tokens if t not in stopwords]

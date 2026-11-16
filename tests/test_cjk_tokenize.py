@@ -23,6 +23,28 @@ from _builder.kb.kb_index import _kb_connect, query_kb, upsert_kb_paragraph, \
     build_kb_user_dict
 
 
+def _has_pypinyin() -> bool:
+    try:
+        import pypinyin  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _has_jieba() -> bool:
+    try:
+        import jieba  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+requires_pypinyin = unittest.skipUnless(_has_pypinyin(),
+                                        "pypinyin not installed")
+requires_jieba = unittest.skipUnless(_has_jieba(),
+                                     "jieba not installed")
+
+
 class TestCjkPreTokenize(unittest.TestCase):
 
     def test_non_cjk_tokenized_with_synonyms(self):
@@ -231,6 +253,7 @@ class TestPinyinExpansion(unittest.TestCase):
     paragraph whose body contains ``释放`` — common when the IME is off
     or the keyboard is ASCII-only."""
 
+    @requires_pypinyin
     def test_pinyin_for_cjk_token(self):
         from _builder.utils import _pinyin_for_token
         result = _pinyin_for_token("释放")
@@ -240,6 +263,7 @@ class TestPinyinExpansion(unittest.TestCase):
         # First-letter initials (abbreviation)
         self.assertIn("sf", result)
 
+    @requires_pypinyin
     def test_pinyin_for_single_char(self):
         from _builder.utils import _pinyin_for_token
         result = _pinyin_for_token("释")
@@ -247,6 +271,7 @@ class TestPinyinExpansion(unittest.TestCase):
         # Single char has no concatenated form or initials
         self.assertEqual(len(result), 1)
 
+    @requires_pypinyin
     def test_pinyin_initials_for_multi_char(self):
         from _builder.utils import _pinyin_for_token
         # 4-char token gets 4-letter initials
@@ -263,6 +288,7 @@ class TestPinyinExpansion(unittest.TestCase):
         self.assertEqual(_pinyin_for_token(""), [])
         self.assertEqual(_pinyin_for_token(None), [])
 
+    @requires_pypinyin
     def test_expand_pinyin_appends_pinyin(self):
         from _builder.utils import _expand_pinyin
         tokens = ["释放", "memory"]
@@ -273,6 +299,7 @@ class TestPinyinExpansion(unittest.TestCase):
         self.assertIn("shi", result)
         self.assertIn("fang", result)
 
+    @requires_pypinyin
     def test_expand_pinyin_preserves_order(self):
         from _builder.utils import _expand_pinyin
         tokens = ["释放", "内存"]
@@ -282,6 +309,7 @@ class TestPinyinExpansion(unittest.TestCase):
         self.assertIn("shifang", result[:5])
         self.assertIn("内存", result)
 
+    @requires_pypinyin
     def test_expand_pinyin_no_duplicates(self):
         from _builder.utils import _expand_pinyin
         tokens = ["释放", "释放"]
@@ -293,6 +321,7 @@ class TestPinyinExpansion(unittest.TestCase):
         from _builder.utils import _expand_pinyin
         self.assertEqual(_expand_pinyin([]), [])
 
+    @requires_pypinyin
     def test_pre_tokenize_includes_pinyin(self):
         result = _cjk_pre_tokenize("释放内存")
         tokens = result.split()
@@ -301,6 +330,7 @@ class TestPinyinExpansion(unittest.TestCase):
         self.assertIn("shifang", tokens)
         self.assertIn("neicun", tokens)
 
+    @requires_pypinyin
     def test_pre_tokenize_pinyin_with_synonyms(self):
         # Pinyin + synonyms both apply
         result = _cjk_pre_tokenize("释放")
@@ -311,6 +341,7 @@ class TestPinyinExpansion(unittest.TestCase):
         self.assertIn("free", tokens)
         self.assertIn("release", tokens)
 
+    @requires_pypinyin
     def test_pinyin_query_matches_cjk_paragraph(self):
         """A pure-Latin pinyin query ``shifang`` must match a
         paragraph whose body contains ``释放``."""
@@ -324,6 +355,7 @@ class TestPinyinExpansion(unittest.TestCase):
             self.assertGreaterEqual(len(results), 1,
                                     "Pinyin query 'shifang' must match CJK paragraph about 释放")
 
+    @requires_pypinyin
     def test_pinyin_multi_word_query_matches(self):
         """Multi-word pinyin query ``shifang neicun`` matches."""
         import tempfile
@@ -335,6 +367,7 @@ class TestPinyinExpansion(unittest.TestCase):
             results = query_kb(gd, "shifang neicun", top_n=5)
             self.assertGreaterEqual(len(results), 1)
 
+    @requires_pypinyin
     def test_pinyin_spaced_query_matches(self):
         """Spaced pinyin query ``shi fang`` matches via per-char pinyin."""
         import tempfile
@@ -369,6 +402,7 @@ class TestPinyinExpansion(unittest.TestCase):
             results = query_kb(gd, "free", top_n=5)
             self.assertGreaterEqual(len(results), 1)
 
+    @requires_pypinyin
     def test_pinyin_initials_query_matches_cjk(self):
         """First-letter initials query 'sf' matches a CJK paragraph
         whose body contains 释放."""
@@ -382,11 +416,13 @@ class TestPinyinExpansion(unittest.TestCase):
             self.assertGreaterEqual(len(results), 1,
                                     "Initials query 'sf' must match CJK paragraph about 释放")
 
+    @requires_pypinyin
     def test_pinyin_initials_in_simple_tokenize(self):
         from _builder.utils import _simple_tokenize
         tokens = _simple_tokenize("释放")
         self.assertIn("sf", tokens)
 
+    @requires_pypinyin
     def test_pinyin_in_simple_tokenize(self):
         from _builder.utils import _simple_tokenize
         tokens = _simple_tokenize("释放")
@@ -860,6 +896,7 @@ class TestProjectUserDict(unittest.TestCase):
         path = build_kb_user_dict(self.graph_dir)
         self.assertIsNone(path)
 
+    @requires_jieba
     def test_user_dict_segments_project_identifier(self):
         # Without the user_dict, jieba may split spdk_bdev_submit into
         # parts. With the user_dict, it should segment as one token.
@@ -872,6 +909,7 @@ class TestProjectUserDict(unittest.TestCase):
         tokens = _jieba_tokenize("spdk_bdev_submit called")
         self.assertIn("spdk_bdev_submit", tokens)
 
+    @requires_jieba
     def test_user_dict_does_not_affect_default_jieba(self):
         # The isolated Tokenizer instance should not pollute the
         # global jieba state. Clearing the project dict restores

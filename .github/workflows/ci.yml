@@ -29,6 +29,9 @@ jobs:
       - name: Install CJK segmentation libraries
         run: python3 -m pip install jieba pypinyin
 
+      - name: Install ANN vector index library
+        run: python3 -m pip install sqlite-vec
+
       - name: Install test dependencies
         run: python3 -m pip install pytest
 

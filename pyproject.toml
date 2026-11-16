@@ -38,7 +38,7 @@ community = ["python-igraph>=0.11", "leidenalg>=0.10"]  # cross-domain Leiden co
 daemon = ["watchdog>=4.0"]              # file watching on macOS/Windows (Linux uses built-in inotify)
 resources = ["psutil>=5.9"]             # cross-platform memory telemetry for the memory guard
 streaming = ["ijson>=3.2"]              # streaming parse of very large globals.json
-neural = ["sentence-transformers>=2.7"] # optional neural embedding provider
+neural = ["sentence-transformers>=2.7", "sqlite-vec>=0.1"] # optional neural embedding provider + ANN index
 cjk = ["jieba>=0.42", "pypinyin>=0.50"]  # CJK segmentation + pinyin search
 
 [project.urls]

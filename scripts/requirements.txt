@@ -37,6 +37,7 @@ tree-sitter-rust>=0.21
 # psutil>=5.9                # cross-platform memory telemetry for the memory guard
 # ijson>=3.2                 # streaming parse of very large globals.json
 # sentence-transformers>=2.7 # optional neural embedding provider
+# sqlite-vec>=0.1             # ANN vector index for O(log N) semantic search over kb_paragraphs
 #
 # The same optional capabilities ship as wheel extras in pyproject.toml:
-#   clang / solver / community / daemon / resources / streaming / neural
+#   clang / solver / community / daemon / resources / streaming / neural / cjk

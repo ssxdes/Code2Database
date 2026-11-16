@@ -10,6 +10,7 @@
 [![MCP工具](https://img.shields.io/badge/MCP工具-83-blueviolet)](#mcp-服务器)
 [![查询命令](https://img.shields.io/badge/查询命令-123_可见-success)](#命令参考)
 [![子技能](https://img.shields.io/badge/子技能-4-9cf)](#技能激活)
+[![后端](https://img.shields.io/badge/后端-双%20clang%20%2B%20tree--sitter-blue)](#提取后端)
 [![许可证: MIT](https://img.shields.io/badge/许可证-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](#安装)
 [![tree-sitter](https://img.shields.io/badge/tree--sitter-AST-green?logo=tree-sitter&logoColor=white)](#工作原理)
@@ -18,7 +19,7 @@
 [![Codex CLI](https://img.shields.io/badge/Codex_CLI-支持-blueviolet.svg)](#安装)
 [![MCP stdio](https://img.shields.io/badge/MCP_stdio-支持-blue.svg)](#mcp-服务器)
 
-[English](../../README.md) · [Skill 指南](SKILL.md)
+[English](../en/README.md) · [返回主页](../../README.md) · [Skill 指南](SKILL.md)
 
 </div>
 
@@ -641,8 +642,11 @@ daemon-wait-sync --graph code2db-out/ --timeout 30
 | `docs/zh/OVERVIEW.md` | 内部架构与算法 | 工具开发者 |
 | `docs/zh/PROFILE_MANUAL.md` | Profile 编写指南 | 工具开发者 |
 | `docs/zh/RUNTIME_CONFIG.md` | 运行时配置参考 | 工具开发者 |
+| `docs/zh/DEPLOYMENT.md` | 服务部署：MCP/守护进程单元、备份、监控 | 运维人员 |
+| `docs/zh/TROUBLESHOOTING.md` | 按症状排查的故障指南（含 `doctor` 探针） | 所有读者 |
 | `CLAUDE.md` | Claude Code 集成指南 | AI 代理（自动加载） |
 | `AGENTS.md` | Codex/代理集成指南 | 工具开发者 |
+| `SECURITY.md` | 安全策略与输出敏感度说明 | 所有读者 |
 
 ---
 

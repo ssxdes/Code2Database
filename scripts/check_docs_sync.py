@@ -45,6 +45,10 @@ _EN_CJK_ALLOWLIST = {
     "references/memory_knowledge.md": (
         "强制开启 SPDK_CONFIG_PCI 宏",
     ),
+    "README.md": (
+        "中文",
+        "EN/中文",
+    ),
 }
 
 

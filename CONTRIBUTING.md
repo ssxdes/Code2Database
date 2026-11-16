@@ -62,7 +62,7 @@ When extending Code2Database with a new reasoning, query, or operational capabil
 4. Document config fields (if any) in `docs/<lang>/RUNTIME_CONFIG.md` (both EN and ZH)
 5. Refresh `skill.json` `commands` array and `output_files` (if new artifacts are produced)
 6. Refresh `docs/<lang>/SKILL.md` Quick Reference and Constraint sections (both EN and ZH)
-7. Refresh `README.md` and `docs/zh/README.md` Capability/Feature tables
+7. Refresh `README.md` (Chinese homepage) and `docs/en/README.md` (English) Capability/Feature tables; keep `docs/zh/README.md` in sync
 8. Refresh `CLAUDE.md` and `AGENTS.md` if the capability introduces constraints or query entry points
 9. Add a CHANGELOG entry describing the capability and its commands
 

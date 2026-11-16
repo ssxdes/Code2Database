@@ -1601,13 +1601,21 @@ def _extract_code_identifiers(text: str, max_count: int = 20) -> List[str]:
 
 
 def _char_bigram_tokenize(text: str) -> List[str]:
-    """Character + bigram tokenization (the always-available fallback)."""
+    """Character + bigram tokenization (the always-available fallback).
+
+    Extracts CJK characters and bigrams alongside Latin words and ASCII
+    digit runs so the char fallback stays symmetric with the jieba path
+    (which preserves Latin tokens). Without this, a text like
+    ``使用ABC函数`` drops the ``ABC`` token and ``三百个线程`` drops the
+    expanded ``300`` when jieba is unavailable, breaking FTS5 matching.
+    """
     text = _normalize_fullwidth(text)
     text = _normalize_cjk_digits(text)
     text = _normalize_cjk_magnitudes(text)
     text = _strip_cjk_punct(text)
+    tokens: List[str] = list(re.findall(r'[a-zA-Z0-9_]+', text))
     cjk = _CJK_RE.findall(text)
-    tokens: List[str] = list(cjk)
+    tokens.extend(cjk)
     for i in range(len(cjk) - 1):
         tokens.append(cjk[i] + cjk[i + 1])
     return tokens

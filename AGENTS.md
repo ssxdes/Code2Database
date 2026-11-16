@@ -81,6 +81,8 @@ Capability modules have dedicated unit tests in `tests/` (183 files) covering in
 
 **Test suite**: 3400+ tests across 183 files. Run with `python3 -m pytest tests/ -v`. (The daemon grace test carries a wide timing margin so a loaded runner cannot push its held-event check past the grace end. Tests that drive a real scanner subprocess must pin `--memory-limit 9999` (and raised `--memory-warn/crit-threshold`) — MemoryGuard reads SYSTEM memory, so its auto cap (total RAM × 0.8) can cancel even a tiny scan on a busy machine, and make now fails fast on the leftover checkpoint. tests/test_skill_manifest.py introspects both argparse trees and pins skill.json/skill_analysis.json/skill_ops.json command lists against them — so adding a CLI command without updating the manifests fails CI.)
 
+**Optional dependencies**: jieba and pypinyin (the `[cjk]` extra) are not in `requirements.txt` — they install via `pip install code2database[cjk]`. Tests that exercise jieba or pypinyin features must use `@requires_jieba` / `@requires_pypinyin` skip guards (see `tests/test_cjk_tokenize.py`). To verify the degradation path locally, run the suite with both libraries import-blocked. When adding a new optional dependency, update `.github/workflows/ci.yml` to install it in CI so the full-feature path stays exercised.
+
 ## Language Support
 
 | Language | Scanner | Extensions | Notes |

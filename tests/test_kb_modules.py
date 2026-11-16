@@ -42,6 +42,18 @@ from _builder.kb.kb_audit import audit_kb, kb_stats, write_audit_log_entry
 from _builder.kb.kb_conflict import detect_conflicts, forget_kb_paragraph, rollback_kb_item
 
 
+def _has_sqlite_vec():
+    try:
+        import sqlite_vec  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+requires_sqlite_vec = unittest.skipUnless(_has_sqlite_vec(),
+                                          "sqlite-vec not installed")
+
+
 def _make_memory_entry(graph_dir, entry_id, question, answer, tags=None,
                        status="trusted", subdir="root"):
     """Add a memory entry to graph_dir/memory/memory.db (SQLite store).
@@ -1959,6 +1971,7 @@ class TestAnnIndex(unittest.TestCase):
         self.assertFalse(result["built"])
         self.assertEqual(result.get("reason"), "no kb store")
 
+    @requires_sqlite_vec
     def test_build_ann_no_provider(self):
         self._seed_paragraphs(2)
         import _builder.kb.neural_embed as ne
@@ -1979,6 +1992,7 @@ class TestAnnIndex(unittest.TestCase):
                 os.environ["C2D_OLLAMA_URL"] = old_ollama
             ne._PROVIDER_CACHE = None
 
+    @requires_sqlite_vec
     def test_build_ann_with_mocked_embeddings(self):
         self._seed_paragraphs(3)
         import _builder.kb.neural_embed as ne
@@ -2015,6 +2029,7 @@ class TestAnnIndex(unittest.TestCase):
             ne._PROVIDER_CACHE = None
             ki._VEC_EXT_LOADED = orig_vec
 
+    @requires_sqlite_vec
     def test_build_ann_idempotent_skip(self):
         self._seed_paragraphs(2)
         import _builder.kb.neural_embed as ne
@@ -2049,6 +2064,7 @@ class TestAnnIndex(unittest.TestCase):
             ne._PROVIDER_CACHE = None
             ki._VEC_EXT_LOADED = None
 
+    @requires_sqlite_vec
     def test_query_ann_returns_results(self):
         self._seed_paragraphs(3)
         import _builder.kb.neural_embed as ne
@@ -2098,6 +2114,7 @@ class TestAnnIndex(unittest.TestCase):
         finally:
             conn.close()
 
+    @requires_sqlite_vec
     def test_build_ann_incremental_inserts_only_new_rows(self):
         """Second build_ann_index call with new paragraphs only inserts
         the new rows into kb_vec — no full rebuild."""
@@ -2414,6 +2431,7 @@ class TestKbBackupRestore(unittest.TestCase):
         self.assertIsNone(result["manifest"])
         self.assertEqual(result["schema_versions"], {})
 
+    @requires_sqlite_vec
     def test_ann_dimension_mismatch_triggers_full_rebuild(self):
         """build_ann_index with a stale ann_vec_dim falls through to
         full rebuild instead of incremental insert."""

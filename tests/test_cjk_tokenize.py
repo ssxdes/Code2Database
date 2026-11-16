@@ -1107,5 +1107,76 @@ class TestReciprocalRankFusion(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)))
 
 
+class TestCharFallbackSymmetry(unittest.TestCase):
+    """When jieba is unavailable, the char+bigram fallback must
+    preserve Latin words and ASCII digit runs so mixed CJK+Latin text
+    produces the same token coverage as the jieba path."""
+
+    def test_char_fallback_preserves_latin_words(self):
+        from _builder.utils import _char_bigram_tokenize
+        tokens = _char_bigram_tokenize("使用ABC函数")
+        self.assertIn("ABC", tokens)
+        self.assertIn("使用", tokens)
+        self.assertIn("函数", tokens)
+
+    def test_char_fallback_preserves_ascii_digits(self):
+        from _builder.utils import _char_bigram_tokenize
+        tokens = _char_bigram_tokenize("3个线程")
+        self.assertIn("3", tokens)
+        self.assertIn("线程", tokens)
+
+    def test_char_fallback_preserves_expanded_magnitude(self):
+        # After magnitude normalization, ``三百`` becomes ``300``.
+        # The char fallback must keep ``300`` as a token.
+        from _builder.utils import _char_bigram_tokenize
+        tokens = _char_bigram_tokenize("三百个线程")
+        self.assertIn("300", tokens)
+        self.assertIn("线程", tokens)
+
+    def test_pre_tokenize_char_mode_keeps_latin(self):
+        result = _cjk_pre_tokenize("使用ABC函数", tokenizer="char")
+        tokens = result.split()
+        self.assertIn("ABC", tokens)
+        self.assertIn("函数", tokens)
+
+    def test_pre_tokenize_char_mode_keeps_expanded_digits(self):
+        result = _cjk_pre_tokenize("三百个线程", tokenizer="char")
+        tokens = result.split()
+        self.assertIn("300", tokens)
+        self.assertIn("线程", tokens)
+
+
+class TestFts5EscapeSingleCharFiltering(unittest.TestCase):
+    """The char fallback path splits CJK words into individual chars
+    plus bigrams.  When multi-char CJK tokens exist, single CJK chars
+    must be dropped from the FTS5 AND expression so a paragraph
+    indexed with the full word matches the query."""
+
+    def test_multi_char_query_drops_single_chars(self):
+        result = _fts5_escape("释放")
+        self.assertNotIn('"释"', result)
+        self.assertNotIn('"放"', result)
+        self.assertIn('"释放"', result)
+
+    def test_multi_char_query_drops_single_chars_four(self):
+        result = _fts5_escape("释放内存")
+        self.assertNotIn('"释"', result)
+        self.assertNotIn('"放"', result)
+        self.assertNotIn('"存"', result)
+        self.assertIn('"释放"', result)
+        self.assertIn('"内存"', result)
+
+    def test_single_char_query_keeps_char(self):
+        # A single-char CJK query has no multi-char token, so the
+        # single char must remain.
+        result = _fts5_escape("锁")
+        self.assertIn('"锁"', result)
+
+    def test_latin_query_unaffected(self):
+        result = _fts5_escape("free memory")
+        self.assertIn('"free"', result)
+        self.assertIn('"memory"', result)
+
+
 if __name__ == "__main__":
     unittest.main()

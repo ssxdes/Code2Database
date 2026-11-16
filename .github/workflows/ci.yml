@@ -26,6 +26,9 @@ jobs:
       - name: Install optional advanced features
         run: python3 -m pip install python-igraph leidenalg libclang z3-solver
 
+      - name: Install CJK segmentation libraries
+        run: python3 -m pip install jieba pypinyin
+
       - name: Install test dependencies
         run: python3 -m pip install pytest
 
